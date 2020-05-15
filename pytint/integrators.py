@@ -137,7 +137,7 @@ def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, cm_correct
 
     return F_harm
 
-def integrate_path(fwdfilename, bkdfilename, usecols=(1, 2)):
+def integrate_path(fwdfilename, bkdfilename):
     """
     Get a filename with columns du and dlambda and integrate
 
@@ -152,8 +152,8 @@ def integrate_path(fwdfilename, bkdfilename, usecols=(1, 2)):
     usecols : list
         column numbers to be used from input file
     """
-    fdu, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=usecols)
-    bdu, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=usecols)
+    fdu, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#")
+    bdu, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#")
 
     fw = np.trapz(fdu, flambda)
     bw = np.trapz(bdu, blambda)
@@ -179,19 +179,66 @@ def calculate_fe_impurity(temp, natoms, fepure, feimpure):
     """
     dg = feimpure*natoms - fepure*natoms + kb*temp*np.log(natoms)
     return dg
-
-
-def calculate_fe_mix(temp, natoms, fepure, feimpure, conc):
+    
+def calculate_fe_mix(temp, fepure, feimpure, conc, natoms=4000):
     """
     Calculate energy of mixing
     """
+    if concs[0] == 0:
+        print("zero is autodone")
+        concs = concs[1:]
+    fes = [fpure]
+    
     s = calculate_entropy_mix(conc)
     dg = calculate_fe_impurity(temp, natoms, fepure, feimpure)
     fe_conc = fepure + conc*dg - temp*s
-    #fe_conc = fe_conc
-    return fe_conc
+    
+    for f in fe_conc:
+        fes.append(f)    
+    return fes
+
+def find_w(mainfolder, nsims=5, full=False):
+    """
+    """
+    ws = []
+    qs = []
+
+    for i in range(nsims):       
+        fwdfilestring = 'forward_%d.dat' % (i+1)
+        fwdfilename = os.path.join(mainfolder,fwdfilestring)
+        bkdfilestring = 'backward_%d.dat' % (i+1)
+        bkdfilename = os.path.join(mainfolder,bkdfilestring)
+        
+        w, q = integrate_path(fwdfilename, bkdfilename)
+        ws.append(w)
+        qs.append(q)
+        
+    if not full:
+        return np.mean(ws)
+    else:
+        return np.mean(ws), np.mean(qs), np.std(qs)
+
+def calculate_fe(mainfolder, temp, tempdict, conc=0, liquid=False, natoms=4000, 
+                mass=28.08, p=50, sig=1.5, atoms_per_cell=4,
+                nsims=5, full=False):
+    if liquid:
+        rho = tempdict[str(temp)][str(conc)]["rho"]
+        w = find_w(mainfolder, nsims=nsims, full=full)
+        f1 = get_uhlenbeck_ford_fe(temp, rho, p, sig)
+        f2 = get_ideal_gas_fe(temp, rho, natoms, mass, xa=(1-conc), xb=conc)
+        fe = f2 + f1 - w
+        return fe
+    else:
+        a = tempdict[str(temp)]["lat"]
+        k = tempdict[str(temp)]["k"]
+        f1 = get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell)
+        w = find_w(mainfolder, nsims=nsims, full=full)
+        fe = f1 + w
+        return fe
 
 
+#UF model functions
+    
 spline1  = [[-14.175243817292000, 1.036718109543200, 1.000000000000000, 0.000000000000000],
             [20.125731451941000, 0.779460795023800, 1.000643143286300, -0.000000535952739],
             [-21.719681990149000, 1.407141996654600, 0.997504737278147, 0.000004694723942],
