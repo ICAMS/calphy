@@ -2,6 +2,7 @@ import numpy as np
 import scipy.constants as const
 import sys
 import math
+import os
 
 #Constants
 h = const.physical_constants["Planck constant in eV/Hz"][0]
