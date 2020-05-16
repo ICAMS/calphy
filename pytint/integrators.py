@@ -138,7 +138,7 @@ def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, cm_correct
 
     return F_harm
 
-def integrate_path(fwdfilename, bkdfilename):
+def integrate_path(fwdfilename, bkdfilename, usecols=(0, 1)):
     """
     Get a filename with columns du and dlambda and integrate
 
@@ -153,8 +153,8 @@ def integrate_path(fwdfilename, bkdfilename):
     usecols : list
         column numbers to be used from input file
     """
-    fdu, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#")
-    bdu, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#")
+    fdu, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=usecols)
+    bdu, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=usecols)
 
     fw = np.trapz(fdu, flambda)
     bw = np.trapz(bdu, blambda)
@@ -198,19 +198,26 @@ def calculate_fe_mix(temp, fepure, feimpure, conc, natoms=4000):
         fes.append(f)    
     return fes
 
-def find_w(mainfolder, nsims=5, full=False):
+def find_w(mainfolder, nsims=5, full=False, oldstyle=False, temp=None, usecols=(0,1)):
     """
     """
     ws = []
     qs = []
 
-    for i in range(nsims):       
+    for i in range(nsims):
         fwdfilestring = 'forward_%d.dat' % (i+1)
+        if oldstyle:
+            fwdfilestring = 'forward_%dK_%d.dat' % (temp, i+1)
         fwdfilename = os.path.join(mainfolder,fwdfilestring)
         bkdfilestring = 'backward_%d.dat' % (i+1)
+        if oldstyle:
+            bkdfilestring = 'backward_%dK_%d.dat' % (temp, i+1)
         bkdfilename = os.path.join(mainfolder,bkdfilestring)
         
-        w, q = integrate_path(fwdfilename, bkdfilename)
+        if not oldstyle:
+            w, q = integrate_path(fwdfilename, bkdfilename)
+        else:
+            w, q = integrate_path(fwdfilename, bkdfilename, usecols=usecols)
         ws.append(w)
         qs.append(q)
         
