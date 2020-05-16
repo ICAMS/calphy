@@ -231,17 +231,19 @@ def calculate_fe(mainfolder, temp, tempdict, conc=0, liquid=False, natoms=4000,
                 nsims=5, full=False, oldstyle=False, usecols=(0,1)):
     if liquid:
         rho = tempdict[str(temp)][str(conc)]["rho"]
-        w = find_w(mainfolder, nsims=nsims, full=full)
+        w, q, qerr = find_w(mainfolder, nsims=nsims, full=True)
         f1 = get_uhlenbeck_ford_fe(temp, rho, p, sig)
         f2 = get_ideal_gas_fe(temp, rho, natoms, mass, xa=(1-conc), xb=conc)
         fe = f2 + f1 - w
-        return fe
     else:
         a = tempdict[str(temp)]["lat"]
         k = tempdict[str(temp)]["k"]
         f1 = get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell)
-        w = find_w(mainfolder, nsims=nsims, full=full, oldstyle=oldstyle, temp=temp, usecols=usecols)
+        w, q, qerr = find_w(mainfolder, nsims=nsims, full=True, oldstyle=oldstyle, temp=temp, usecols=usecols)
         fe = f1 + w
+    if full:
+        return fe, [w, q, qerr]
+    else:
         return fe
 
 
