@@ -228,7 +228,7 @@ def find_w(mainfolder, nsims=5, full=False, oldstyle=False, temp=None, usecols=(
 
 def calculate_fe(mainfolder, temp, tempdict, conc=0, liquid=False, natoms=4000, 
                 mass=28.08, p=50, sig=1.5, atoms_per_cell=4,
-                nsims=5, full=False):
+                nsims=5, full=False, oldstyle=False, usecols=(0,1)):
     if liquid:
         rho = tempdict[str(temp)][str(conc)]["rho"]
         w = find_w(mainfolder, nsims=nsims, full=full)
@@ -240,7 +240,7 @@ def calculate_fe(mainfolder, temp, tempdict, conc=0, liquid=False, natoms=4000,
         a = tempdict[str(temp)]["lat"]
         k = tempdict[str(temp)]["k"]
         f1 = get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell)
-        w = find_w(mainfolder, nsims=nsims, full=full)
+        w = find_w(mainfolder, nsims=nsims, full=full, oldstyle=oldstyle, temp=temp, usecols=usecols)
         fe = f1 + w
         return fe
 
