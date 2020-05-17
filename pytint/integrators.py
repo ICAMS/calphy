@@ -191,9 +191,9 @@ def calculate_fe_mix(temp, fepure, feimpure, concs, natoms=4000):
         concs = concs[1:]
     fes = [fepure]
     
-    s = calculate_entropy_mix(conc)
+    s = calculate_entropy_mix(concs)
     dg = calculate_fe_impurity(temp, natoms, fepure, feimpure)
-    fe_conc = fepure + conc*dg - temp*s
+    fe_conc = fepure + concs*dg - temp*s
     
     for f in fe_conc:
         fes.append(f)    
