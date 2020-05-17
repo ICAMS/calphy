@@ -3,6 +3,7 @@ import scipy.constants as const
 import sys
 import math
 import os
+import warnings
 
 #Constants
 h = const.physical_constants["Planck constant in eV/Hz"][0]
@@ -230,7 +231,16 @@ def calculate_fe(mainfolder, temp, tempdict, conc=0, liquid=False, natoms=4000,
                 mass=28.08, p=50, sig=1.5, atoms_per_cell=4,
                 nsims=5, full=False, oldstyle=False, usecols=(0,1)):
     if liquid:
-        rho = tempdict[str(temp)][str(conc)]["rho"]
+        try:
+            rho = tempdict[str(temp)][str(conc)]["rho"]
+        except:
+            warnings.warn("rho keyword not found")
+        try:
+            rho = tempdict[str(temp)][str(conc)]["dens"]
+        except:
+            warnings.warn("dens keyword found")
+            raise ValueError("Key not found")
+        
         w, q, qerr = find_w(mainfolder, nsims=nsims, full=True)
         f1 = get_uhlenbeck_ford_fe(temp, rho, p, sig)
         f2 = get_ideal_gas_fe(temp, rho, natoms, mass, xa=(1-conc), xb=conc)
