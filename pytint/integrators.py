@@ -189,7 +189,7 @@ def calculate_fe_mix(temp, fepure, feimpure, concs, natoms=4000):
     if concs[0] == 0:
         print("zero is autodone")
         concs = concs[1:]
-    fes = [fpure]
+    fes = [fepure]
     
     s = calculate_entropy_mix(conc)
     dg = calculate_fe_impurity(temp, natoms, fepure, feimpure)
