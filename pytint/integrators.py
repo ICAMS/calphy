@@ -182,7 +182,7 @@ def calculate_fe_impurity(temp, natoms, fepure, feimpure):
     dg = feimpure*natoms - fepure*natoms + kb*temp*np.log(natoms)
     return dg
     
-def calculate_fe_mix(temp, fepure, feimpure, conc, natoms=4000):
+def calculate_fe_mix(temp, fepure, feimpure, concs, natoms=4000):
     """
     Calculate energy of mixing
     """
