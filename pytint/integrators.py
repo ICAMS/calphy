@@ -235,11 +235,11 @@ def calculate_fe(mainfolder, temp, tempdict, conc=0, liquid=False, natoms=4000,
             rho = tempdict[str(temp)][str(conc)]["rho"]
         except:
             warnings.warn("rho keyword not found")
-        try:
-            rho = tempdict[str(temp)][str(conc)]["dens"]
-        except:
-            warnings.warn("dens keyword found")
-            raise ValueError("Key not found")
+            try:
+                rho = tempdict[str(temp)][str(conc)]["dens"]
+            except:
+                warnings.warn("dens keyword found")
+                raise ValueError("Key not found")
         
         w, q, qerr = find_w(mainfolder, nsims=nsims, full=True)
         f1 = get_uhlenbeck_ford_fe(temp, rho, p, sig)
