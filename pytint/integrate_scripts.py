@@ -1,6 +1,6 @@
 import numpy as np
 
-def write_script_solid(mdscriptfile, temp, press, k, lat, options):
+def write_script_solid(mdscriptfile, temp, k, lat, options):
 	"""
 	Write the md script file for submission of job for
 	solid
@@ -78,4 +78,113 @@ def write_script_solid(mdscriptfile, temp, press, k, lat, options):
 
 
 
+def write_script_solid(mdscriptfile, temp, epsilon, dumpfile, options):
+	"""
+	Write the md script file for submission of job for
+	solid
+	"""
+	with open(mdscriptfile, 'w') as fout:
+		fout.write("label RESTART\n")
+
+		fout.write("variable        rnd      equal   %d\n"%np.random.randint(0, 10000))
+
+
+		fout.write("variable        dt       equal   0.001\n")             # Timestep (ps).
+
+		# Adiabatic switching parameters.
+		fout.write("variable        li       equal   1.0\n")               # Initial lambda.
+		fout.write("variable        lf       equal   0.0\n")               # Final lambda.
+		fout.write("variable        N_sim    loop    5d\n"%options["nsims"])                # Number of independent simulations.
+		#------------------------------------------------------------------------------------------------------#
+
+
+		########################################     Atomic setup     ##########################################
+		# Defines the style of atoms, units and boundary conditions.
+		fout.write("units            metal\n")
+		fout.write("boundary         p p p\n")
+		fout.write("atom_style       atomic\n")
+		fout.write("timestep         %f\n"%options["timestep"])
+
+		# Read atoms positions, velocities and box parameters.
+		fout.write("lattice          %s %f\n"%(options["lattice"], options["lattice_constant"]))
+		fout.write("region           box block 0 %d 0 %d 0 %d\n"%(options["nx"], options["ny"], options["nz"]))
+		fout.write("create_box       1 box\n")
+		fout.write("read_dump        %f 0 x y z vx vy vz scaled no box yes add keep\n"%dumpfile)
+
+		fout.write("neigh_modify    delay 0\n")
+
+		# Define MEAM and UF potentials parameters.
+		fout.write("pair_style       hybrid/overlay %s ufm 7.5\n"%options["pair_style"])
+		fout.write("pair_coeff       %s\n"%options["pair_coeff"])
+		fout.write("pair_coeff       * * ufm %f 1.5\n"%epsilon) 
+		fout.write("mass             * %f\n"%options["mass"])
+
+		#------------------------------------------------------------------------------------------------------#
+
+
+		################################     Fixes, computes and constraints     ###############################
+		# Integrator & thermostat.
+		fout.write("fix             f1 all nve\n")                              
+		fout.write("fix               f3 all langevin %f %f %f %d zero yes\n"%(temp, temp, tdamp, np.random.randint(0, 10000)))
+
+		# Compute the potential energy of each pair style.
+		fout.write("compute         c1 all pair %s\n"%options["pair_style"])
+		fout.write("compute         c2 all pair ufm\n")
+		#------------------------------------------------------------------------------------------------------#
+
+
+		##########################################     Output setup     ########################################
+		# Output variables.
+		fout.write("variable        step equal step\n")
+		fout.write("variable        dU equal (c_c1-c_c2)/atoms\n")             # Driving-force obtained from NEHI procedure.
+
+		# Thermo output.
+		fout.write("thermo_style    custom step v_dU\n")
+		fout.write("thermo          1000\n")
+		#------------------------------------------------------------------------------------------------------#
+
+
+		##########################################     Run simulation     ######################################
+		# Turn UF potential off (completely) to equilibrate the Sw potential.
+		fout.write("variable        zero equal 0\n")
+		fout.write("fix             f0 all adapt 0 pair ufm fscale * * v_zero\n")
+		fout.write("unfix           f0\n")
+
+		# Equilibrate the fluid interacting by Sw potential and switch to UF potential (Forward realization).
+		fout.write("run             %d\n"%options["te"])
+
+		fout.write("print           \"$\{dU\} $\{li\}\" file forward_$\{N_sim\}.dat\n")
+		fout.write("variable        lambda_sw equal ramp($\{li\},$\{lf\})\n")                 # Linear lambda protocol from 1 to 0.
+		fout.write("fix             f3 all adapt 1 pair pace fscale * * v_lambda_sw\n")
+		fout.write("variable        lambda_ufm equal ramp($\{lf\},$\{li\})\n")                  # Linear lambda protocol from 0 to 1.
+		fout.write("fix             f4 all adapt 1 pair ufm fscale * * v_lambda_ufm\n")
+		fout.write("fix             f5 all print 1 \"$\{dU\} $\{lambda_sw\}\" screen no append forward_$\{N_sim\}.dat\n")
+		fout.write("run             $%d\n"%options["ts"]
+
+		fout.write("unfix           f3\n")
+		fout.write("unfix           f4\n")
+		fout.write("unfix           f5\n")
+
+		# Equilibrate the fluid interacting by UF potential and switch to sw potential (Backward realization).
+		fout.write("run             %d\n"%options["te"])
+
+		fout.write("print           \"$\{dU\} $\{lf\}\" file backward_$\{N_sim\}.dat\n")
+		fout.write("variable        lambda_sw equal ramp($\{lf\},$\{li\})\n")                 # Linear lambda protocol from 0 to 1.
+		fout.write("fix             f3 all adapt 1 pair pace fscale * * v_lambda_sw\n")
+		fout.write("variable        lambda_ufm equal ramp($\{li\},$\{lf\})\n")                  # Linear lambda protocol from 1 to 0.
+		fout.write("fix             f4 all adapt 1 pair ufm fscale * * v_lambda_ufm\n")
+		fout.write("fix             f5 all print 1 \"$\{dU\} $\{lambda_sw\}\" screen no append backward_$\{N_sim\}.dat\n")
+		fout.write("run             %d\n"options["ts"])
+
+		fout.write("unfix           f3\n")
+		fout.write("unfix           f4\n")
+		fout.write("unfix           f5\n")
+		#------------------------------------------------------------------------------------------------------#
+
+
+		##########################################     Loop procedure     ######################################
+		fout.write("next N_sim\n")
+		fout.write("clear\n")
+		fout.write("jump %s RESTART\n"%mdscriptfile)
+		#------------------------------------------------------------------------------------------------------#
 
