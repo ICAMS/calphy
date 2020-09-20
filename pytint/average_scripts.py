@@ -16,7 +16,7 @@ def write_script_solid(mdscriptfile, temp, press, options):
 		fout.write("timestep         %f\n"%options["timestep"])
 
 		fout.write("lattice          %s %f\n"%(options["lattice"], options["lattice_constant"]))
-		fout.write("region           box block 0 10 0 10 0 10\n")
+		fout.write("region           box block 0 %d 0 %d 0 %d\n"%(options["nx"], options["ny"], options["nz"]))
 		fout.write("create_box       1 box\n")
 		fout.write("create_atoms     1 box\n")
 
@@ -54,7 +54,7 @@ def write_script_liquid(mdscriptfile, temp, thigh, press, options):
 		fout.write("timestep         %f\n"%options["timestep"])
 
 		fout.write("lattice          %s %f\n"%(options["lattice"], options["lattice_constant"]))
-		fout.write("region           box block 0 10 0 10 0 10\n")
+		fout.write("region           box block 0 %d 0 %d 0 %d\n"%(options["nx"], options["ny"], options["nz"]))
 		fout.write("create_box       1 box\n")
 		fout.write("create_atoms     1 box\n")
 
