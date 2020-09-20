@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 
 clqd = np.arange(0, 1.2, 0.2)
 cfcc = np.arange(0, 0.12, 0.02)
@@ -47,62 +46,3 @@ def normalise_fe(fl=None, ff=None, fd=None):
     
     return nfl, nff, nfd
 
-
-"""
-Legacy functions for conversion
-"""
-
-def convert_fe_file(infile, outfile, comments=""):
-    df = pd.read_hdf(infile)
-    tempdict = {}
-    temps = df["temp"].values
-    w = df["w"].values
-    q = df["q"].values
-    err = df["err"].values
-    
-    for count, temp in enumerate(temps):
-        tempdict[str(temp)] = {"w": w[count], "q": q[count], "err": err[count]}
-    
-    tempdict["info"] = comments
-    np.save(outfile, tempdict)
-    return tempdict
-
-def convert_solid_prep_data(infile, outfile, comments=""):
-    df = pd.read_hdf(infile)
-    tempdict = {}
-    temps = df["temp"].values
-    k = df["k"].values
-    lat = df["lat"].values
-
-    for count, temp in enumerate(temps):
-        tempdict[str(temp)] = {"lat": lat[count], "k": k[count]}
-    
-    tempdict["info"] = comments
-    np.save(outfile, tempdict)
-    return tempdict
-
-def convert_liquid_prep_data(infile, outfile, comments=""):
-    df = pd.read_hdf(infile)
-    tempdict = {}
-    temps = df["temp"].values
-    conc = df["conc"].values
-    lat = df["lat"].values
-    dens = df["dens"].values
-    
-    utemps = np.unique(temps)
-    tempdict = {str(t):{} for t in utemps}
-    
-    for count, temp in enumerate(temps):
-        tempdict[str(temp)][str(np.round(conc[count], decimals=1))] = {"lat": lat[count], "rho": dens[count]}
-    
-    tempdict["info"] = comments
-    np.save(outfile, tempdict)
-    return tempdict
-
-def convert_data_file(infile, outfile, liquid=False, comments=""):
-    if liquid:
-        dd = convert_liquid_prep_data(infile, outfile, comments=comments)
-    else:
-        dd = convert_solid_prep_data(infile, outfile, comments=comments)
-    return dd
-    
