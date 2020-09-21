@@ -21,6 +21,7 @@ md:
   nz: 10
   te: 50000
   ts: 100000
+  pressure: 0
 
 queue:
   #scheduler engine - sge, slurm etc

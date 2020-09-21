@@ -3,6 +3,7 @@ import numpy as np
 
 from pytint.input import read_yamlfile
 import pytint.queue as pq
+import argparse as ap
 
 def spawn_jobs(inputfile):
     options = read_yamlfile(inputfile)
@@ -31,4 +32,13 @@ def spawn_jobs(inputfile):
 
     #now we have to create a list of commands for the scheduler
     #which is to run queuekernel - which will then write everything
+
+def main():
+    arg = ap.ArgumentParser()
     
+    #argument name of input file
+    arg.add_argument("-i", "--input", required=True, type=str,
+    help="name of the input file")
+    args = vars(arg.parse_args())
+    
+    spawn_jobs(args["input"])    
