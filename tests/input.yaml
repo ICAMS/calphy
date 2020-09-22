@@ -2,7 +2,7 @@ main:
   nsims: 3
   tm: [800, 1000]
   tsims: 3
-  lammps_exec: /home/users/menonsqr/bin/lmp_tiace
+  lammps_exec: /home/users/menonsqr/bin/lmp_ace_n
   updatetime: 20
 
 md:
@@ -15,8 +15,8 @@ md:
   mass: 26.98
   tdamp: 0.1
   pdamp: 0.1
-  nsmall: 100
-  nlarge: 200
+  nsmall: 10
+  nlarge: 20
   nx: 10
   ny: 10
   nz: 10

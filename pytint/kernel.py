@@ -34,6 +34,7 @@ def spawn_jobs(inputfile):
     #now we have to create a list of commands for the scheduler
     #which is to run queuekernel - which will then write everything
     reports = []
+    errfiles = []
     sreports = []
     lreports = []
     
@@ -41,24 +42,30 @@ def spawn_jobs(inputfile):
         for conc in [0.0]:
             #spawn jobs
             #clear jobs if they exist
-            identistring = ".".join(["solid", str(temp), str("0.2f"%conc)])
-            reportfile = os.path.join(os.getcwd(), ,".".join([identistring, "yaml"]))
-            os.remove(reportfile)
+            identistring = ".".join(["solid", str(temp), "%.02f"%conc])
+            reportfile = os.path.join(os.getcwd(), ".".join([identistring, "yaml"]))
+            if os.path.exists(reportfile):
+                os.remove(reportfile)
 
             #now make a scriptfile
-            scriptpath = os.path.join(os.getcwd(), ,".".join([identistring, "sub"]))
+            scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
+            errfile = os.path.join(os.getcwd(), ".".join([identistring, "sub", "err"]))
+            errfiles.append(errfile)
             scheduler.maincommand = "tint_kernel -i %s -t %f -c %f -s yes"%(inputfile, temp, conc)
             scheduler.write_script(scriptpath)
             _ = scheduler.submit()
             reports.append(reportfile)
             sreports.append(reportfile)
 
-            identistring = ".".join(["liquid", str(temp), str("0.2f"%conc)])
-            reportfile = os.path.join(os.getcwd(), ,".".join([identistring, "yaml"]))
-            os.remove(reportfile)
+            identistring = ".".join(["liquid", str(temp), "%.02f"%conc])
+            reportfile = os.path.join(os.getcwd(), ".".join([identistring, "yaml"]))
+            if os.path.exists(reportfile):
+                os.remove(reportfile)
 
             #now make a scriptfile
-            scriptpath = os.path.join(os.getcwd(), ,".".join([identistring, "sub"]))
+            scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
+            errfile = os.path.join(os.getcwd(), ".".join([identistring, "sub", "err"]))
+            errfiles.append(errfile)
             scheduler.maincommand = "tint_kernel -i %s -t %f -c %f -s no"%(inputfile, temp, conc)
             scheduler.write_script(scriptpath)
             _ = scheduler.submit()
@@ -68,13 +75,30 @@ def spawn_jobs(inputfile):
     #array of jobs are created
     #now monitor jobs regularly
     done = 0
+    errored = []
+    messages = []
+
     while(True):
-        for report in reports:
+        for count, report in enumerate(reports):
             if os.path.exists(report):
                 done += 1
         if (done == len(reports)):
             break
         time.sleep(options["main"]["updatetime"])
+        #check if some errors exist
+        errfile = errfiles[count]
+        if os.path.exists(errfile):
+            #check if the file is empty
+            if not (os.stat(errfile).st_size == 0):
+                file = open(errfile, mode='r')
+                contents = file.read()
+                errored.append(i)
+                messages.append(contents)
+        if len(errored) > 0:
+            for c, err in errored:
+                print(err, messages[c])
+            raise RuntimeError("Jobs failed")
+
 
     #grab the values
     sfe = []
