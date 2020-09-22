@@ -25,14 +25,19 @@ def main():
     arg.add_argument("-c", "--concentration", required=False, type=float,
     default=0.00, help="concentration for the simulation")
 
-    arg.add_argument("-s", "--solid", required=True, type=bool,
-    help="is the system in solid state?")
+    arg.add_argument("-s", "--solid", required=True, type=str,
+    choices=["yes", "no"], help="is the system in solid state?")
 
     args = vars(arg.parse_args())
     options = read_yamlfile(args["input"])
-    #now write the inputfile for first part
-    if args["solid"]:
+    
+    if args["solid"] == "yes":
+        args["solid"] = True
         basename = os.path.join(os.getcwd(), "solid")
+    else:
+        args["solid"] = False
+        basename = os.path.join(os.getcwd(), "liquid")
+
 
     simfolder = ".".join([basename, str(args["temperature"]), str(args["concentration"])])
     
@@ -115,12 +120,12 @@ def main():
         #we need to grab a conf for the liquid
         #possibly implement for solid too - we will have to see
         trajfile = os.path.join(simfolder, "traj.dat")
-        files = ptp.split_trajectory(files)
+        files = ptp.split_trajectory(trajfile)
         conf = os.path.join(simfolder, "conf.dump")
         #now rewrite conf
         sys = pc.System()
-        sys.read_inputfile(files[-1])
-        sys.to_file(conf)
+        sys.read_inputfile(files[-1], customkeys=["vx", "vy", "vz", "mass"])
+        sys.to_file(conf, customkeys=["vx", "vy", "vz", "mass"])
         #remove unnecessary files
         os.remove(trajfile)
         for file in files:

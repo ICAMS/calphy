@@ -110,13 +110,20 @@ def write_script_liquid(mdscriptfile, temp, epsilon, dumpfile, options):
         fout.write("lattice          %s %f\n"%(options["md"]["lattice"], options["md"]["lattice_constant"]))
         fout.write("region           box block 0 %d 0 %d 0 %d\n"%(options["md"]["nx"], options["md"]["ny"], options["md"]["nz"]))
         fout.write("create_box       1 box\n")
-        fout.write("read_dump        %f 0 x y z vx vy vz scaled no box yes add keep\n"%dumpfile)
+        fout.write("read_dump        %s 0 x y z vx vy vz scaled no box yes add keep\n"%dumpfile)
 
         fout.write("neigh_modify    delay 0\n")
 
         # Define MEAM and UF potentials parameters.
         fout.write("pair_style       hybrid/overlay %s ufm 7.5\n"%options["md"]["pair_style"])
-        fout.write("pair_coeff       %s\n"%options["md"]["pair_coeff"])
+        
+        #modify pair style
+        pc =  options["md"]["pair_coeff"]
+        pcraw = pc.split()
+        #now add style
+        pcnew = " ".join([*pcraw[:2], *[options["md"]["pair_style"],], *pcraw[2:]])
+
+        fout.write("pair_coeff       %s\n"%pcnew)
         fout.write("pair_coeff       * * ufm %f 1.5\n"%epsilon) 
         fout.write("mass             * %f\n"%options["md"]["mass"])
 
@@ -160,7 +167,7 @@ def write_script_liquid(mdscriptfile, temp, epsilon, dumpfile, options):
         fout.write("variable        lambda_ufm equal ramp(${lf},${li})\n")                  # Linear lambda protocol from 0 to 1.
         fout.write("fix             f4 all adapt 1 pair ufm fscale * * v_lambda_ufm\n")
         fout.write("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append forward_${N_sim}.dat\n")
-        fout.write("run             $%d\n"%options["ts"])
+        fout.write("run             $%d\n"%options["md"]["ts"])
 
         fout.write("unfix           f3\n")
         fout.write("unfix           f4\n")
