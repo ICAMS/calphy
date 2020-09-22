@@ -40,4 +40,10 @@ setup(
     url='https://github.com/srmnitc/pytint',
     version='0.0.2',
     zip_safe=False,
+    entry_points={
+        'console_scripts': [
+            'tint = pytint.kernel:main',
+            'tint_kernel = pytint.queuekernel:main',
+        ],
+    }
 )

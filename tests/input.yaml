@@ -2,14 +2,14 @@ main:
   nsims: 3
   tm: [800, 1000]
   tsims: 3
-  lammps_exec: 
+  lammps_exec: /home/bin/lmp_mpi
 
 md:
   timestep: 0.004
   lattice: fcc
   lattice_constant: 4.05
   pair_style: pace
-  pair_coeff: * * Al.pbe.ace Al
+  pair_coeff: "* * Al.pbe.ace Al"
   mass: 26.98
   tdamp: 0.1
   pdamp: 0.1

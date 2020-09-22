@@ -12,7 +12,7 @@ def spawn_jobs(inputfile):
     if not len(options["main"]["tm"]) == 2:
         raise valueError("Length of input temperature should be 2")
 
-    if not len(options["main"]["tsims"]) > 1:
+    if not options["main"]["tsims"] > 1:
         raise valueError("Required sims should be atleast 2")
 
     temparray = np.linspace(options["main"]["tm"][0], options["main"]["tm"][1], options["main"]["tsims"], endpoint=True)
