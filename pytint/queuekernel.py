@@ -34,13 +34,16 @@ def main():
     if args["solid"] == "yes":
         args["solid"] = True
         basename = os.path.join(os.getcwd(), "solid")
+        identistring = ".".join(["solid", str(args["temperature"]), str("0.2f"%args["concentration"])])
     else:
         args["solid"] = False
         basename = os.path.join(os.getcwd(), "liquid")
+        identistring = ".".join(["liquid", str(args["temperature"]), str("0.2f"%args["concentration"])])
 
-
-    simfolder = ".".join([basename, str(args["temperature"]), str(args["concentration"])])
+    basedir = os.getcwd()
+    simfolder = ".".join([basename, str(args["temperature"]), str("0.2f"%args["concentration"])])
     
+
     if os.path.exists(simfolder):
         shutil.rmtree(simfolder)
 
@@ -195,4 +198,9 @@ def main():
 
     reportfile = os.path.join(simfolder, "report.yaml")
     with open(reportfile, 'w') as f:
-        yaml.dump(report, f)    
+        yaml.dump(report, f)
+
+    #write a copy in home folder too
+    reportfile = os.path.join(basedir, ".".join([identistring, "yaml"]))
+    with open(reportfile, 'w') as f:
+        yaml.dump(report, f)

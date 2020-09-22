@@ -3,6 +3,7 @@ main:
   tm: [800, 1000]
   tsims: 3
   lammps_exec: /home/users/menonsqr/bin/lmp_tiace
+  updatetime: 20
 
 md:
   timestep: 0.004
