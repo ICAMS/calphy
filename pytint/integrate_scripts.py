@@ -167,7 +167,7 @@ def write_script_liquid(mdscriptfile, temp, epsilon, dumpfile, options):
         fout.write("variable        lambda_ufm equal ramp(${lf},${li})\n")                  # Linear lambda protocol from 0 to 1.
         fout.write("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm\n")
         fout.write("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append forward_${N_sim}.dat\n")
-        fout.write("run             $%d\n"%options["md"]["ts"])
+        fout.write("run             %d\n"%options["md"]["ts"])
 
         fout.write("unfix           f3\n")
         fout.write("unfix           f4\n")
