@@ -74,16 +74,19 @@ def spawn_jobs(inputfile):
 
     #array of jobs are created
     #now monitor jobs regularly
-    done = 0
+    
     errored = []
     messages = []
 
     while(True):
+        done = 0
         for count, report in enumerate(reports):
+            #print(report)
             if os.path.exists(report):
                 done += 1
         if (done == len(reports)):
             break
+        #print(done, len(reports))
         time.sleep(options["main"]["updatetime"])
         #check if some errors exist
         errfile = errfiles[count]
@@ -95,7 +98,7 @@ def spawn_jobs(inputfile):
                 errored.append(count)
                 messages.append(contents)
         if len(errored) > 0:
-            for c, err in errored:
+            for c, err in enumerate(errored):
                 print(err, messages[c])
             raise RuntimeError("Jobs failed")
 
@@ -121,7 +124,16 @@ def spawn_jobs(inputfile):
     ntemp = np.arange(options["main"]["tm"][0], options["main"]["tm"][1]+1, 1)
     diff = np.polyval(lfit, ntemp) - np.polyval(sfit, ntemp)
     minarg = np.argsort(np.abs(diff))[0]
+
+    res = np.column_stack((temparray, sfe, lfe))
+    resfile = os.path.join(os.getcwd(), "results.dat")
+    np.savetxt(resfile, res, header="temp solid liquid")
+
+    if not (sfe[0]-lfe[0])*(sfe[-1]-lfe[-1]) < 0:
+        raise RuntimeError("Melting temp not within range, or calculations not converged")
+        
     print("Calculated Tm = %f with Dg = %f"%(ntemp[minarg], diff[minarg]))
+    print("Results saved in results.dat")
 
 def main():
     arg = ap.ArgumentParser()

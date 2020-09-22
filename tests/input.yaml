@@ -3,7 +3,7 @@ main:
   tm: [800, 1000]
   tsims: 3
   lammps_exec: /home/users/menonsqr/bin/lmp_ace_n
-  updatetime: 20
+  updatetime: 2
 
 md:
   timestep: 0.004
@@ -17,9 +17,9 @@ md:
   pdamp: 0.1
   nsmall: 10
   nlarge: 20
-  nx: 10
-  ny: 10
-  nz: 10
+  nx: 5
+  ny: 5
+  nz: 5
   te: 50
   ts: 100
   pressure: 0
