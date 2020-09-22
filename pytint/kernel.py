@@ -92,7 +92,7 @@ def spawn_jobs(inputfile):
             if not (os.stat(errfile).st_size == 0):
                 file = open(errfile, mode='r')
                 contents = file.read()
-                errored.append(i)
+                errored.append(count)
                 messages.append(contents)
         if len(errored) > 0:
             for c, err in errored:
