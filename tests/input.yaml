@@ -7,6 +7,7 @@ main:
 md:
   timestep: 0.004
   lattice: fcc
+  atoms_per_cell: 4
   lattice_constant: 4.05
   pair_style: pace
   pair_coeff: "* * Al.pbe.ace Al"
@@ -15,7 +16,6 @@ md:
   pdamp: 0.1
   nsmall: 10000
   nlarge: 20000
-  trajfile: traj.dat
   nx: 10
   ny: 10
   nz: 10

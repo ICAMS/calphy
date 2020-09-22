@@ -79,7 +79,7 @@ def write_script_solid(mdscriptfile, temp, k, lat, options):
 
 
 
-def write_script_solid(mdscriptfile, temp, epsilon, dumpfile, options):
+def write_script_liquid(mdscriptfile, temp, epsilon, dumpfile, options):
     """
     Write the md script file for submission of job for
     solid

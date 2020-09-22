@@ -68,7 +68,7 @@ def write_script_liquid(mdscriptfile, temp, thigh, press, options):
 												press, press, options["md"]["pdamp"]))
 		fout.write("thermo_style     custom step pe press vol etotal temp\n")
 		fout.write("thermo           10\n")
-		fout.write("dump             2 all custom 1000 %s id type mass x y z vx vy vz\n"%options["md"]["trajfile"])
+		fout.write("dump             2 all custom %d traj.dat id type mass x y z vx vy vz\n"%(int(options["md"]["nsmall"])/10))
 		fout.write("run              %d\n"%int(options["md"]["nsmall"])) 
 		fout.write("unfix            1\n")
 
