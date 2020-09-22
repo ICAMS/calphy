@@ -155,7 +155,7 @@ def write_script_liquid(mdscriptfile, temp, epsilon, dumpfile, options):
         ##########################################     Run simulation     ######################################
         # Turn UF potential off (completely) to equilibrate the Sw potential.
         fout.write("variable        zero equal 0\n")
-        fout.write("fix             f0 all adapt 0 pair ufm fscale * * v_zero\n")
+        fout.write("fix             f0 all adapt 0 pair ufm scale * * v_zero\n")
         fout.write("unfix           f0\n")
 
         # Equilibrate the fluid interacting by Sw potential and switch to UF potential (Forward realization).
@@ -163,9 +163,9 @@ def write_script_liquid(mdscriptfile, temp, epsilon, dumpfile, options):
 
         fout.write("print           \"${dU} ${li}\" file forward_${N_sim}.dat\n")
         fout.write("variable        lambda_sw equal ramp(${li},${lf})\n")                 # Linear lambda protocol from 1 to 0.
-        fout.write("fix             f3 all adapt 1 pair %s fscale * * v_lambda_sw\n"%options["md"]["pair_style"])
+        fout.write("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw\n"%options["md"]["pair_style"])
         fout.write("variable        lambda_ufm equal ramp(${lf},${li})\n")                  # Linear lambda protocol from 0 to 1.
-        fout.write("fix             f4 all adapt 1 pair ufm fscale * * v_lambda_ufm\n")
+        fout.write("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm\n")
         fout.write("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append forward_${N_sim}.dat\n")
         fout.write("run             $%d\n"%options["md"]["ts"])
 
@@ -178,9 +178,9 @@ def write_script_liquid(mdscriptfile, temp, epsilon, dumpfile, options):
 
         fout.write("print           \"${dU} ${lf}\" file backward_${N_sim}.dat\n")
         fout.write("variable        lambda_sw equal ramp(${lf},${li})\n")                 # Linear lambda protocol from 0 to 1.
-        fout.write("fix             f3 all adapt 1 pair %s fscale * * v_lambda_sw\n"%options["md"]["pair_style"])
+        fout.write("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw\n"%options["md"]["pair_style"])
         fout.write("variable        lambda_ufm equal ramp(${li},${lf})\n")                  # Linear lambda protocol from 1 to 0.
-        fout.write("fix             f4 all adapt 1 pair ufm fscale * * v_lambda_ufm\n")
+        fout.write("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm\n")
         fout.write("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append backward_${N_sim}.dat\n")
         fout.write("run             %d\n"%options["md"]["ts"])
 
