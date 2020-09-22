@@ -2,32 +2,32 @@ main:
   nsims: 3
   tm: [800, 1000]
   tsims: 3
-  lammps_exec: /home/bin/lmp_mpi
+  lammps_exec: /home/users/menonsqr/bin/lmp_tiace
 
 md:
   timestep: 0.004
   lattice: fcc
   atoms_per_cell: 4
   lattice_constant: 4.05
-  pair_style: pace
-  pair_coeff: "* * Al.pbe.ace Al"
+  pair_style: eam/fs
+  pair_coeff: "* * /home/users/menonsqr/Repos/pytint/tests/Al.eam.fs Al"
   mass: 26.98
   tdamp: 0.1
   pdamp: 0.1
-  nsmall: 10000
-  nlarge: 20000
+  nsmall: 100
+  nlarge: 200
   nx: 10
   ny: 10
   nz: 10
-  te: 50000
-  ts: 100000
+  te: 50
+  ts: 100
   pressure: 0
 
 queue:
   #scheduler engine - sge, slurm etc
   #def: local
   scheduler: local
-  cores: 20
+  cores: 2
   #job name
   #def: tis
   jobname: ti
@@ -47,8 +47,7 @@ queue:
   commands:
     # the following two comments are only needed if you run in conda env
     # otherwise can be ignored
-    - source /home/sarath/miniconda3/etc/profile.d/conda.sh
-    - conda activate lammps
+    - source /home/users/menonsqr/.bashrc
   #any other extra options
   #options:
   # - "-j Y"  

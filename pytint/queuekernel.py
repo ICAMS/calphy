@@ -180,13 +180,13 @@ def main():
     report["solid"] = args['solid']
 
     if args["solid"]:
-        report["avglat"] = avglat
-        report["k"] = k
+        report["avglat"] = float(avglat)
+        report["k"] = float(k)
     else:
-        report["rho"] = rho
+        report["rho"] = float(rho)
 
-    report["fe"] = fe
-    report["fe_err"] = qerr
+    report["fe"] = float(fe)
+    report["fe_err"] = float(qerr)
 
     reportfile = os.path.join(simfolder, "report.yaml")
     with open(reportfile, 'w') as f:
