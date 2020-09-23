@@ -42,7 +42,7 @@ def spawn_jobs(inputfile):
         for conc in [0.0]:
             #spawn jobs
             #clear jobs if they exist
-            identistring = ".".join(["solid", str(temp), "%.02f"%conc])
+            identistring = ".".join(["solid", str(int(temp)), "%.02f"%conc])
             reportfile = os.path.join(os.getcwd(), ".".join([identistring, "yaml"]))
             if os.path.exists(reportfile):
                 os.remove(reportfile)
@@ -57,7 +57,7 @@ def spawn_jobs(inputfile):
             reports.append(reportfile)
             sreports.append(reportfile)
 
-            identistring = ".".join(["liquid", str(temp), "%.02f"%conc])
+            identistring = ".".join(["liquid", str(int(temp)), "%.02f"%conc])
             reportfile = os.path.join(os.getcwd(), ".".join([identistring, "yaml"]))
             if os.path.exists(reportfile):
                 os.remove(reportfile)

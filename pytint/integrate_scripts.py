@@ -133,7 +133,7 @@ def write_script_liquid(mdscriptfile, temp, epsilon, dumpfile, options):
         ################################     Fixes, computes and constraints     ###############################
         # Integrator & thermostat.
         fout.write("fix             f1 all nve\n")                              
-        fout.write("fix             f2 all langevin %f %f %f %d zero yes\n"%(temp, temp, options["md"]["tdamp"], np.random.randint(0, 10000)))
+        fout.write("fix             f2 all langevin %f %f %f %d\n"%(temp, temp, options["md"]["tdamp"], np.random.randint(0, 10000)))
 
         # Compute the potential energy of each pair style.
         fout.write("compute         c1 all pair %s\n"%options["md"]["pair_style"])
@@ -156,6 +156,7 @@ def write_script_liquid(mdscriptfile, temp, epsilon, dumpfile, options):
         # Turn UF potential off (completely) to equilibrate the Sw potential.
         fout.write("variable        zero equal 0\n")
         fout.write("fix             f0 all adapt 0 pair ufm scale * * v_zero\n")
+        fout.write("run             0\n")
         fout.write("unfix           f0\n")
 
         # Equilibrate the fluid interacting by Sw potential and switch to UF potential (Forward realization).

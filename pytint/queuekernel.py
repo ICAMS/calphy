@@ -34,14 +34,14 @@ def main():
     if args["solid"] == "yes":
         args["solid"] = True
         basename = os.path.join(os.getcwd(), "solid")
-        identistring = ".".join(["solid", str(args["temperature"]), "%.02f"%args["concentration"]])
+        identistring = ".".join(["solid", str(int(args["temperature"])), "%.02f"%args["concentration"]])
     else:
         args["solid"] = False
         basename = os.path.join(os.getcwd(), "liquid")
-        identistring = ".".join(["liquid", str(args["temperature"]), "%.02f"%args["concentration"]])
+        identistring = ".".join(["liquid", str(int(args["temperature"])), "%.02f"%args["concentration"]])
 
     basedir = os.getcwd()
-    simfolder = ".".join([basename, str(args["temperature"]), "%.02f"%args["concentration"]])
+    simfolder = ".".join([basename, str(int(args["temperature"])), "%.02f"%args["concentration"]])
     
 
     if os.path.exists(simfolder):
