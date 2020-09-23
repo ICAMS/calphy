@@ -7,17 +7,14 @@ from pytint.input import read_yamlfile
 import pytint.queue as pq
 import argparse as ap
 
-def spawn_jobs(inputfile):
+def spawn_jobs(inputfile, monitor=False):
+    
     options = read_yamlfile(inputfile)
-
-    #check the reqd temps
-    if not len(options["main"]["tm"]) == 2:
-        raise valueError("Length of input temperature should be 2")
-
-    if not options["main"]["tsims"] > 1:
-        raise valueError("Required sims should be atleast 2")
-
-    temparray = np.linspace(options["main"]["tm"][0], options["main"]["tm"][1], options["main"]["tsims"], endpoint=True)
+    #gather job arrays
+    temp = options["main"]["temperature"]
+    press = options["main"]["pressure"]
+    lattice = options["main"]["lattice"]
+    conc = options["main"]["concentration"]
 
     #the below part assigns the schedulers
     #now we have to write the submission scripts for the job
@@ -33,76 +30,32 @@ def spawn_jobs(inputfile):
 
     #now we have to create a list of commands for the scheduler
     #which is to run queuekernel - which will then write everything
-    reports = []
     errfiles = []
-    sreports = []
-    lreports = []
     
-    for temp in temparray:
-        for conc in [0.0]:
-            #spawn jobs
-            #clear jobs if they exist
-            identistring = ".".join(["solid", str(int(temp)), "%.02f"%conc])
-            reportfile = os.path.join(os.getcwd(), ".".join([identistring, "yaml"]))
-            if os.path.exists(reportfile):
-                os.remove(reportfile)
+    nocalcs = len(temp)*len(press)*len(lattice)*len(conc)
+    print("Total number of %d calculations registered" % nocalcs)
 
-            #now make a scriptfile
-            scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
-            errfile = os.path.join(os.getcwd(), ".".join([identistring, "sub", "err"]))
-            errfiles.append(errfile)
-            scheduler.maincommand = "tint_kernel -i %s -t %f -c %f -s yes"%(inputfile, temp, conc)
-            scheduler.write_script(scriptpath)
-            _ = scheduler.submit()
-            reports.append(reportfile)
-            sreports.append(reportfile)
-
-            identistring = ".".join(["liquid", str(int(temp)), "%.02f"%conc])
-            reportfile = os.path.join(os.getcwd(), ".".join([identistring, "yaml"]))
-            if os.path.exists(reportfile):
-                os.remove(reportfile)
-
-            #now make a scriptfile
-            scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
-            errfile = os.path.join(os.getcwd(), ".".join([identistring, "sub", "err"]))
-            errfiles.append(errfile)
-            scheduler.maincommand = "tint_kernel -i %s -t %f -c %f -s no"%(inputfile, temp, conc)
-            scheduler.write_script(scriptpath)
-            _ = scheduler.submit()
-            reports.append(reportfile)
-            lreports.append(reportfile)
-
-    #array of jobs are created
-    #now monitor jobs regularly
-    
-    errored = []
-    messages = []
-
-    while(True):
-        done = 0
-        for count, report in enumerate(reports):
-            #print(report)
-            if os.path.exists(report):
-                done += 1
-        if (done == len(reports)):
-            break
-        #print(done, len(reports))
-        time.sleep(options["main"]["updatetime"])
-        #check if some errors exist
-        errfile = errfiles[count]
-        if os.path.exists(errfile):
-            #check if the file is empty
-            if not (os.stat(errfile).st_size == 0):
-                file = open(errfile, mode='r')
-                contents = file.read()
-                errored.append(count)
-                messages.append(contents)
-        if len(errored) > 0:
-            for c, err in enumerate(errored):
-                print(err, messages[c])
-            raise RuntimeError("Jobs failed")
+    #main looping starts
+    for t in temp:
+        for p in press:
+            for count, l in enumerate(lattice):
+                for c in conc:
+                    identifier = "-".join([str(l), str(int(temp)), 
+                                        str(int(press)), "%.02f"%c])
+                    scriptpath = os.path.join(os.getcwd(), ".".join([identifier, "sub"]))
+                    errfile = os.path.join(os.getcwd(), ".".join([identifier, "err"]))
+                    errfiles.append(errfile)
+                    #for lattice just provide the number of position
+                    scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %d -c %f"%(inputfile, t, p, count, c)
+                    scheduler.write_script(scriptpath)
+                    _ = scheduler.submit()
 
 
+    if monitor:
+        raise NotImplementedError("feature not implemented")
+
+def integrate():
+    #WARNING: This method is not updated
     #grab the values
     sfe = []
     for rep in sreports:

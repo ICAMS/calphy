@@ -1,15 +1,16 @@
-main:
-  nsims: 3
-  tm: [800, 1000]
-  tsims: 3
+main: 
+  temperature: [800, 1000]
+  pressure: [0,]
+  lattice: [fcc, ]
+  atoms_per_cell: [4, ]
+  lattice_constant: [4.05, ]
+  concentration: [0, ]
   lammps_exec: /home/users/menonsqr/bin/lmp_ace_n
   updatetime: 2
+  nsims: 3
 
 md:
   timestep: 0.004
-  lattice: fcc
-  atoms_per_cell: 4
-  lattice_constant: 4.05
   pair_style: eam/fs
   pair_coeff: "* * /home/users/menonsqr/Repos/pytint/tests/Al.eam.fs Al"
   mass: 26.98
@@ -22,8 +23,7 @@ md:
   nz: 5
   te: 50
   ts: 100
-  pressure: 0
-
+  
 queue:
   #scheduler engine - sge, slurm etc
   #def: local
