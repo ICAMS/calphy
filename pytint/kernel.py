@@ -36,9 +36,9 @@ def spawn_jobs(inputfile, monitor=False):
     print("Total number of %d calculations registered" % nocalcs)
 
     #main looping starts
-    for t in temp:
-        for p in press:
-            for count, l in enumerate(lattice):
+    for count, l in enumerate(lattice):
+        for t in temp:
+            for p in press:
                 for c in conc:
                     ts = int(t)
                     ps = "%.02f"%p
@@ -62,15 +62,71 @@ def spawn_jobs(inputfile, monitor=False):
     if monitor:
         raise NotImplementedError("feature not implemented")
 
+def integrate(inputfile):
+    """
+    Integrate results
+    """
+    options = read_yamlfile(inputfile)
+    #gather job arrays
+    temp = options["main"]["temperature"]
+    press = options["main"]["pressure"]
+    lattice = options["main"]["lattice"]
+    conc = options["main"]["concentration"]
+
+    #here we have to loop first
+    total = 0
+    success = 0
+
+    for count, l in enumerate(lattice):
+        out_t = []
+        out_p = []
+        out_c = []
+        out_fe = []
+        out_ferr = []
+        for t in temp:
+            for p in press:
+                for c in conc:
+                    ts = int(t)
+                    ps = "%.02f"%p
+                    cs = "%.02f"%c
+                    identistring = "-".join([l, str(ts), ps, cs])
+                    repfile = os.path.join(os.getcwd(), identistring, "report.yaml")
+                    total += 1
+                    if not os.path.exists(repfile):
+                        print("%s not found, skipping.."%identistring)
+
+                    with open(repfile, 'r') as fout:
+                        data = yaml.load(fout, Loader=yaml.FullLoader)
+
+                    out_t.append(t)
+                    out_p.append(p)
+                    out_c.append(c)
+                    out_fe.append(data["fe"])
+                    out_ferr.append(data["ferr"])
+                    success += 1
+        x = np.column_stack((out_t, out_p, out_c, out_fe, out_ferr))
+        outfile = os.path.join(os.getcwd(), "fe_%s.dat"%l)
+        np.savetxt(outfile, x, fmt=('%.02f', '%.02f', 
+                        '%.02f', '%.05f', '%.05f'),
+                        header="temperature pressure concentration fe fe_err")
+    print("%d/%d results saved."%(success, total))
+
 def main():
     arg = ap.ArgumentParser()
     
     #argument name of input file
     arg.add_argument("-i", "--input", required=True, type=str,
     help="name of the input file")
+    
+    arg.add_argument("-m", "--mode", required=False, choices=["run", "integrate"],
+    default="run", help="name of the input file")
+
     args = vars(arg.parse_args())
     
-    spawn_jobs(args["input"]) 
+    if args["mode"] == "run":
+        spawn_jobs(args["input"])
+    else:
+        integrate(args["input"]) 
 
 
 """
