@@ -54,7 +54,7 @@ def spawn_jobs(inputfile, monitor=False):
 
                     #for lattice just provide the number of position
                     scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f"%(inputfile, 
-                        ts, ps, l, apc, a, cs)
+                        t, p, l, apc, a, c)
                     scheduler.write_script(scriptpath)
                     _ = scheduler.submit()
 

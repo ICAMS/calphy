@@ -5,14 +5,14 @@ main:
   atoms_per_cell: [4, ]
   lattice_constant: [4.05, ]
   concentration: [0, ]
-  lammps_exec: /home/users/menonsqr/bin/lmp_ace_n
+  lammps_exec: lmp_mpi
   updatetime: 2
   nsims: 3
 
 md:
   timestep: 0.004
   pair_style: eam/fs
-  pair_coeff: "* * /home/users/menonsqr/Repos/pytint/tests/Al.eam.fs Al"
+  pair_coeff: "* * /home/sarath/Repos/pytint/tests/Al.eam.fs Al"
   mass: 26.98
   tdamp: 0.1
   pdamp: 0.1

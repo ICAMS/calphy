@@ -5,13 +5,11 @@ import argparse as ap
 import subprocess
 import yaml
 
-import pytint.average_scripts as pavg
-import pytint.integrate_scripts as pint
 from pytint.input import read_yamlfile
 from pytint.liquid import Liquid
 from pytint.solid import Solid
 
-def submit_job(options, scriptpath):
+def submit_job(options, simfolder, scriptpath):
     """
     Submit a job
     """
@@ -101,13 +99,13 @@ def main():
     #switch folder
     os.chdir(simfolder)
     job.write_average_script(scriptpath)
-    submit_job(options, scriptpath)
+    submit_job(options, simfolder, scriptpath)
     
     #gather data and submit second routine
     job.gather_average_data()
     scriptpath = os.path.join(simfolder, "mdint.in")
     job.write_integrate_script(scriptpath)
-    submit_job(options, scriptpath)
+    submit_job(options, simfolder, scriptpath)
 
     #integrate and write report
     job.thermodynamic_integration()
