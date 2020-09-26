@@ -62,11 +62,16 @@ def main():
     arg.add_argument("-c", "--concentration", required=True, type=float,
     help="concentration for the simulation")
 
+    arg.add_argument("-m", "--mainlattice", required=True, type=str,
+    help="lammps lattice for the simulation")
+
+
     args = vars(arg.parse_args())
     options = read_yamlfile(args["input"])
 
     #we have some housekeepin to do now    
     l = args["lattice"]
+    ml = args["mainlattice"]
     t = int(args["temperature"])
     p = "%.02f"%args["pressure"]
     c = "%.02f"%args["concentration"]
@@ -83,7 +88,7 @@ def main():
     #time to set up the job file
     if args["lattice"] == "liquid":
         job = Liquid(t = args["temperature"], p = args["pressure"],
-                    l = args["lattice"], apc = args["atomspercell"],
+                    l = ml, apc = args["atomspercell"],
                     alat = args["latticeconstant"],
                     c = args["concentration"], options=options,
                     simfolder = simfolder, thigh = thigh)

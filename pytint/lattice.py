@@ -2,11 +2,11 @@
 from mendeleev import element
 
 latticedict = {
-	"BCC" :{"BCC":1.00000, "FCC":0.79370, "HCP":1.12246, "DIA":0.62996, "SC":1.25992, "N":2},
-	"FCC" :{"BCC":1.25992, "FCC":1.00000, "HCP":1.78179, "DIA":0.79370, "SC":1.58740, "N":4},
-	"HCP" :{"BCC":0.89090, "FCC":0.79370, "HCP":1.00000, "DIA":0.62996, "SC":0.89089, "N":4},
-	"DIA" :{"BCC":1.58740, "FCC":0.79370, "HCP":1.25992, "DIA":1.00000, "SC":2.00000, "N":8},
-	"SC"  :{"BCC":0.79370, "FCC":0.62996, "HCP":1.12247, "DIA":0.50000, "SC":1.00000, "N":1},
+	"BCC" :{"LQD": 1.00000, "BCC":1.00000, "FCC":0.79370, "HCP":1.12246, "DIA":0.62996, "SC":1.25992, "N":2},
+	"FCC" :{"LQD": 1.00000, "BCC":1.25992, "FCC":1.00000, "HCP":1.78179, "DIA":0.79370, "SC":1.58740, "N":4},
+	"HCP" :{"LQD": 1.00000, "BCC":0.89090, "FCC":0.79370, "HCP":1.00000, "DIA":0.62996, "SC":0.89089, "N":4},
+	"DIA" :{"LQD": 1.00000, "BCC":1.58740, "FCC":0.79370, "HCP":1.25992, "DIA":1.00000, "SC":2.00000, "N":8},
+	"SC"  :{"LQD": 1.00000, "BCC":0.79370, "FCC":0.62996, "HCP":1.12247, "DIA":0.50000, "SC":1.00000, "N":1},
 }
 
 def get_lattice(symbol, lattice_list):
@@ -28,6 +28,9 @@ def get_lattice(symbol, lattice_list):
 
 	atoms_per_cell : list of ints
 		number of atoms per cell
+
+	lammps_lattice : list of strings
+		the main lattice to be used in lammps
 	"""
 
 	chem = element(symbol)
@@ -41,10 +44,16 @@ def get_lattice(symbol, lattice_list):
 
 	lattice_constants = []
 	atoms_per_cell = []
+	lammps_lattice = []
 	
 	for lat in lattice_list:
 		newlat = latticedict[mainlat][lat]*mainalat
 		lattice_list.append(newlat)
-		atoms_per_cell.append(latticedict[lat]["N"])
+		if lat == "LQD":
+			atoms_per_cell.append(latticedict[mainlat]["N"])
+			lammps_lattice.append(mainlat.lower())	
+		else:
+			atoms_per_cell.append(latticedict[lat]["N"])
+			lammps_lattice.append(lat.lower())
 
-	return lattice_constants, atoms_per_cell
+	return lattice_constants, atoms_per_cell, lammps_lattice

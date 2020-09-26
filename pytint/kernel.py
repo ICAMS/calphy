@@ -43,7 +43,7 @@ def spawn_jobs(inputfile, monitor=False):
     nocalcs = len(temp)*len(press)*len(lattice)*len(conc)
     print("Total number of %d calculations registered" % nocalcs)
 
-    lattice_constants, atoms_per_cell = pl.get_lattice(element, lattice)
+    lattice_constants, atoms_per_cell, lammps_lattice = pl.get_lattice(element, lattice)
 
     #main looping starts
     for count, l in enumerate(lattice):
@@ -61,10 +61,11 @@ def spawn_jobs(inputfile, monitor=False):
                     #get the other info which is required
                     apc = atoms_per_cell[count]
                     a = lattice_constants[count]
+                    ml = lammps_lattice[count]
 
                     #for lattice just provide the number of position
-                    scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f"%(inputfile, 
-                        t, p, l, apc, a, c)
+                    scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f -m %s"%(inputfile, 
+                        t, p, l, apc, a, c, ml)
                     scheduler.write_script(scriptpath)
                     _ = scheduler.submit()
 
