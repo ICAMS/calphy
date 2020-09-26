@@ -45,8 +45,8 @@ class Solid:
 
             fout.write("mass             * %f\n"%self.options["md"]["mass"])
 
-            fout.write("velocity         all create %f %d\n"%(1, np.random.randint(0, 10000)))
-            fout.write("fix              1 all npt temp %f %f %f iso %f %f %f\n"%(1, self.t, self.options["md"]["tdamp"], 
+            fout.write("velocity         all create %f %d\n"%(self.t, np.random.randint(0, 10000)))
+            fout.write("fix              1 all npt temp %f %f %f iso %f %f %f\n"%(self.t, self.t, self.options["md"]["tdamp"], 
                                                 0, self.p, self.options["md"]["pdamp"]))
             fout.write("thermo_style     custom step pe press vol etotal temp\n")
             fout.write("thermo           10\n")
