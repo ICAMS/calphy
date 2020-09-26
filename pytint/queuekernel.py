@@ -8,9 +8,35 @@ import yaml
 import pytint.average_scripts as pavg
 import pytint.integrate_scripts as pint
 from pytint.input import read_yamlfile
-from pytint.integrators import *
-import pyscal.core as pc
-import pyscal.traj_process as ptp
+
+
+def submit_job(options, scriptpath):
+    """
+    Submit a job
+    """
+    #create run command
+    cores = options["queue"]["cores"]
+    if cores > 1:
+        cmd = ["mpirun", "--oversubscribe", "-n", str(cores), options["main"]["lammps_exec"], 
+        "-in", scriptpath, "-screen", "lammscreen.log"]
+    else:
+        cmd = [options["main"]["lammps_exec"], "-in", scriptpath, "-screen", "lammscreen.log"]
+
+    #now launch subprocess
+    process = subprocess.Popen(
+        cmd,
+        stdout=None,
+        stderr=subprocess.PIPE,
+        stdin=None,
+        cwd = simfolder,
+    )
+
+    #now wait until process is done
+    out, err = process.communicate()
+    err = err.decode("utf-8")
+    if len(err) > 0:
+        raise RuntimeError(err)    
+
 
 def main():
     arg = ap.ArgumentParser()
