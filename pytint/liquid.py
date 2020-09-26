@@ -70,8 +70,8 @@ class Liquid:
         vol = np.loadtxt(avgfile, usecols=(2,), unpack=True)
         avgvol = np.mean(vol[-100:])
         ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
-        self.natoms = ncells*apc
-        self.rho = natoms/avgvol
+        self.natoms = ncells*self.apc
+        self.rho = self.natoms/avgvol
         #WARNING: hard coded ufm parameter
         self.eps = self.t*50.0*kb
 
@@ -106,7 +106,7 @@ class Liquid:
             fout.write("variable        rnd      equal   %d\n"%np.random.randint(0, 10000))
 
 
-            fout.write("variable        dt       equal   %f\n"%self.options.md["timestep"])             # Timestep (ps).
+            fout.write("variable        dt       equal   %f\n"%self.options["md"]["timestep"])             # Timestep (ps).
 
             # Adiabatic switching parameters.
             fout.write("variable        li       equal   1.0\n")               # Initial lambda.
@@ -220,7 +220,7 @@ class Liquid:
         """
         Perform thermodynamic integration
         """
-        w, q, qerr = find_w(simfolder, nsims=self.options["main"]["nsims"], 
+        w, q, qerr = find_w(self.simfolder, nsims=self.options["main"]["nsims"], 
             full=True)  
         #WARNING: hardcoded UFM parameters           
         f1 = get_uhlenbeck_ford_fe(self.t, 

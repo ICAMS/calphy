@@ -86,7 +86,7 @@ def main():
     os.mkdir(simfolder)
 
     #time to set up the job file
-    if args["lattice"] == "liquid":
+    if args["lattice"] == "LQD":
         job = Liquid(t = args["temperature"], p = args["pressure"],
                     l = ml, apc = args["atomspercell"],
                     alat = args["latticeconstant"],
@@ -94,7 +94,7 @@ def main():
                     simfolder = simfolder, thigh = thigh)
     else:
         job = Solid(t = args["temperature"], p = args["pressure"],
-                    l = args["lattice"], apc = args["atomspercell"],
+                    l = ml, apc = args["atomspercell"],
                     alat = args["latticeconstant"],
                     c = args["concentration"], options=options,
                     simfolder = simfolder)

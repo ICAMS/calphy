@@ -20,9 +20,9 @@ def spawn_jobs(inputfile, monitor=False):
 
     #Check lattice values
     lattice = [x.upper() for x in lattice]
-    unidentified = [l for l in lattice if l not in ["BCC", "FCC", "HCP", "DIA", "SC"]]
+    unidentified = [l for l in lattice if l not in ["BCC", "FCC", "HCP", "DIA", "SC", "LQD"]]
     if len(unidentified) > 0:
-        raise ValueError("Unknown lattice found. Allowed options are BCC, FCC, HCP, DIA or SC.")
+        raise ValueError("Unknown lattice found. Allowed options are BCC, FCC, HCP, DIA, SC or LQD")
 
     #the below part assigns the schedulers
     #now we have to write the submission scripts for the job
@@ -105,6 +105,7 @@ def integrate(inputfile):
                     total += 1
                     if not os.path.exists(repfile):
                         print("%s not found, skipping.."%identistring)
+                        continue
 
                     with open(repfile, 'r') as fout:
                         data = yaml.load(fout, Loader=yaml.FullLoader)

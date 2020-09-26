@@ -2,7 +2,7 @@ main:
   temperature: [800, 1000]
   pressure: [0,]
   element: 'Al'
-  lattice: [liquid]
+  lattice: [LQD, FCC]
   concentration: [0, ]
   lammps_exec: lmp_mpi
   updatetime: 2

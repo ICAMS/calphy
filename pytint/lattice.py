@@ -35,20 +35,21 @@ def get_lattice(symbol, lattice_list):
 
 	chem = element(symbol)
 	
-	mainlat = si.lattice_structure
+	mainlat = chem.lattice_structure
 	
 	if mainlat == "HEX":
 		mainlat = "HCP"
 
-	mainalat = si.lattice_constant
+	mainalat = chem.lattice_constant
 
 	lattice_constants = []
 	atoms_per_cell = []
 	lammps_lattice = []
-	
+	#print(lattice_list)
 	for lat in lattice_list:
+		#print(mainlat, lat)
 		newlat = latticedict[mainlat][lat]*mainalat
-		lattice_list.append(newlat)
+		lattice_constants.append(newlat)
 		if lat == "LQD":
 			atoms_per_cell.append(latticedict[mainlat]["N"])
 			lammps_lattice.append(mainlat.lower())	
