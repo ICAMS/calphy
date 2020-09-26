@@ -74,7 +74,7 @@ def main():
     c = "%.02f"%args["concentration"]
     thigh = max(options["main"]["temperature"])*1.5
 
-    identistring = "-".join([l, t, p, c])
+    identistring = "-".join([l, str(t), p, c])
     simfolder = os.path.join(os.getcwd(), identistring)
     
     #if folder exists, delete it -> then create

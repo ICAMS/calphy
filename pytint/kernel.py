@@ -40,13 +40,21 @@ def spawn_jobs(inputfile, monitor=False):
         for p in press:
             for count, l in enumerate(lattice):
                 for c in conc:
-                    identifier = "-".join([str(l), str(int(temp)), 
-                                        str(int(press)), "%.02f"%c])
-                    scriptpath = os.path.join(os.getcwd(), ".".join([identifier, "sub"]))
-                    errfile = os.path.join(os.getcwd(), ".".join([identifier, "err"]))
+                    ts = int(t)
+                    ps = "%.02f"%p
+                    cs = "%.02f"%c
+                    identistring = "-".join([l, str(ts), ps, cs])
+                    scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
+                    errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
                     errfiles.append(errfile)
+
+                    #get the other info which is required
+                    apc = options["main"]["atoms_per_cell"][count]
+                    a = options["main"]["lattice_constant"][count]
+
                     #for lattice just provide the number of position
-                    scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %d -c %f"%(inputfile, t, p, count, c)
+                    scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f"%(inputfile, 
+                        ts, ps, l, apc, a, cs)
                     scheduler.write_script(scriptpath)
                     _ = scheduler.submit()
 
@@ -54,6 +62,18 @@ def spawn_jobs(inputfile, monitor=False):
     if monitor:
         raise NotImplementedError("feature not implemented")
 
+def main():
+    arg = ap.ArgumentParser()
+    
+    #argument name of input file
+    arg.add_argument("-i", "--input", required=True, type=str,
+    help="name of the input file")
+    args = vars(arg.parse_args())
+    
+    spawn_jobs(args["input"]) 
+
+
+"""
 def integrate():
     #WARNING: This method is not updated
     #grab the values
@@ -87,13 +107,5 @@ def integrate():
         
     print("Calculated Tm = %f with Dg = %f"%(ntemp[minarg], diff[minarg]))
     print("Results saved in results.dat")
-
-def main():
-    arg = ap.ArgumentParser()
-    
-    #argument name of input file
-    arg.add_argument("-i", "--input", required=True, type=str,
-    help="name of the input file")
-    args = vars(arg.parse_args())
-    
-    spawn_jobs(args["input"])    
+"""
+   
