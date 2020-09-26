@@ -6,6 +6,7 @@ import yaml
 from pytint.input import read_yamlfile
 import pytint.queue as pq
 import argparse as ap
+import pytint.lattice as pl
 
 def spawn_jobs(inputfile, monitor=False):
     
@@ -15,6 +16,13 @@ def spawn_jobs(inputfile, monitor=False):
     press = options["main"]["pressure"]
     lattice = options["main"]["lattice"]
     conc = options["main"]["concentration"]
+    element = options["main"]["element"]
+
+    #Check lattice values
+    lattice = [x.upper() for x in lattice]
+    unidentified = [l for l in lattice if l not in ["BCC", "FCC", "HCP", "DIA", "SC"]]
+    if len(unidentified) > 0:
+        raise ValueError("Unknown lattice found. Allowed options are BCC, FCC, HCP, DIA or SC.")
 
     #the below part assigns the schedulers
     #now we have to write the submission scripts for the job
@@ -35,6 +43,8 @@ def spawn_jobs(inputfile, monitor=False):
     nocalcs = len(temp)*len(press)*len(lattice)*len(conc)
     print("Total number of %d calculations registered" % nocalcs)
 
+    lattice_constants, atoms_per_cell = pl.get_lattice(element, lattice)
+
     #main looping starts
     for count, l in enumerate(lattice):
         for t in temp:
@@ -49,8 +59,8 @@ def spawn_jobs(inputfile, monitor=False):
                     errfiles.append(errfile)
 
                     #get the other info which is required
-                    apc = options["main"]["atoms_per_cell"][count]
-                    a = options["main"]["lattice_constant"][count]
+                    apc = atoms_per_cell[count]
+                    a = lattice_constants[count]
 
                     #for lattice just provide the number of position
                     scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f"%(inputfile, 
