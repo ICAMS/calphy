@@ -76,7 +76,7 @@ class Solid:
 	    vol = np.loadtxt(avgfile, usecols=(2,), unpack=True)
 	    avgvol = np.mean(vol[-100:])
 	    ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
-	    natoms = ncells*apc
+	    self.natoms = ncells*self.apc
 
         self.avglat = (avgvol/ncells)**(1/3)
         msdfile = os.path.join(self.simfolder, "msd.dat")
@@ -161,12 +161,12 @@ class Solid:
 
 
 	def thermodynamic_integration(self):
-        f1 = get_einstein_crystal_fe(args["temperature"], 
-            natoms, options["md"]["mass"], 
-            avglat, k, options["md"]["atoms_per_cell"])
-        w, q, qerr = find_w(simfolder, nsims=options["main"]["nsims"], 
+        f1 = get_einstein_crystal_fe(self.t, 
+            self.natoms, self.options["md"]["mass"], 
+            avglat, self.k, self.apc)
+        w, q, qerr = find_w(self.simfolder, nsims=self.options["main"]["nsims"], 
             full=True, 
-            temp=args["temperature"])
+            temp=self.t)
         fe = f1 + w
         self.fe = fe
         self.ferr = qerr
