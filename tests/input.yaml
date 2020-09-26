@@ -1,7 +1,7 @@
 main: 
   temperature: [800, 1000]
   pressure: [0,]
-  lattice: [fcc, bcc]
+  lattice: [liquid]
   atoms_per_cell: [4, 2]
   lattice_constant: [4.05, 3.5]
   concentration: [0, ]

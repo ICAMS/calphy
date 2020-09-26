@@ -102,7 +102,7 @@ def integrate(inputfile):
                     out_p.append(p)
                     out_c.append(c)
                     out_fe.append(data["fe"])
-                    out_ferr.append(data["ferr"])
+                    out_ferr.append(data["fe_err"])
                     success += 1
         x = np.column_stack((out_t, out_p, out_c, out_fe, out_ferr))
         outfile = os.path.join(os.getcwd(), "fe_%s.dat"%l)
@@ -127,41 +127,3 @@ def main():
         spawn_jobs(args["input"])
     else:
         integrate(args["input"]) 
-
-
-"""
-def integrate():
-    #WARNING: This method is not updated
-    #grab the values
-    sfe = []
-    for rep in sreports:
-        with open(rep, 'r') as fout:
-            data = yaml.load(fout, Loader=yaml.FullLoader)
-        sfe.append(data["fe"])
-
-    lfe = []
-    for rep in lreports:
-        with open(rep, 'r') as fout:
-            data = yaml.load(fout, Loader=yaml.FullLoader)
-        lfe.append(data["fe"])
-
-    #now we have to do linear fits
-    #WARNING: check quality of fit
-    sfit = np.polyfit(temparray, sfe, 1)
-    lfit = np.polyfit(temparray, lfe, 1)
-
-    ntemp = np.arange(options["main"]["tm"][0], options["main"]["tm"][1]+1, 1)
-    diff = np.polyval(lfit, ntemp) - np.polyval(sfit, ntemp)
-    minarg = np.argsort(np.abs(diff))[0]
-
-    res = np.column_stack((temparray, sfe, lfe))
-    resfile = os.path.join(os.getcwd(), "results.dat")
-    np.savetxt(resfile, res, header="temp solid liquid")
-
-    if not (sfe[0]-lfe[0])*(sfe[-1]-lfe[-1]) < 0:
-        raise RuntimeError("Melting temp not within range, or calculations not converged")
-        
-    print("Calculated Tm = %f with Dg = %f"%(ntemp[minarg], diff[minarg]))
-    print("Results saved in results.dat")
-"""
-   
