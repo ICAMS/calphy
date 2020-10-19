@@ -1,22 +1,67 @@
+"""
+Main kernel methods for pytint
+
+There are two modes of operation:
+
+- The basic one in which the temperature will be split on regular intervals
+  and an integration calculation is done at each point.
+
+- Reversible scaling mode in which one integration calculation will be done
+  and one reversible scaling calculation will be done.
+
+"""
 import os
 import numpy as np
 import time
 import yaml
+import warnings
 
 from pytint.input import read_yamlfile
 import pytint.queue as pq
 import argparse as ap
 import pytint.lattice as pl
 
-def spawn_jobs(inputfile, monitor=False):
-    
+
+def spawn_jobs(inputfile, rs=False, monitor=False):
+    """
+    Spawn jobs which are submitted to cluster
+
+    Parameters
+    ----------
+    inputfile : string
+        name of input file
+
+    rs : bool, optional
+        If True carry out reversible scaling mode. Default False
+
+    monitor : bool, optional
+        If True, monitor jobs. Currently not implemented.
+
+    Returns
+    -------
+    None
+    """
     options = read_yamlfile(inputfile)
+    
     #gather job arrays
     temp = options["main"]["temperature"]
     press = options["main"]["pressure"]
     lattice = options["main"]["lattice"]
     conc = options["main"]["concentration"]
     element = options["main"]["element"]
+    
+    #checks
+    if rs:
+        if len(temp) > 2:
+            warnings.warn("More than two values in temperature in reversible scaling mode. Only first and last values will be used")
+    
+    if len(press)>1:
+        warnings.warn("Resetting pressure to zero")
+        press = [0,]
+
+    if press[0] != 0:
+        warnings.warn("Resetting pressure to zero")
+        press[0] = 0.0
 
     #Check lattice values
     lattice = [x.upper() for x in lattice]
@@ -40,14 +85,40 @@ def spawn_jobs(inputfile, monitor=False):
     #which is to run queuekernel - which will then write everything
     errfiles = []
     
-    nocalcs = len(temp)*len(press)*len(lattice)*len(conc)
+    if rs:
+        nocalcs = 2*len(press)*len(lattice)*len(conc)
+    else:    
+        nocalcs = len(temp)*len(press)*len(lattice)*len(conc)
     print("Total number of %d calculations registered" % nocalcs)
 
     lattice_constants, atoms_per_cell, lammps_lattice = pl.get_lattice(element, lattice)
 
-    #main looping starts
-    for count, l in enumerate(lattice):
-        for t in temp:
+    if not rs:
+        for count, l in enumerate(lattice):
+            for t in temp:
+                for p in press:
+                    for c in conc:
+                        ts = int(t)
+                        ps = "%.02f"%p
+                        cs = "%.02f"%c
+                        identistring = "-".join([l, str(ts), ps, cs])
+                        scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
+                        errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
+                        errfiles.append(errfile)
+
+                        #get the other info which is required
+                        apc = atoms_per_cell[count]
+                        a = lattice_constants[count]
+                        ml = lammps_lattice[count]
+
+                        #for lattice just provide the number of position
+                        scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f -m %s"%(inputfile, 
+                            t, p, l, apc, a, c, ml)
+                        scheduler.write_script(scriptpath)
+                        _ = scheduler.submit()
+    else:
+        for count, l in enumerate(lattice):
+            t = temp[0]
             for p in press:
                 for c in conc:
                     ts = int(t)
@@ -68,7 +139,28 @@ def spawn_jobs(inputfile, monitor=False):
                         t, p, l, apc, a, c, ml)
                     scheduler.write_script(scriptpath)
                     _ = scheduler.submit()
+            
+            t = temp[-1]
+            for p in press:
+                for c in conc:
+                    ts = int(t)
+                    ps = "%.02f"%p
+                    cs = "%.02f"%c
+                    identistring = "-".join([l, str(ts), ps, cs, "rs"])
+                    scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
+                    errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
+                    errfiles.append(errfile)
 
+                    #get the other info which is required
+                    apc = atoms_per_cell[count]
+                    a = lattice_constants[count]
+                    ml = lammps_lattice[count]
+
+                    #for lattice just provide the number of position
+                    scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f -m %s -j %s"%(inputfile, 
+                        t, p, l, apc, a, c, ml, "rs")
+                    scheduler.write_script(scriptpath)
+                    _ = scheduler.submit()
 
     if monitor:
         raise NotImplementedError("feature not implemented")
@@ -130,12 +222,14 @@ def main():
     arg.add_argument("-i", "--input", required=True, type=str,
     help="name of the input file")
     
-    arg.add_argument("-m", "--mode", required=False, choices=["run", "integrate"],
+    arg.add_argument("-m", "--mode", required=False, choices=["run", "integrate", "rs"],
     default="run", help="name of the input file")
 
     args = vars(arg.parse_args())
     
     if args["mode"] == "run":
         spawn_jobs(args["input"])
+    elif args["mode"] == "rs":
+        spawn_jobs(args["input"], rs=True)
     else:
         integrate(args["input"]) 
