@@ -109,7 +109,7 @@ class Liquid:
         with open(mdscriptfile, 'w') as fout:
             fout.write("label RESTART\n")
 
-            fout.write("variable        rnd      equal   %d\n"%np.random.randint(0, 10000))
+            fout.write("variable        rnd      equal   round(random(0,999999,%d))\n"%np.random.randint(0, 10000))
 
 
             fout.write("variable        dt       equal   %f\n"%self.options["md"]["timestep"])             # Timestep (ps).
@@ -157,7 +157,8 @@ class Liquid:
             ################################     Fixes, computes and constraints     ###############################
             # Integrator & thermostat.
             fout.write("fix             f1 all nve\n")                              
-            fout.write("fix             f2 all langevin %f %f %f %d\n"%(self.t, self.t, self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+            fout.write("fix             f2 all langevin %f %f %f ${rnd}\n"%(self.t, self.t, self.options["md"]["tdamp"]))
+            fout.write("round(random(0,999999,0))\n")
 
             # Compute the potential energy of each pair style.
             fout.write("compute         c1 all pair %s\n"%self.options["md"]["pair_style"])
