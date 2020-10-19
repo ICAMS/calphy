@@ -158,7 +158,7 @@ class Liquid:
             # Integrator & thermostat.
             fout.write("fix             f1 all nve\n")                              
             fout.write("fix             f2 all langevin %f %f %f ${rnd}\n"%(self.t, self.t, self.options["md"]["tdamp"]))
-            fout.write("round(random(0,999999,0))\n")
+            fout.write("variable        rnd equal round(random(0,999999,0))\n")
 
             # Compute the potential energy of each pair style.
             fout.write("compute         c1 all pair %s\n"%self.options["md"]["pair_style"])
