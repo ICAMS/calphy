@@ -1,3 +1,6 @@
+"""
+Module to handle input files
+"""
 import os
 import yaml
 

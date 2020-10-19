@@ -1,3 +1,6 @@
+"""
+This module is for future use
+"""
 import numpy as np
 
 clqd = np.arange(0, 1.2, 0.2)
