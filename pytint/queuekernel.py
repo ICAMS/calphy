@@ -44,6 +44,9 @@ def main():
     arg.add_argument("-i", "--input", required=True, type=str,
     help="name of the input file")
 
+    arg.add_argument("-j", "--job", required=False, type=str, choices=["integrate", "rs"],
+    default="integrate", help="mode of simulation")
+
     arg.add_argument("-t", "--temperature", required=True, type=float,
     help="temperature for the simulation")
 
@@ -80,6 +83,11 @@ def main():
     identistring = "-".join([l, str(t), p, c])
     simfolder = os.path.join(os.getcwd(), identistring)
     
+    if args["job"] == "integrate":
+        self.integrate = True
+    elif args["job"] == "rs":
+        self.integrate = False
+
     #if folder exists, delete it -> then create
     if os.path.exists(simfolder):
         shutil.rmtree(simfolder)
@@ -100,18 +108,21 @@ def main():
                     simfolder = simfolder)
 
     #initial routine
-    scriptpath = os.path.join(simfolder, "mdavg.in")
-    #switch folder
-    os.chdir(simfolder)
-    job.write_average_script(scriptpath)
-    submit_job(options, simfolder, scriptpath)
-    
-    #gather data and submit second routine
-    job.gather_average_data()
-    scriptpath = os.path.join(simfolder, "mdint.in")
-    job.write_integrate_script(scriptpath)
-    submit_job(options, simfolder, scriptpath)
+    if self.integrate:
+        scriptpath = os.path.join(simfolder, "mdavg.in")
+        #switch folder
+        os.chdir(simfolder)
+        job.write_average_script(scriptpath)
+        submit_job(options, simfolder, scriptpath)
+        
+        #gather data and submit second routine
+        job.gather_average_data()
+        scriptpath = os.path.join(simfolder, "mdint.in")
+        job.write_integrate_script(scriptpath)
+        submit_job(options, simfolder, scriptpath)
 
-    #integrate and write report
-    job.thermodynamic_integration()
-    job.submit_report()
+        #integrate and write report
+        job.thermodynamic_integration()
+        job.submit_report()
+    else:
+        pass

@@ -192,3 +192,97 @@ class Solid:
         reportfile = os.path.join(self.simfolder, "report.yaml")
         with open(reportfile, 'w') as f:
             yaml.dump(report, f)
+
+
+    def write_rs_script(self, mdscriptfile):
+        """
+        Write TI integrate script
+        """
+        #rev scale needs tstart and tend; here self.t will be start
+        #tend will be the final temp
+        
+        t0 = self.t
+        tf = self.options["main"]["temperature"][-1]
+        li = 1
+        lf = t0/tf
+
+        with open(mdscriptfile, 'w') as fout:
+            fout.write("echo              log\n")
+
+            fout.write("variable          T0 equal %f\n"%t0)  # Initial temperature.
+            fout.write("variable          te equal %d\n"%self.options["md"]["te"])   # Equilibration time (steps).
+            fout.write("variable          ts equal %d\n"%self.options["md"]["ts"])  # Switching time (steps).
+            fout.write("variable          li equal %f\n"%li)
+            fout.write("variable          lf equal %f\n"%lf)
+            fout.write("variable          rand equal %d\n"%np.random.randint(0, 1000))
+
+
+        #-------------------------- Atomic Setup --------------------------------------#  
+            fout.write("units            metal\n")
+            fout.write("boundary         p p p\n")
+            fout.write("atom_style       atomic\n")
+
+            fout.write("lattice          %s %f\n"%(self.l, self.alat))
+            fout.write("region           box block 0 %d 0 %d 0 %d\n"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
+            fout.write("create_box       1 box\n")
+            fout.write("create_atoms     1 box\n")
+
+
+            fout.write("neigh_modify    every 1 delay 0 check yes once no\n")
+
+            fout.write("pair_style       %s\n"%self.options["md"]["pair_style"])
+            fout.write("pair_coeff       %s\n"%self.options["md"]["pair_coeff"])
+            fout.write("mass             * %f\n"%self.options["md"]["mass"])
+
+        #---------------------- Thermostat & Barostat ---------------------------------#
+            fout.write("fix               f1 all nph aniso %f %f %f\n"%(self.p, self.p, self.options["md"]["pdamp"]))
+            fout.write("fix               f2 all langevin ${T0} ${T0} %f %d zero yes\n"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+            fout.write("run               ${te}\n")
+            fout.write("unfix             f1\n")
+            fout.write("unfix             f2\n")
+
+            fout.write("variable         xcm equal xcm(all,x)\n")
+            fout.write("variable         ycm equal xcm(all,y)\n")
+            fout.write("variable         zcm equal xcm(all,z)\n")
+            
+            fout.write("fix              f1 all nph aniso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}\n"%(self.p, self.p, self.options["md"]["pdamp"]))
+            fout.write("fix              f2 all langevin ${T0} ${T0} %f %d zero yes\n"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+            
+        #------------------ Computes, variables & modifications -----------------------#
+            fout.write("compute           tcm all temp/com\n")
+            fout.write("fix_modify        f1 temp tcm\n")
+            fout.write("fix_modify        f2 temp tcm\n")
+
+            fout.write("variable          step    equal step\n")
+            fout.write("variable          dU      equal c_thermo_pe/atoms\n")
+            fout.write("variable          te_run  equal ${te}-1\n")
+            fout.write("variable          ts_run  equal ${ts}+1\n")
+            fout.write("thermo_style      custom step pe c_tcm\n")
+            fout.write("timestep          %f\n"%self.options["md"]["timestep"])
+            fout.write("thermo            10000\n")
+            
+
+            fout.write("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian\n")   
+            fout.write("variable          i loop %d\n"%self.options["main"]["nsims"])
+            fout.write("label repetitions\n")
+            fout.write("    run               ${te}\n")
+            fout.write("    variable          lambda equal ramp(${li},${lf})\n")
+
+            #we need to similar to liquid here
+
+            fout.write("    fix               f3 all adapt 1 pair %s scale * * v_lambda\n"%self.options["md"]["pair_style"])
+            fout.write("    fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_$i.dat 
+\n")
+            fout.write("    run               ${ts}\n")
+            fout.write("    unfix             f3\n")
+            fout.write("    unfix             f4\n")
+            fout.write("    run               ${te}\n")
+            fout.write("    variable          lambda equal ramp(${lf},${li})\n")
+            fout.write("    fix               f3 all adapt 1 pair %s scale * * v_lambda\n"%self.options["md"]["pair_style"])
+            fout.write("    fix               f4 all print 1 \"${dU} ${lambda}\" screen no file backward_$i.dat\n")
+            fout.write("    run               ${ts}\n")
+            fout.write("    unfix             f3\n")
+            fout.write("    unfix             f4\n")
+            
+            fout.write("next i\n")
+            fout.write("jump SELF repetitions\n")
