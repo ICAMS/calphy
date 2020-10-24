@@ -330,8 +330,7 @@ class Liquid:
             #we need to similar to liquid here
 
             fout.write("    fix               f3 all adapt 1 pair %s scale * * v_lambda\n"%self.options["md"]["pair_style"])
-            fout.write("    fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_$i.dat 
-\n")
+            fout.write("    fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_$i.dat\n")
             fout.write("    run               ${ts}\n")
             fout.write("    unfix             f3\n")
             fout.write("    unfix             f4\n")

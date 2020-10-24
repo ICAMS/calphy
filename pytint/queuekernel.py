@@ -84,9 +84,9 @@ def main():
     simfolder = os.path.join(os.getcwd(), identistring)
     
     if args["job"] == "integrate":
-        self.integrate = True
+        integrate = True
     elif args["job"] == "rs":
-        self.integrate = False
+        integrate = False
 
     #if folder exists, delete it -> then create
     if os.path.exists(simfolder):

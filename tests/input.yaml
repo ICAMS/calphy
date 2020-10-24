@@ -1,6 +1,6 @@
 main: 
-  temperature: [800, 1000]
-  pressure: [0,]
+  temperature: [800]
+  pressure: [0]
   element: 'Al'
   lattice: [LQD, FCC]
   concentration: [0, ]

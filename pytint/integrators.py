@@ -7,7 +7,7 @@ import sys
 import math
 import os
 import warnings
-from splines import splines
+from pytint.splines import splines
 
 #Constants
 h = const.physical_constants["Planck constant in eV/Hz"][0]
