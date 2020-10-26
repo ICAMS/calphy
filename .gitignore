@@ -8,3 +8,7 @@ dist
 .ipynb_checkpoints
 dask-worker-space
 .eggs*
+traj.*
+*.sub*
+*.dat
+*log*
