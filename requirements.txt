@@ -2,3 +2,5 @@ numpy
 scipy
 pyyaml
 mendeleev
+pylammpsmpi
+pyscal

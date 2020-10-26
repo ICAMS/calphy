@@ -1,0 +1,35 @@
+
+name: pytint testing
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:    
+    strategy:
+      matrix:
+        os: [ubuntu-latest,]
+        python-version: [3.7]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup conda
+      uses: s-weigand/setup-conda@v1
+      with:
+        update-conda: true
+        python-version: ${{ matrix.python-version }}
+        conda-channels: anaconda, conda-forge
+    - name: setup conda
+      run: |
+        conda --version
+        which python
+        conda config --set always_yes yes --set changeps1 no
+        conda install -c conda-forge numpy scipy pyyaml mendeleev pylammpsmpi pyscal
+        pip install -e .
+    - name: run tests
+      run: |
+        pytest tests/
