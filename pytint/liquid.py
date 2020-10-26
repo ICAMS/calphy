@@ -39,31 +39,31 @@ class Liquid:
         lmp = LammpsLibrary(mode="local", cores=cores)
 
         #set up units
-        lmp.command("units            metal")
-        lmp.command("boundary         p p p")
-        lmp.command("atom_style       atomic")
-        lmp.command("timestep"         ,self.options["md"]["timestep"])
+        lmp.units("metal")
+        lmp.boundary("p p p")
+        lmp.atom_style("atomic")
+        lmp.timestep(self.options["md"]["timestep"])
 
         #set up structure
-        lmp.command("lattice"         self.l, self.alat)
-        lmp.command("region           box block" 0, self.options["md"]["nx"], 0, self.options["md"]["ny"], 0, self.options["md"]["nz"])
-        lmp.command("create_box       1 box")
-        lmp.command("create_atoms     1 box")
+        lmp.lattice(self.l, self.alat)
+        lmp.region("box block", 0, self.options["md"]["nx"], 0, self.options["md"]["ny"], 0, self.options["md"]["nz"])
+        lmp.create_box("1 box")
+        lmp.create_atoms("1 box")
 
         #set up potential
-        lmp.command("pair_style"       ,self.options["md"]["pair_style"])
-        lmp.command("pair_coeff"       , self.options["md"]["pair_coeff"])
-        lmp.command("mass             *", self.options["md"]["mass"])
+        lmp.pair_style(self.options["md"]["pair_style"])
+        lmp.pair_coeff(self.options["md"]["pair_coeff"])
+        lmp.mass("*", self.options["md"]["mass"])
 
         #Melt regime for the liquid
-        lmp.command("velocity         all create", self.thigh, np.random.randint(0, 10000))
-        lmp.command("fix              1 all npt temp", self.thigh, self.thigh, self.options["md"]["tdamp"], 
+        lmp.velocity("all create", self.thigh, np.random.randint(0, 10000))
+        lmp.fix("1 all npt temp", self.thigh, self.thigh, self.options["md"]["tdamp"], 
                                       "iso", self.p, self.p, self.options["md"]["pdamp"])
-        lmp.command("run              ", int(self.options["md"]["nsmall"]))
-        lmp.command("unfix            1")
-        lmp.command("dump             2 all custom", 1, "traj.melt id type mass x y z vx vy vz")
-        lmp.command("run              0")
-        lmp.command("undump           2")
+        lmp.run(int(self.options["md"]["nsmall"]))
+        lmp.unfix(1)
+        lmp.dump("2 all custom", 1, "traj.melt id type mass x y z vx vy vz")
+        lmp.run(0)
+        lmp.undump(2)
         
         #we have to check if the structure melted, otherwise throw and error
         sys = pc.System()
@@ -75,13 +75,13 @@ class Liquid:
             raise RuntimeError("System did not melt!")
 
         #now assign correct temperature
-        lmp.command("velocity         all create", self.t, self.t, np.random.randint(0, 10000))
-        lmp.command("fix              1 all npt temp", self.t, self.t, self.options["md"]["tdamp"], 
+        lmp.velocity("all create", self.t, np.random.randint(0, 10000))
+        lmp.fix("1 all npt temp", self.t, self.t, self.options["md"]["tdamp"], 
                                       "iso", self.p, self.p, self.options["md"]["pdamp"])
-        lmp.command("run              ", int(self.options["md"]["nsmall"])) 
-        lmp.command("fix              2 all print 10 \"$(step) $(press) $(vol) $(temp)\" file avg.dat")
-        lmp.command("dump             2 all custom", int(self.options["md"]["nsmall"])/10, "traj.dat id type mass x y z vx vy vz")
-        lmp.command("run              ", int(self.options["md"]["nlarge"]))
+        lmp.run(int(self.options["md"]["nsmall"])) 
+        lmp.fix("2 all print 10 \"$(step) $(press) $(vol) $(temp)\" file avg.dat")
+        lmp.dump("2 all custom", self.options["md"]["nsmall"]//10, "traj.dat id type mass x y z vx vy vz")
+        lmp.run(int(self.options["md"]["nlarge"]))
 
         #finish run
         lmp.close()
