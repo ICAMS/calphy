@@ -29,7 +29,7 @@ class Liquid:
         self.simfolder = simfolder
         self.thigh = thigh
 
-    def write_average_script(self):
+    def run_averaging(self):
         """
         Write averagin script for solid
         """
@@ -86,20 +86,6 @@ class Liquid:
         #finish run
         lmp.close()
 
-    def gather_average_data(self):
-        """
-        Gather average data
-        """
-        avgfile = os.path.join(self.simfolder, "avg.dat")
-        vol = np.loadtxt(avgfile, usecols=(2,), unpack=True)
-        avgvol = np.mean(vol[-100:])
-        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
-        self.natoms = ncells*self.apc
-        self.rho = self.natoms/avgvol
-        #WARNING: hard coded ufm parameter
-        self.eps = self.t*50.0*kb
-
-
     def process_traj(self):
         """
         Copy conf
@@ -117,18 +103,32 @@ class Liquid:
             os.remove(file)
 
 
-    def write_integrate_script(self):
+    def gather_average_data(self):
+        """
+        Gather average data
+        """
+        avgfile = os.path.join(self.simfolder, "avg.dat")
+        vol = np.loadtxt(avgfile, usecols=(2,), unpack=True)
+        avgvol = np.mean(vol[-100:])
+        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
+        self.natoms = ncells*self.apc
+        self.rho = self.natoms/avgvol
+        #WARNING: hard coded ufm parameter
+        self.eps = self.t*50.0*kb
+
+        #now also process traj
+        self.process_traj()
+
+
+
+
+    def run_integration(self, iteration=1):
         """
         Write TI integrate script
         """
-
-        self.process_traj()
-
         cores = self.options["queue"]["cores"]
         #create lammps object
         lmp = LammpsLibrary(mode="local", cores=cores)
-
-        lmp.command("label RESTART")
 
         lmp.command("variable        rnd      equal   round(random(0,999999,%d))"%np.random.randint(0, 10000))
 
@@ -138,7 +138,6 @@ class Liquid:
         # Adiabatic switching parameters.
         lmp.command("variable        li       equal   1.0")               # Initial lambda.
         lmp.command("variable        lf       equal   0.0")               # Final lambda.
-        lmp.command("variable        N_sim    loop    %d"%self.options["main"]["nsims"])                # Number of independent simulations.
         #------------------------------------------------------------------------------------------------------#
 
 
@@ -208,12 +207,12 @@ class Liquid:
         # Equilibrate the fluid interacting by Sw potential and switch to UF potential (Forward realization).
         lmp.command("run             %d"%self.options["md"]["te"])
 
-        lmp.command("print           \"${dU} ${li}\" file forward_${N_sim}.dat")
+        lmp.command("print           \"${dU} ${li}\" file forward_%d.dat"%iteration)
         lmp.command("variable        lambda_sw equal ramp(${li},${lf})")                 # Linear lambda protocol from 1 to 0.
         lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
         lmp.command("variable        lambda_ufm equal ramp(${lf},${li})")                  # Linear lambda protocol from 0 to 1.
         lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
-        lmp.command("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append forward_${N_sim}.dat")
+        lmp.command("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append forward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
         lmp.command("unfix           f3")
@@ -223,26 +222,19 @@ class Liquid:
         # Equilibrate the fluid interacting by UF potential and switch to sw potential (Backward realization).
         lmp.command("run             %d"%self.options["md"]["te"])
 
-        lmp.command("print           \"${dU} ${lf}\" file backward_${N_sim}.dat")
+        lmp.command("print           \"${dU} ${lf}\" file backward_%d.dat"%iteration)
         lmp.command("variable        lambda_sw equal ramp(${lf},${li})")                 # Linear lambda protocol from 0 to 1.
         lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
         lmp.command("variable        lambda_ufm equal ramp(${li},${lf})")                  # Linear lambda protocol from 1 to 0.
         lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
-        lmp.command("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append backward_${N_sim}.dat")
+        lmp.command("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append backward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
         lmp.command("unfix           f3")
         lmp.command("unfix           f4")
         lmp.command("unfix           f5")
         #------------------------------------------------------------------------------------------------------#
-
-
-        ##########################################     Loop procedure     ######################################
-        lmp.command("next N_sim")
-        lmp.command("clear")
-        lmp.command("jump %s RESTART"%mdscriptfile)
-        #------------------------------------------------------------------------------------------------------#
-
+        lmp.close()
     
     def thermodynamic_integration(self):
         """
