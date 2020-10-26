@@ -117,128 +117,131 @@ class Liquid:
             os.remove(file)
 
 
-    def write_integrate_script(self, mdscriptfile):
+    def write_integrate_script(self):
         """
         Write TI integrate script
         """
 
         self.process_traj()
 
-        with open(mdscriptfile, 'w') as fout:
-            lmp.command("label RESTART")
+        cores = self.options["queue"]["cores"]
+        #create lammps object
+        lmp = LammpsLibrary(mode="local", cores=cores)
 
-            lmp.command("variable        rnd      equal   round(random(0,999999,%d))"%np.random.randint(0, 10000))
+        lmp.command("label RESTART")
 
-
-            lmp.command("variable        dt       equal   %f"%self.options["md"]["timestep"])             # Timestep (ps).
-
-            # Adiabatic switching parameters.
-            lmp.command("variable        li       equal   1.0")               # Initial lambda.
-            lmp.command("variable        lf       equal   0.0")               # Final lambda.
-            lmp.command("variable        N_sim    loop    %d"%self.options["main"]["nsims"])                # Number of independent simulations.
-            #------------------------------------------------------------------------------------------------------#
+        lmp.command("variable        rnd      equal   round(random(0,999999,%d))"%np.random.randint(0, 10000))
 
 
-            ########################################     Atomic setup     ##########################################
-            # Defines the style of atoms, units and boundary conditions.
-            lmp.command("units            metal")
-            lmp.command("boundary         p p p")
-            lmp.command("atom_style       atomic")
-            lmp.command("timestep         %f"%self.options["md"]["timestep"])
+        lmp.command("variable        dt       equal   %f"%self.options["md"]["timestep"])             # Timestep (ps).
 
-            # Read atoms positions, velocities and box parameters.
-            lmp.command("lattice          %s %f"%(self.l, self.alat))
-            lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
-            lmp.command("create_box       1 box")
-
-            conf = os.path.join(self.simfolder, "conf.dump")
-            lmp.command("read_dump        %s 0 x y z vx vy vz scaled no box yes add keep"%conf)
-
-            lmp.command("neigh_modify    delay 0")
-
-            # Define MEAM and UF potentials parameters.
-            lmp.command("pair_style       hybrid/overlay %s ufm 7.5"%self.options["md"]["pair_style"])
-            
-            #modify pair style
-            pc =  self.options["md"]["pair_coeff"]
-            pcraw = pc.split()
-            #now add style
-            pcnew = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"],], *pcraw[2:]])
-
-            lmp.command("pair_coeff       %s"%pcnew)
-            lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps) 
-            lmp.command("mass             * %f"%self.options["md"]["mass"])
-
-            #------------------------------------------------------------------------------------------------------#
+        # Adiabatic switching parameters.
+        lmp.command("variable        li       equal   1.0")               # Initial lambda.
+        lmp.command("variable        lf       equal   0.0")               # Final lambda.
+        lmp.command("variable        N_sim    loop    %d"%self.options["main"]["nsims"])                # Number of independent simulations.
+        #------------------------------------------------------------------------------------------------------#
 
 
-            ################################     Fixes, computes and constraints     ###############################
-            # Integrator & thermostat.
-            lmp.command("fix             f1 all nve")                              
-            lmp.command("fix             f2 all langevin %f %f %f ${rnd}"%(self.t, self.t, self.options["md"]["tdamp"]))
-            lmp.command("variable        rnd equal round(random(0,999999,0))")
+        ########################################     Atomic setup     ##########################################
+        # Defines the style of atoms, units and boundary conditions.
+        lmp.command("units            metal")
+        lmp.command("boundary         p p p")
+        lmp.command("atom_style       atomic")
+        lmp.command("timestep         %f"%self.options["md"]["timestep"])
 
-            # Compute the potential energy of each pair style.
-            lmp.command("compute         c1 all pair %s"%self.options["md"]["pair_style"])
-            lmp.command("compute         c2 all pair ufm")
-            #------------------------------------------------------------------------------------------------------#
+        # Read atoms positions, velocities and box parameters.
+        lmp.command("lattice          %s %f"%(self.l, self.alat))
+        lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
+        lmp.command("create_box       1 box")
 
+        conf = os.path.join(self.simfolder, "conf.dump")
+        lmp.command("read_dump        %s 0 x y z vx vy vz scaled no box yes add keep"%conf)
 
-            ##########################################     Output setup     ########################################
-            # Output variables.
-            lmp.command("variable        step equal step")
-            lmp.command("variable        dU equal (c_c1-c_c2)/atoms")             # Driving-force obtained from NEHI procedure.
+        lmp.command("neigh_modify    delay 0")
 
-            # Thermo output.
-            lmp.command("thermo_style    custom step v_dU")
-            lmp.command("thermo          1000")
-            #------------------------------------------------------------------------------------------------------#
+        # Define MEAM and UF potentials parameters.
+        lmp.command("pair_style       hybrid/overlay %s ufm 7.5"%self.options["md"]["pair_style"])
+        
+        #modify pair style
+        pc =  self.options["md"]["pair_coeff"]
+        pcraw = pc.split()
+        #now add style
+        pcnew = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"],], *pcraw[2:]])
 
+        lmp.command("pair_coeff       %s"%pcnew)
+        lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps) 
+        lmp.command("mass             * %f"%self.options["md"]["mass"])
 
-            ##########################################     Run simulation     ######################################
-            # Turn UF potential off (completely) to equilibrate the Sw potential.
-            lmp.command("variable        zero equal 0")
-            lmp.command("fix             f0 all adapt 0 pair ufm scale * * v_zero")
-            lmp.command("run             0")
-            lmp.command("unfix           f0")
-
-            # Equilibrate the fluid interacting by Sw potential and switch to UF potential (Forward realization).
-            lmp.command("run             %d"%self.options["md"]["te"])
-
-            lmp.command("print           \"${dU} ${li}\" file forward_${N_sim}.dat")
-            lmp.command("variable        lambda_sw equal ramp(${li},${lf})")                 # Linear lambda protocol from 1 to 0.
-            lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
-            lmp.command("variable        lambda_ufm equal ramp(${lf},${li})")                  # Linear lambda protocol from 0 to 1.
-            lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
-            lmp.command("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append forward_${N_sim}.dat")
-            lmp.command("run             %d"%self.options["md"]["ts"])
-
-            lmp.command("unfix           f3")
-            lmp.command("unfix           f4")
-            lmp.command("unfix           f5")
-
-            # Equilibrate the fluid interacting by UF potential and switch to sw potential (Backward realization).
-            lmp.command("run             %d"%self.options["md"]["te"])
-
-            lmp.command("print           \"${dU} ${lf}\" file backward_${N_sim}.dat")
-            lmp.command("variable        lambda_sw equal ramp(${lf},${li})")                 # Linear lambda protocol from 0 to 1.
-            lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
-            lmp.command("variable        lambda_ufm equal ramp(${li},${lf})")                  # Linear lambda protocol from 1 to 0.
-            lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
-            lmp.command("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append backward_${N_sim}.dat")
-            lmp.command("run             %d"%self.options["md"]["ts"])
-
-            lmp.command("unfix           f3")
-            lmp.command("unfix           f4")
-            lmp.command("unfix           f5")
-            #------------------------------------------------------------------------------------------------------#
+        #------------------------------------------------------------------------------------------------------#
 
 
-            ##########################################     Loop procedure     ######################################
-            lmp.command("next N_sim")
-            lmp.command("clear")
-            lmp.command("jump %s RESTART"%mdscriptfile)
-            #------------------------------------------------------------------------------------------------------#
+        ################################     Fixes, computes and constraints     ###############################
+        # Integrator & thermostat.
+        lmp.command("fix             f1 all nve")                              
+        lmp.command("fix             f2 all langevin %f %f %f ${rnd}"%(self.t, self.t, self.options["md"]["tdamp"]))
+        lmp.command("variable        rnd equal round(random(0,999999,0))")
+
+        # Compute the potential energy of each pair style.
+        lmp.command("compute         c1 all pair %s"%self.options["md"]["pair_style"])
+        lmp.command("compute         c2 all pair ufm")
+        #------------------------------------------------------------------------------------------------------#
+
+
+        ##########################################     Output setup     ########################################
+        # Output variables.
+        lmp.command("variable        step equal step")
+        lmp.command("variable        dU equal (c_c1-c_c2)/atoms")             # Driving-force obtained from NEHI procedure.
+
+        # Thermo output.
+        lmp.command("thermo_style    custom step v_dU")
+        lmp.command("thermo          1000")
+        #------------------------------------------------------------------------------------------------------#
+
+
+        ##########################################     Run simulation     ######################################
+        # Turn UF potential off (completely) to equilibrate the Sw potential.
+        lmp.command("variable        zero equal 0")
+        lmp.command("fix             f0 all adapt 0 pair ufm scale * * v_zero")
+        lmp.command("run             0")
+        lmp.command("unfix           f0")
+
+        # Equilibrate the fluid interacting by Sw potential and switch to UF potential (Forward realization).
+        lmp.command("run             %d"%self.options["md"]["te"])
+
+        lmp.command("print           \"${dU} ${li}\" file forward_${N_sim}.dat")
+        lmp.command("variable        lambda_sw equal ramp(${li},${lf})")                 # Linear lambda protocol from 1 to 0.
+        lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
+        lmp.command("variable        lambda_ufm equal ramp(${lf},${li})")                  # Linear lambda protocol from 0 to 1.
+        lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
+        lmp.command("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append forward_${N_sim}.dat")
+        lmp.command("run             %d"%self.options["md"]["ts"])
+
+        lmp.command("unfix           f3")
+        lmp.command("unfix           f4")
+        lmp.command("unfix           f5")
+
+        # Equilibrate the fluid interacting by UF potential and switch to sw potential (Backward realization).
+        lmp.command("run             %d"%self.options["md"]["te"])
+
+        lmp.command("print           \"${dU} ${lf}\" file backward_${N_sim}.dat")
+        lmp.command("variable        lambda_sw equal ramp(${lf},${li})")                 # Linear lambda protocol from 0 to 1.
+        lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
+        lmp.command("variable        lambda_ufm equal ramp(${li},${lf})")                  # Linear lambda protocol from 1 to 0.
+        lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
+        lmp.command("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append backward_${N_sim}.dat")
+        lmp.command("run             %d"%self.options["md"]["ts"])
+
+        lmp.command("unfix           f3")
+        lmp.command("unfix           f4")
+        lmp.command("unfix           f5")
+        #------------------------------------------------------------------------------------------------------#
+
+
+        ##########################################     Loop procedure     ######################################
+        lmp.command("next N_sim")
+        lmp.command("clear")
+        lmp.command("jump %s RESTART"%mdscriptfile)
+        #------------------------------------------------------------------------------------------------------#
 
     
     def thermodynamic_integration(self):

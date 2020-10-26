@@ -11,7 +11,7 @@ main:
 md:
   timestep: 0.004
   pair_style: eam/fs
-  pair_coeff: "* * /home/sarath/Repos/pytint/tests/Al.eam.fs Al"
+  pair_coeff: "* * tests/Al.eam.fs Al"
   mass: 26.98
   tdamp: 0.1
   pdamp: 0.1
@@ -47,7 +47,7 @@ queue:
   commands:
     # the following two comments are only needed if you run in conda env
     # otherwise can be ignored
-    - source /home/users/menonsqr/.bashrc
+    #- source /home/users/menonsqr/.bashrc
   #any other extra options
   #options:
   # - "-j Y"  
