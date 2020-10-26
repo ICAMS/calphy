@@ -28,7 +28,7 @@ jobs:
         conda --version
         which python
         conda config --set always_yes yes --set changeps1 no
-        conda install -c conda-forge numpy scipy pyyaml mendeleev pylammpsmpi pyscal
+        conda install -c conda-forge --file requirements.txt
         pip install -e .
     - name: run tests
       run: |
