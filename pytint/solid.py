@@ -5,7 +5,8 @@ Contains methods for solid
 import numpy as np
 import yaml
 from pytint.integrators import *
-
+from pylammpsmpi import LammpsLibrary
+import pyscal.core as pc
 
 class Solid:
     """
@@ -25,54 +26,57 @@ class Solid:
         self.options = options
         self.simfolder = simfolder
 
-    def write_average_script(self, mdscriptfile):
+    def run_averaging(self):
         """
         Write averagin script for solid
         """
-        with open(mdscriptfile, 'w') as fout:
-            fout.write("units            metal\n")
-            fout.write("boundary         p p p\n")
-            fout.write("atom_style       atomic\n")
-            fout.write("timestep         %f\n"%self.options["md"]["timestep"])
 
-            fout.write("lattice          %s %f\n"%(self.l, self.alat))
-            fout.write("region           box block 0 %d 0 %d 0 %d\n"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
-            fout.write("create_box       1 box\n")
-            fout.write("create_atoms     1 box\n")
+        cores = self.options["queue"]["cores"]
+        lmp = LammpsLibrary(mode="local", cores=cores)
 
-            fout.write("pair_style       %s\n"%self.options["md"]["pair_style"])
-            fout.write("pair_coeff       %s\n"%self.options["md"]["pair_coeff"])
+        lmp.command("units            metal")
+        lmp.command("boundary         p p p")
+        lmp.command("atom_style       atomic")
+        lmp.command("timestep         %f"%self.options["md"]["timestep"])
 
-            fout.write("mass             * %f\n"%self.options["md"]["mass"])
+        lmp.command("lattice          %s %f"%(self.l, self.alat))
+        lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
+        lmp.command("create_box       1 box")
+        lmp.command("create_atoms     1 box")
 
-            fout.write("velocity         all create %f %d\n"%(self.t, np.random.randint(0, 10000)))
-            fout.write("fix              1 all npt temp %f %f %f iso %f %f %f\n"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                0, self.p, self.options["md"]["pdamp"]))
-            fout.write("thermo_style     custom step pe press vol etotal temp\n")
-            fout.write("thermo           10\n")
-            fout.write("run              %d\n"%int(self.options["md"]["nsmall"])) 
-            fout.write("unfix            1\n")
+        lmp.command("pair_style       %s"%self.options["md"]["pair_style"])
+        lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
 
-            fout.write("velocity         all create %f %d\n"%(self.t, np.random.randint(0, 10000)))
-            fout.write("fix              1 all npt temp %f %f %f iso %f %f %f\n"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                self.p, self.p, self.options["md"]["pdamp"]))
-            fout.write("run              %d\n"%int(self.options["md"]["nsmall"])) 
+        lmp.command("mass             * %f"%self.options["md"]["mass"])
 
-            fout.write("fix              2 all print 10 \"$(step) $(press) $(vol) $(temp)\" file avg.dat\n")
-            fout.write("run              %d\n"%int(self.options["md"]["nlarge"]))
+        lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
+        lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                            0, self.p, self.options["md"]["pdamp"]))
+        lmp.command("thermo_style     custom step pe press vol etotal temp")
+        lmp.command("thermo           10")
+        lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+        lmp.command("unfix            1")
 
-            #now run for msd
-            fout.write("unfix            1\n")
-            fout.write("unfix            2\n")
+        lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
+        lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                            self.p, self.p, self.options["md"]["pdamp"]))
+        lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
 
-            fout.write("fix              3 all nvt temp %f %f %f\n"%(self.t, self.t, self.options["md"]["tdamp"]))
-            fout.write("compute          1 all msd com yes\n")
+        lmp.command("fix              2 all print 10 \"$(step) $(press) $(vol) $(temp)\" file avg.dat")
+        lmp.command("run              %d"%int(self.options["md"]["nlarge"]))
 
-            fout.write("variable         msd equal c_1[4]\n")
+        #now run for msd
+        lmp.command("unfix            1")
+        lmp.command("unfix            2")
 
-            fout.write("fix              4 all print 10 \"$(step) ${msd}\" file msd.dat\n")
-            fout.write("run              %d\n"%int(self.options["md"]["nlarge"]))
+        lmp.command("fix              3 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
+        lmp.command("compute          1 all msd com yes")
 
+        lmp.command("variable         msd equal c_1[4]")
+
+        lmp.command("fix              4 all print 10 \"$(step) ${msd}\" file msd.dat")
+        lmp.command("run              %d"%int(self.options["md"]["nlarge"]))
+        lmp.close()
 
     def gather_average_data(self):
         """
@@ -89,81 +93,79 @@ class Solid:
         msd = np.loadtxt(msdfile, usecols=(1,), unpack=True)
         self.k = 3*kb*self.t/np.mean(msd[-100:])
 
-    def write_integrate_script(self, mdscriptfile):
+    def run_integration(self, iteration=1):
         """
         Write TI integrate script
         """
-        with open(mdscriptfile, 'w') as fout:
-            fout.write("echo              log\n")
+        cores = self.options["queue"]["cores"]
+        lmp = LammpsLibrary(mode="local", cores=cores)
 
-            fout.write("variable          T0 equal 0.7*%f\n"%self.t)  # Initial temperature.
-            fout.write("variable          te equal %d\n"%self.options["md"]["te"])   # Equilibration time (steps).
-            fout.write("variable          ts equal %d\n"%self.options["md"]["ts"])  # Switching time (steps).
-            fout.write("variable          k equal %f\n"%self.k)
-            fout.write("variable          rand equal %d\n"%np.random.randint(0, 1000))
+        lmp.command("echo              log")
+
+        lmp.command("variable          T0 equal 0.7*%f"%self.t)  # Initial temperature.
+        lmp.command("variable          te equal %d"%self.options["md"]["te"])   # Equilibration time (steps).
+        lmp.command("variable          ts equal %d"%self.options["md"]["ts"])  # Switching time (steps).
+        lmp.command("variable          k equal %f"%self.k)
+        lmp.command("variable          rand equal %d"%np.random.randint(0, 1000))
 
 
         #-------------------------- Atomic Setup --------------------------------------#  
-            fout.write("units            metal\n")
-            fout.write("boundary         p p p\n")
-            fout.write("atom_style       atomic\n")
+        lmp.command("units            metal")
+        lmp.command("boundary         p p p")
+        lmp.command("atom_style       atomic")
 
-            fout.write("lattice          %s %f\n"%(self.l, self.alat))
-            fout.write("region           box block 0 %d 0 %d 0 %d\n"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
-            fout.write("create_box       1 box\n")
-            fout.write("create_atoms     1 box\n")
+        lmp.command("lattice          %s %f"%(self.l, self.alat))
+        lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
+        lmp.command("create_box       1 box")
+        lmp.command("create_atoms     1 box")
 
 
-            fout.write("neigh_modify    every 1 delay 0 check yes once no\n")
+        lmp.command("neigh_modify    every 1 delay 0 check yes once no")
 
-            fout.write("pair_style       %s\n"%self.options["md"]["pair_style"])
-            fout.write("pair_coeff       %s\n"%self.options["md"]["pair_coeff"])
-            fout.write("mass             * %f\n"%self.options["md"]["mass"])
+        lmp.command("pair_style       %s"%self.options["md"]["pair_style"])
+        lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
+        lmp.command("mass             * %f"%self.options["md"]["mass"])
 
         #---------------------- Thermostat & Barostat ---------------------------------#
-            fout.write("fix               f1 all nve\n")
-            fout.write("fix               f2 all ti/spring 10.0 1000 1000 function 2\n")
-            fout.write("fix               f3 all langevin %f %f %f %d zero yes\n"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                            np.random.randint(0, 10000)))
+        lmp.command("fix               f1 all nve")
+        lmp.command("fix               f2 all ti/spring 10.0 1000 1000 function 2")
+        lmp.command("fix               f3 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                        np.random.randint(0, 10000)))
 
         #------------------ Computes, variables & modifications -----------------------#
-            fout.write("compute           Tcm all temp/com\n")
-            fout.write("fix_modify        f3 temp Tcm\n")
+        lmp.command("compute           Tcm all temp/com")
+        lmp.command("fix_modify        f3 temp Tcm")
 
-            fout.write("variable          step    equal step\n")
-            fout.write("variable          dU      equal pe/atoms-f_f2/atoms\n")
-            fout.write("variable          lambda  equal f_f2[1]\n")
+        lmp.command("variable          step    equal step")
+        lmp.command("variable          dU      equal pe/atoms-f_f2/atoms")
+        lmp.command("variable          lambda  equal f_f2[1]")
 
-            fout.write("variable          te_run  equal %d-1\n"%self.options["md"]["te"]) # Print correctly on fix print.
-            fout.write("variable          ts_run  equal %d+1\n"%self.options["md"]["ts"]) # Print correctly on fix print.
+        lmp.command("variable          te_run  equal %d-1"%self.options["md"]["te"]) # Print correctly on fix print.
+        lmp.command("variable          ts_run  equal %d+1"%self.options["md"]["ts"]) # Print correctly on fix print.
 
         #------------------------- Thermo stuff ---------------------------------------#
-            fout.write("thermo_style      custom step pe c_Tcm\n")
-            fout.write("timestep          0.001\n")
-            fout.write("thermo            10000\n")
+        lmp.command("thermo_style      custom step pe c_Tcm")
+        lmp.command("timestep          0.001")
+        lmp.command("thermo            10000")
 
         #------------------------- Running the Simulation -----------------------------#
-            fout.write("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian\n")
+        lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")
 
+        lmp.command("fix               f2 all ti/spring %f %d %d function 2"%(self.k, self.options["md"]["ts"], self.options["md"]["te"]))
 
-            fout.write("variable          i loop %d\n"%self.options["main"]["nsims"])
-            fout.write("label repetitions\n")
-            fout.write("fix               f2 all ti/spring %f %d %d function 2\n"%(self.k, self.options["md"]["ts"], self.options["md"]["te"]))
+        # Forward. 
+        lmp.command("run               ${te_run}")
+        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_%d.dat "%iteration)
+        lmp.command("run               ${ts_run}")
+        lmp.command("unfix             f4")
 
-            # Forward. 
-            fout.write("run               ${te_run}\n")
-            fout.write("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_$i.dat \n")
-            fout.write("run               ${ts_run}\n")
-            fout.write("unfix             f4\n")
+        # Backward. 
+        lmp.command("run               ${te_run}")
+        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("run               ${ts_run}")
+        lmp.command("unfix             f4")
 
-            # Backward. 
-            fout.write("run               ${te_run}\n")
-            fout.write("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file backward_$i.dat\n")
-            fout.write("run               ${ts_run}\n")
-            fout.write("unfix             f4\n")
-
-            fout.write("next i\n")
-            fout.write("jump SELF repetitions\n")
+        lmp.close()
 
 
     def thermodynamic_integration(self):
@@ -171,8 +173,7 @@ class Solid:
             self.natoms, self.options["md"]["mass"], 
             self.avglat, self.k, self.apc)
         w, q, qerr = find_w(self.simfolder, nsims=self.options["main"]["nsims"], 
-            full=True, 
-            temp=self.t)
+            full=True)
         fe = f1 + w
         self.fe = fe
         self.ferr = qerr
@@ -207,81 +208,81 @@ class Solid:
         lf = t0/tf
 
         with open(mdscriptfile, 'w') as fout:
-            fout.write("echo              log\n")
+            lmp.command("echo              log")
 
-            fout.write("variable          T0 equal %f\n"%t0)  # Initial temperature.
-            fout.write("variable          te equal %d\n"%self.options["md"]["te"])   # Equilibration time (steps).
-            fout.write("variable          ts equal %d\n"%self.options["md"]["ts"])  # Switching time (steps).
-            fout.write("variable          li equal %f\n"%li)
-            fout.write("variable          lf equal %f\n"%lf)
-            fout.write("variable          rand equal %d\n"%np.random.randint(0, 1000))
+            lmp.command("variable          T0 equal %f"%t0)  # Initial temperature.
+            lmp.command("variable          te equal %d"%self.options["md"]["te"])   # Equilibration time (steps).
+            lmp.command("variable          ts equal %d"%self.options["md"]["ts"])  # Switching time (steps).
+            lmp.command("variable          li equal %f"%li)
+            lmp.command("variable          lf equal %f"%lf)
+            lmp.command("variable          rand equal %d"%np.random.randint(0, 1000))
 
 
         #-------------------------- Atomic Setup --------------------------------------#  
-            fout.write("units            metal\n")
-            fout.write("boundary         p p p\n")
-            fout.write("atom_style       atomic\n")
+            lmp.command("units            metal")
+            lmp.command("boundary         p p p")
+            lmp.command("atom_style       atomic")
 
-            fout.write("lattice          %s %f\n"%(self.l, self.alat))
-            fout.write("region           box block 0 %d 0 %d 0 %d\n"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
-            fout.write("create_box       1 box\n")
-            fout.write("create_atoms     1 box\n")
+            lmp.command("lattice          %s %f"%(self.l, self.alat))
+            lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
+            lmp.command("create_box       1 box")
+            lmp.command("create_atoms     1 box")
 
 
-            fout.write("neigh_modify    every 1 delay 0 check yes once no\n")
+            lmp.command("neigh_modify    every 1 delay 0 check yes once no")
 
-            fout.write("pair_style       %s\n"%self.options["md"]["pair_style"])
-            fout.write("pair_coeff       %s\n"%self.options["md"]["pair_coeff"])
-            fout.write("mass             * %f\n"%self.options["md"]["mass"])
+            lmp.command("pair_style       %s"%self.options["md"]["pair_style"])
+            lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
+            lmp.command("mass             * %f"%self.options["md"]["mass"])
 
         #---------------------- Thermostat & Barostat ---------------------------------#
-            fout.write("fix               f1 all nph aniso %f %f %f\n"%(self.p, self.p, self.options["md"]["pdamp"]))
-            fout.write("fix               f2 all langevin ${T0} ${T0} %f %d zero yes\n"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
-            fout.write("run               ${te}\n")
-            fout.write("unfix             f1\n")
-            fout.write("unfix             f2\n")
+            lmp.command("fix               f1 all nph aniso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("fix               f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+            lmp.command("run               ${te}")
+            lmp.command("unfix             f1")
+            lmp.command("unfix             f2")
 
-            fout.write("variable         xcm equal xcm(all,x)\n")
-            fout.write("variable         ycm equal xcm(all,y)\n")
-            fout.write("variable         zcm equal xcm(all,z)\n")
+            lmp.command("variable         xcm equal xcm(all,x)")
+            lmp.command("variable         ycm equal xcm(all,y)")
+            lmp.command("variable         zcm equal xcm(all,z)")
             
-            fout.write("fix              f1 all nph aniso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}\n"%(self.p, self.p, self.options["md"]["pdamp"]))
-            fout.write("fix              f2 all langevin ${T0} ${T0} %f %d zero yes\n"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+            lmp.command("fix              f1 all nph aniso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("fix              f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
             
         #------------------ Computes, variables & modifications -----------------------#
-            fout.write("compute           tcm all temp/com\n")
-            fout.write("fix_modify        f1 temp tcm\n")
-            fout.write("fix_modify        f2 temp tcm\n")
+            lmp.command("compute           tcm all temp/com")
+            lmp.command("fix_modify        f1 temp tcm")
+            lmp.command("fix_modify        f2 temp tcm")
 
-            fout.write("variable          step    equal step\n")
-            fout.write("variable          dU      equal c_thermo_pe/atoms\n")
-            fout.write("variable          te_run  equal ${te}-1\n")
-            fout.write("variable          ts_run  equal ${ts}+1\n")
-            fout.write("thermo_style      custom step pe c_tcm\n")
-            fout.write("timestep          %f\n"%self.options["md"]["timestep"])
-            fout.write("thermo            10000\n")
+            lmp.command("variable          step    equal step")
+            lmp.command("variable          dU      equal c_thermo_pe/atoms")
+            lmp.command("variable          te_run  equal ${te}-1")
+            lmp.command("variable          ts_run  equal ${ts}+1")
+            lmp.command("thermo_style      custom step pe c_tcm")
+            lmp.command("timestep          %f"%self.options["md"]["timestep"])
+            lmp.command("thermo            10000")
             
 
-            fout.write("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian\n")   
-            fout.write("variable          i loop %d\n"%self.options["main"]["nsims"])
-            fout.write("label repetitions\n")
-            fout.write("    run               ${te}\n")
-            fout.write("    variable          lambda equal ramp(${li},${lf})\n")
+            lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")   
+            lmp.command("variable          i loop %d"%self.options["main"]["nsims"])
+            lmp.command("label repetitions")
+            lmp.command("    run               ${te}")
+            lmp.command("    variable          lambda equal ramp(${li},${lf})")
 
             #we need to similar to liquid here
 
-            fout.write("    fix               f3 all adapt 1 pair %s scale * * v_lambda\n"%self.options["md"]["pair_style"])
-            fout.write("    fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_$i.dat\n")
-            fout.write("    run               ${ts}\n")
-            fout.write("    unfix             f3\n")
-            fout.write("    unfix             f4\n")
-            fout.write("    run               ${te}\n")
-            fout.write("    variable          lambda equal ramp(${lf},${li})\n")
-            fout.write("    fix               f3 all adapt 1 pair %s scale * * v_lambda\n"%self.options["md"]["pair_style"])
-            fout.write("    fix               f4 all print 1 \"${dU} ${lambda}\" screen no file backward_$i.dat\n")
-            fout.write("    run               ${ts}\n")
-            fout.write("    unfix             f3\n")
-            fout.write("    unfix             f4\n")
+            lmp.command("    fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
+            lmp.command("    fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_$i.dat")
+            lmp.command("    run               ${ts}")
+            lmp.command("    unfix             f3")
+            lmp.command("    unfix             f4")
+            lmp.command("    run               ${te}")
+            lmp.command("    variable          lambda equal ramp(${lf},${li})")
+            lmp.command("    fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
+            lmp.command("    fix               f4 all print 1 \"${dU} ${lambda}\" screen no file backward_$i.dat")
+            lmp.command("    run               ${ts}")
+            lmp.command("    unfix             f3")
+            lmp.command("    unfix             f4")
             
-            fout.write("next i\n")
-            fout.write("jump SELF repetitions\n")
+            lmp.command("next i")
+            lmp.command("jump SELF repetitions")
