@@ -1,3 +1,7 @@
+"""
+Queue kernel module contains the workflow that is run on single thread
+"""
+
 import os
 import numpy as np
 import shutil
@@ -9,34 +13,6 @@ from pytint.input import read_yamlfile
 from pytint.liquid import Liquid
 from pytint.solid import Solid
 
-def submit_job(options, simfolder, scriptpath):
-    """
-    Submit a job
-    """
-    #create run command
-    cores = options["queue"]["cores"]
-    if cores > 1:
-        cmd = ["mpirun", "--oversubscribe", "-n", str(cores), options["main"]["lammps_exec"], 
-        "-in", scriptpath, "-screen", "lammscreen.log"]
-    else:
-        cmd = [options["main"]["lammps_exec"], "-in", scriptpath, "-screen", "lammscreen.log"]
-
-    #now launch subprocess
-    process = subprocess.Popen(
-        cmd,
-        stdout=None,
-        stderr=subprocess.PIPE,
-        stdin=None,
-        cwd = simfolder,
-    )
-
-    #now wait until process is done
-    out, err = process.communicate()
-    err = err.decode("utf-8")
-    if len(err) > 0:
-        raise RuntimeError(err)    
-
-
 def main():
     arg = ap.ArgumentParser()
     
@@ -44,8 +20,9 @@ def main():
     arg.add_argument("-i", "--input", required=True, type=str,
     help="name of the input file")
 
-    arg.add_argument("-j", "--job", required=False, type=str, choices=["integrate", "rs"],
-    default="integrate", help="mode of simulation")
+    arg.add_argument("-j", "--job", required=False, type=str, 
+    choices=["integrate", "rs"],
+    default="integrate", help="mode of simulation - integrate or rs")
 
     arg.add_argument("-t", "--temperature", required=True, type=float,
     help="temperature for the simulation")
@@ -68,32 +45,43 @@ def main():
     arg.add_argument("-m", "--mainlattice", required=True, type=str,
     help="lammps lattice for the simulation")
 
+    arg.add_argument("-fe", "--freenergy", required=False, type=float,
+    help="Initial free energy for reversible scaling method")
 
+    #parse arguments
     args = vars(arg.parse_args())
     options = read_yamlfile(args["input"])
 
-    #we have some housekeepin to do now    
-    l = args["lattice"]
-    ml = args["mainlattice"]
-    t = int(args["temperature"])
-    p = "%.02f"%args["pressure"]
-    c = "%.02f"%args["concentration"]
-    thigh = max(options["main"]["temperature"])*1.5
+    #we have some housekeepin to do now
+    #format and parse the arguments
+    #thigh is for now hardcoded    
+    l       = args["lattice"]
+    ml      = args["mainlattice"]
+    t       = int(args["temperature"])
+    p       = "%.02f"%args["pressure"]
+    c       = "%.02f"%args["concentration"]
+    thigh   = max(options["main"]["temperature"])*1.5
 
-    identistring = "-".join([l, str(t), p, c])
-    simfolder = os.path.join(os.getcwd(), identistring)
-    
+    #check the kind of job we have at hand
     if args["job"] == "integrate":
         integrate = True
+        skey = "in"
     elif args["job"] == "rs":
         integrate = False
+        skey = "rs"
+
+    #create an string which should be unique for the job in hand
+    #the job should have an extra argument to indicate job time        
+    identistring = "-".join([skey, l, str(t), p, c])
+    simfolder = os.path.join(os.getcwd(), identistring)
 
     #if folder exists, delete it -> then create
     if os.path.exists(simfolder):
         shutil.rmtree(simfolder)
     os.mkdir(simfolder)
 
-    #time to set up the job file
+    #time to set up the job
+    #create a lattice object
     if args["lattice"] == "LQD":
         job = Liquid(t = args["temperature"], p = args["pressure"],
                     l = ml, apc = args["atomspercell"],
@@ -107,22 +95,21 @@ def main():
                     c = args["concentration"], options=options,
                     simfolder = simfolder)
 
-    #initial routine
+    #integration routine
     if self.integrate:
-        scriptpath = os.path.join(simfolder, "mdavg.in")
-        #switch folder
-        os.chdir(simfolder)
-        job.write_average_script(scriptpath)
-        submit_job(options, simfolder, scriptpath)
-        
-        #gather data and submit second routine
+        job.run_averaging()
         job.gather_average_data()
-        scriptpath = os.path.join(simfolder, "mdint.in")
-        job.write_integrate_script(scriptpath)
-        submit_job(options, simfolder, scriptpath)
 
-        #integrate and write report
+        #now run integration loops
+        for i in range(self.options["main"]["nsims"]):
+            job.run_integration(iteration=i)
+
         job.thermodynamic_integration()
         job.submit_report()
+    
+    #reversible scaling routine
     else:
-        pass
+        #the rs routine
+        for i in range(self.options["main"]["nsims"]):
+            job.reversible_scaling(iteration=i)
+        job.integrate_reversible_scaling()
