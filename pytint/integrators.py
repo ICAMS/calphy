@@ -8,6 +8,7 @@ import math
 import os
 import warnings
 from pytint.splines import splines, sum_spline1, sum_spline25, sum_spline50, sum_spline75, sum_spline100
+from scipy.integrate import cumtrapz
 
 #Constants
 h = const.physical_constants["Planck constant in eV/Hz"][0]
@@ -415,3 +416,28 @@ def find_fe(p, x):
     free_energy = fe(x,coef,sum_spline,index)
 
     return pressure, free_energy
+
+
+def integrate_rs(simfolder, f0, t, nsims=5, scale_energy=True):
+    """
+    Carry out the reversible scaling operation
+    """
+    ws = []
+    for i in range(1, nsims+1):
+        fdx, flambda = np.loadtxt(os.path.join(simfolder, "forward_%d.dat"%i), unpack=True, comments="#")
+        bdx, blambda = np.loadtxt(os.path.join(simfolder, "backward_%d.dat"%i), unpack=True, comments="#")
+        
+        if scale_energy:
+            fdx /= flambda
+            bdx /= blambda
+        wf = cumtrapz(fdx, flambda,initial=0)
+        wb = cumtrapz(bdx[::-1], blambda[::-1],initial=0)
+        w = (wf + wb) / (2*flambda)
+        ws.append(w)
+ 
+    wmean = np.mean(ws, axis=0)
+    werr = np.std(ws, axis=0)
+    temp = t/flambda
+    f = f0/flambda + 1.5*kb*temp*np.log(flambda) + wmean
+    outfile = os.path.join(simfolder, "reversible_scaling.dat")
+    np.savetxt(outfile, np.column_stack((temp, f, werr)))

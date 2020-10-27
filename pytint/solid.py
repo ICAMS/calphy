@@ -7,7 +7,7 @@ import yaml
 from pytint.integrators import *
 from pylammpsmpi import LammpsLibrary
 import pyscal.core as pc
-from scipy.integrate import cumtrapz
+
 
 class Solid:
     """
@@ -308,22 +308,5 @@ class Solid:
         """
         Carry out the reversible scaling operation
         """
-        ws = []
-        for i in range(1, self.options["main"]["nsims"]+1):
-            fdx, flambda = np.loadtxt(os.path.join(self.simfolder, "forward_%d.dat"%i), unpack=True, comments="#")
-            bdx, blambda = np.loadtxt(os.path.join(self.simfolder, "backward_%d.dat"%i), unpack=True, comments="#")
-            
-            if scale_energy:
-                fdx /= flambda
-                bdx /= blambda
-            wf = cumtrapz(fdx, flambda,initial=0)
-            wb = cumtrapz(bdx[::-1], blambda[::-1],initial=0)
-            w = (wf + wb) / (2*flambda)
-            ws.append(w)
-     
-        wmean = np.mean(ws, axis=0)
-        werr = np.std(ws, axis=0)
-        temp = self.t/flambda
-        f = f0/flambda + 1.5*kb*temp*np.log(flambda) + wmean
-        outfile = os.path.join(self.simfolder, "reversible_scaling.dat")
-        np.savetxt(outfile, np.column_stack((temp, f, werr)))
+        integrate_rs(self.simfolder, f0, self.t,
+            nsims=self.options["main"]["nsims"], scale_energy=scale_energy)
