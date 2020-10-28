@@ -101,7 +101,7 @@ def spawn_jobs(inputfile, rs=False, monitor=False):
                         ts = int(t)
                         ps = "%.02f"%p
                         cs = "%.02f"%c
-                        identistring = "-".join([l, str(ts), ps, cs])
+                        identistring = "-".join(["in", l, str(ts), ps, cs])
                         scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
                         errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
                         errfiles.append(errfile)
@@ -124,7 +124,7 @@ def spawn_jobs(inputfile, rs=False, monitor=False):
                     ts = int(t)
                     ps = "%.02f"%p
                     cs = "%.02f"%c
-                    identistring = "-".join([l, str(ts), ps, cs])
+                    identistring = "-".join(["in", l, str(ts), ps, cs])
                     scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
                     errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
                     errfiles.append(errfile)
@@ -146,7 +146,7 @@ def spawn_jobs(inputfile, rs=False, monitor=False):
                     ts = int(t)
                     ps = "%.02f"%p
                     cs = "%.02f"%c
-                    identistring = "-".join([l, str(ts), ps, cs, "rs"])
+                    identistring = "-".join(["rs", l, str(ts), ps, cs, "rs"])
                     scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
                     errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
                     errfiles.append(errfile)
@@ -192,7 +192,7 @@ def integrate(inputfile):
                     ts = int(t)
                     ps = "%.02f"%p
                     cs = "%.02f"%c
-                    identistring = "-".join([l, str(ts), ps, cs])
+                    identistring = "-".join(["in", l, str(ts), ps, cs])
                     repfile = os.path.join(os.getcwd(), identistring, "report.yaml")
                     total += 1
                     if not os.path.exists(repfile):

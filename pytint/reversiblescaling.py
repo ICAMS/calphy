@@ -2,7 +2,7 @@ from pytint.integrators import *
 from scipy.integrate import cumtrapz
 import numpy as np
 
-def rev_scale(folder, reps=5, t0=None, f0=None, scale_pe=True):
+def rev_scale(folder, reps=5, t0=None, f0=None, scale_pe=False):
     """
     Perform the reversible scaling method
     """

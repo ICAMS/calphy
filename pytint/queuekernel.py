@@ -112,4 +112,6 @@ def main():
         #the rs routine
         for i in range(self.options["main"]["nsims"]):
             job.reversible_scaling(iteration=i)
-        job.integrate_reversible_scaling()
+        #we do not integrate rev scaling!
+        #do it manually from a jupyter notebook or so
+        #job.integrate_reversible_scaling()
