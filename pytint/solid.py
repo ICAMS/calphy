@@ -33,7 +33,7 @@ class Solid:
         """
 
         cores = self.options["queue"]["cores"]
-        lmp = LammpsLibrary(mode="local", cores=cores)
+        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
 
         lmp.command("units            metal")
         lmp.command("boundary         p p p")
@@ -99,7 +99,7 @@ class Solid:
         Write TI integrate script
         """
         cores = self.options["queue"]["cores"]
-        lmp = LammpsLibrary(mode="local", cores=cores)
+        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
 
         lmp.command("echo              log")
 
@@ -209,7 +209,7 @@ class Solid:
         lf = t0/tf
 
         cores = self.options["queue"]["cores"]
-        lmp = LammpsLibrary(mode="local", cores=cores)
+        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
 
         lmp.command("echo              log")
 

@@ -96,13 +96,15 @@ def main():
                     simfolder = simfolder)
 
     #integration routine
-    if self.integrate:
+    os.chdir(simfolder)
+
+    if integrate:
         job.run_averaging()
         job.gather_average_data()
 
         #now run integration loops
-        for i in range(self.options["main"]["nsims"]):
-            job.run_integration(iteration=i)
+        for i in range(options["main"]["nsims"]):
+            job.run_integration(iteration=(i+1))
 
         job.thermodynamic_integration()
         job.submit_report()
@@ -110,8 +112,8 @@ def main():
     #reversible scaling routine
     else:
         #the rs routine
-        for i in range(self.options["main"]["nsims"]):
-            job.reversible_scaling(iteration=i)
+        for i in range(options["main"]["nsims"]):
+            job.reversible_scaling(iteration=(i+1))
         #we do not integrate rev scaling!
         #do it manually from a jupyter notebook or so
         #job.integrate_reversible_scaling()

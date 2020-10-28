@@ -36,7 +36,7 @@ class Liquid:
         cores = self.options["queue"]["cores"]
 
         #create lammps object
-        lmp = LammpsLibrary(mode="local", cores=cores)
+        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
 
         #set up units
         lmp.units("metal")
@@ -128,7 +128,7 @@ class Liquid:
         """
         cores = self.options["queue"]["cores"]
         #create lammps object
-        lmp = LammpsLibrary(mode="local", cores=cores)
+        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
 
         lmp.command("variable        rnd      equal   round(random(0,999999,%d))"%np.random.randint(0, 10000))
 
@@ -287,7 +287,7 @@ class Liquid:
         lf = t0/tf
 
         cores = self.options["queue"]["cores"]
-        lmp = LammpsLibrary(mode="local", cores=cores)
+        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
 
         lmp.command("echo              log")
 
