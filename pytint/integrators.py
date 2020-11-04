@@ -338,16 +338,7 @@ def press(x, coef):
 
 def fe(x, coef, sum_spline, index):
     """
-    Find free energy of system
-
-    Parameters
-    ----------
-    x : float
-        x value of system
-
-    coef : list of floats
-        Coefficients of system
-
+    Fe inbuilt method
     """
     if x < 0.0025:
         result = coef[0]*(x**2)/2.0 + coef[1]*x
@@ -379,7 +370,21 @@ def fe(x, coef, sum_spline, index):
 
 def find_fe(p, x):
     """
-    Find complete p and x
+    Find free energy of UF system
+
+    Parameters
+    ----------
+    x : float
+        x value of system
+
+    coef : list of floats
+        Coefficients of system
+
+    Returns
+    -------
+    fe : float
+        free energy of UF system
+
     """
     if not p in splines:
         raise ValueError('Invalid p. Valid numbers are: 1, 25, 50, 75, and 100.')
@@ -418,9 +423,35 @@ def find_fe(p, x):
     return pressure, free_energy
 
 
-def integrate_rs(simfolder, f0, t, nsims=5, scale_energy=True):
+def integrate_rs(simfolder, f0, t, nsims=5, scale_energy=False):
     """
-    Carry out the reversible scaling operation
+    Carry out the reversible scaling integration
+
+    Parameters
+    ----------
+    simfolder : string
+        main simulation folder
+
+    f0 : float
+        initial free energy for integration
+
+    t : float
+        initial temperature
+
+    nsims : int, optional
+        number of independent switching
+
+    scale_energy: bool, optional
+        if True, scale energy with switching parameter
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Writes the output in a file reversible_scaling.dat
+    
     """
     ws = []
     for i in range(1, nsims+1):
