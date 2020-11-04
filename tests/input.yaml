@@ -4,8 +4,6 @@ main:
   element: 'Al'
   lattice: [LQD, FCC]
   concentration: [0, ]
-  lammps_exec: lmp_mpi
-  updatetime: 2
   nsims: 3
 
 md:
