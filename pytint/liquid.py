@@ -12,6 +12,35 @@ from pylammpsmpi import LammpsLibrary
 class Liquid:
     """
     Liquid class
+
+    Parameters
+    ----------
+    t : float
+        simulation temperature
+
+    p : float
+        pressure
+
+    l : int
+        selected lattice indicator
+
+    apc : int
+        atoms per cell
+
+    alat : float
+        lattice constant
+
+    c : float
+        concentration
+
+    options: options class
+        input options
+
+    simfolder: string
+        simulation folder
+
+    thigh : float
+        temperature to melt the structure 
     """
     def __init__(self, t=None, p=None, l=None, apc=None,
                     alat=None, c=None, options=None, simfolder=None,
@@ -31,7 +60,20 @@ class Liquid:
 
     def run_averaging(self):
         """
-        Write averagin script for solid
+        Run averaging cycle
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Run the averaging cycle to find the equilibrium number
+        density at the given temperature.
         """
         cores = self.options["queue"]["cores"]
 
@@ -88,7 +130,17 @@ class Liquid:
 
     def process_traj(self):
         """
-        Copy conf
+        Process the out trajectory after averaging cycle and 
+        extract a configuration to run integration
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        
         """
         trajfile = os.path.join(self.simfolder, "traj.dat")
         files = ptp.split_trajectory(trajfile)

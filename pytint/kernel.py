@@ -169,6 +169,8 @@ def spawn_jobs(inputfile, rs=False, monitor=False):
 def integrate(inputfile):
     """
     Integrate results
+
+    Not stable at the moment
     """
     options = read_yamlfile(inputfile)
     #gather job arrays
@@ -217,6 +219,17 @@ def integrate(inputfile):
     print("%d/%d results saved."%(success, total))
 
 def main():
+    """
+    Main method to parse arguments and run jobs
+
+    Paramaters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
     arg = ap.ArgumentParser()
     
     #argument name of input file

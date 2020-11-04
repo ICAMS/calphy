@@ -1,6 +1,9 @@
 
 from mendeleev import element
 
+"""
+Conversion factors for creating initial lattices
+"""
 latticedict = {
 	"BCC" :{"LQD": 1.00000, "BCC":1.00000, "FCC":0.79370, "HCP":1.12246, "DIA":0.62996, "SC":1.25992, "N":2},
 	"FCC" :{"LQD": 1.00000, "BCC":1.25992, "FCC":1.00000, "HCP":1.78179, "DIA":0.79370, "SC":1.58740, "N":4},
