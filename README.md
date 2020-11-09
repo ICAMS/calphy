@@ -39,3 +39,11 @@ To run a calculation:
 tint -i input.yaml
 ```
 
+### Publications
+
+Freitas, Rodrigo, Mark Asta, and Maurice de Koning. “Nonequilibrium Free-Energy Calculation of Solids Using LAMMPS.” Computational Materials Science 112 (February 2016): 333–41. https://doi.org/10.1016/j.commatsci.2015.10.050.  
+
+Paula Leite, Rodolfo, and Maurice de Koning. “Nonequilibrium Free-Energy Calculations of Fluids Using LAMMPS.” Computational Materials Science 159 (March 2019): 316–26. https://doi.org/10.1016/j.commatsci.2018.12.029.  
+
+Koning, Maurice de, A. Antonelli, and Sidney Yip. “Optimized Free-Energy Evaluation Using a Single Reversible-Scaling Simulation.” Physical Review Letters 83, no. 20 (November 15, 1999): 3973–77. https://doi.org/10.1103/PhysRevLett.83.3973.
+
