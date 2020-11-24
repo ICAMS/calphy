@@ -63,7 +63,9 @@ class Solid:
                                             self.p, self.p, self.options["md"]["pdamp"]))
         lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
 
-        lmp.command("fix              2 all print 10 \"$(step) $(press) $(vol) $(temp)\" file avg.dat")
+        #this is when the averaging routine starts
+        lmp.command("fix              2 all ave/time 10 100 1000 \"$(step) $(press) $(vol) $(temp)\" file avg.dat")
+        #lmp.command("fix              2 all print 10 \"$(step) $(press) $(vol) $(temp)\" file avg.dat")
         lmp.command("run              %d"%int(self.options["md"]["nlarge"]))
 
         #now run for msd
@@ -78,6 +80,17 @@ class Solid:
         lmp.command("fix              4 all print 10 \"$(step) ${msd}\" file msd.dat")
         lmp.command("run              %d"%int(self.options["md"]["nlarge"]))
         lmp.close()
+
+    def check_average(self, file, column, nvals=100):
+        """
+        Check when the average data is converged
+        """
+        file = os.path.join(self.simfolder, file)
+        quant = np.loadtxt(file, usecols=(column,), unpack=True)
+        mean = np.mean(quant[-100:])
+        std = np.std(quant[-100:])
+        return mean, std        
+
 
     def gather_average_data(self):
         """
