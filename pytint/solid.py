@@ -67,9 +67,19 @@ class Solid:
         lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
 
         #this is when the averaging routine starts
-        lmp.command("fix              2 all ave/time 10 100 1000 v_mvol file avg.dat")
-        #lmp.command("fix              2 all print 10 \"$(step) $(press) $(vol) $(temp)\" file avg.dat")
-        lmp.command("run              %d"%int(self.options["md"]["nlarge"]))
+        lmp.command("fix              2 all ave/time 10 10 100 v_mvol file avg.dat")
+        
+        for i in range(100):
+            lmp.command("run              10000")
+            #now we can check if it converted
+            file = os.path.join(self.simfolder, "avg.dat")
+            quant = np.loadtxt(file, usecols=(column,), unpack=True)
+            lx = (quant/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
+            mean = np.mean(quant[-100:])
+            std = np.std(quant[-100:])
+            if (std < 1E-4):
+                self.avglat = avglat
+                break
 
         #now run for msd
         lmp.command("unfix            1")
@@ -83,24 +93,14 @@ class Solid:
         lmp.command("fix              4 all print 10 \"$(step) ${msd}\" file msd.dat")
         lmp.command("run              %d"%int(self.options["md"]["nlarge"]))
         lmp.close()
-
-    def check_average(self, file, column, nvals=100):
-        """
-        Check when the average data is converged
-        """
-        file = os.path.join(self.simfolder, file)
-        quant = np.loadtxt(file, usecols=(column,), unpack=True)
-        mean = np.mean(quant[-100:])
-        std = np.std(quant[-100:])
-        return mean, std        
-
+   
 
     def gather_average_data(self):
         """
         Gather average daya
         """
         avgfile = os.path.join(self.simfolder, "avg.dat")
-        vol = np.loadtxt(avgfile, usecols=(0,), unpack=True)
+        vol = np.loadtxt(avgfile, usecols=(1,), unpack=True)
         avgvol = np.mean(vol[-100:])
         ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
         self.natoms = ncells*self.apc
