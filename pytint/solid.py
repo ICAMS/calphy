@@ -50,6 +50,9 @@ class Solid:
 
         lmp.command("mass             * %f"%self.options["md"]["mass"])
 
+        #add some computes
+        lmp.command("variable         mvol equal vol")
+
         lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
         lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
                                             0, self.p, self.options["md"]["pdamp"]))
@@ -64,7 +67,7 @@ class Solid:
         lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
 
         #this is when the averaging routine starts
-        lmp.command("fix              2 all ave/time 10 100 1000 \"$(step) $(press) $(vol) $(temp)\" file avg.dat")
+        lmp.command("fix              2 all ave/time 10 100 1000 v_mvol file avg.dat")
         #lmp.command("fix              2 all print 10 \"$(step) $(press) $(vol) $(temp)\" file avg.dat")
         lmp.command("run              %d"%int(self.options["md"]["nlarge"]))
 
@@ -97,7 +100,7 @@ class Solid:
         Gather average daya
         """
         avgfile = os.path.join(self.simfolder, "avg.dat")
-        vol = np.loadtxt(avgfile, usecols=(2,), unpack=True)
+        vol = np.loadtxt(avgfile, usecols=(0,), unpack=True)
         avgvol = np.mean(vol[-100:])
         ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
         self.natoms = ncells*self.apc
