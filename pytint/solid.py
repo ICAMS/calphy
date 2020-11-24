@@ -115,7 +115,7 @@ class Solid:
         lmp.command("boundary         p p p")
         lmp.command("atom_style       atomic")
 
-        lmp.command("lattice          %s %f"%(self.l, self.alat))
+        lmp.command("lattice          %s %f"%(self.l, self.avglat))
         lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
         lmp.command("create_box       1 box")
         lmp.command("create_atoms     1 box")
