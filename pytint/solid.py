@@ -192,23 +192,21 @@ class Solid:
         #------------------------- Running the Simulation -----------------------------#
         lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")
 
-        for i in range(iteration):
-            count = i+1
-            lmp.command("fix               f2 all ti/spring %f %d %d function 2"%(self.k, self.options["md"]["ts"], self.options["md"]["te"]))
+        lmp.command("fix               f2 all ti/spring %f %d %d function 2"%(self.k, self.options["md"]["ts"], self.options["md"]["te"]))
 
-            # Forward. 
-            lmp.command("run               ${te_run}")
-            lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_%d.dat "%count)
-            lmp.command("run               ${ts_run}")
-            lmp.command("unfix             f4")
+        # Forward. 
+        lmp.command("run               ${te_run}")
+        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_%d.dat "%iteration)
+        lmp.command("run               ${ts_run}")
+        lmp.command("unfix             f4")
 
-            # Backward. 
-            lmp.command("run               ${te_run}")
-            lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file backward_%d.dat"%count)
-            lmp.command("run               ${ts_run}")
-            lmp.command("unfix             f4")
+        # Backward. 
+        lmp.command("run               ${te_run}")
+        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("run               ${ts_run}")
+        lmp.command("unfix             f4")
 
-            lmp.command("unfix             f2")
+        lmp.command("unfix             f2")
 
         lmp.close()
 
