@@ -134,12 +134,6 @@ class Solid:
         self.natoms = ncells*self.apc
    
 
-    def gather_average_data(self):
-        """
-        Gather average daya
-        """
-        pass
-
     def run_integration(self, iteration=1):
         """
         Write TI integrate script

@@ -8,6 +8,7 @@ from pytint.integrators import *
 import pyscal.core as pc
 import pyscal.traj_process as ptp
 from pylammpsmpi import LammpsLibrary
+import logging
 
 class Liquid:
     """
@@ -57,6 +58,19 @@ class Liquid:
         self.options = options
         self.simfolder = simfolder
         self.thigh = thigh
+        logfile = os.path.join(self.simfolder, "tint.log")
+        self.prepare_log(logfile)
+
+    def prepare_log(self, file):
+        logger = logging.getLogger(__name__)
+        handler = logging.FileHandler(file)
+        formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+        self.logger = logger
+
 
     def run_averaging(self):
         """
@@ -99,34 +113,67 @@ class Liquid:
 
         #Melt regime for the liquid
         lmp.velocity("all create", self.thigh, np.random.randint(0, 10000))
-        lmp.fix("1 all npt temp", self.thigh, self.thigh, self.options["md"]["tdamp"], 
-                                      "iso", self.p, self.p, self.options["md"]["pdamp"])
-        lmp.run(int(self.options["md"]["nsmall"]))
-        lmp.unfix(1)
-        lmp.dump("2 all custom", 1, "traj.melt id type mass x y z vx vy vz")
-        lmp.run(0)
-        lmp.undump(2)
         
-        #we have to check if the structure melted, otherwise throw and error
-        sys = pc.System()
-        sys.read_inputfile("traj.melt")
-        sys.find_neighbors(method="cutoff", cutoff=0)
-        solids = sys.find_solids()
-        if (solids/lmp.natoms > 0.5):
-            lmp.close()
-            raise RuntimeError("System did not melt!")
+        #melting cycle should be done in loops
+        for thmult in np.arange(1.0, 2.0, 0.1):
+            
+            trajfile = os.path.join(self.simfolder, "traj.melt")
+            if os.path.exists(trajfile):
+                os.remove(trajfile)
 
+            self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.thigh, thmult))
+            lmp.fix("1 all npt temp", self.thigh*thmult, self.thigh*thmult, self.options["md"]["tdamp"], 
+                                          "iso", self.p, self.p, self.options["md"]["pdamp"])
+            lmp.run(int(self.options["md"]["nsmall"]))
+            lmp.unfix(1)
+            lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
+            lmp.run(0)
+            lmp.undump(2)
+            
+            #we have to check if the structure melted, otherwise throw and error
+            sys = pc.System()
+            sys.read_inputfile("traj.melt")
+            sys.find_neighbors(method="cutoff", cutoff=0)
+            solids = sys.find_solids()
+            self.logger.info("fraction of solids found: %f", solids/lmp.natoms)
+            if (solids/lmp.natoms < 0.05):
+                break
+                
         #now assign correct temperature
         lmp.velocity("all create", self.t, np.random.randint(0, 10000))
         lmp.fix("1 all npt temp", self.t, self.t, self.options["md"]["tdamp"], 
                                       "iso", self.p, self.p, self.options["md"]["pdamp"])
         lmp.run(int(self.options["md"]["nsmall"])) 
-        lmp.fix("2 all print 10 \"$(step) $(press) $(vol) $(temp)\" file avg.dat")
+        
+        lmp.command("fix              2 all ave/time 10 10 100 v_mvol v_mpress file avg.dat")
         lmp.dump("2 all custom", self.options["md"]["nsmall"]//10, "traj.dat id type mass x y z vx vy vz")
-        lmp.run(int(self.options["md"]["nlarge"]))
+
+        laststd = 0.00
+        for i in range(100):
+            lmp.command("run              10000")
+            #now we can check if it converted
+            file = os.path.join(self.simfolder, "avg.dat")
+            quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
+            rho = self.natoms/quant
+
+            mean = np.mean(rho[-100:])
+            std = np.std(rho[-100:])
+
+            self.logger.info("At count %d mean density is %f std is %f"%(i+1, mean, std))
+            if (np.abs(laststd - std) < 0.0002):
+                self.rho = np.round(mean, decimals=3)
+                self.logger.info("finalized density %f pressure %f"%(self.rho, np.mean(ipress)))
+                break
+            laststd = std
 
         #finish run
         lmp.close()
+
+        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
+        self.natoms = ncells*self.apc
+        self.eps = self.t*50.0*kb
+        self.process_traj()
+
 
     def process_traj(self):
         """
@@ -153,26 +200,6 @@ class Liquid:
         os.remove(trajfile)
         for file in files:
             os.remove(file)
-
-
-    def gather_average_data(self):
-        """
-        Gather average data
-        """
-        avgfile = os.path.join(self.simfolder, "avg.dat")
-        vol = np.loadtxt(avgfile, usecols=(2,), unpack=True)
-        avgvol = np.mean(vol[-100:])
-        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
-        self.natoms = ncells*self.apc
-        self.rho = self.natoms/avgvol
-        #WARNING: hard coded ufm parameter
-        self.eps = self.t*50.0*kb
-
-        #now also process traj
-        self.process_traj()
-
-
-
 
     def run_integration(self, iteration=1):
         """
