@@ -67,7 +67,7 @@ class Solid:
         lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
 
         #this is when the averaging routine starts
-        lmp.command("fix              2 all ave/time 10 10 100 v_mvol file avg.dat")
+        lmp.command("fix              2 all ave/time 10 10 100 v_mvol file avg.dat ave running")
         
         for i in range(100):
             lmp.command("run              10000")
@@ -77,6 +77,7 @@ class Solid:
             lx = (quant/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
             mean = np.mean(quant[-100:])
             std = np.std(quant[-100:])
+            print("At count %d mean is %f std is %f"%(mean, std))
             if (std < 1E-4):
                 self.avglat = avglat
                 break
