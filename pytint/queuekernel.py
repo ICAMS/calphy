@@ -100,10 +100,9 @@ def main():
 
     if integrate:
         job.run_averaging()
-        job.gather_average_data()
-
         #now run integration loops
-        job.run_integration(iteration=options["main"]["nsims"])
+        for i in range(options["main"]["nsims"]):
+            job.run_integration(iteration=i)
 
         job.thermodynamic_integration()
         job.submit_report()
