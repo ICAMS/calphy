@@ -448,5 +448,5 @@ class Liquid:
         """
         Carry out the reversible scaling operation
         """
-        integrate_rs(self.simfolder, fe, self.t,
+        integrate_rs(self.simfolder, self.fe, self.t,
             nsims=self.options["main"]["nsims"], scale_energy=scale_energy)
