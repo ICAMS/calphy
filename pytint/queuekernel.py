@@ -116,6 +116,9 @@ def main():
         for i in range(options["main"]["nsims"]):
             job.run_integration(iteration=(i+1))
 
+        job.thermodynamic_integration()
+        job.submit_report()
+        
         #now do rev scale steps
         for i in range(options["main"]["nsims"]):
             job.reversible_scaling(iteration=(i+1))
