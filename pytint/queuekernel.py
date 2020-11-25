@@ -82,6 +82,9 @@ def main():
 
     #time to set up the job
     #create a lattice object
+    if ml == "dia":
+        ml = "diamond"
+
     if args["lattice"] == "LQD":
         job = Liquid(t = args["temperature"], p = args["pressure"],
                     l = ml, apc = args["atomspercell"],
@@ -89,6 +92,7 @@ def main():
                     c = args["concentration"], options=options,
                     simfolder = simfolder, thigh = thigh)
     else:
+
         job = Solid(t = args["temperature"], p = args["pressure"],
                     l = ml, apc = args["atomspercell"],
                     alat = args["latticeconstant"],
@@ -118,7 +122,7 @@ def main():
 
         job.thermodynamic_integration()
         job.submit_report()
-        
+
         #now do rev scale steps
         for i in range(options["main"]["nsims"]):
             job.reversible_scaling(iteration=(i+1))
