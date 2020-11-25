@@ -356,12 +356,7 @@ class Liquid:
         
         #first we need to do an averaging scheme
         #but only if iteration is 1
-
-        if iteration==1:
-            self.run_averaging()
-            #process the traj
-            self.process_traj()
-
+        
         #Now do reversible scaling
         t0 = self.t
         tf = self.options["main"]["temperature"][-1]
@@ -449,9 +444,9 @@ class Liquid:
         
         lmp.close()
 
-    def integrate_reversible_scaling(self, f0, scale_energy=True):
+    def integrate_reversible_scaling(self, scale_energy=False):
         """
         Carry out the reversible scaling operation
         """
-        integrate_rs(self.simfolder, f0, self.t,
+        integrate_rs(self.simfolder, fe, self.t,
             nsims=self.options["main"]["nsims"], scale_energy=scale_energy)

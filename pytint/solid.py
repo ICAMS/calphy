@@ -268,7 +268,7 @@ class Solid:
         lmp.command("boundary         p p p")
         lmp.command("atom_style       atomic")
 
-        lmp.command("lattice          %s %f"%(self.l, self.alat))
+        lmp.command("lattice          %s %f"%(self.l, self.avglat))
         lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
         lmp.command("create_box       1 box")
         lmp.command("create_atoms     1 box")
@@ -346,9 +346,9 @@ class Solid:
         lmp.close()
 
 
-    def integrate_reversible_scaling(self, f0, scale_energy=True):
+    def integrate_reversible_scaling(self, scale_energy=False):
         """
         Carry out the reversible scaling operation
         """
-        integrate_rs(self.simfolder, f0, self.t,
+        integrate_rs(self.simfolder, self.fe, self.t,
             nsims=self.options["main"]["nsims"], scale_energy=scale_energy)
