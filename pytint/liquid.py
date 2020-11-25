@@ -90,6 +90,8 @@ class Liquid:
         density at the given temperature.
         """
         cores = self.options["queue"]["cores"]
+        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
+        self.natoms = ncells*self.apc
 
         #create lammps object
         lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
@@ -114,6 +116,9 @@ class Liquid:
         #Melt regime for the liquid
         lmp.velocity("all create", self.thigh, np.random.randint(0, 10000))
         
+        #add some computes
+        lmp.command("variable         mvol equal vol")
+        lmp.command("variable         mpress equal press")    
         #melting cycle should be done in loops
         for thmult in np.arange(1.0, 2.0, 0.1):
             
@@ -160,8 +165,8 @@ class Liquid:
             std = np.std(rho[-100:])
 
             self.logger.info("At count %d mean density is %f std is %f"%(i+1, mean, std))
-            if (np.abs(laststd - std) < 0.0002):
-                self.rho = np.round(mean, decimals=3)
+            if (np.abs(laststd - std) < 0.00002):
+                self.rho = np.round(mean, decimals=4)
                 self.logger.info("finalized density %f pressure %f"%(self.rho, np.mean(ipress)))
                 break
             laststd = std
@@ -169,8 +174,6 @@ class Liquid:
         #finish run
         lmp.close()
 
-        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
-        self.natoms = ncells*self.apc
         self.eps = self.t*50.0*kb
         self.process_traj()
 
