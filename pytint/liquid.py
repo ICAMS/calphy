@@ -92,7 +92,8 @@ class Liquid:
         cores = self.options["queue"]["cores"]
         ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
         self.natoms = ncells*self.apc
-
+        self.eps = self.t*50.0*kb
+        
         #create lammps object
         lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
 
@@ -167,12 +168,12 @@ class Liquid:
                 self.rho = self.apc/(self.avglat**3)
                 self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
                 break
-            laststd = st
+            laststd = std
 
         #finish run
         lmp.close()
 
-        self.eps = self.t*50.0*kb
+        
 
         #now the small extra routine
         #to do a NVT melting
