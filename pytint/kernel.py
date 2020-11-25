@@ -117,14 +117,14 @@ def spawn_jobs(inputfile, rs=False, monitor=False):
                         scheduler.write_script(scriptpath)
                         _ = scheduler.submit()
     else:
-        for count, l in enumerate(lattice):
+        for count, l in enumerate(lattice):            
             t = temp[0]
             for p in press:
                 for c in conc:
                     ts = int(t)
                     ps = "%.02f"%p
                     cs = "%.02f"%c
-                    identistring = "-".join(["in", l, str(ts), ps, cs])
+                    identistring = "-".join(["rs", l, str(ts), ps, cs, "rs"])
                     scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
                     errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
                     errfiles.append(errfile)
@@ -135,33 +135,10 @@ def spawn_jobs(inputfile, rs=False, monitor=False):
                     ml = lammps_lattice[count]
 
                     #for lattice just provide the number of position
-                    scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f -m %s"%(inputfile, 
-                        t, p, l, apc, a, c, ml)
+                    scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f -m %s -j %s"%(inputfile, 
+                        t, p, l, apc, a, c, ml, "rs")
                     scheduler.write_script(scriptpath)
                     _ = scheduler.submit()
-            
-            t = temp[-1]
-            if(temp[0] != temp[-1]):
-                for p in press:
-                    for c in conc:
-                        ts = int(t)
-                        ps = "%.02f"%p
-                        cs = "%.02f"%c
-                        identistring = "-".join(["rs", l, str(ts), ps, cs, "rs"])
-                        scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
-                        errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
-                        errfiles.append(errfile)
-
-                        #get the other info which is required
-                        apc = atoms_per_cell[count]
-                        a = lattice_constants[count]
-                        ml = lammps_lattice[count]
-
-                        #for lattice just provide the number of position
-                        scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f -m %s -j %s"%(inputfile, 
-                            t, p, l, apc, a, c, ml, "rs")
-                        scheduler.write_script(scriptpath)
-                        _ = scheduler.submit()
 
     if monitor:
         raise NotImplementedError("feature not implemented")

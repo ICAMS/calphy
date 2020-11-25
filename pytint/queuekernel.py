@@ -102,7 +102,7 @@ def main():
         job.run_averaging()
         #now run integration loops
         for i in range(options["main"]["nsims"]):
-            job.run_integration(iteration=i)
+            job.run_integration(iteration=(i+1))
 
         job.thermodynamic_integration()
         job.submit_report()
@@ -110,6 +110,13 @@ def main():
     #reversible scaling routine
     else:
         #the rs routine
+        job.run_averaging()
+
+        #now find fe for one temp
+        for i in range(options["main"]["nsims"]):
+            job.run_integration(iteration=(i+1))
+
+        #now do rev scale steps
         for i in range(options["main"]["nsims"]):
             job.reversible_scaling(iteration=(i+1))
         #we do not integrate rev scaling!
