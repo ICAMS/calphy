@@ -7,7 +7,7 @@ import yaml
 from pytint.integrators import *
 from pylammpsmpi import LammpsLibrary
 import pyscal.core as pc
-
+import logging
 
 class Solid:
     """
@@ -26,6 +26,19 @@ class Solid:
         self.c = c
         self.options = options
         self.simfolder = simfolder
+
+        logfile = os.path.join(self.simfolder, "tint.log")
+        self.prepare_log(logfile)
+
+    def prepare_log(self, file):
+        logger = logging.getLogger(__name__)
+        handler = logging.FileHandler(file)
+        formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+        self.logger = logger
 
     def run_averaging(self):
         """
@@ -52,6 +65,7 @@ class Solid:
 
         #add some computes
         lmp.command("variable         mvol equal vol")
+        lmp.command("variable         mpress equal press")
 
         lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
         lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
@@ -67,20 +81,23 @@ class Solid:
         lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
 
         #this is when the averaging routine starts
-        lmp.command("fix              2 all ave/time 10 10 100 v_mvol file avg.dat ave running")
+        lmp.command("fix              2 all ave/time 10 10 100 v_mvol v_mpress file avg.dat")
         
+        laststd = 0.00
         for i in range(100):
             lmp.command("run              10000")
             #now we can check if it converted
             file = os.path.join(self.simfolder, "avg.dat")
-            quant = np.loadtxt(file, usecols=(column,), unpack=True)
+            quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
             lx = (quant/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
-            mean = np.mean(quant[-100:])
-            std = np.std(quant[-100:])
-            print("At count %d mean is %f std is %f"%(mean, std))
-            if (std < 1E-4):
-                self.avglat = avglat
+            mean = np.mean(lx[-100:])
+            std = np.std(lx[-100:])
+            self.logger.info("At count %d mean lattice constant is %f std is %f"%(i+1, mean, std))
+            if (np.abs(laststd - std) < 0.0002):
+                self.avglat = np.round(mean, decimals=3)
+                self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
                 break
+            laststd = std
 
         #now run for msd
         lmp.command("unfix            1")
@@ -91,25 +108,37 @@ class Solid:
 
         lmp.command("variable         msd equal c_1[4]")
 
-        lmp.command("fix              4 all print 10 \"$(step) ${msd}\" file msd.dat")
-        lmp.command("run              %d"%int(self.options["md"]["nlarge"]))
+        #we need a similar averaging routine here
+        lmp.command("fix              4 all ave/time 10 10 100 v_msd file msd.dat")
+        laststd = 0.00
+        for i in range(100):
+            lmp.command("run              10000")
+            #now we can check if it converted
+            file = os.path.join(self.simfolder, "msd.dat")
+            quant = np.loadtxt(file, usecols=(1,), unpack=True)
+            quant = 3*kb*self.t/quant
+            mean = np.mean(quant[-100])
+            std = np.std(quant[-100:])
+            self.logger.info("At count %d mean k is %f std is %f"%(i+1, mean, std))
+            if (np.abs(laststd - std) < 0.01):
+                self.k = np.round(mean, decimals=2)
+                self.logger.info("finalized sprint constant %f"%(self.k))
+                break
+            laststd = std
+
+
         lmp.close()
+
+        #now some housekeeping
+        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
+        self.natoms = ncells*self.apc
    
 
     def gather_average_data(self):
         """
         Gather average daya
         """
-        avgfile = os.path.join(self.simfolder, "avg.dat")
-        vol = np.loadtxt(avgfile, usecols=(1,), unpack=True)
-        avgvol = np.mean(vol[-100:])
-        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
-        self.natoms = ncells*self.apc
-
-        self.avglat = (avgvol/ncells)**(1/3)
-        msdfile = os.path.join(self.simfolder, "msd.dat")
-        msd = np.loadtxt(msdfile, usecols=(1,), unpack=True)
-        self.k = 3*kb*self.t/np.mean(msd[-100:])
+        pass
 
     def run_integration(self, iteration=1):
         """
