@@ -86,7 +86,7 @@ def spawn_jobs(inputfile, rs=False, monitor=False):
     errfiles = []
     
     if rs:
-        nocalcs = 2*len(press)*len(lattice)*len(conc)
+        nocalcs = len(press)*len(lattice)*len(conc)
     else:    
         nocalcs = len(temp)*len(press)*len(lattice)*len(conc)
     print("Total number of %d calculations registered" % nocalcs)
