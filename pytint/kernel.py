@@ -55,6 +55,7 @@ def spawn_jobs(inputfile, rs=False, monitor=False):
         if len(temp) > 2:
             warnings.warn("More than two values in temperature in reversible scaling mode. Only first and last values will be used")
     
+    """
     if len(press)>1:
         warnings.warn("Resetting pressure to zero")
         press = [0,]
@@ -62,6 +63,7 @@ def spawn_jobs(inputfile, rs=False, monitor=False):
     if press[0] != 0:
         warnings.warn("Resetting pressure to zero")
         press[0] = 0.0
+    """
 
     #Check lattice values
     lattice = [x.upper() for x in lattice]
