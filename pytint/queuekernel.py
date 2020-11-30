@@ -103,7 +103,10 @@ def main():
     os.chdir(simfolder)
 
     if integrate:
-        job.run_averaging()
+        if args["pressure"] == 0:
+            job.run_averaging()
+        else:
+            job.run_averaging_pressure()
         #now run integration loops
         for i in range(options["main"]["nsims"]):
             job.run_integration(iteration=(i+1))
