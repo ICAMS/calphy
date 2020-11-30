@@ -323,6 +323,13 @@ class Solid:
         w, q, qerr = find_w(self.simfolder, nsims=self.options["main"]["nsims"], 
             full=True)
         fe = f1 + w
+
+        #compensate for pressure
+        if self.p != 0:
+            term1 = self.p*((self.avglat**3)/self.apc)
+            term2 = kb*self.t*np.log(self.vprob)
+            fe = fe + term1 + term2
+            
         self.fe = fe
         self.ferr = qerr
 

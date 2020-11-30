@@ -570,7 +570,15 @@ class Liquid:
         f2 = get_ideal_gas_fe(self.t, self.rho, 
             self.natoms, self.options["md"]["mass"], xa=(1-self.c), 
             xb=self.c)
-        self.fe = f2 + f1 - w
+        fe = f2 + f1 - w
+
+        #compensate for pressure
+        if self.p != 0:
+            term1 = self.p*((self.avglat**3)/self.apc)
+            term2 = kb*self.t*np.log(self.vprob)
+            fe = fe + term1 + term2
+            
+        self.fe = fe
         self.ferr = qerr
 
     def submit_report(self):
