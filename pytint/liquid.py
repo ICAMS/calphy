@@ -571,13 +571,16 @@ class Liquid:
             self.natoms, self.options["md"]["mass"], xa=(1-self.c), 
             xb=self.c)
         fe = f2 + f1 - w
-
+        self.t1 = 0
+        self.t2 = 0
         #compensate for pressure
         if self.p != 0:
             term1 = (self.p*(1E6/1E30)*(1/eV2J))*((self.avglat**3)/self.apc)
-            term2 = kb*self.t*np.log(self.vprob)
+            term2 = kb*self.t*np.log(self.vprob)/self.natoms
             fe = fe + term1 + term2
-            
+            self.t1 = term1
+            self.t2 = term2
+
         self.fe = fe
         self.ferr = qerr
 
@@ -590,7 +593,9 @@ class Liquid:
         report["rho"] = float(self.rho)
         report["fe"] = float(self.fe)
         report["fe_err"] = float(self.ferr)
-
+        report["t1"] = float(self.t1)
+        report["t2"] = float(self.t2)
+        
         reportfile = os.path.join(self.simfolder, "report.yaml")
         with open(reportfile, 'w') as f:
             yaml.dump(report, f)
