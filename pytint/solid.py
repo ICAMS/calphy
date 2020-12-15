@@ -323,6 +323,8 @@ class Solid:
         w, q, qerr = find_w(self.simfolder, nsims=self.options["main"]["nsims"], 
             full=True)
         fe = f1 + w
+        self.fref = f1
+        self.w = w
         self.t1 = 0
         self.t2 = 0
         #compensate for pressure
@@ -349,6 +351,8 @@ class Solid:
         report["fe_err"] = float(self.ferr)
         report["t1"] = float(self.t1)
         report["t2"] = float(self.t2)
+        report["fref"] = float(self.fref)
+        report["w"] = float(self.w)
 
         reportfile = os.path.join(self.simfolder, "report.yaml")
         with open(reportfile, 'w') as f:
