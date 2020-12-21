@@ -614,6 +614,7 @@ class Liquid:
         report["fref"] = float(self.fref)
         report["fideal"] = float(self.fideal)
         report["w"] = float(self.w)
+        report["avglat"] = float(self.avglat)
 
         reportfile = os.path.join(self.simfolder, "report.yaml")
         with open(reportfile, 'w') as f:
