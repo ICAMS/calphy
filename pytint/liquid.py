@@ -338,7 +338,7 @@ class Liquid:
                 break
             laststd = std
 
-        trajfile = os.path.join(self.simfolder, "traj.melt")
+        trajfile = os.path.join(self.simfolder, "traj.dat")
         if os.path.exists(trajfile):
             os.remove(trajfile)
 
