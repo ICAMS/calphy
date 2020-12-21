@@ -350,8 +350,6 @@ class Liquid:
                 break
             laststd = std
 
-        #finish run
-        lmp.close()
 
         trajfile = os.path.join(self.simfolder, "traj.dat")
         if os.path.exists(trajfile):
@@ -360,6 +358,8 @@ class Liquid:
         lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
         lmp.run(0)
         lmp.undump(2)
+        #finish run
+        lmp.close()
         
 
         #now the small extra routine
