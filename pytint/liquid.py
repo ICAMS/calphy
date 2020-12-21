@@ -578,7 +578,7 @@ class Liquid:
         self.w = w
         #compensate for pressure
         if self.p != 0:
-            term1 = (self.p*(1E6/1E30)*(1/eV2J))*((self.avglat**3)/self.apc)
+            term1 = (self.p*1E-4/160.21766208)*((self.avglat**3)/self.apc)
             term2 = kb*self.t*np.log(self.vprob)/self.natoms
             fe = fe + term1 + term2
             self.t1 = term1
