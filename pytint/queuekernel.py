@@ -82,6 +82,9 @@ def main():
 
     #time to set up the job
     #create a lattice object
+    if ml == "dia":
+        ml = "diamond"
+
     if args["lattice"] == "LQD":
         job = Liquid(t = args["temperature"], p = args["pressure"],
                     l = ml, apc = args["atomspercell"],
@@ -89,6 +92,7 @@ def main():
                     c = args["concentration"], options=options,
                     simfolder = simfolder, thigh = thigh)
     else:
+
         job = Solid(t = args["temperature"], p = args["pressure"],
                     l = ml, apc = args["atomspercell"],
                     alat = args["latticeconstant"],
@@ -99,9 +103,10 @@ def main():
     os.chdir(simfolder)
 
     if integrate:
-        job.run_averaging()
-        job.gather_average_data()
-
+        if args["pressure"] == 0:
+            job.run_averaging()
+        else:
+            job.run_averaging_pressure()
         #now run integration loops
         for i in range(options["main"]["nsims"]):
             job.run_integration(iteration=(i+1))
@@ -112,8 +117,18 @@ def main():
     #reversible scaling routine
     else:
         #the rs routine
+        job.run_averaging()
+
+        #now find fe for one temp
+        for i in range(options["main"]["nsims"]):
+            job.run_integration(iteration=(i+1))
+
+        job.thermodynamic_integration()
+        job.submit_report()
+
+        #now do rev scale steps
         for i in range(options["main"]["nsims"]):
             job.reversible_scaling(iteration=(i+1))
         #we do not integrate rev scaling!
         #do it manually from a jupyter notebook or so
-        #job.integrate_reversible_scaling()
+        job.integrate_reversible_scaling()

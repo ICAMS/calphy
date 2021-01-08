@@ -8,6 +8,7 @@ from pytint.integrators import *
 import pyscal.core as pc
 import pyscal.traj_process as ptp
 from pylammpsmpi import LammpsLibrary
+import logging
 
 class Liquid:
     """
@@ -57,6 +58,19 @@ class Liquid:
         self.options = options
         self.simfolder = simfolder
         self.thigh = thigh
+        logfile = os.path.join(self.simfolder, "tint.log")
+        self.prepare_log(logfile)
+
+    def prepare_log(self, file):
+        logger = logging.getLogger(__name__)
+        handler = logging.FileHandler(file)
+        formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+        self.logger = logger
+
 
     def run_averaging(self):
         """
@@ -76,7 +90,10 @@ class Liquid:
         density at the given temperature.
         """
         cores = self.options["queue"]["cores"]
-
+        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
+        self.natoms = ncells*self.apc
+        self.eps = self.t*50.0*kb
+        
         #create lammps object
         lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
 
@@ -99,34 +116,318 @@ class Liquid:
 
         #Melt regime for the liquid
         lmp.velocity("all create", self.thigh, np.random.randint(0, 10000))
-        lmp.fix("1 all npt temp", self.thigh, self.thigh, self.options["md"]["tdamp"], 
-                                      "iso", self.p, self.p, self.options["md"]["pdamp"])
-        lmp.run(int(self.options["md"]["nsmall"]))
-        lmp.unfix(1)
-        lmp.dump("2 all custom", 1, "traj.melt id type mass x y z vx vy vz")
-        lmp.run(0)
-        lmp.undump(2)
         
-        #we have to check if the structure melted, otherwise throw and error
-        sys = pc.System()
-        sys.read_inputfile("traj.melt")
-        sys.find_neighbors(method="cutoff", cutoff=0)
-        solids = sys.find_solids()
-        if (solids/lmp.natoms > 0.5):
-            lmp.close()
-            raise RuntimeError("System did not melt!")
+        #add some computes
+        lmp.command("variable         mvol equal vol")
+        lmp.command("variable         mpress equal press")    
+        #melting cycle should be done in loops
+        for thmult in np.arange(1.0, 2.0, 0.1):
+            
+            trajfile = os.path.join(self.simfolder, "traj.melt")
+            if os.path.exists(trajfile):
+                os.remove(trajfile)
 
+            self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.thigh, thmult))
+            lmp.fix("1 all npt temp", self.thigh*thmult, self.thigh*thmult, self.options["md"]["tdamp"], 
+                                          "iso", self.p, self.p, self.options["md"]["pdamp"])
+            lmp.run(int(self.options["md"]["nsmall"]))
+            lmp.unfix(1)
+            lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
+            lmp.run(0)
+            lmp.undump(2)
+            
+            #we have to check if the structure melted, otherwise throw and error
+            sys = pc.System()
+            sys.read_inputfile("traj.melt")
+            sys.find_neighbors(method="cutoff", cutoff=0)
+            solids = sys.find_solids()
+            self.logger.info("fraction of solids found: %f", solids/lmp.natoms)
+            if (solids/lmp.natoms < 0.05):
+                break
+                
         #now assign correct temperature
         lmp.velocity("all create", self.t, np.random.randint(0, 10000))
         lmp.fix("1 all npt temp", self.t, self.t, self.options["md"]["tdamp"], 
                                       "iso", self.p, self.p, self.options["md"]["pdamp"])
         lmp.run(int(self.options["md"]["nsmall"])) 
-        lmp.fix("2 all print 10 \"$(step) $(press) $(vol) $(temp)\" file avg.dat")
-        lmp.dump("2 all custom", self.options["md"]["nsmall"]//10, "traj.dat id type mass x y z vx vy vz")
-        lmp.run(int(self.options["md"]["nlarge"]))
+        
+        lmp.command("fix              2 all ave/time 10 10 100 v_mvol v_mpress file avg.dat")
+
+        laststd = 0.00
+        for i in range(100):
+            lmp.command("run              10000")
+            #now we can check if it converted
+            file = os.path.join(self.simfolder, "avg.dat")
+            quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
+            lx = (quant/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
+            mean = np.mean(lx[-100:])
+            std = np.std(lx[-100:])
+            self.logger.info("At count %d mean lattice constant is %f std is %f"%(i+1, mean, std))
+            if (np.abs(laststd - std) < 0.0002):
+                self.avglat = np.round(mean, decimals=3)
+                self.rho = self.apc/(self.avglat**3)
+                self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
+                break
+            laststd = std
 
         #finish run
         lmp.close()
+
+        
+
+        #now the small extra routine
+        #to do a NVT melting
+        #create lammps object
+        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
+
+        #set up units
+        lmp.units("metal")
+        lmp.boundary("p p p")
+        lmp.atom_style("atomic")
+        lmp.timestep(self.options["md"]["timestep"])
+
+        #set up structure
+        lmp.lattice(self.l, self.avglat)
+        lmp.region("box block", 0, self.options["md"]["nx"], 0, self.options["md"]["ny"], 0, self.options["md"]["nz"])
+        lmp.create_box("1 box")
+        lmp.create_atoms("1 box")
+
+        #set up potential
+        lmp.pair_style(self.options["md"]["pair_style"])
+        lmp.pair_coeff(self.options["md"]["pair_coeff"])
+        lmp.mass("*", self.options["md"]["mass"])
+
+        #Melt regime for the liquid
+        lmp.velocity("all create", self.thigh, np.random.randint(0, 10000))
+        #add some computes
+        lmp.command("variable         mtemp equal temp")
+        
+        #melting cycle should be done in loops
+        for thmult in np.arange(1.0, 2.0, 0.1):
+            
+            trajfile = os.path.join(self.simfolder, "traj.melt")
+            if os.path.exists(trajfile):
+                os.remove(trajfile)
+
+            self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.thigh, thmult))
+            lmp.fix("1 all nvt temp", self.thigh*thmult, self.thigh*thmult, self.options["md"]["tdamp"])
+            lmp.run(int(self.options["md"]["nsmall"]))
+            lmp.unfix(1)
+            lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
+            lmp.run(0)
+            lmp.undump(2)
+            
+            #we have to check if the structure melted, otherwise throw and error
+            sys = pc.System()
+            sys.read_inputfile("traj.melt")
+            sys.find_neighbors(method="cutoff", cutoff=0)
+            solids = sys.find_solids()
+            self.logger.info("fraction of solids found: %f", solids/lmp.natoms)
+            if (solids/lmp.natoms < 0.05):
+                break
+        
+        #now assign correct temperature
+        lmp.velocity("all create", self.t, np.random.randint(0, 10000))
+        lmp.fix("1 all nvt temp", self.t, self.t, self.options["md"]["tdamp"])
+        trajfile = os.path.join(self.simfolder, "traj.dat")
+        lmp.dump("2 all custom", 100, trajfile,"id type mass x y z vx vy vz")
+
+        lmp.run(int(20000)) 
+        lmp.close()
+        #lmp.command("fix              2 all ave/time 10 10 100 v_mtemp file avg2.dat")
+        
+
+        self.process_traj()
+
+
+    def run_averaging_pressure(self):
+        """
+        Run averaging cycle
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Run the averaging cycle to find the equilibrium number
+        density at the given temperature.
+        """
+ 
+        cores = self.options["queue"]["cores"]
+        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
+        self.natoms = ncells*self.apc
+        self.eps = self.t*50.0*kb
+        
+        #create lammps object
+        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
+
+        #set up units
+        lmp.units("metal")
+        lmp.boundary("p p p")
+        lmp.atom_style("atomic")
+        lmp.timestep(self.options["md"]["timestep"])
+
+        #set up structure
+        lmp.lattice(self.l, self.alat)
+        lmp.region("box block", 0, self.options["md"]["nx"], 0, self.options["md"]["ny"], 0, self.options["md"]["nz"])
+        lmp.create_box("1 box")
+        lmp.create_atoms("1 box")
+
+        #set up potential
+        lmp.pair_style(self.options["md"]["pair_style"])
+        lmp.pair_coeff(self.options["md"]["pair_coeff"])
+        lmp.mass("*", self.options["md"]["mass"])
+
+        #Melt regime for the liquid
+        lmp.velocity("all create", self.thigh, np.random.randint(0, 10000))
+        
+        #add some computes
+        lmp.command("variable         mvol equal vol")
+        lmp.command("variable         mpress equal press")    
+        #melting cycle should be done in loops
+        for thmult in np.arange(1.0, 2.0, 0.1):
+            
+            trajfile = os.path.join(self.simfolder, "traj.melt")
+            if os.path.exists(trajfile):
+                os.remove(trajfile)
+
+            self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.thigh, thmult))
+            lmp.fix("1 all npt temp", self.thigh*thmult, self.thigh*thmult, self.options["md"]["tdamp"], 
+                                          "iso", self.p, self.p, self.options["md"]["pdamp"])
+            lmp.run(int(self.options["md"]["nsmall"]))
+            lmp.unfix(1)
+            lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
+            lmp.run(0)
+            lmp.undump(2)
+            
+            #we have to check if the structure melted, otherwise throw and error
+            sys = pc.System()
+            sys.read_inputfile("traj.melt")
+            sys.find_neighbors(method="cutoff", cutoff=0)
+            solids = sys.find_solids()
+            self.logger.info("fraction of solids found: %f", solids/lmp.natoms)
+            if (solids/lmp.natoms < 0.05):
+                break
+                
+        #now assign correct temperature
+        lmp.velocity("all create", self.t, np.random.randint(0, 10000))
+        lmp.fix("1 all npt temp", self.t, self.t, self.options["md"]["tdamp"], 
+                                      "iso", self.p, self.p, self.options["md"]["pdamp"])
+        lmp.run(int(self.options["md"]["nsmall"])) 
+        
+        lmp.command("fix              2 all ave/time 10 10 100 v_mvol v_mpress file avg.dat")
+        lmp.command("fix              px all print 10 \"$(step) $(vol)\" file vfluct.dat")
+
+        laststd = 0.00
+        for i in range(100):
+            lmp.command("run              10000")
+            #now we can check if it converted
+            file = os.path.join(self.simfolder, "avg.dat")
+            quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
+            lx = (quant/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
+            mean = np.mean(lx[-100:])
+            std = np.std(lx[-100:])
+            self.logger.info("At count %d mean lattice constant is %f std is %f"%(i+1, mean, std))
+            if (np.abs(laststd - std) < 0.0002):
+
+                vfile = os.path.join(self.simfolder, "vfluct.dat")
+                vinst = np.loadtxt(vfile, usecols=(0,), unpack=True)
+                vinst = np.round(vinst, decimals=0)
+                v, vcount = np.unique(vinst, return_counts=True)
+                vprob = vcount/np.sum(vcount)
+                #sort the values
+                vargs = np.argsort(vprob)[::-1]
+                vol = v[vargs[0]]
+                self.avglat = (vol/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
+                self.vprob = vprob[0]
+                self.rho = self.apc/(self.avglat**3)
+                self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
+                break
+            laststd = std
+
+
+        trajfile = os.path.join(self.simfolder, "traj.dat")
+        if os.path.exists(trajfile):
+            os.remove(trajfile)
+
+        lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
+        lmp.run(0)
+        lmp.undump(2)
+        #finish run
+        lmp.close()
+        
+
+        #now the small extra routine
+        #to do a NVT melting
+        #create lammps object
+
+        """
+        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
+
+        #set up units
+        lmp.units("metal")
+        lmp.boundary("p p p")
+        lmp.atom_style("atomic")
+        lmp.timestep(self.options["md"]["timestep"])
+
+        #set up structure
+        lmp.lattice(self.l, self.avglat)
+        lmp.region("box block", 0, self.options["md"]["nx"], 0, self.options["md"]["ny"], 0, self.options["md"]["nz"])
+        lmp.create_box("1 box")
+        lmp.create_atoms("1 box")
+
+        #set up potential
+        lmp.pair_style(self.options["md"]["pair_style"])
+        lmp.pair_coeff(self.options["md"]["pair_coeff"])
+        lmp.mass("*", self.options["md"]["mass"])
+
+        #Melt regime for the liquid
+        lmp.velocity("all create", self.thigh, np.random.randint(0, 10000))
+        #add some computes
+        lmp.command("variable         mtemp equal temp")
+        
+        #melting cycle should be done in loops
+        for thmult in np.arange(1.0, 2.0, 0.1):
+            
+            trajfile = os.path.join(self.simfolder, "traj.melt")
+            if os.path.exists(trajfile):
+                os.remove(trajfile)
+
+            self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.thigh, thmult))
+            lmp.fix("1 all nvt temp", self.thigh*thmult, self.thigh*thmult, self.options["md"]["tdamp"])
+            lmp.run(int(self.options["md"]["nsmall"]))
+            lmp.unfix(1)
+            lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
+            lmp.run(0)
+            lmp.undump(2)
+            
+            #we have to check if the structure melted, otherwise throw and error
+            sys = pc.System()
+            sys.read_inputfile("traj.melt")
+            sys.find_neighbors(method="cutoff", cutoff=0)
+            solids = sys.find_solids()
+            self.logger.info("fraction of solids found: %f", solids/lmp.natoms)
+            if (solids/lmp.natoms < 0.05):
+                break
+        
+        #now assign correct temperature
+        lmp.velocity("all create", self.t, np.random.randint(0, 10000))
+        lmp.fix("1 all nvt temp", self.t, self.t, self.options["md"]["tdamp"])
+        trajfile = os.path.join(self.simfolder, "traj.dat")
+        lmp.dump("2 all custom", 100, trajfile,"id type mass x y z vx vy vz")
+
+        lmp.run(int(20000)) 
+        lmp.close()
+        #lmp.command("fix              2 all ave/time 10 10 100 v_mtemp file avg2.dat")
+        
+        """
+        self.process_traj()
+
 
     def process_traj(self):
         """
@@ -153,26 +454,6 @@ class Liquid:
         os.remove(trajfile)
         for file in files:
             os.remove(file)
-
-
-    def gather_average_data(self):
-        """
-        Gather average data
-        """
-        avgfile = os.path.join(self.simfolder, "avg.dat")
-        vol = np.loadtxt(avgfile, usecols=(2,), unpack=True)
-        avgvol = np.mean(vol[-100:])
-        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
-        self.natoms = ncells*self.apc
-        self.rho = self.natoms/avgvol
-        #WARNING: hard coded ufm parameter
-        self.eps = self.t*50.0*kb
-
-        #now also process traj
-        self.process_traj()
-
-
-
 
     def run_integration(self, iteration=1):
         """
@@ -300,7 +581,23 @@ class Liquid:
         f2 = get_ideal_gas_fe(self.t, self.rho, 
             self.natoms, self.options["md"]["mass"], xa=(1-self.c), 
             xb=self.c)
-        self.fe = f2 + f1 - w
+        fe = f2 + f1 - w
+        self.t1 = 0
+        self.t2 = 0
+        self.fref = f1
+        self.fideal = f2
+        self.w = w
+        #compensate for pressure
+        
+        
+        if self.p != 0:
+            term1 = (self.p*1E-4/160.21766208)*((self.avglat**3)/self.apc)
+            term2 = kb*self.t*np.log(self.vprob)/self.natoms
+            fe = fe + term1 + term2
+            self.t1 = term1
+            self.t2 = term2
+        
+        self.fe = fe
         self.ferr = qerr
 
     def submit_report(self):
@@ -312,6 +609,12 @@ class Liquid:
         report["rho"] = float(self.rho)
         report["fe"] = float(self.fe)
         report["fe_err"] = float(self.ferr)
+        report["t1"] = float(self.t1)
+        report["t2"] = float(self.t2)
+        report["fref"] = float(self.fref)
+        report["fideal"] = float(self.fideal)
+        report["w"] = float(self.w)
+        report["avglat"] = float(self.avglat)
 
         reportfile = os.path.join(self.simfolder, "report.yaml")
         with open(reportfile, 'w') as f:
@@ -326,12 +629,7 @@ class Liquid:
         
         #first we need to do an averaging scheme
         #but only if iteration is 1
-
-        if iteration==1:
-            self.run_averaging()
-            #process the traj
-            self.process_traj()
-
+        
         #Now do reversible scaling
         t0 = self.t
         tf = self.options["main"]["temperature"][-1]
@@ -370,7 +668,7 @@ class Liquid:
         lmp.command("mass             * %f"%self.options["md"]["mass"])
 
         #---------------------- Thermostat & Barostat ---------------------------------#
-        lmp.command("fix               f1 all nph aniso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
+        lmp.command("fix               f1 all nph iso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
         lmp.command("fix               f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
         lmp.command("run               ${te}")
         lmp.command("unfix             f1")
@@ -419,9 +717,9 @@ class Liquid:
         
         lmp.close()
 
-    def integrate_reversible_scaling(self, f0, scale_energy=True):
+    def integrate_reversible_scaling(self, scale_energy=False):
         """
         Carry out the reversible scaling operation
         """
-        integrate_rs(self.simfolder, f0, self.t,
+        integrate_rs(self.simfolder, self.fe, self.t,
             nsims=self.options["main"]["nsims"], scale_energy=scale_energy)

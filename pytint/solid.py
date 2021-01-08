@@ -7,7 +7,7 @@ import yaml
 from pytint.integrators import *
 from pylammpsmpi import LammpsLibrary
 import pyscal.core as pc
-
+import logging
 
 class Solid:
     """
@@ -26,6 +26,19 @@ class Solid:
         self.c = c
         self.options = options
         self.simfolder = simfolder
+
+        logfile = os.path.join(self.simfolder, "tint.log")
+        self.prepare_log(logfile)
+
+    def prepare_log(self, file):
+        logger = logging.getLogger(__name__)
+        handler = logging.FileHandler(file)
+        formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+        self.logger = logger
 
     def run_averaging(self):
         """
@@ -50,6 +63,10 @@ class Solid:
 
         lmp.command("mass             * %f"%self.options["md"]["mass"])
 
+        #add some computes
+        lmp.command("variable         mvol equal vol")
+        lmp.command("variable         mpress equal press")
+
         lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
         lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
                                             0, self.p, self.options["md"]["pdamp"]))
@@ -63,8 +80,24 @@ class Solid:
                                             self.p, self.p, self.options["md"]["pdamp"]))
         lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
 
-        lmp.command("fix              2 all print 10 \"$(step) $(press) $(vol) $(temp)\" file avg.dat")
-        lmp.command("run              %d"%int(self.options["md"]["nlarge"]))
+        #this is when the averaging routine starts
+        lmp.command("fix              2 all ave/time 10 10 100 v_mvol v_mpress file avg.dat")
+        
+        laststd = 0.00
+        for i in range(100):
+            lmp.command("run              10000")
+            #now we can check if it converted
+            file = os.path.join(self.simfolder, "avg.dat")
+            quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
+            lx = (quant/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
+            mean = np.mean(lx[-100:])
+            std = np.std(lx[-100:])
+            self.logger.info("At count %d mean lattice constant is %f std is %f"%(i+1, mean, std))
+            if (np.abs(laststd - std) < 0.0002):
+                self.avglat = np.round(mean, decimals=3)
+                self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
+                break
+            laststd = std
 
         #now run for msd
         lmp.command("unfix            1")
@@ -75,24 +108,136 @@ class Solid:
 
         lmp.command("variable         msd equal c_1[4]")
 
-        lmp.command("fix              4 all print 10 \"$(step) ${msd}\" file msd.dat")
-        lmp.command("run              %d"%int(self.options["md"]["nlarge"]))
+        #we need a similar averaging routine here
+        lmp.command("fix              4 all ave/time 10 10 100 v_msd file msd.dat")
+        laststd = 0.00
+        for i in range(100):
+            lmp.command("run              10000")
+            #now we can check if it converted
+            file = os.path.join(self.simfolder, "msd.dat")
+            quant = np.loadtxt(file, usecols=(1,), unpack=True)
+            quant = 3*kb*self.t/quant
+            mean = np.mean(quant[-100])
+            std = np.std(quant[-100:])
+            self.logger.info("At count %d mean k is %f std is %f"%(i+1, mean, std))
+            if (np.abs(laststd - std) < 0.01):
+                self.k = np.round(mean, decimals=2)
+                self.logger.info("finalized sprint constant %f"%(self.k))
+                break
+            laststd = std
+
+
         lmp.close()
 
-    def gather_average_data(self):
-        """
-        Gather average daya
-        """
-        avgfile = os.path.join(self.simfolder, "avg.dat")
-        vol = np.loadtxt(avgfile, usecols=(2,), unpack=True)
-        avgvol = np.mean(vol[-100:])
+        #now some housekeeping
         ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
         self.natoms = ncells*self.apc
 
-        self.avglat = (avgvol/ncells)**(1/3)
-        msdfile = os.path.join(self.simfolder, "msd.dat")
-        msd = np.loadtxt(msdfile, usecols=(1,), unpack=True)
-        self.k = 3*kb*self.t/np.mean(msd[-100:])
+    def run_averaging_pressure(self):
+        """
+        Write averagin script for solid for constant pressure conditions
+        """
+
+        cores = self.options["queue"]["cores"]
+        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
+
+        lmp.command("units            metal")
+        lmp.command("boundary         p p p")
+        lmp.command("atom_style       atomic")
+        lmp.command("timestep         %f"%self.options["md"]["timestep"])
+
+        lmp.command("lattice          %s %f"%(self.l, self.alat))
+        lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
+        lmp.command("create_box       1 box")
+        lmp.command("create_atoms     1 box")
+
+        lmp.command("pair_style       %s"%self.options["md"]["pair_style"])
+        lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
+
+        lmp.command("mass             * %f"%self.options["md"]["mass"])
+
+        #add some computes
+        lmp.command("variable         mvol equal vol")
+        lmp.command("variable         mpress equal press")
+
+        lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
+        lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                            0, self.p, self.options["md"]["pdamp"]))
+        lmp.command("thermo_style     custom step pe press vol etotal temp")
+        lmp.command("thermo           10")
+        lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+        lmp.command("unfix            1")
+
+        lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
+        lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                            self.p, self.p, self.options["md"]["pdamp"]))
+        lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+
+        #this is when the averaging routine starts
+        lmp.command("fix              2 all ave/time 10 10 100 v_mvol v_mpress file avg.dat")
+        lmp.command("fix              px all print 10 \"$(step) $(vol)\" file vfluct.dat")
+
+        laststd = 0.00
+        for i in range(100):
+            lmp.command("run              10000")
+            #now we can check if it converted
+            file = os.path.join(self.simfolder, "avg.dat")
+            quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
+            lx = (quant/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
+            mean = np.mean(lx[-100:])
+            std = np.std(lx[-100:])
+            self.logger.info("At count %d mean lattice constant is %f std is %f"%(i+1, mean, std))
+            if (np.abs(laststd - std) < 0.0002):
+                #this is a converged calculation, we need to get pressure fluctuations
+                vfile = os.path.join(self.simfolder, "vfluct.dat")
+                vinst = np.loadtxt(vfile, usecols=(0,), unpack=True)
+                vinst = np.round(vinst, decimals=0)
+                v, vcount = np.unique(vinst, return_counts=True)
+                vprob = vcount/np.sum(vcount)
+                #sort the values
+                vargs = np.argsort(vprob)[::-1]
+                vol = v[vargs[0]]
+                self.avglat = (vol/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
+                self.avglat = np.round(self.avglat, decimals=3)
+                self.vprob = vprob[0]
+                self.logger.info("finalized lattice constant %f prob %f"%(self.avglat, vprob[0]))
+                break
+
+            laststd = std
+
+        #now run for msd
+        lmp.command("unfix            1")
+        lmp.command("unfix            2")
+
+        lmp.command("fix              3 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
+        lmp.command("compute          1 all msd com yes")
+
+        lmp.command("variable         msd equal c_1[4]")
+
+        #we need a similar averaging routine here
+        lmp.command("fix              4 all ave/time 10 10 100 v_msd file msd.dat")
+        laststd = 0.00
+        for i in range(100):
+            lmp.command("run              10000")
+            #now we can check if it converted
+            file = os.path.join(self.simfolder, "msd.dat")
+            quant = np.loadtxt(file, usecols=(1,), unpack=True)
+            quant = 3*kb*self.t/quant
+            mean = np.mean(quant[-100])
+            std = np.std(quant[-100:])
+            self.logger.info("At count %d mean k is %f std is %f"%(i+1, mean, std))
+            if (np.abs(laststd - std) < 0.01):
+                self.k = np.round(mean, decimals=2)
+                self.logger.info("finalized sprint constant %f"%(self.k))
+                break
+            laststd = std
+
+
+        lmp.close()
+
+        #now some housekeeping
+        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
+        self.natoms = ncells*self.apc   
 
     def run_integration(self, iteration=1):
         """
@@ -115,7 +260,7 @@ class Solid:
         lmp.command("boundary         p p p")
         lmp.command("atom_style       atomic")
 
-        lmp.command("lattice          %s %f"%(self.l, self.alat))
+        lmp.command("lattice          %s %f"%(self.l, self.avglat))
         lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
         lmp.command("create_box       1 box")
         lmp.command("create_atoms     1 box")
@@ -166,6 +311,8 @@ class Solid:
         lmp.command("run               ${ts_run}")
         lmp.command("unfix             f4")
 
+        lmp.command("unfix             f2")
+
         lmp.close()
 
 
@@ -176,6 +323,18 @@ class Solid:
         w, q, qerr = find_w(self.simfolder, nsims=self.options["main"]["nsims"], 
             full=True)
         fe = f1 + w
+        self.fref = f1
+        self.w = w
+        self.t1 = 0
+        self.t2 = 0
+        #compensate for pressure
+        if self.p != 0:
+            term1 = (self.p*1E-4/160.21766208)*((self.avglat**3)/self.apc)
+            term2 = kb*self.t*np.log(self.vprob)/self.natoms
+            fe = fe + term1 + term2
+            self.t1 = term1
+            self.t2 = term2
+
         self.fe = fe
         self.ferr = qerr
 
@@ -190,6 +349,10 @@ class Solid:
         report["k"] = float(self.k)
         report["fe"] = float(self.fe)
         report["fe_err"] = float(self.ferr)
+        report["t1"] = float(self.t1)
+        report["t2"] = float(self.t2)
+        report["fref"] = float(self.fref)
+        report["w"] = float(self.w)
 
         reportfile = os.path.join(self.simfolder, "report.yaml")
         with open(reportfile, 'w') as f:
@@ -226,7 +389,7 @@ class Solid:
         lmp.command("boundary         p p p")
         lmp.command("atom_style       atomic")
 
-        lmp.command("lattice          %s %f"%(self.l, self.alat))
+        lmp.command("lattice          %s %f"%(self.l, self.avglat))
         lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
         lmp.command("create_box       1 box")
         lmp.command("create_atoms     1 box")
@@ -304,9 +467,9 @@ class Solid:
         lmp.close()
 
 
-    def integrate_reversible_scaling(self, f0, scale_energy=True):
+    def integrate_reversible_scaling(self, scale_energy=False):
         """
         Carry out the reversible scaling operation
         """
-        integrate_rs(self.simfolder, f0, self.t,
+        integrate_rs(self.simfolder, self.fe, self.t,
             nsims=self.options["main"]["nsims"], scale_energy=scale_energy)
