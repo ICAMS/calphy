@@ -394,6 +394,7 @@ class Liquid:
             self.natoms, self.options["md"]["mass"], xa=(1-self.c), 
             xb=self.c)
         self.fe = f2 + f1 - w
+        self.ferr = qerr
         self.fref = f1
         self.fideal = f2
         self.w = w
