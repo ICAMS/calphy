@@ -393,7 +393,7 @@ class Liquid:
         f2 = get_ideal_gas_fe(self.t, self.rho, 
             self.natoms, self.options["md"]["mass"], xa=(1-self.c), 
             xb=self.c)
-        fe = f2 + f1 - w
+        self.fe = f2 + f1 - w
         self.fref = f1
         self.fideal = f2
         self.w = w
