@@ -22,7 +22,7 @@ import argparse as ap
 import pytint.lattice as pl
 
 
-def spawn_jobs(inputfile, rs=False, monitor=False):
+def spawn_jobs(inputfile, rs=False, monitor=False, rrs=False):
     """
     Spawn jobs which are submitted to cluster
 
@@ -33,6 +33,9 @@ def spawn_jobs(inputfile, rs=False, monitor=False):
 
     rs : bool, optional
         If True carry out reversible scaling mode. Default False
+    
+    rrs : bool, optional
+        If True, carry out an RS without NEHI calculation. FE will have to be provided through command line
 
     monitor : bool, optional
         If True, monitor jobs. Currently not implemented.
@@ -54,6 +57,12 @@ def spawn_jobs(inputfile, rs=False, monitor=False):
     if rs:
         if len(temp) > 2:
             warnings.warn("More than two values in temperature in reversible scaling mode. Only first and last values will be used")
+
+    if rrs:
+        if not "fe" in options["main"].keys():
+            raise ValueError("rrs needs a provided FE value")
+        else:
+            feref = options["main"]["fe"]
     
     """
     if len(press)>1:
@@ -137,8 +146,13 @@ def spawn_jobs(inputfile, rs=False, monitor=False):
                     ml = lammps_lattice[count]
 
                     #for lattice just provide the number of position
-                    scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f -m %s -j %s"%(inputfile, 
-                        t, p, l, apc, a, c, ml, "rs")
+                    if not rrs:
+                        scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f -m %s -j %s"%(inputfile, 
+                            t, p, l, apc, a, c, ml, "rs")
+                    else:
+                        scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f -m %s -j %s -fe %f "%(inputfile, 
+                            t, p, l, apc, a, c, ml, "rrs", feref)
+
                     scheduler.write_script(scriptpath)
                     _ = scheduler.submit()
 
@@ -215,7 +229,7 @@ def main():
     arg.add_argument("-i", "--input", required=True, type=str,
     help="name of the input file")
     
-    arg.add_argument("-m", "--mode", required=False, choices=["run", "integrate", "rs"],
+    arg.add_argument("-m", "--mode", required=False, choices=["run", "integrate", "rs", "rrs"],
     default="run", help="name of the input file")
 
     args = vars(arg.parse_args())
@@ -224,5 +238,7 @@ def main():
         spawn_jobs(args["input"])
     elif args["mode"] == "rs":
         spawn_jobs(args["input"], rs=True)
+    elif args["mode"] == "rrs":
+        spawn_jobs(args["input"], rs=True, rrs=True)
     else:
         integrate(args["input"]) 

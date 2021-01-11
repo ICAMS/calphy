@@ -21,8 +21,8 @@ def main():
     help="name of the input file")
 
     arg.add_argument("-j", "--job", required=False, type=str, 
-    choices=["integrate", "rs"],
-    default="integrate", help="mode of simulation - integrate or rs")
+    choices=["integrate", "rs", "rrs"],
+    default="integrate", help="mode of simulation - integrate or rs or rrs")
 
     arg.add_argument("-t", "--temperature", required=True, type=float,
     help="temperature for the simulation")
@@ -69,6 +69,9 @@ def main():
     elif args["job"] == "rs":
         integrate = False
         skey = "rs"
+    elif args["job"] == "rrs":
+        integrate = False
+        skey = "rs"
 
     #create an string which should be unique for the job in hand
     #the job should have an extra argument to indicate job time        
@@ -103,10 +106,7 @@ def main():
     os.chdir(simfolder)
 
     if integrate:
-        if args["pressure"] == 0:
-            job.run_averaging()
-        else:
-            job.run_averaging_pressure()
+        job.run_averaging()
         #now run integration loops
         for i in range(options["main"]["nsims"]):
             job.run_integration(iteration=(i+1))
@@ -120,11 +120,14 @@ def main():
         job.run_averaging()
 
         #now find fe for one temp
-        for i in range(options["main"]["nsims"]):
-            job.run_integration(iteration=(i+1))
+        if args["job"] == "rrs":
+            job.fe = args["freenergy"]
+        else:
+            for i in range(options["main"]["nsims"]):
+                job.run_integration(iteration=(i+1))
 
-        job.thermodynamic_integration()
-        job.submit_report()
+            job.thermodynamic_integration()
+            job.submit_report()
 
         #now do rev scale steps
         for i in range(options["main"]["nsims"]):
