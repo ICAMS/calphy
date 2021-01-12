@@ -103,6 +103,21 @@ class Solid:
         lmp.command("unfix            1")
         lmp.command("unfix            2")
 
+        #check for melting
+        #check for melting
+        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+        lmp.command("run               0")
+        lmp.command("undump            2")
+        
+        sys = pc.System()
+        sys.read_inputfile("traj.dat")
+        sys.find_neighbors(method="cutoff", cutoff=0)
+        solids = sys.find_solids()
+        if (solids/lmp.natoms < 0.7):
+            lmp.close()
+            raise RuntimeError("System melted, increase size or reduce temp!")
+
+
         lmp.command("fix              3 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
         lmp.command("compute          1 all msd com yes")
 
@@ -126,6 +141,18 @@ class Solid:
                 break
             laststd = std
 
+        #check for melting
+        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+        lmp.command("run               0")
+        lmp.command("undump            2")
+        
+        sys = pc.System()
+        sys.read_inputfile("traj.dat")
+        sys.find_neighbors(method="cutoff", cutoff=0)
+        solids = sys.find_solids()
+        if (solids/lmp.natoms < 0.7):
+            lmp.close()
+            raise RuntimeError("System melted, increase size or reduce temp!")
 
         lmp.close()
 
