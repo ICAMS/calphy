@@ -176,17 +176,21 @@ def integrate_path(fwdfilename, bkdfilename, usecols=(0, 1, 2), solid=True):
     bdui, bdur, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=usecols)
 
     #now scale with lambda
-    fdui = fdui/flambda
-    bdui = bdui/blambda
+    for i in range(len(fdui)):
+        if flambda[i] !=0:
+            fdui[i] = fdui[i]/flambda[i]
+    for i in range(len(bdui)):
+        if blambda[i] !=0:
+            bdui[i] = bdui[i]/blambda[i]
 
     #THIS IS TEMPORARY
     #UFM ENERGY IS NOT SCALED IN LAMMPS-THIS IS WRONG! BUT UNTIL THEN, WE KEEP THIS
     if not solid:
         for i in range(len(fdur)):
-            if fdur[i] !=0:
+            if flambda[i] !=0:
                 fdur[i] = fdur[i]/flambda[i]
         for i in range(len(bdur)):
-            if bdur[i] !=0:
+            if blambda[i] !=0:
                 bdur[i] = bdur[i]/blambda[i]
 
 
