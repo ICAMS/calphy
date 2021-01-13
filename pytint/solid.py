@@ -205,7 +205,8 @@ class Solid:
         lmp.command("fix_modify        f3 temp Tcm")
 
         lmp.command("variable          step    equal step")
-        lmp.command("variable          dU      equal pe/atoms-f_f2/atoms")
+        lmp.command("variable          dU1      equal pe/atoms")
+        lmp.command("variable          dU2      equal f_f2/atoms")
         lmp.command("variable          lambda  equal f_f2[1]")
 
         lmp.command("variable          te_run  equal %d-1"%self.options["md"]["te"]) # Print correctly on fix print.
@@ -223,13 +224,13 @@ class Solid:
 
         # Forward. 
         lmp.command("run               ${te_run}")
-        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_%d.dat "%iteration)
+        lmp.command("fix               f4 all print 1 \"${dU1} ${dU2} ${lambda}\" screen no file forward_%d.dat "%iteration)
         lmp.command("run               ${ts_run}")
         lmp.command("unfix             f4")
 
         # Backward. 
         lmp.command("run               ${te_run}")
-        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("fix               f4 all print 1 \"${dU1} ${dU2} ${lambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run               ${ts_run}")
         lmp.command("unfix             f4")
 

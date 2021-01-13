@@ -334,7 +334,8 @@ class Liquid:
         ##########################################     Output setup     ########################################
         # Output variables.
         lmp.command("variable        step equal step")
-        lmp.command("variable        dU equal (c_c1-c_c2)/atoms")             # Driving-force obtained from NEHI procedure.
+        lmp.command("variable        dU1 equal c_c1/atoms")             # Driving-force obtained from NEHI procedure.
+        lmp.command("variable        dU2 equal c_c2/atoms")
 
         # Thermo output.
         lmp.command("thermo_style    custom step v_dU")
@@ -352,12 +353,12 @@ class Liquid:
         # Equilibrate the fluid interacting by Sw potential and switch to UF potential (Forward realization).
         lmp.command("run             %d"%self.options["md"]["te"])
 
-        lmp.command("print           \"${dU} ${li}\" file forward_%d.dat"%iteration)
+        lmp.command("print           \"${dU1} ${dU2} ${li}\" file forward_%d.dat"%iteration)
         lmp.command("variable        lambda_sw equal ramp(${li},${lf})")                 # Linear lambda protocol from 1 to 0.
         lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
         lmp.command("variable        lambda_ufm equal ramp(${lf},${li})")                  # Linear lambda protocol from 0 to 1.
         lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
-        lmp.command("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append forward_%d.dat"%iteration)
+        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_sw}\" screen no append forward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
         lmp.command("unfix           f3")
@@ -367,12 +368,12 @@ class Liquid:
         # Equilibrate the fluid interacting by UF potential and switch to sw potential (Backward realization).
         lmp.command("run             %d"%self.options["md"]["te"])
 
-        lmp.command("print           \"${dU} ${lf}\" file backward_%d.dat"%iteration)
+        lmp.command("print           \"${dU1} ${dU2} ${lf}\" file backward_%d.dat"%iteration)
         lmp.command("variable        lambda_sw equal ramp(${lf},${li})")                 # Linear lambda protocol from 0 to 1.
         lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
         lmp.command("variable        lambda_ufm equal ramp(${li},${lf})")                  # Linear lambda protocol from 1 to 0.
         lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
-        lmp.command("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append backward_%d.dat"%iteration)
+        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_sw}\" screen no append backward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
         lmp.command("unfix           f3")
