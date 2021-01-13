@@ -182,8 +182,13 @@ def integrate_path(fwdfilename, bkdfilename, usecols=(0, 1, 2), solid=True):
     #THIS IS TEMPORARY
     #UFM ENERGY IS NOT SCALED IN LAMMPS-THIS IS WRONG! BUT UNTIL THEN, WE KEEP THIS
     if not solid:
-        fdur = fdur/flambda
-        bdur = bdur/blambda
+        for i in range(len(fdur)):
+            if fdur[i] !=0:
+                fdur[i] = fdur[i]/flambda[i]
+        for i in range(len(bdur)):
+            if bdur[i] !=0:
+                bdur[i] = bdur[i]/blambda[i]
+
 
     fdu = fdui + fdur
     bdu = bdui + bdur

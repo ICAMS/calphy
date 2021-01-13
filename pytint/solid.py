@@ -313,6 +313,8 @@ class Solid:
         lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
         lmp.command("mass             * %f"%self.options["md"]["mass"])
 
+        lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")
+
     #---------------------- Thermostat & Barostat ---------------------------------#
         lmp.command("fix               f1 all nph aniso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
         lmp.command("fix               f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
