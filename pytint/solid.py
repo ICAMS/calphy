@@ -244,7 +244,7 @@ class Solid:
             self.natoms, self.options["md"]["mass"], 
             self.avglat, self.k, self.apc)
         w, q, qerr = find_w(self.simfolder, nsims=self.options["main"]["nsims"], 
-            full=True)
+            full=True, solid=True)
         fe = f1 + w
         self.fref = f1
         self.w = w

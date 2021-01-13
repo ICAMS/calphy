@@ -387,7 +387,7 @@ class Liquid:
         Perform thermodynamic integration
         """
         w, q, qerr = find_w(self.simfolder, nsims=self.options["main"]["nsims"], 
-            full=True)  
+            full=True, solid=False)  
         #WARNING: hardcoded UFM parameters           
         f1 = get_uhlenbeck_ford_fe(self.t, 
             self.rho, 50, 1.5)

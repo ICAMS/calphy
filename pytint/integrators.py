@@ -149,7 +149,7 @@ def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, cm_correct
 
     return F_harm
 
-def integrate_path(fwdfilename, bkdfilename, usecols=(0, 1)):
+def integrate_path(fwdfilename, bkdfilename, usecols=(0, 1, 2), solid=True):
     """
     Get a filename with columns du and dlambda and integrate
 
@@ -172,9 +172,22 @@ def integrate_path(fwdfilename, bkdfilename, usecols=(0, 1)):
     q : float
         heat dissipation during switching of system
     """
-    fdu, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=usecols)
-    bdu, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=usecols)
+    fdui, fdur, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=usecols)
+    bdui, bdur, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=usecols)
 
+    #now scale with lambda
+    fdui = fdui/flambda
+    bdui = bdui/blambda
+
+    #THIS IS TEMPORARY
+    #UFM ENERGY IS NOT SCALED IN LAMMPS-THIS IS WRONG! BUT UNTIL THEN, WE KEEP THIS
+    if not solid:
+        fdur = fdur/flambda
+        bdur = bdur/blambda
+
+    fdu = fdui + fdur
+    bdu = bdui + bdur
+    
     fw = np.trapz(fdu, flambda)
     bw = np.trapz(bdu, blambda)
 
@@ -269,7 +282,7 @@ def calculate_fe_mix(temp, fepure, feimpure, concs, natoms=4000):
         fes.append(f)    
     return fes
 
-def find_w(mainfolder, nsims=5, full=False, usecols=(0,1)):
+def find_w(mainfolder, nsims=5, full=False, usecols=(0,1,2), solid=True):
     """
     Integrate the irreversible work and dissipation for independent simulations
 
@@ -306,7 +319,7 @@ def find_w(mainfolder, nsims=5, full=False, usecols=(0,1)):
         fwdfilename = os.path.join(mainfolder,fwdfilestring)
         bkdfilestring = 'backward_%d.dat' % (i+1)
         bkdfilename = os.path.join(mainfolder,bkdfilestring)
-        w, q = integrate_path(fwdfilename, bkdfilename, usecols=usecols)
+        w, q = integrate_path(fwdfilename, bkdfilename, usecols=usecols, solid=solid)
         ws.append(w)
         qs.append(q)
         

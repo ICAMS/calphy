@@ -134,4 +134,4 @@ def main():
             job.reversible_scaling(iteration=(i+1))
         #we do not integrate rev scaling!
         #do it manually from a jupyter notebook or so
-        job.integrate_reversible_scaling()
+        job.integrate_reversible_scaling(scale_energy=True)
