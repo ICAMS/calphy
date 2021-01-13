@@ -1,13 +1,13 @@
 #main options
 main: 
   #temperature of simulation - specify a list
-  temperature: [800]
+  temperature: [900, 1000]
   #pressure - not implemented - always zero now
   pressure: [0]
   # element name
   element: 'Al'
   #lattice - specify from LQD, FCC, HCP, BCC, DIA, SC
-  lattice: [LQD, FCC]
+  lattice: [FCC, LQD]
   #not implemented - only zero now
   concentration: [0, ]
   #number of independent switching to calculate error
@@ -18,34 +18,30 @@ md:
   timestep: 0.001
   #specify pair style and pair coeff here
   pair_style: eam/fs
-  pair_coeff: "* * /home/sarath/Repos/pytint/tests/Al.eam.fs Al"
+  pair_coeff: "* * Al.eam.fs Al"
   #mass of the atom
   mass: 26.98
   #thermostat damping
   tdamp: 0.1
   #barostat damping
   pdamp: 0.1
-  #equilibriation time steps
-  nsmall: 25000
-  #averaging time steps
-  nlarge: 50000
   #unit cell repetitions in x
-  nx: 5
+  nx: 3
   #unit cell repetitions in y
-  ny: 5
+  ny: 3
   #unit cell repetitions in z
-  nz: 5
+  nz: 3
   #equilibriation time step for thermodynamic int
-  te: 50000
+  te: 25000
   #switching time step
-  ts: 100000
+  ts: 25000
   
 queue:
   #scheduler engine - sge, slurm etc
   #def: local
   scheduler: local
   #no of cores  
-  cores: 2
+  cores: 4
   #job name
   #def: tis
   jobname: ti
