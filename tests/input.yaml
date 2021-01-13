@@ -42,7 +42,7 @@ queue:
   #def: local
   scheduler: local
   #no of cores  
-  cores: 4
+  cores: 2
   #job name
   #def: tis
   jobname: ti
