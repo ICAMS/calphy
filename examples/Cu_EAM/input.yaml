@@ -1,17 +1,17 @@
 #main options
 main: 
   #temperature of simulation - specify a list
-  temperature: [1300]
+  temperature: [1300, 1400]
   #pressure - not implemented - always zero now
   pressure: [0]
   # element name
   element: 'Cu'
   #lattice - specify from LQD, FCC, HCP, BCC, DIA, SC
-  lattice: [FCC]
+  lattice: [FCC, LQD]
   #not implemented - only zero now
   concentration: [0, ]
   #number of independent switching to calculate error
-  nsims: 2
+  nsims: 1
 
 md:
   #md timestep
@@ -27,15 +27,15 @@ md:
   #barostat damping
   pdamp: 0.1
   #unit cell repetitions in x
-  nx: 3
+  nx: 4
   #unit cell repetitions in y
-  ny: 3
+  ny: 4
   #unit cell repetitions in z
-  nz: 3
+  nz: 4
   #equilibriation time step for thermodynamic int
-  te: 25000
+  te: 10000
   #switching time step
-  ts: 25000
+  ts: 15000
   
 queue:
   #scheduler engine - sge, slurm etc

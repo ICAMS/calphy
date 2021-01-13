@@ -175,27 +175,30 @@ def integrate_path(fwdfilename, bkdfilename, usecols=(0, 1, 2), solid=True):
     fdui, fdur, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=usecols)
     bdui, bdur, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=usecols)
 
-    #now scale with lambda
-    for i in range(len(fdui)):
-        if flambda[i] !=0:
-            fdui[i] = fdui[i]/flambda[i]
-    for i in range(len(bdui)):
-        if blambda[i] !=0:
-            bdui[i] = bdui[i]/blambda[i]
-
+    #SOLID HAS NO ISSUES - NO SCALING NEEDED
     #THIS IS TEMPORARY
     #UFM ENERGY IS NOT SCALED IN LAMMPS-THIS IS WRONG! BUT UNTIL THEN, WE KEEP THIS
     if not solid:
+
+        #now scale with lambda
+        for i in range(len(fdui)):
+            if flambda[i] !=0:
+                fdui[i] = fdui[i]/flambda[i]
+        for i in range(len(bdui)):
+            if blambda[i] !=0:
+                bdui[i] = bdui[i]/blambda[i]
+
+        """
         for i in range(len(fdur)):
             if flambda[i] !=0:
                 fdur[i] = fdur[i]/flambda[i]
         for i in range(len(bdur)):
             if blambda[i] !=0:
                 bdur[i] = bdur[i]/blambda[i]
+        """
 
-
-    fdu = fdui + fdur
-    bdu = bdui + bdur
+    fdu = fdui - fdur
+    bdu = bdui - bdur
     
     fw = np.trapz(fdu, flambda)
     bw = np.trapz(bdu, blambda)
