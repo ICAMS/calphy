@@ -53,7 +53,7 @@ def read_yamlfile(file):
         "jobname": "ti",
         "walltime": "23:50:00",
         "queuename": None,
-        "memory": "3GB"
+        "memory": "3GB",
         "commands": None,
         "modules": None,
         "options": None
