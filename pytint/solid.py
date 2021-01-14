@@ -81,7 +81,8 @@ class Solid:
         lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
 
         #this is when the averaging routine starts
-        lmp.command("fix              2 all ave/time 10 10 100 v_mvol v_mpress file avg.dat")
+        lmp.command("fix              2 all ave/time %d %d %d v_mvol v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
+            int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
         
         laststd = 0.00
         for i in range(100):
@@ -124,7 +125,8 @@ class Solid:
         lmp.command("variable         msd equal c_1[4]")
 
         #we need a similar averaging routine here
-        lmp.command("fix              4 all ave/time 10 10 100 v_msd file msd.dat")
+        lmp.command("fix              4 all ave/time %d %d %d v_msd file msd.dat"%(int(self.options["md"]["nevery"]),
+            int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
         laststd = 0.00
         for i in range(100):
             lmp.command("run              %d"%int(self.options["md"]["nsmall"]))

@@ -151,7 +151,8 @@ class Liquid:
                                       "iso", self.p, self.p, self.options["md"]["pdamp"])
         lmp.run(int(self.options["md"]["nsmall"])) 
         
-        lmp.command("fix              2 all ave/time 10 10 100 v_mvol v_mpress file avg.dat")
+        lmp.command("fix              2 all ave/time %d %d %d v_mvol v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
+            int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
 
         laststd = 0.00
         for i in range(100):

@@ -36,7 +36,6 @@ def read_yamlfile(file):
         "nsmall": 10000,
         "nevery": 10,
         "nrepeat": 10,
-        "nfreq": 100,
         "mass": None,
         "tdamp": 0.1,
         "pdamp": 0.1,
