@@ -18,10 +18,10 @@ md:
   timestep: 0.001
   #specify pair style and pair coeff here
   pair_style: eam/alloy
-  pair_coeff: "* * tests/Cu01.eam.alloy Cu"
-  nsmall: 10000
+  pair_coeff: "* * examples/Cu_EAM/Cu01.eam.alloy Cu"
+  nsmall: 50
   #mass of the atom
-  mass: 26.98
+  mass: 63.546
   #thermostat damping
   tdamp: 0.1
   #barostat damping
@@ -33,9 +33,9 @@ md:
   #unit cell repetitions in z
   nz: 4
   #equilibriation time step for thermodynamic int
-  te: 10000
+  te: 50
   #switching time step
-  ts: 15000
+  ts: 100
   
 queue:
   #scheduler engine - sge, slurm etc

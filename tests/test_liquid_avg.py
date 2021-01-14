@@ -11,9 +11,7 @@ def test_liquid_averaging():
                     alat=3.766, c=0.0, options=options, simfolder=os.getcwd(),
                     thigh=2000)
     lqd.run_averaging()
-    assert os.path.exists("traj.dat") == True
-
-    lqd.gather_average_data()
+    assert os.path.exists("traj.melt") == True
 
     assert lqd.natoms == 256
     assert np.abs(lqd.rho - 0.075) < 1E-2

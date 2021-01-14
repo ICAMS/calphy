@@ -85,7 +85,7 @@ class Solid:
         
         laststd = 0.00
         for i in range(100):
-            lmp.command("run              10000")
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
             #now we can check if it converted
             file = os.path.join(self.simfolder, "avg.dat")
             quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
@@ -127,7 +127,7 @@ class Solid:
         lmp.command("fix              4 all ave/time 10 10 100 v_msd file msd.dat")
         laststd = 0.00
         for i in range(100):
-            lmp.command("run              10000")
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
             #now we can check if it converted
             file = os.path.join(self.simfolder, "msd.dat")
             quant = np.loadtxt(file, usecols=(1,), unpack=True)

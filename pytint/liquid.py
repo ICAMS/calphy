@@ -155,7 +155,7 @@ class Liquid:
 
         laststd = 0.00
         for i in range(100):
-            lmp.command("run              10000")
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
             #now we can check if it converted
             file = os.path.join(self.simfolder, "avg.dat")
             quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
@@ -232,7 +232,7 @@ class Liquid:
         trajfile = os.path.join(self.simfolder, "traj.dat")
         lmp.dump("2 all custom", 100, trajfile,"id type mass x y z vx vy vz")
 
-        lmp.run(int(20000)) 
+        lmp.run(int(self.options["md"]["nsmall"])) 
         lmp.close()
         #lmp.command("fix              2 all ave/time 10 10 100 v_mtemp file avg2.dat")
         
