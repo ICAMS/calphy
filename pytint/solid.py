@@ -67,18 +67,43 @@ class Solid:
         lmp.command("variable         mvol equal vol")
         lmp.command("variable         mpress equal press")
 
-        lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
-        lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                            0, self.p, self.options["md"]["pdamp"]))
-        lmp.command("thermo_style     custom step pe press vol etotal temp")
-        lmp.command("thermo           10")
-        lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
-        lmp.command("unfix            1")
+        if self.p == 0:
+            #This routine should be followed for zero pressure
+            lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
+            lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                                self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo           10")
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+            lmp.command("unfix            1")
 
-        lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
-        lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                            self.p, self.p, self.options["md"]["pdamp"]))
-        lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+            lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
+            lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                                self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+        else:
+            #Now this routine is for non-zero pressure
+            #one has to equilibriate at a low temperature, but high pressure and then increase temp gradually
+            #start at 0.25 temp, and increase to 0.50, while keeping high pressure
+            lmp.command("velocity         all create %f %d"%(0.25*self.t, np.random.randint(0, 10000)))
+            lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(0.25*self.t, 0.5*self.t, self.options["md"]["tdamp"], 
+                                                self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo           10")
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+            lmp.command("unfix            1")
+
+            #now heat again
+            lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(0.5*self.t, self.t, self.options["md"]["tdamp"], 
+                                                self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+            lmp.command("unfix            1")
+
+            #now run normal cycle
+            lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                                self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+
 
         #this is when the averaging routine starts
         lmp.command("fix              2 all ave/time %d %d %d v_mvol v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
