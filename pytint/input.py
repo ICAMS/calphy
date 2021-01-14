@@ -67,7 +67,7 @@ def read_yamlfile(file):
             for okey in options.keys():
                 if okey in indata.keys():
                     for key, val in indata[okey].items():
-                        options["okey"]["key"] = indata["okey"]["key"] 
+                        options[okey][key] = indata[okey][key] 
     else:
         raise FileNotFoundError('%s input file not found'% file)
 
