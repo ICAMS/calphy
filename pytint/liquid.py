@@ -142,7 +142,7 @@ class Liquid:
             sys.find_neighbors(method="cutoff", cutoff=0)
             solids = sys.find_solids()
             self.logger.info("fraction of solids found: %f", solids/lmp.natoms)
-            if (solids/lmp.natoms < 0.05):
+            if (solids/lmp.natoms < self.options["conv"]["liquid_frac"]):
                 break
                 
         #now assign correct temperature
@@ -155,7 +155,7 @@ class Liquid:
             int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
 
         laststd = 0.00
-        for i in range(100):
+        for i in range(self.options["md"]["ncycles"]):
             lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
             ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
             #now we can check if it converted
@@ -166,7 +166,7 @@ class Liquid:
             mean = np.mean(lx)
             std = np.std(lx)
             self.logger.info("At count %d mean lattice constant is %f std is %f"%(i+1, mean, std))
-            if (np.abs(laststd - std) < 0.0002):
+            if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
                 self.avglat = np.round(mean, decimals=3)
                 self.rho = self.apc/(self.avglat**3)
                 self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
@@ -226,7 +226,7 @@ class Liquid:
             sys.find_neighbors(method="cutoff", cutoff=0)
             solids = sys.find_solids()
             self.logger.info("fraction of solids found: %f", solids/lmp.natoms)
-            if (solids/lmp.natoms < 0.05):
+            if (solids/lmp.natoms < self.options["conv"]["liquid_frac"]):
                 break
         
         #now assign correct temperature

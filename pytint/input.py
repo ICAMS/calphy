@@ -36,6 +36,7 @@ def read_yamlfile(file):
         "nsmall": 10000,
         "nevery": 10,
         "nrepeat": 10,
+        "ncycles": 100,
         "mass": None,
         "tdamp": 0.1,
         "pdamp": 0.1,
@@ -56,6 +57,13 @@ def read_yamlfile(file):
         "commands": None,
         "modules": None,
         "options": None
+    }
+
+    options["conv"] = {
+        "alat_tol": 0.0002,
+        "k_tol": 0.01,
+        "solid_frac": 0.7,
+        "liquid_frac": 0.05
     }
 
 
