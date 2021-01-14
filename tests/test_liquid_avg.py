@@ -7,17 +7,14 @@ import numpy as np
 
 def test_liquid_averaging():
     options = read_yamlfile("tests/input.yaml")
-    lqd = Liquid(t=1000, p=0, l="fcc", apc=4,
-                    alat=4.05, c=0.0, options=options, simfolder=os.getcwd(),
-                    thigh=1500)
+    lqd = Liquid(t=1300, p=0, l="fcc", apc=4,
+                    alat=3.766, c=0.0, options=options, simfolder=os.getcwd(),
+                    thigh=2000)
     lqd.run_averaging()
-    assert os.path.exists("traj.dat") == True
+    assert os.path.exists("traj.melt") == True
 
-    lqd.gather_average_data()
-
-    assert lqd.natoms == 500
-    assert np.abs(lqd.rho - 0.05283928377836297) < 1E-2
-    assert np.abs(lqd.eps - 4.308666631) < 1E-2
+    assert lqd.natoms == 256
+    assert np.abs(lqd.rho - 0.075) < 1E-2
 
     lqd.run_integration(iteration=1)
     assert os.path.exists("forward_1.dat") == True
@@ -32,7 +29,7 @@ def test_liquid_averaging():
     assert os.path.exists("backward_3.dat") == True
 
     lqd.thermodynamic_integration()
-    assert np.abs(lqd.fe - -2.2387655392976304) < 1E-2
+    assert np.abs(lqd.fe - -4.17) < 0.5
 
     lqd.submit_report()
     assert os.path.exists("report.yaml") == True

@@ -1,51 +1,44 @@
+#main options
 main: 
-  temperature: [800]
-  pressure: [0]
-  element: 'Al'
-  lattice: [LQD, FCC]
-  concentration: [0, ]
-  nsims: 3
+  #temperature of simulation - specify a list
+  temperature: [1300, 1400]
+  # element name
+  element: 'Cu'
+  #lattice - specify from LQD, FCC, HCP, BCC, DIA, SC
+  lattice: [FCC, LQD]
+  #number of independent switching to calculate error
+  nsims: 1
 
 md:
-  timestep: 0.004
-  pair_style: eam/fs
-  pair_coeff: "* * tests/Al.eam.fs Al"
-  mass: 26.98
-  tdamp: 0.1
-  pdamp: 0.1
-  nsmall: 1000
-  nlarge: 20
-  nx: 5
-  ny: 5
-  nz: 5
+  #specify pair style and pair coeff here
+  pair_style: eam/alloy
+  pair_coeff: "* * examples/Cu_EAM/Cu01.eam.alloy Cu"
+  nsmall: 50
+  nevery: 1
+  nrepeat: 1
+  nfreq: 1
+  #mass of the atom
+  mass: 63.546
+  #unit cell repetitions in x
+  nx: 4
+  #unit cell repetitions in y
+  ny: 4
+  #unit cell repetitions in z
+  nz: 4
+  #equilibriation time step for thermodynamic int
   te: 50
+  #switching time step
   ts: 100
   
 queue:
   #scheduler engine - sge, slurm etc
   #def: local
   scheduler: local
-  cores: 2
+  #no of cores  
+  cores: 1
   #job name
-  #def: tis
-  jobname: ti
-  #walltime for job
-  #def: 23:59:00
-  walltime: "23:50:00"
-  #name of submission queue
-  #def: shorttime
-  queuename: shorttime
-  #memory to be used for a single job
-  #def: 3GB
-  memory: 3GB
-  #module to be loaded
-  #modules:
-  #  - anaconda/4
   #Commands to run 
   commands:
     # the following two comments are only needed if you run in conda env
     # otherwise can be ignored
-    #- source /home/users/menonsqr/.bashrc
-  #any other extra options
-  #options:
-  # - "-j Y"  
+    - source /home/users/menonsqr/.bashrc

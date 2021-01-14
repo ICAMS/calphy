@@ -142,7 +142,7 @@ class Liquid:
             sys.find_neighbors(method="cutoff", cutoff=0)
             solids = sys.find_solids()
             self.logger.info("fraction of solids found: %f", solids/lmp.natoms)
-            if (solids/lmp.natoms < 0.05):
+            if (solids/lmp.natoms < self.options["conv"]["liquid_frac"]):
                 break
                 
         #now assign correct temperature
@@ -151,19 +151,22 @@ class Liquid:
                                       "iso", self.p, self.p, self.options["md"]["pdamp"])
         lmp.run(int(self.options["md"]["nsmall"])) 
         
-        lmp.command("fix              2 all ave/time 10 10 100 v_mvol v_mpress file avg.dat")
+        lmp.command("fix              2 all ave/time %d %d %d v_mvol v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
+            int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
 
         laststd = 0.00
-        for i in range(100):
-            lmp.command("run              10000")
+        for i in range(self.options["md"]["ncycles"]):
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
+            ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
             #now we can check if it converted
             file = os.path.join(self.simfolder, "avg.dat")
             quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
             lx = (quant/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
-            mean = np.mean(lx[-100:])
-            std = np.std(lx[-100:])
+            lx = lx[-ncount+1:]
+            mean = np.mean(lx)
+            std = np.std(lx)
             self.logger.info("At count %d mean lattice constant is %f std is %f"%(i+1, mean, std))
-            if (np.abs(laststd - std) < 0.0002):
+            if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
                 self.avglat = np.round(mean, decimals=3)
                 self.rho = self.apc/(self.avglat**3)
                 self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
@@ -223,16 +226,16 @@ class Liquid:
             sys.find_neighbors(method="cutoff", cutoff=0)
             solids = sys.find_solids()
             self.logger.info("fraction of solids found: %f", solids/lmp.natoms)
-            if (solids/lmp.natoms < 0.05):
+            if (solids/lmp.natoms < self.options["conv"]["liquid_frac"]):
                 break
         
         #now assign correct temperature
         lmp.velocity("all create", self.t, np.random.randint(0, 10000))
         lmp.fix("1 all nvt temp", self.t, self.t, self.options["md"]["tdamp"])
         trajfile = os.path.join(self.simfolder, "traj.dat")
-        lmp.dump("2 all custom", 100, trajfile,"id type mass x y z vx vy vz")
+        lmp.dump("2 all custom", int(self.options["md"]["nsmall"]), trajfile,"id type mass x y z vx vy vz")
 
-        lmp.run(int(20000)) 
+        lmp.run(int(self.options["md"]["nsmall"])) 
         lmp.close()
         #lmp.command("fix              2 all ave/time 10 10 100 v_mtemp file avg2.dat")
         
@@ -334,10 +337,11 @@ class Liquid:
         ##########################################     Output setup     ########################################
         # Output variables.
         lmp.command("variable        step equal step")
-        lmp.command("variable        dU equal (c_c1-c_c2)/atoms")             # Driving-force obtained from NEHI procedure.
+        lmp.command("variable        dU1 equal c_c1/atoms")             # Driving-force obtained from NEHI procedure.
+        lmp.command("variable        dU2 equal c_c2/atoms")
 
         # Thermo output.
-        lmp.command("thermo_style    custom step v_dU")
+        lmp.command("thermo_style    custom step v_dU1 v_dU2")
         lmp.command("thermo          1000")
         #------------------------------------------------------------------------------------------------------#
 
@@ -352,12 +356,12 @@ class Liquid:
         # Equilibrate the fluid interacting by Sw potential and switch to UF potential (Forward realization).
         lmp.command("run             %d"%self.options["md"]["te"])
 
-        lmp.command("print           \"${dU} ${li}\" file forward_%d.dat"%iteration)
+        lmp.command("print           \"${dU1} ${dU2} ${li}\" file forward_%d.dat"%iteration)
         lmp.command("variable        lambda_sw equal ramp(${li},${lf})")                 # Linear lambda protocol from 1 to 0.
         lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
         lmp.command("variable        lambda_ufm equal ramp(${lf},${li})")                  # Linear lambda protocol from 0 to 1.
         lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
-        lmp.command("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append forward_%d.dat"%iteration)
+        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_sw}\" screen no append forward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
         lmp.command("unfix           f3")
@@ -367,12 +371,12 @@ class Liquid:
         # Equilibrate the fluid interacting by UF potential and switch to sw potential (Backward realization).
         lmp.command("run             %d"%self.options["md"]["te"])
 
-        lmp.command("print           \"${dU} ${lf}\" file backward_%d.dat"%iteration)
+        lmp.command("print           \"${dU1} ${dU2} ${lf}\" file backward_%d.dat"%iteration)
         lmp.command("variable        lambda_sw equal ramp(${lf},${li})")                 # Linear lambda protocol from 0 to 1.
         lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
         lmp.command("variable        lambda_ufm equal ramp(${li},${lf})")                  # Linear lambda protocol from 1 to 0.
         lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
-        lmp.command("fix             f5 all print 1 \"${dU} ${lambda_sw}\" screen no append backward_%d.dat"%iteration)
+        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_sw}\" screen no append backward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
         lmp.command("unfix           f3")
@@ -386,7 +390,7 @@ class Liquid:
         Perform thermodynamic integration
         """
         w, q, qerr = find_w(self.simfolder, nsims=self.options["main"]["nsims"], 
-            full=True)  
+            full=True, solid=False)  
         #WARNING: hardcoded UFM parameters           
         f1 = get_uhlenbeck_ford_fe(self.t, 
             self.rho, 50, 1.5)

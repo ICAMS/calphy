@@ -81,19 +81,22 @@ class Solid:
         lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
 
         #this is when the averaging routine starts
-        lmp.command("fix              2 all ave/time 10 10 100 v_mvol v_mpress file avg.dat")
+        lmp.command("fix              2 all ave/time %d %d %d v_mvol v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
+            int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
         
         laststd = 0.00
-        for i in range(100):
-            lmp.command("run              10000")
+        for i in range(int(self.options["md"]["ncycles"])):
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
+            ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
             #now we can check if it converted
             file = os.path.join(self.simfolder, "avg.dat")
             quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
             lx = (quant/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
-            mean = np.mean(lx[-100:])
-            std = np.std(lx[-100:])
+            lx = lx[-ncount+1:]
+            mean = np.mean(lx)
+            std = np.std(lx)
             self.logger.info("At count %d mean lattice constant is %f std is %f"%(i+1, mean, std))
-            if (np.abs(laststd - std) < 0.0002):
+            if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
                 self.avglat = np.round(mean, decimals=3)
                 self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
                 break
@@ -113,7 +116,7 @@ class Solid:
         sys.read_inputfile("traj.dat")
         sys.find_neighbors(method="cutoff", cutoff=0)
         solids = sys.find_solids()
-        if (solids/lmp.natoms < 0.7):
+        if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
             lmp.close()
             raise RuntimeError("System melted, increase size or reduce temp!")
 
@@ -124,18 +127,21 @@ class Solid:
         lmp.command("variable         msd equal c_1[4]")
 
         #we need a similar averaging routine here
-        lmp.command("fix              4 all ave/time 10 10 100 v_msd file msd.dat")
+        lmp.command("fix              4 all ave/time %d %d %d v_msd file msd.dat"%(int(self.options["md"]["nevery"]),
+            int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
         laststd = 0.00
-        for i in range(100):
-            lmp.command("run              10000")
+        for i in range(self.options["md"]["ncycles"]):
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
+            ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
             #now we can check if it converted
             file = os.path.join(self.simfolder, "msd.dat")
-            quant = np.loadtxt(file, usecols=(1,), unpack=True)
+            quant = np.loadtxt(file, usecols=(1,), unpack=True)[-ncount+1:]
             quant = 3*kb*self.t/quant
-            mean = np.mean(quant[-100])
-            std = np.std(quant[-100:])
+            #self.logger.info(quant)
+            mean = np.mean(quant)
+            std = np.std(quant)
             self.logger.info("At count %d mean k is %f std is %f"%(i+1, mean, std))
-            if (np.abs(laststd - std) < 0.01):
+            if (np.abs(laststd - std) < self.options["conv"]["k_tol"]):
                 self.k = np.round(mean, decimals=2)
                 self.logger.info("finalized sprint constant %f"%(self.k))
                 break
@@ -150,7 +156,7 @@ class Solid:
         sys.read_inputfile("traj.dat")
         sys.find_neighbors(method="cutoff", cutoff=0)
         solids = sys.find_solids()
-        if (solids/lmp.natoms < 0.7):
+        if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
             lmp.close()
             raise RuntimeError("System melted, increase size or reduce temp!")
 
@@ -205,7 +211,8 @@ class Solid:
         lmp.command("fix_modify        f3 temp Tcm")
 
         lmp.command("variable          step    equal step")
-        lmp.command("variable          dU      equal pe/atoms-f_f2/atoms")
+        lmp.command("variable          dU1      equal pe/atoms")
+        lmp.command("variable          dU2      equal f_f2/atoms")
         lmp.command("variable          lambda  equal f_f2[1]")
 
         lmp.command("variable          te_run  equal %d-1"%self.options["md"]["te"]) # Print correctly on fix print.
@@ -223,13 +230,13 @@ class Solid:
 
         # Forward. 
         lmp.command("run               ${te_run}")
-        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_%d.dat "%iteration)
+        lmp.command("fix               f4 all print 1 \"${dU1} ${dU2} ${lambda}\" screen no file forward_%d.dat "%iteration)
         lmp.command("run               ${ts_run}")
         lmp.command("unfix             f4")
 
         # Backward. 
         lmp.command("run               ${te_run}")
-        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("fix               f4 all print 1 \"${dU1} ${dU2} ${lambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run               ${ts_run}")
         lmp.command("unfix             f4")
 
@@ -243,7 +250,7 @@ class Solid:
             self.natoms, self.options["md"]["mass"], 
             self.avglat, self.k, self.apc)
         w, q, qerr = find_w(self.simfolder, nsims=self.options["main"]["nsims"], 
-            full=True)
+            full=True, solid=True)
         fe = f1 + w
         self.fref = f1
         self.w = w
@@ -311,6 +318,8 @@ class Solid:
         lmp.command("pair_style       %s"%self.options["md"]["pair_style"])
         lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
         lmp.command("mass             * %f"%self.options["md"]["mass"])
+
+        lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")
 
     #---------------------- Thermostat & Barostat ---------------------------------#
         lmp.command("fix               f1 all nph aniso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
