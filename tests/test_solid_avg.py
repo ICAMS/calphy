@@ -30,7 +30,7 @@ def test_solid_averaging():
     assert os.path.exists("backward_3.dat") == True
 
     sol.thermodynamic_integration()
-    assert np.abs(sol.fe - -4.00) < 1E-1
+    assert np.abs(sol.fe - -4.00) < 0.5
 
     sol.submit_report()
     assert os.path.exists("report.yaml") == True
