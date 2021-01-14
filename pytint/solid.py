@@ -87,12 +87,14 @@ class Solid:
         laststd = 0.00
         for i in range(100):
             lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
+            ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
             #now we can check if it converted
             file = os.path.join(self.simfolder, "avg.dat")
             quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
             lx = (quant/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
-            mean = np.mean(lx[-100:])
-            std = np.std(lx[-100:])
+            lx = lx[-ncount+1:]
+            mean = np.mean(lx)
+            std = np.std(lx)
             self.logger.info("At count %d mean lattice constant is %f std is %f"%(i+1, mean, std))
             if (np.abs(laststd - std) < 0.0002):
                 self.avglat = np.round(mean, decimals=3)
@@ -130,12 +132,14 @@ class Solid:
         laststd = 0.00
         for i in range(100):
             lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
+            ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
             #now we can check if it converted
             file = os.path.join(self.simfolder, "msd.dat")
-            quant = np.loadtxt(file, usecols=(1,), unpack=True)
+            quant = np.loadtxt(file, usecols=(1,), unpack=True)[-ncount+1:]
             quant = 3*kb*self.t/quant
-            mean = np.mean(quant[-100])
-            std = np.std(quant[-100:])
+            #self.logger.info(quant)
+            mean = np.mean(quant)
+            std = np.std(quant)
             self.logger.info("At count %d mean k is %f std is %f"%(i+1, mean, std))
             if (np.abs(laststd - std) < 0.01):
                 self.k = np.round(mean, decimals=2)

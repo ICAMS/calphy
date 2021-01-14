@@ -29,7 +29,7 @@ def test_liquid_averaging():
     assert os.path.exists("backward_3.dat") == True
 
     lqd.thermodynamic_integration()
-    assert np.abs(lqd.fe - -3.996) < 1E-2
+    assert np.abs(lqd.fe - -4.17) < 1E-2
 
     lqd.submit_report()
     assert os.path.exists("report.yaml") == True
