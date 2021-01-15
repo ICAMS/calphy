@@ -1,5 +1,7 @@
 """
-Contains methods for solid
+Contains methods for Solid thermodynamic integration and
+reversible scaling.
+
 """
 
 import numpy as np
