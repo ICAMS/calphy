@@ -276,26 +276,45 @@ class Solid:
             self.avglat, self.k, self.apc)
         w, q, qerr = find_w(self.simfolder, nsims=self.options["main"]["nsims"], 
             full=True, solid=True)
-        fe = f1 + w
+        
         self.fref = f1
         self.w = w
-
-        self.fe = fe
         self.ferr = qerr
+
+        if self.p != 0:
+            #add pressure contribution
+            p = self.p/(10000*160.21766208)
+            v = (self.avglat**3)/self.apc
+            self.pv = p*v
+        else:
+            self.pv = 0 
+
+        self.fe = self.fref + self.w + self.pv
 
 
     def submit_report(self):
+
         report = {}
-        report["temperature"] = int(self.t)
-        report["pressure"] = float(self.p)
-        report["lattice"] = str(self.l)
-        report["concentration"] = float(self.c)
-        report["avglat"] = float(self.avglat)
-        report["k"] = float(self.k)
-        report["fe"] = float(self.fe)
-        report["fe_err"] = float(self.ferr)
-        report["fref"] = float(self.fref)
-        report["w"] = float(self.w)
+
+        #input quantities
+        report["input"] = {}
+        report["input"]["temperature"] = int(self.t)
+        report["input"]["pressure"] = float(self.p)
+        report["input"]["lattice"] = str(self.l)
+        report["input"]["concentration"] = float(self.c)
+
+        #average quantities
+        report["average"] = {}
+        report["average"]["lattice_constant"] = float(self.avglat)
+        report["average"]["spring_constant"] = float(self.k)
+        
+        #results
+        report["results"] = {}
+        report["results"]["free_energy"] = float(self.fe)
+        report["results"]["error"] = float(self.ferr)
+        report["results"]["reference_system"] = float(self.fref)
+        report["results"]["work"] = float(self.w)
+        report["results"]["pv"] = float(self.pv)
 
         reportfile = os.path.join(self.simfolder, "report.yaml")
         with open(reportfile, 'w') as f:
