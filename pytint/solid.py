@@ -636,6 +636,7 @@ class Solid:
         #we need to similar to liquid here
         lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pi, 
             pf, self.options["md"]["pdamp"]))
+        lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
         lmp.command("fix               f4 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
         lmp.command("run               ${ts}")
@@ -658,12 +659,14 @@ class Solid:
         
         lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
             pf, self.options["md"]["pdamp"]))
+        lmp.command("fix_modify        f1 temp tcm")
         lmp.command("run               ${te}")
         lmp.command("unfix             f1")
 
         lmp.command("variable          lambda equal ramp(${lf},${li})")
         lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
             pi, self.options["md"]["pdamp"]))
+        lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
         lmp.command("fix               f4 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run               ${ts}")
