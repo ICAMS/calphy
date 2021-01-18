@@ -13,13 +13,62 @@ import logging
 
 class Solid:
     """
-    Solid class
+    Solid method class
+
+    Parameters
+    ----------
+    t : float
+        Temperature for the calculation
+        Unit: K
+
+    p : float
+        pressure for the calculation
+        Unit: bar
+
+    l : string
+        lattice to be used for the calculation
+
+    apc : int
+        number of atoms in a single unit cell
+    
+    alat : float
+        lattice constant
+
+    options : dict
+        dict of input options
+
+    simfolder : string
+        base folder for running calculations
+
+    Attributes
+    ----------
+    t : float
+        temperature
+
+    p : float
+        pressure
+    
+    l : string
+        lattice
+
+    apc : int
+        number of atoms in unit cell
+
+    alat : float
+        lattice constant
+
+    c : float
+        concentration
+
+    options : dict
+        dict containing options
+
+    simfolder : string
+        main simulation directory
+
     """
     def __init__(self, t=None, p=None, l=None, apc=None,
                     alat=None, c=None, options=None, simfolder=None):
-        """
-        Set up class
-        """
         self.t = t
         self.p = p
         self.l = l
@@ -30,9 +79,10 @@ class Solid:
         self.simfolder = simfolder
 
         logfile = os.path.join(self.simfolder, "tint.log")
-        self.prepare_log(logfile)
+        self._prepare_log(logfile)
 
-    def prepare_log(self, file):
+    def _prepare_log(self, file):
+        #prepare log file
         logger = logging.getLogger(__name__)
         handler = logging.FileHandler(file)
         formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
@@ -44,9 +94,16 @@ class Solid:
 
     def run_averaging(self):
         """
-        Write averagin script for solid
-        """
+        Run averaging routine
 
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
         cores = self.options["queue"]["cores"]
         lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
 
@@ -196,7 +253,16 @@ class Solid:
 
     def run_integration(self, iteration=1):
         """
-        Write TI integrate script
+        Run integration routine
+
+        Parameters
+        ----------
+        iteration : int, optional
+            iteration to run, default 1
+
+        Returns
+        -------
+        None
         """
         cores = self.options["queue"]["cores"]
         lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
@@ -273,6 +339,17 @@ class Solid:
 
 
     def thermodynamic_integration(self):
+        """
+        Calculate free energy
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
         f1 = get_einstein_crystal_fe(self.t, 
             self.natoms, self.options["md"]["mass"], 
             self.avglat, self.k, self.apc)
@@ -295,7 +372,17 @@ class Solid:
 
 
     def submit_report(self):
+        """
+        Submit final report containing results
 
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
         report = {}
 
         #input quantities
@@ -325,7 +412,16 @@ class Solid:
 
     def reversible_scaling(self, iteration=1):
         """
-        Write TI integrate script
+        Perform reversible scaling calculation
+
+        Parameters
+        ----------
+        iteration : int, optional
+            iteration of the calculation. Default 1
+
+        Returns
+        -------
+        None
         """
         #rev scale needs tstart and tend; here self.t will be start
         #tend will be the final temp
