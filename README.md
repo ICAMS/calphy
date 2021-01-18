@@ -4,18 +4,22 @@ Python library for free energy calculations using thermodynamic integration
 
 ### Installing LAMMPS
 
-pytint needs a custom version of lammps compiled as a library. A custom version with fix adapt implemented for eam, snap, pace and sw potentials is available [here](https://git.noc.ruhr-uni-bochum.de/sarath/lammps-ace).
+`pytint` works with the standard version of LAMMPS. Currently supported pair styles are `pace`(works with [lammps-ace](https://git.noc.ruhr-uni-bochum.de/atomicclusterexpansion/lammps-ace)) and `eam` (with standard LAMMPS). If you want use other pair styles such as `snap` or `sw`, please [contact](mailto:sarath.menon@rub.de).
 
-It can be compiled by-
+`pytint` needs LAMMPS compiled as a library with Python support. It can be done by the following instructions-
+
 ```
+cd lammps
 mkdir build_lib
 cd build_lib
 cmake -D BUILD_LIB=ON -D BUILD_SHARED_LIBS=ON -D BUILD_MPI=ON -D PKG_MANYBODY=ON -D PKG_USER-MISC=ON -D PKG_USER-PACE=ON ../cmake
 make # -j${NUM_CPUS}
-cp liblammps${SHLIB_EXT}* ../src  # For compatibility with the original make system.
+cp liblammps${SHLIB_EXT}* ../src
 cd ../src
 make install-python 
 ```
+
+The `include` files and compiled files should be available in the paths. A full set of instructions can be found [here](https://lammps.sandia.gov/doc/Python_install.html).
 
 ### Installing `pytint`
 
