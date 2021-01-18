@@ -397,29 +397,46 @@ class Liquid:
         f2 = get_ideal_gas_fe(self.t, self.rho, 
             self.natoms, self.options["md"]["mass"], xa=(1-self.c), 
             xb=self.c)
-        self.fe = f2 + f1 - w
+        
         self.ferr = qerr
         self.fref = f1
         self.fideal = f2
         self.w = w
-        #compensate for pressure
-        """        
-        term1 = (self.p*1E-4/160.21766208)*((self.avglat**3)/self.apc)
-        """
+
+        if self.p != 0:
+            #add pressure contribution
+            p = self.p/(10000*160.21766208)
+            v = (self.avglat**3)/self.apc
+            self.pv = p*v
+        else:
+            self.pv = 0
+
+        self.fe = self.fideal + self.fref - self.w + self.pv
+
 
     def submit_report(self):
+
         report = {}
-        report["temperature"] = int(self.t)
-        report["pressure"] = float(self.p)
-        report["lattice"] = str(self.l)
-        report["concentration"] = float(self.c)
-        report["rho"] = float(self.rho)
-        report["fe"] = float(self.fe)
-        report["fe_err"] = float(self.ferr)
-        report["fref"] = float(self.fref)
-        report["fideal"] = float(self.fideal)
-        report["w"] = float(self.w)
-        report["avglat"] = float(self.avglat)
+
+        #input quantities
+        report["input"] = {}
+        report["input"]["temperature"] = int(self.t)
+        report["input"]["pressure"] = float(self.p)
+        report["input"]["lattice"] = str(self.l)
+        report["input"]["concentration"] = float(self.c)
+
+        #average quantities
+        report["average"] = {}
+        report["average"]["lattice_constant"] = float(self.avglat)
+        report["average"]["density"] = float(self.rho)
+        
+        #results
+        report["results"] = {}
+        report["results"]["free_energy"] = float(self.fe)
+        report["results"]["error"] = float(self.ferr)
+        report["results"]["reference_system"] = float(self.fref) + float(self.fideal)
+        report["results"]["work"] = float(self.w)
+        report["results"]["pv"] = float(self.pv)
 
         reportfile = os.path.join(self.simfolder, "report.yaml")
         with open(reportfile, 'w') as f:
