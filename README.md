@@ -23,25 +23,59 @@ The `include` files and compiled files should be available in the paths. A full 
 
 ### Installing `pytint`
 
-Requirements for `pytint` is given in `requirements.txt`.
+#### Install dependencies
+
+The following packages need to be installed. 
+
+- numpy (`conda install -c conda-forge numpy`)
+- scipy (`conda install -c conda-forge scipy`)
+- pyyaml (`conda install -c conda-forge pyyaml`)
+- mendeleev (`conda install -c conda-forge mendeleev`)
+- pylammpsmpi (`conda install -c conda-forge pylammpsmpi`)
+- pyscal (`conda install -c conda-forge pyscal`)
+
+### Install `pytint`
 
 After installing the requirements, `pytint` can be installed by,
 
 ```
+git clone https://git.noc.ruhr-uni-bochum.de/atomicclusterexpansion/pytint.git
+cd pytint
 python setup.py install
 ```
 
-### Running a calculation
+## Building the documentation
 
-A commented input file can be found in `example/input.yaml`.
+```
+cd pytint/docs
+pip install -r requirements.txt
+make html
+```
 
-The cli has a help command `tint --help`.
+The files will be in `pytint/docs/build/html`.
 
-To run a calculation:
+
+## Running a calculation
+
+`pytint` can be run as both a Python library and as a command line tool. The recommended way to use `pytint` is through the command line. After installation, `pytint` can be accessed from the terminal using,
+
+```
+tint --help
+```
+
+The main option one needs to specify is the `--input` or `-i`. This keyword species the location of the input file. The format of the inputfile is discussed in detail [here](inputfile.md).
 
 ```
 tint -i input.yaml
 ```
+
+Such a command will read the input file and start NEHI calculations **for each temperature** mentioned in the input file. Alternatively, one can use the `--mode` option to launch a reversible scaling calculation.
+
+```
+tint -i input.yaml -m rs
+```
+
+In this case, **one** NEHI calculation is done for the first temperature mentioned in the input file, and then a reversible scaling calculation is done to extend the free energy up to the last temperature specified in the input file. 
 
 ### Publications
 
