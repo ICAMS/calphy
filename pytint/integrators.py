@@ -448,7 +448,8 @@ def find_fe(p, x):
     return pressure, free_energy
 
 
-def integrate_rs(simfolder, f0, t, nsims=5, scale_energy=False):
+def integrate_rs(simfolder, f0, t, nsims=5, scale_energy=False, 
+    correction=True, natoms=None):
     """
     Carry out the reversible scaling integration
 
@@ -490,10 +491,17 @@ def integrate_rs(simfolder, f0, t, nsims=5, scale_energy=False):
         wb = cumtrapz(bdx[::-1], blambda[::-1],initial=0)
         w = (wf + wb) / (2*flambda)
         ws.append(w)
- 
+    
+    if correction:
+        cterm = kb*t*np.log(2*np.pi*natoms)/(2*natoms)
+    else:
+        cterm = 0
+        
     wmean = np.mean(ws, axis=0)
     werr = np.std(ws, axis=0)
     temp = t/flambda
-    f = f0/flambda + 1.5*kb*temp*np.log(flambda) + wmean
+
+    f = f0/flambda - cterm/flambda + 1.5*kb*temp*np.log(flambda) + wmean
+    
     outfile = os.path.join(simfolder, "reversible_scaling.dat")
     np.savetxt(outfile, np.column_stack((temp, f, werr)))
