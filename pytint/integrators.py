@@ -449,7 +449,7 @@ def find_fe(p, x):
 
 
 def integrate_rs(simfolder, f0, t, nsims=5, scale_energy=False, 
-    correction=True, natoms=None):
+    correction=True, natoms=1):
     """
     Carry out the reversible scaling integration
 
