@@ -545,5 +545,5 @@ class Liquid:
         """
         integrate_rs(self.simfolder, self.fe, self.t,
             nsims=self.options["main"]["nsims"], 
-            scale_energy=scale_energy, correction=True,
+            scale_energy=scale_energy, correction=False,
             natoms=self.natoms)
