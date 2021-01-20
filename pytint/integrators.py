@@ -502,6 +502,7 @@ def integrate_rs(simfolder, f0, t, nsims=5, scale_energy=False,
     temp = t/flambda
 
     f = (f0-cterm)/flambda + 1.5*kb*temp*np.log(flambda) + wmean
-    
+    warnings.warn("Correcting free energy: org: %f, corr: %f"%(f0, cterm))
+
     outfile = os.path.join(simfolder, "reversible_scaling.dat")
     np.savetxt(outfile, np.column_stack((temp, f, werr)))
