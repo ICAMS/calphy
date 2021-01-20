@@ -69,7 +69,8 @@ def get_ideal_gas_fe(temp, rho, natoms, mass, xa=1.0, xb=0.0):
         tb = 0
 
 
-    return prefactor*(ta + tb + (1/(2*natoms))*np.log(2*np.pi*natoms))
+    #return prefactor*(ta + tb + (1/(2*natoms))*np.log(2*np.pi*natoms))
+    return prefactor*(ta + tb )
 
 
 def get_uhlenbeck_ford_fe(temp, rho, p, sigma):
@@ -449,7 +450,7 @@ def find_fe(p, x):
 
 
 def integrate_rs(simfolder, f0, t, nsims=5, scale_energy=False, 
-    correction=False, natoms=None, return_values=False):
+    return_values=False):
     """
     Carry out the reversible scaling integration
 
@@ -492,17 +493,12 @@ def integrate_rs(simfolder, f0, t, nsims=5, scale_energy=False,
         w = (wf + wb) / (2*flambda)
         ws.append(w)
     
-    if correction:
-        cterm = kb*t*np.log(2*np.pi*natoms)/(2*natoms)
-    else:
-        cterm = 0
 
     wmean = np.mean(ws, axis=0)
     werr = np.std(ws, axis=0)
     temp = t/flambda
 
-    f = (f0-cterm)/flambda + 1.5*kb*temp*np.log(flambda) + wmean
-    warnings.warn("Correcting free energy: org: %f, corr: %f"%(f0, cterm))
+    f = f0/flambda + 1.5*kb*temp*np.log(flambda) + wmean
 
     if not return_values:
         outfile = os.path.join(simfolder, "reversible_scaling.dat")
