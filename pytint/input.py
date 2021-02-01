@@ -106,7 +106,8 @@ def read_yamlfile(file):
 
     options["element"] = check_and_convert_to_list(indata["element"])
     options["mass"] = check_and_convert_to_list(indata["mass"])
-    if not len(options["element"]) != len(options["mass"]):
+
+    if not len(options["element"]) == len(options["mass"]):
         raise ValueError("length of elements and mass should be same!")
     options["nelements"] = len(options["element"])
 
