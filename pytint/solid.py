@@ -412,7 +412,7 @@ class Solid:
 
     def reversible_scaling(self, iteration=1):
         """
-        Perform reversible scaling calculation
+        Perform reversible scaling calculation in NPT
 
         Parameters
         ----------
@@ -425,11 +425,15 @@ class Solid:
         """
         #rev scale needs tstart and tend; here self.t will be start
         #tend will be the final temp
+        # solid cannot go directly to nph/langevin
+        # pressure needs to be scaled up from initial structure- then temperature
         
         t0 = self.t
         tf = self.options["main"]["temperature"][-1]
         li = 1
         lf = t0/tf
+        pi = self.p
+        pf = lf*pi
 
         cores = self.options["queue"]["cores"]
         lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
@@ -461,6 +465,16 @@ class Solid:
         lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
         lmp.command("mass             * %f"%self.options["md"]["mass"])
 
+        ##here we do the pressure routine
+        lmp.command("velocity          all create 100 ${rand} mom yes rot yes dist gaussian")
+        lmp.command("fix               f1 all nph aniso %f %f %f"%(pi, pi, self.options["md"]["pdamp"]))
+        lmp.command("run               %d"%int(self.options["md"]["nsmall"]))
+        lmp.command("fix               f2 all langevin 100 ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+        lmp.command("run               %d"%int(self.options["md"]["nsmall"]))
+        #now unfix
+        lmp.command("unfix             f1")
+        lmp.command("unfix             f2")
+
         lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")
 
     #---------------------- Thermostat & Barostat ---------------------------------#
@@ -486,7 +500,7 @@ class Solid:
         lmp.command("variable          dU      equal c_thermo_pe/atoms")
         lmp.command("variable          te_run  equal ${te}-1")
         lmp.command("variable          ts_run  equal ${ts}+1")
-        lmp.command("thermo_style      custom step pe c_tcm")
+        lmp.command("thermo_style      custom step pe c_tcm press vol")
         lmp.command("timestep          %f"%self.options["md"]["timestep"])
         lmp.command("thermo            10000")
         
@@ -495,15 +509,21 @@ class Solid:
         lmp.command("variable          i loop %d"%self.options["main"]["nsims"])
 
         lmp.command("run               ${te}")
+        lmp.command("unfix             f1")
+
+
         lmp.command("variable          lambda equal ramp(${li},${lf})")
 
         #we need to similar to liquid here
-
+        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pi, 
+            pf, self.options["md"]["pdamp"]))
+        lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
-        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("fix               f4 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
         lmp.command("run               ${ts}")
         lmp.command("unfix             f3")
         lmp.command("unfix             f4")
+        lmp.command("unfix             f1")
 
         #check for melting
         lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
@@ -517,14 +537,23 @@ class Solid:
         if (solids/lmp.natoms < 0.7):
             lmp.close()
             raise RuntimeError("System melted, increase size or reduce scaling!")
-
+        
+        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
+            pf, self.options["md"]["pdamp"]))
+        lmp.command("fix_modify        f1 temp tcm")
         lmp.command("run               ${te}")
+        lmp.command("unfix             f1")
+
         lmp.command("variable          lambda equal ramp(${lf},${li})")
+        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
+            pi, self.options["md"]["pdamp"]))
+        lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
-        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("fix               f4 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run               ${ts}")
         lmp.command("unfix             f3")
         lmp.command("unfix             f4")
+        lmp.command("unfix             f1")
         
         lmp.close()
 
@@ -533,5 +562,5 @@ class Solid:
         """
         Carry out the reversible scaling operation
         """
-        integrate_rs(self.simfolder, self.fe, self.t,
+        integrate_rs(self.simfolder, self.fe, self.t, self.natoms, p=self.p,
             nsims=self.options["main"]["nsims"], scale_energy=scale_energy)

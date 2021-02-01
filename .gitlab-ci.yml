@@ -1,0 +1,23 @@
+stages:
+  - install
+  - test
+
+install:
+  stage: install
+  tags:
+    - python
+  script:
+  - conda env list
+  - conda remove --name pytint_test --all
+  - conda config --add channels conda-forge
+  - conda create --name pytint_test python=3.7 pytest numpy scipy pyyaml mendeleev lammps mpi4py openmpi pylammpsmpi pyscal pytest --force
+  - conda env list
+
+test:
+  stage: test
+  tags:
+    - python
+  script:
+  - source activate pytint_test
+  - python setup.py install
+  - pytest tests/

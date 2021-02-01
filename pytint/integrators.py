@@ -449,8 +449,7 @@ def find_fe(p, x):
     return pressure, free_energy
 
 
-def integrate_rs(simfolder, f0, t, nsims=5, scale_energy=False, 
-    return_values=False):
+def integrate_rs(simfolder, f0, t, natoms, p=0, nsims=5, scale_energy=False):
     """
     Carry out the reversible scaling integration
 
@@ -482,12 +481,20 @@ def integrate_rs(simfolder, f0, t, nsims=5, scale_energy=False,
     """
     ws = []
     for i in range(1, nsims+1):
-        fdx, flambda = np.loadtxt(os.path.join(simfolder, "forward_%d.dat"%i), unpack=True, comments="#")
-        bdx, blambda = np.loadtxt(os.path.join(simfolder, "backward_%d.dat"%i), unpack=True, comments="#")
+        fdx, fp, fvol, flambda = np.loadtxt(os.path.join(simfolder, "forward_%d.dat"%i), unpack=True, comments="#")
+        bdx, bp, bvol, blambda = np.loadtxt(os.path.join(simfolder, "backward_%d.dat"%i), unpack=True, comments="#")
         
         if scale_energy:
             fdx /= flambda
             bdx /= blambda
+
+        #add pressure contribution
+        p = p/(10000*160.21766208)
+        fvol = fvol/natoms
+        bvol = bvol/natoms
+        fdx = fdx + p*fvol
+        bdx = bdx + p*bvol
+        
         wf = cumtrapz(fdx, flambda,initial=0)
         wb = cumtrapz(bdx[::-1], blambda[::-1],initial=0)
         w = (wf + wb) / (2*flambda)

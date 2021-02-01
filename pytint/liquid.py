@@ -457,6 +457,8 @@ class Liquid:
         tf = self.options["main"]["temperature"][-1]
         li = 1
         lf = t0/tf
+        pi = self.p
+        pf = lf*pi
 
         cores = self.options["queue"]["cores"]
         lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
@@ -489,6 +491,7 @@ class Liquid:
         lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
         lmp.command("mass             * %f"%self.options["md"]["mass"])
 
+
         #---------------------- Thermostat & Barostat ---------------------------------#
         lmp.command("fix               f1 all nph iso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
         lmp.command("fix               f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
@@ -512,7 +515,7 @@ class Liquid:
         lmp.command("variable          dU      equal c_thermo_pe/atoms")
         lmp.command("variable          te_run  equal ${te}-1")
         lmp.command("variable          ts_run  equal ${ts}+1")
-        lmp.command("thermo_style      custom step pe c_tcm")
+        lmp.command("thermo_style      custom step pe c_tcm press vol")
         lmp.command("timestep          %f"%self.options["md"]["timestep"])
         lmp.command("thermo            10000")
         
@@ -520,22 +523,38 @@ class Liquid:
         lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")   
         lmp.command("variable          i loop %d"%self.options["main"]["nsims"])
         lmp.command("run               ${te}")
+        lmp.command("unfix             f1")
+
         lmp.command("variable          lambda equal ramp(${li},${lf})")
 
         #we need to similar to liquid here
+        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pi, 
+            pf, self.options["md"]["pdamp"]))
+        lmp.command("fix_modify        f1 temp tcm")
+        lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
+        lmp.command("fix               f4 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("run               ${ts}")
+        lmp.command("unfix             f3")
+        lmp.command("unfix             f4")
+        lmp.command("unfix             f1")
 
-        lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
-        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_%d.dat"%iteration)
-        lmp.command("run               ${ts}")
-        lmp.command("unfix             f3")
-        lmp.command("unfix             f4")
+        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
+            pf, self.options["md"]["pdamp"]))
+        lmp.command("fix_modify        f1 temp tcm")        
         lmp.command("run               ${te}")
+        lmp.command("unfix             f1")
+
         lmp.command("variable          lambda equal ramp(${lf},${li})")
+        
+        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
+            pi, self.options["md"]["pdamp"]))
+        lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
-        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("fix               f4 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run               ${ts}")
         lmp.command("unfix             f3")
         lmp.command("unfix             f4")
+        lmp.command("unfix             f1")
         
         lmp.close()
 
@@ -543,6 +562,5 @@ class Liquid:
         """
         Carry out the reversible scaling operation
         """
-        integrate_rs(self.simfolder, self.fe, self.t,
-            nsims=self.options["main"]["nsims"], 
-            scale_energy=scale_energy)
+        integrate_rs(self.simfolder, self.fe, self.t, self.natoms, p=self.p,
+            nsims=self.options["main"]["nsims"], scale_energy=scale_energy)
