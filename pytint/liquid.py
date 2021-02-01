@@ -491,6 +491,7 @@ class Liquid:
         lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
         lmp.command("mass             * %f"%self.options["md"]["mass"])
 
+
         #---------------------- Thermostat & Barostat ---------------------------------#
         lmp.command("fix               f1 all nph iso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
         lmp.command("fix               f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
@@ -514,7 +515,7 @@ class Liquid:
         lmp.command("variable          dU      equal c_thermo_pe/atoms")
         lmp.command("variable          te_run  equal ${te}-1")
         lmp.command("variable          ts_run  equal ${ts}+1")
-        lmp.command("thermo_style      custom step pe c_tcm")
+        lmp.command("thermo_style      custom step pe c_tcm press vol")
         lmp.command("timestep          %f"%self.options["md"]["timestep"])
         lmp.command("thermo            10000")
         

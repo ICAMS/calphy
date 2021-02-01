@@ -500,7 +500,7 @@ class Solid:
         lmp.command("variable          dU      equal c_thermo_pe/atoms")
         lmp.command("variable          te_run  equal ${te}-1")
         lmp.command("variable          ts_run  equal ${ts}+1")
-        lmp.command("thermo_style      custom step pe c_tcm")
+        lmp.command("thermo_style      custom step pe c_tcm press vol")
         lmp.command("timestep          %f"%self.options["md"]["timestep"])
         lmp.command("thermo            10000")
         
