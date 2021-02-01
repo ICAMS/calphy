@@ -4,28 +4,23 @@ Module to handle input files
 import os
 import yaml
 
-def create_calculation_dict():
+
+def check_and_convert_to_list(data):
     """
-    Create a template for calculation dict
+    Check if the given item is a list, if not convert to a single item list
 
     Parameters
     ----------
-    None
+    data : single value or list
 
     Returns
     -------
-    dict: dict
-        template dict
+    data : list
     """
-    cdict = {}
-    cdict["mode"] = "fe"
-    cdict["temperature"] = None
-    cdict["pressure"] = None
-    cdict["lattice"] = None
-    cdict["repeat"] = [7, 7, 7]
-    cdict["state"] = None
-    cdict["nsims"] = 1
-    return cdict
+    if not isinstance(data, list):
+        return [data]
+    else:
+        return data
 
 def read_yamlfile(file):
     """
@@ -94,16 +89,79 @@ def read_yamlfile(file):
         "liquid_frac": 0.05
     }
 
+    #keys that need to be read in directly
+    directkeys = ["main", "md", "queue", "conv"]
 
+    #now read the file
     if os.path.exists(file):
         with open(file) as file:
             indata = yaml.load(file, Loader=yaml.FullLoader)
-            #now read keys
-            for okey in options.keys():
-                if okey in indata.keys():
-                    for key, val in indata[okey].items():
-                        options[okey][key] = indata[okey][key] 
+
+
+    #now read keys
+    for okey in directkeys:
+        if okey in indata.keys():
+            for key, val in indata[okey].items():
+                options[okey][key] = indata[okey][key] 
     else:
         raise FileNotFoundError('%s input file not found'% file)
+
+    #now we need to process calculation keys
+    #loop over calculations
+    if "calculations" in indata["main"].keys():
+        #if the key is present
+        #Loop 0: over each calc block
+        #Loop 1: over lattice
+        #Loop 2: over pressure
+        #Loop 3: over temperature if needed - depends on mode
+        for calc in indata["main"]["calculations"]:
+            #check and convert items to lists if needed
+            lattice = check_and_convert_to_list(calc["lattice"])
+            state = check_and_convert_to_list(calc["state"])
+            pressure = check_and_convert_to_list(calc["pressure"])
+            temperature = check_and_convert_to_list(calc["temperature"])
+            
+            #now start looping
+            for i, lat in enumerate(lattice):
+                for press in pressure:
+                    if calc["mode"] == "ts":
+                        cdict = {}
+                        cdict["temperature"] = temperature[0]
+                        cdict["pressure"] = press
+                        cdict["lattice"] = lat
+                        cdict["state"] = state[i]
+                        cdict["temperature_stop"] = temperature[-1] 
+
+                        #optional keys
+                        if "repeat" in calc.keys():
+                            cdict["repeat"] = calc["repeat"]
+                        else:
+                            cdict["repeat"] = [7, 7, 7]
+                        if "nsims" in calc.keys():
+                            cdict["nsims"] = calc["nsims"]
+                        else:
+                            cdict["nsims"] = 1
+
+                        options["main"]["calculations"].append(cdict)
+                    else:
+                        for temp in temperature:
+                            cdict = {}
+                            cdict["temperature"] = temp
+                            cdict["pressure"] = press
+                            cdict["lattice"] = lat
+                            cdict["state"] = state[i]
+                            cdict["temperature_stop"] = temp
+
+                            #optional keys
+                            if "repeat" in calc.keys():
+                                cdict["repeat"] = calc["repeat"]
+                            else:
+                                cdict["repeat"] = [7, 7, 7]
+                            if "nsims" in calc.keys():
+                                cdict["nsims"] = calc["nsims"]
+                            else:
+                                cdict["nsims"] = 1
+
+                            options["main"]["calculations"].append(cdict)
 
     return options
