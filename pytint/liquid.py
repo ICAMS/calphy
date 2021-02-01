@@ -457,103 +457,6 @@ class Liquid:
         tf = self.options["main"]["temperature"][-1]
         li = 1
         lf = t0/tf
-
-        cores = self.options["queue"]["cores"]
-        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
-
-        lmp.command("echo              log")
-
-        lmp.command("variable          T0 equal %f"%t0)  # Initial temperature.
-        lmp.command("variable          te equal %d"%self.options["md"]["te"])   # Equilibration time (steps).
-        lmp.command("variable          ts equal %d"%self.options["md"]["ts"])  # Switching time (steps).
-        lmp.command("variable          li equal %f"%li)
-        lmp.command("variable          lf equal %f"%lf)
-        lmp.command("variable          rand equal %d"%np.random.randint(0, 1000))
-
-
-        #-------------------------- Atomic Setup --------------------------------------#  
-        lmp.command("units            metal")
-        lmp.command("boundary         p p p")
-        lmp.command("atom_style       atomic")
-
-        lmp.command("lattice          %s %f"%(self.l, self.alat))
-        lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
-        lmp.command("create_box       1 box")
-        conf = os.path.join(self.simfolder, "conf.dump")
-        lmp.command("read_dump        %s 0 x y z vx vy vz scaled no box yes add keep"%conf)
-
-
-        lmp.command("neigh_modify    every 1 delay 0 check yes once no")
-
-        lmp.command("pair_style       %s"%self.options["md"]["pair_style"])
-        lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
-        lmp.command("mass             * %f"%self.options["md"]["mass"])
-
-        #---------------------- Thermostat & Barostat ---------------------------------#
-        lmp.command("fix               f1 all nph iso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
-        lmp.command("fix               f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
-        lmp.command("run               ${te}")
-        lmp.command("unfix             f1")
-        lmp.command("unfix             f2")
-
-        lmp.command("variable         xcm equal xcm(all,x)")
-        lmp.command("variable         ycm equal xcm(all,y)")
-        lmp.command("variable         zcm equal xcm(all,z)")
-        
-        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.p, self.p, self.options["md"]["pdamp"]))
-        lmp.command("fix              f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
-        
-        #------------------ Computes, variables & modifications -----------------------#
-        lmp.command("compute           tcm all temp/com")
-        lmp.command("fix_modify        f1 temp tcm")
-        lmp.command("fix_modify        f2 temp tcm")
-
-        lmp.command("variable          step    equal step")
-        lmp.command("variable          dU      equal c_thermo_pe/atoms")
-        lmp.command("variable          te_run  equal ${te}-1")
-        lmp.command("variable          ts_run  equal ${ts}+1")
-        lmp.command("thermo_style      custom step pe c_tcm")
-        lmp.command("timestep          %f"%self.options["md"]["timestep"])
-        lmp.command("thermo            10000")
-        
-
-        lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")   
-        lmp.command("variable          i loop %d"%self.options["main"]["nsims"])
-        lmp.command("run               ${te}")
-        lmp.command("variable          lambda equal ramp(${li},${lf})")
-
-        #we need to similar to liquid here
-
-        lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
-        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file forward_%d.dat"%iteration)
-        lmp.command("run               ${ts}")
-        lmp.command("unfix             f3")
-        lmp.command("unfix             f4")
-        lmp.command("run               ${te}")
-        lmp.command("variable          lambda equal ramp(${lf},${li})")
-        lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
-        lmp.command("fix               f4 all print 1 \"${dU} ${lambda}\" screen no file backward_%d.dat"%iteration)
-        lmp.command("run               ${ts}")
-        lmp.command("unfix             f3")
-        lmp.command("unfix             f4")
-        
-        lmp.close()
-
-    def reversible_scaling_pressure(self, iteration=1):
-        """
-        Write TI integrate script
-        """
-        #rev scale needs tstart and tend; here self.t will be start
-        #tend will be the final temp
-        
-        #first we need to do an averaging scheme
-        #but only if iteration is 1
-        
-        #Now do reversible scaling
-        t0 = self.t
-        tf = self.options["main"]["temperature"][-1]
-        li = 1
-        lf = t0/tf
         pi = self.p
         pf = lf*pi
 
@@ -658,5 +561,5 @@ class Liquid:
         """
         Carry out the reversible scaling operation
         """
-        integrate_rs(self.simfolder, self.fe, self.t,
+        integrate_rs(self.simfolder, self.fe, self.t, self.natoms, p=self.p,
             nsims=self.options["main"]["nsims"], scale_energy=scale_energy)
