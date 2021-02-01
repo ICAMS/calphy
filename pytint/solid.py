@@ -562,5 +562,5 @@ class Solid:
         """
         Carry out the reversible scaling operation
         """
-        integrate_rs(self.simfolder, self.fe, self.t, self.natoms, self.p=p,
+        integrate_rs(self.simfolder, self.fe, self.t, self.natoms, p=self.p,
             nsims=self.options["main"]["nsims"], scale_energy=scale_energy)
