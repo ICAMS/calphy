@@ -96,6 +96,8 @@ def read_yamlfile(file):
     if os.path.exists(file):
         with open(file) as file:
             indata = yaml.load(file, Loader=yaml.FullLoader)
+    else:
+        raise FileNotFoundError('%s input file not found'% file)
 
 
     #now read keys
@@ -103,8 +105,6 @@ def read_yamlfile(file):
         if okey in indata.keys():
             for key, val in indata[okey].items():
                 options[okey][key] = indata[okey][key] 
-    else:
-        raise FileNotFoundError('%s input file not found'% file)
 
     #now we need to process calculation keys
     #loop over calculations
