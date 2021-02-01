@@ -1,26 +1,25 @@
-#main options
-main:
-  # element name - could also be a list for multicomponent species
-  element: 'Cu'
-  # mass - could also be a list for multicomponent species
-  mass: 26.98
-  #now specify calculations
-  calculations:
-  - mode: ts #select from temperature-sweep or free-energy 
-    #temperature of simulation - specify a list
-    temperature: [1300, 1400]
-    #pressure - not implemented - always zero now
-    pressure: [0]
-    #lattice - specify from LQD, FCC, HCP, BCC, DIA, SC or file
-    #can be a single value or a list
-    lattice: FCC
-    #lattice repetitions - only used if lattice is specified
-    repeat: [4, 4, 4]
-    #state - specify whether structure is solid or liquid
-    #can be a single value or list
-    state: solid
-    #number of independent switching to calculate error
-    nsims: 1
+
+# element name - could also be a list for multicomponent species
+element: 'Cu'
+# mass - could also be a list for multicomponent species
+mass: 26.98
+#now specify calculations
+calculations:
+- mode: ts #select from temperature-sweep or free-energy 
+  #temperature of simulation - specify a list
+  temperature: [1300, 1400]
+  #pressure - not implemented - always zero now
+  pressure: [0]
+  #lattice - specify from LQD, FCC, HCP, BCC, DIA, SC or file
+  #can be a single value or a list
+  lattice: FCC
+  #lattice repetitions - only used if lattice is specified
+  repeat: [4, 4, 4]
+  #state - specify whether structure is solid or liquid
+  #can be a single value or list
+  state: solid
+  #number of independent switching to calculate error
+  nsims: 1
 
 md:
   #specify pair style and pair coeff here

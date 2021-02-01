@@ -3,7 +3,7 @@ Module to handle input files
 """
 import os
 import yaml
-
+import warnings
 
 def check_and_convert_to_list(data):
     """
@@ -41,13 +41,11 @@ def read_yamlfile(file):
     options = {}
     
     #main dictionary
-    options["main"] = {
-        "element": None,
-        "mass": 1.00,
-    }
+    options["element"]: None
+    options["mass"]: 1.00
 
     #create a list for calculations
-    options["main"]["calculations"] = []
+    options["calculations"] = []
 
     #options for md
     options["md"] = {
@@ -90,7 +88,7 @@ def read_yamlfile(file):
     }
 
     #keys that need to be read in directly
-    directkeys = ["main", "md", "queue", "conv"]
+    directkeys = ["md", "queue", "conv"]
 
     #now read the file
     if os.path.exists(file):
@@ -106,25 +104,33 @@ def read_yamlfile(file):
             for key, val in indata[okey].items():
                 options[okey][key] = indata[okey][key] 
 
+    options["element"] = check_and_convert_to_list(indata["element"])
+    options["mass"] = check_and_convert_to_list(indata["mass"])
+    if not len(options["element"]) != len(options["mass"]):
+        raise ValueError("length of elements and mass should be same!")
+    options["nelements"] = len(options["element"])
+
     #now we need to process calculation keys
     #loop over calculations
-    if "calculations" in indata["main"].keys():
+    if "calculations" in indata.keys():
         #if the key is present
         #Loop 0: over each calc block
         #Loop 1: over lattice
         #Loop 2: over pressure
         #Loop 3: over temperature if needed - depends on mode
-        for calc in indata["main"]["calculations"]:
+        for calc in indata["calculations"]:
             #check and convert items to lists if needed
             lattice = check_and_convert_to_list(calc["lattice"])
             state = check_and_convert_to_list(calc["state"])
             pressure = check_and_convert_to_list(calc["pressure"])
             temperature = check_and_convert_to_list(calc["temperature"])
+            mode = calc["mode"]
             
+
             #now start looping
             for i, lat in enumerate(lattice):
                 for press in pressure:
-                    if calc["mode"] == "ts":
+                    if mode == "ts":
                         cdict = {}
                         cdict["temperature"] = temperature[0]
                         cdict["pressure"] = press
@@ -142,7 +148,7 @@ def read_yamlfile(file):
                         else:
                             cdict["nsims"] = 1
 
-                        options["main"]["calculations"].append(cdict)
+                        options["calculations"].append(cdict)
                     else:
                         for temp in temperature:
                             cdict = {}
@@ -162,6 +168,6 @@ def read_yamlfile(file):
                             else:
                                 cdict["nsims"] = 1
 
-                            options["main"]["calculations"].append(cdict)
+                            options["calculations"].append(cdict)
 
     return options
