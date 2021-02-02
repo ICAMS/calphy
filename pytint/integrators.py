@@ -18,7 +18,7 @@ kbJ = const.physical_constants["Boltzmann constant"][0]
 Na = const.physical_constants["Avogadro constant"][0]
 eV2J = const.eV
 
-def get_ideal_gas_fe(temp, rho, natoms, mass, xa=1.0, xb=0.0):
+def get_ideal_gas_fe(temp, rho, natoms, mass, concentration):
     """
     Get the free energy of an single/binary ideal gas
 
@@ -49,8 +49,9 @@ def get_ideal_gas_fe(temp, rho, natoms, mass, xa=1.0, xb=0.0):
 
     """
     #find mass of one particle
-    mass = mass/Na
+    mass = np.array(mass)/Na
     beta = (1/(kb*temp)) #units - eV
+
     #omega needs to be in m
     omega = (beta*h*h/(2*np.pi*mass))**0.5
     #convert omega
@@ -59,18 +60,12 @@ def get_ideal_gas_fe(temp, rho, natoms, mass, xa=1.0, xb=0.0):
     omega = omega*1E10
     prefactor = 1/beta
 
-    if xa> 0:
-        ta = xa*(3*np.log(omega) + np.log(rho) -1 + np.log(xa))
-    else:
-        ta = 0
-    if xb> 0:
-        tb = xb*(3*np.log(omega) + np.log(rho) -1 + np.log(xb))
-    else:
-        tb = 0
-
+    fe = 0
+    for count, conc in enumerate(concentration):
+        fe += conc*(3*np.log(omega[count]) + np.log(rho) -1 + np.log(conc))
 
     #return prefactor*(ta + tb + (1/(2*natoms))*np.log(2*np.pi*natoms))
-    return prefactor*(ta + tb )
+    return prefactor*fe
 
 
 def get_uhlenbeck_ford_fe(temp, rho, p, sigma):
