@@ -370,8 +370,7 @@ class Liquid:
 
         #we need to find concentration too to find ideal gas fe for multi species
         f2 = get_ideal_gas_fe(self.t, self.rho, 
-            self.natoms, self.options["md"]["mass"], xa=(1-self.c), 
-            xb=self.c)
+            self.natoms, self.options["mass"], self.calc["concentration"])
         
         self.ferr = qerr
         self.fref = f1
