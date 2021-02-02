@@ -148,7 +148,7 @@ def read_yamlfile(file):
                             concentration = check_and_convert_to_list(calc["concentration"])
                             if not len(concentration) == options["nelements"]:
                                 raise ValueError("concentration has to be same length as elements")
-                        cdict["concentration"] = calc["concentration"]
+                        cdict["concentration"] = concentration
 
                         #optional keys
                         if "repeat" in calc.keys():
@@ -183,8 +183,8 @@ def read_yamlfile(file):
                                 concentration = check_and_convert_to_list(calc["concentration"])
                                 if not len(concentration) == options["nelements"]:
                                     raise ValueError("concentration has to be same length as elements")
-                            cdict["concentration"] = calc["concentration"]
-
+                            cdict["concentration"] = concentration
+                            
                             #optional keys
                             if "repeat" in calc.keys():
                                 cdict["repeat"] = calc["repeat"]
