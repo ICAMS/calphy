@@ -43,17 +43,6 @@ def run_jobs(options):
     print("Total number of %d calculations found" % len(options["calculations"]))
 
     for count, calc in enumerate(options["calculations"]):
-        #check lattice
-        #Check lattice values
-        lattice = calc["lattice"].upper()
-        if lattice in ["BCC", "FCC", "HCP", "DIA", "SC", "LQD"]:
-            #process lattice
-            lattice_constants, atoms_per_cell, lammps_lattice = pl.get_lattice(element, lattice)
-        elif os.path.exists(calc["lattice"]):
-            #its a file - do something
-            lammps_lattice = "file"
-        else:
-            raise ValueError("Unknown lattice found. Allowed options are BCC, FCC, HCP, DIA, SC or LQD; or an input file.")
 
         identistring = create_identifier(calc)
         scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))

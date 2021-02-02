@@ -12,9 +12,9 @@ calculations:
   pressure: [0]
   #lattice - specify from LQD, FCC, HCP, BCC, DIA, SC or file
   #can be a single value or a list
-  lattice: FCC
+  lattice: LQD
   #lattice repetitions - only used if lattice is specified
-  repeat: [4, 4, 4]
+  repeat: [3, 3, 3]
   #state - specify whether structure is solid or liquid
   #can be a single value or list
   state: solid
@@ -28,7 +28,7 @@ md:
   #md timestep
   timestep: 0.001
   #number of steps
-  nsmall: 10000
+  nsmall: 1000
   #thermostat damping
   tdamp: 0.1
   #barostat damping
@@ -63,7 +63,7 @@ queue:
   commands:
     # the following two comments are only needed if you run in conda env
     # otherwise can be ignored
-    - source /home/users/menonsqr/.bashrc
+    - conda activate ace
   #any other extra options
   #options:
   # - "-j Y"  
