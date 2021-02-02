@@ -369,9 +369,9 @@ class Solid:
         None
         """
         f1 = get_einstein_crystal_fe(self.t, 
-            self.natoms, self.options["md"]["mass"], 
+            self.natoms, self.options["mass"], 
             self.avglat, self.k, self.apc)
-        w, q, qerr = find_w(self.simfolder, nsims=self.options["main"]["nsims"], 
+        w, q, qerr = find_w(self.simfolder, nsims=self.nsims, 
             full=True, solid=True)
         
         self.fref = f1
@@ -548,7 +548,7 @@ class Solid:
         lmp.close()
 
 
-    def integrate_reversible_scaling(self, scale_energy=False):
+    def integrate_reversible_scaling(self, scale_energy=False, return_values=False):
         """
         Carry out the reversible scaling operation
         """

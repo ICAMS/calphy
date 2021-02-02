@@ -129,19 +129,28 @@ def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, cm_correct
 
     """
     #convert mass first for single particle in kg
-    mass = (mass/Na)*1E-3
+    mass = (np.array(mass)/Na)*1E-3
+
     #convert k from ev/A2 to J/m2
     k = k*(eV2J/1E-20)
     omega = np.sqrt(k/mass)
-    F_harm = -3*kb*temp*np.log((kb*temp)/(hbar*omega))
 
     #convert a to m
     a = a*1E-10
     vol = (natoms/atoms_per_cell) * (a**3)
 
-    if cm_correction:
-        F_cm = (kb*temp/natoms)*np.log((natoms/vol)*(2*np.pi*kbJ*temp/(natoms*k))**1.5)
-        F_harm = (F_harm + F_cm)
+    F_harm = 0
+    F_cm = 0
+
+    for count, om in enumerate(omega):
+        F_harm += np.log((kb*temp)/(hbar*om))
+        if cm_correction:
+            F_cm += np.log((natoms/vol)*(2*np.pi*kb*temp/(natoms*mass[count]*om*om))**1.5)
+    
+    F_harm = -3*kb*temp*F_harm
+    F_cm = (kb*temp/natoms)*F_cm
+
+    F_harm = F_harm + F_cm
 
     return F_harm
 
