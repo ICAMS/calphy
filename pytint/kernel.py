@@ -21,7 +21,7 @@ import pytint.queue as pq
 import argparse as ap
 
 
-def run_jobs(options):
+def run_jobs(inputfile):
     """
     Spawn jobs which are submitted to cluster
 
@@ -39,7 +39,9 @@ def run_jobs(options):
     #Step 1 - loop over calcs dict
     #Step 2 - check input structure of calc and create lattice if needed
     #Step 3 - Submit job
-
+    
+    #read the input file
+    options = read_yamlfile(inputfile)
     print("Total number of %d calculations found" % len(options["calculations"]))
 
     for count, calc in enumerate(options["calculations"]):
@@ -89,8 +91,5 @@ def main():
     #parse args
     args = vars(arg.parse_args())
 
-    #read the input file
-    options = read_yamlfile(args["input"])
-
     #spawn job
-    run_jobs(options)
+    run_jobs(args["input"])
