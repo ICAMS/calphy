@@ -133,6 +133,7 @@ def read_yamlfile(file):
                 for press in pressure:
                     if mode == "ts":
                         cdict = {}
+                        cdict["mode"] = calc["mode"]
                         cdict["temperature"] = temperature[0]
                         cdict["pressure"] = press
                         cdict["lattice"] = lat
@@ -159,6 +160,7 @@ def read_yamlfile(file):
                     else:
                         for temp in temperature:
                             cdict = {}
+                            cdict["mode"] = calc["mode"]
                             cdict["temperature"] = temp
                             cdict["pressure"] = press
                             cdict["lattice"] = lat
@@ -203,6 +205,7 @@ def create_identifier(calc):
     ts = int(calc["temperature"])
     ps = int(calc["pressure"])
     l = calc["lattice"]
+    print(calc.keys())
     prefix = calc["mode"]
 
     identistring = "-".join([prefix, l, str(ts), str(ps)])
