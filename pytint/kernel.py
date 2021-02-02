@@ -19,9 +19,6 @@ import warnings
 from pytint.input import read_yamlfile, create_identifier
 import pytint.queue as pq
 import argparse as ap
-import pytint.lattice as pl
-
-
 
 
 def run_jobs(options):
@@ -62,11 +59,6 @@ def run_jobs(options):
         scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
         errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
 
-        #get the other info which is required
-        apc = atoms_per_cell[count]
-        a = lattice_constants[count]
-        ml = lammps_lattice[count]
-
         #the below part assigns the schedulers
         #now we have to write the submission scripts for the job
         #parse Queue and import module
@@ -80,8 +72,8 @@ def run_jobs(options):
             raise ValueError("Unknown scheduler")
 
         #for lattice just provide the number of position
-        scheduler.maincommand = "tint_kernel -i %s -t %f -p %f -l %s -apc %d -a %f -c %f -m %s"%(inputfile, 
-            t, p, l, apc, a, c, ml)
+        scheduler.maincommand = "tint_kernel -i %s -k %d"%(inputfile, 
+            count)
         scheduler.write_script(scriptpath)
         _ = scheduler.submit()
 

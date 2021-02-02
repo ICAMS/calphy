@@ -12,7 +12,7 @@ latticedict = {
 	"SC"  :{"LQD": 1.00000, "BCC":0.79370, "FCC":0.62996, "HCP":1.12247, "DIA":0.50000, "SC":1.00000, "N":1},
 }
 
-def get_lattice(symbol, lattice_list):
+def get_lattice(symbol, lat):
 	"""
 	Find lattice constants of an element
 
@@ -45,19 +45,15 @@ def get_lattice(symbol, lattice_list):
 
 	mainalat = chem.lattice_constant
 
-	lattice_constants = []
-	atoms_per_cell = []
-	lammps_lattice = []
-	#print(lattice_list)
-	for lat in lattice_list:
-		#print(mainlat, lat)
-		newlat = latticedict[mainlat][lat]*mainalat
-		lattice_constants.append(newlat)
-		if lat == "LQD":
-			atoms_per_cell.append(latticedict[mainlat]["N"])
-			lammps_lattice.append(mainlat.lower())	
-		else:
-			atoms_per_cell.append(latticedict[lat]["N"])
-			lammps_lattice.append(lat.lower())
+	#print(mainlat, lat)
+	newlat = latticedict[mainlat][lat]*mainalat
+	lattice_constant = newlat
 
-	return lattice_constants, atoms_per_cell, lammps_lattice
+	if lat == "LQD":
+		atoms_per_cell = latticedict[mainlat]["N"]
+		lammps_lattice = mainlat.lower()	
+	else:
+		atoms_per_cell = latticedict[lat]["N"]
+		lammps_lattice = lat.lower()
+
+	return lattice_constant, atoms_per_cell, lammps_lattice

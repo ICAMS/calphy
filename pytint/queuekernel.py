@@ -9,9 +9,10 @@ import argparse as ap
 import subprocess
 import yaml
 
-from pytint.input import read_yamlfile
+from pytint.input import read_yamlfile, create_identifier
 from pytint.liquid import Liquid
 from pytint.solid import Solid
+import pytint.lattice as pl
 
 def main():
     arg = ap.ArgumentParser()
@@ -20,39 +21,29 @@ def main():
     arg.add_argument("-i", "--input", required=True, type=str,
     help="name of the input file")
 
-    arg.add_argument("-j", "--job", required=False, type=str, 
-    choices=["integrate", "rs", "rrs"],
-    default="integrate", help="mode of simulation - integrate or rs or rrs")
+    arg.add_argument("-k", "--kernel", required=True, type=int, 
+    help="kernel number of the calculation to be run.")
 
-    arg.add_argument("-t", "--temperature", required=True, type=float,
-    help="temperature for the simulation")
 
-    arg.add_argument("-p", "--pressure", required=True, type=float,
-    help="pressure for the simulation")
-
-    arg.add_argument("-l", "--lattice", required=True, type=str,
-    help="lattice for the simulation")
-
-    arg.add_argument("-apc", "--atomspercell", required=True, type=int,
-    help="Number of atoms per cell")
-
-    arg.add_argument("-a", "--latticeconstant", required=True, type=float,
-    help="lattice constant for the simulation")
-
-    arg.add_argument("-c", "--concentration", required=True, type=float,
-    help="concentration for the simulation")
-
-    arg.add_argument("-m", "--mainlattice", required=True, type=str,
-    help="lammps lattice for the simulation")
-
-    arg.add_argument("-fe", "--freenergy", required=False, type=float,
-    help="Initial free energy for reversible scaling method")
-
+    #parse input
     #parse arguments
     args = vars(arg.parse_args())
     options = read_yamlfile(args["input"])
 
-    #we have some housekeepin to do now
+    calc = options["calculations"][args["kernel"]]
+    
+    #process lattice
+    lattice = calc["lattice"].upper()
+    if lattice in ["BCC", "FCC", "HCP", "DIA", "SC", "LQD"]:
+        #process lattice
+        alat, apc, l = pl.get_lattice(element, lattice)
+    elif os.path.exists(calc["lattice"]):
+        #its a file - do something
+        l = "file"
+    else:
+        raise ValueError("Unknown lattice found. Allowed options are BCC, FCC, HCP, DIA, SC or LQD; or an input file.")
+
+
     #format and parse the arguments
     #thigh is for now hardcoded    
     l       = args["lattice"]
