@@ -14,6 +14,30 @@ from pytint.liquid import Liquid
 from pytint.solid import Solid
 import pytint.lattice as pl
 
+def routine_fe(job):
+    """
+    Perform an FE calculation routine
+    """
+    job.run_averaging()
+    #now run integration loops
+    for i in range(job.nsims):
+        job.run_integration(iteration=(i+1))
+
+    job.thermodynamic_integration()
+    job.submit_report()
+
+def routine_ts(job):
+    """
+    Perform ts routine
+    """
+    routine_fe(job)
+
+    #now do rev scale steps
+    for i in range(job.nsims):
+        job.reversible_scaling(iteration=(i+1))
+    
+    job.integrate_reversible_scaling(scale_energy=True)    
+
 def main():
     arg = ap.ArgumentParser()
     
@@ -28,9 +52,10 @@ def main():
     #parse input
     #parse arguments
     args = vars(arg.parse_args())
+    kernel = args["kernel"]
     options = read_yamlfile(args["input"])
 
-    calc = options["calculations"][args["kernel"]]
+    calc = options["calculations"][kernel]
     
     #process lattice
     lattice = calc["lattice"].upper()
@@ -46,27 +71,7 @@ def main():
 
     #format and parse the arguments
     #thigh is for now hardcoded    
-    l       = args["lattice"]
-    ml      = args["mainlattice"]
-    t       = int(args["temperature"])
-    p       = "%.02f"%args["pressure"]
-    c       = "%.02f"%args["concentration"]
-    thigh   = max(options["main"]["temperature"])*1.5
-
-    #check the kind of job we have at hand
-    if args["job"] == "integrate":
-        integrate = True
-        skey = "in"
-    elif args["job"] == "rs":
-        integrate = False
-        skey = "rs"
-    elif args["job"] == "rrs":
-        integrate = False
-        skey = "rs"
-
-    #create an string which should be unique for the job in hand
-    #the job should have an extra argument to indicate job time        
-    identistring = "-".join([skey, l, str(t), p, c])
+    identistring = create_identifier(calc)
     simfolder = os.path.join(os.getcwd(), identistring)
 
     #if folder exists, delete it -> then create
@@ -76,53 +81,22 @@ def main():
 
     #time to set up the job
     #create a lattice object
-    if ml == "dia":
-        ml = "diamond"
+    #just tweak for diamond!
+    if l == "dia":
+        l = "diamond"
 
-    if args["lattice"] == "LQD":
-        job = Liquid(t = args["temperature"], p = args["pressure"],
-                    l = ml, apc = args["atomspercell"],
-                    alat = args["latticeconstant"],
-                    c = args["concentration"], options=options,
-                    simfolder = simfolder, thigh = thigh)
+    #now we need to modify the routines
+    if calc["state"] == "liquid":
+        job = Liquid(options=options, kernel=kernel, simfolder=simfolder)
     else:
-
-        job = Solid(t = args["temperature"], p = args["pressure"],
-                    l = ml, apc = args["atomspercell"],
-                    alat = args["latticeconstant"],
-                    c = args["concentration"], options=options,
-                    simfolder = simfolder)
+        job = Solid(options=options, kernel=kernel, simfolder=simfolder)
 
     #integration routine
     os.chdir(simfolder)
 
-    if integrate:
-        job.run_averaging()
-        #now run integration loops
-        for i in range(options["main"]["nsims"]):
-            job.run_integration(iteration=(i+1))
-
-        job.thermodynamic_integration()
-        job.submit_report()
-    
-    #reversible scaling routine
+    if calc["mode"] == "fe":
+        routine_fe(job)
+    elif calc["mode"] == "ts":
+        routine_ts(job)
     else:
-        #the rs routine
-        job.run_averaging()
-
-        #now find fe for one temp
-        if args["job"] == "rrs":
-            job.fe = args["freenergy"]
-        else:
-            for i in range(options["main"]["nsims"]):
-                job.run_integration(iteration=(i+1))
-
-            job.thermodynamic_integration()
-            job.submit_report()
-
-        #now do rev scale steps
-        for i in range(options["main"]["nsims"]):
-            job.reversible_scaling(iteration=(i+1))
-        #we do not integrate rev scaling!
-        #do it manually from a jupyter notebook or so
-        job.integrate_reversible_scaling(scale_energy=True)
+        raise ValueError("Mode should be either fe or ts")
