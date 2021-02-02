@@ -3,6 +3,7 @@ Helper methods for pytint
 """
 from pylammpsmpi import LammpsLibrary
 import logging
+import numpy as np
 from lammps import lammps
 import pytint.lattice as pl
 import pyscal.core as pc
@@ -93,6 +94,14 @@ def reset_timestep(file, conf):
     sys = pc.System()
     sys.read_inputfile(file, customkeys=["vx", "vy", "vz", "mass"])
     sys.to_file(conf, customkeys=["vx", "vy", "vz", "mass"])
+
+def calculate_concentrations(file):
+    sys = pc.System()
+    sys.read_inputfile(file)
+    atoms = sys.atoms
+    types = [atom.type for atom in atoms]
+    unq_types, unq_counts = np.unique(types, return_counts=True)
+    return unq_counts/np.sum(unq_counts)
 
 """
 NOrmal helper routines

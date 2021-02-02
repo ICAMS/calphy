@@ -367,6 +367,8 @@ class Liquid:
         #WARNING: hardcoded UFM parameters           
         f1 = get_uhlenbeck_ford_fe(self.t, 
             self.rho, 50, 1.5)
+
+        #we need to find concentration too to find ideal gas fe for multi species
         f2 = get_ideal_gas_fe(self.t, self.rho, 
             self.natoms, self.options["md"]["mass"], xa=(1-self.c), 
             xb=self.c)
