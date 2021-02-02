@@ -145,6 +145,8 @@ def read_yamlfile(file):
                         if options["nelements"] == 1:
                             concentration = [1,]
                         else:
+                            if not "concentration" in calc.keys():
+                                raise KeyError("concentration needs to be specified")
                             concentration = check_and_convert_to_list(calc["concentration"])
                             if not len(concentration) == options["nelements"]:
                                 raise ValueError("concentration has to be same length as elements")
@@ -182,6 +184,8 @@ def read_yamlfile(file):
                             if options["nelements"] == 1:
                                 concentration = [1,]
                             else:
+                                if not "concentration" in calc.keys():
+                                    raise KeyError("concentration needs to be specified")
                                 concentration = check_and_convert_to_list(calc["concentration"])
                                 if not len(concentration) == options["nelements"]:
                                     raise ValueError("concentration has to be same length as elements")
@@ -228,7 +232,7 @@ def create_identifier(calc):
     l = calc["lattice"]
     l = l.split('/')
     l = l[-1]
-    
+
     #print(calc.keys())
     prefix = calc["mode"]
 

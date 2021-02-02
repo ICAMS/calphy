@@ -264,7 +264,7 @@ class Liquid:
         #------------------------------------------------------------------------------------------------------#
 
         conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf)
+        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
 
         # Define MEAM and UF potentials parameters.
         lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
@@ -424,7 +424,7 @@ class Liquid:
         lmp.command("variable          rand equal %d"%np.random.randint(0, 1000))
 
         conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf)
+        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
 
         #set up potential
         lmp = ph.set_potential(lmp, self.options)

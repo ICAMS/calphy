@@ -61,11 +61,11 @@ def set_potential(lmp, options):
     return lmp
 
 
-def read_dump(lmp, file):
+def read_dump(lmp, file, species=1):
     # Read atoms positions, velocities and box parameters.
     lmp.command("lattice          fcc 4.0")
     lmp.command("region           box block 0 2 0 2 0 2")
-    lmp.command("create_box       1 box")
+    lmp.command("create_box       %d box"%species)
     lmp.command("read_dump        %s 0 x y z vx vy vz scaled no box yes add keep"%file)
     return lmp
 

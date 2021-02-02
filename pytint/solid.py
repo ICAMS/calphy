@@ -323,7 +323,7 @@ class Solid:
 
 
         conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf)
+        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
 
         #set up potential
         lmp = ph.set_potential(lmp, self.options)
@@ -486,7 +486,7 @@ class Solid:
         lmp.command("variable          rand equal %d"%np.random.randint(0, 1000))
 
         conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf)
+        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
 
         #set up potential
         lmp = ph.set_potential(lmp, self.options)
