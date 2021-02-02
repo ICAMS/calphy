@@ -72,9 +72,9 @@ def set_hybrid_potential(lmp, options, eps):
     
     lmp.command("pair_style       hybrid/overlay %s ufm 7.5"%options["md"]["pair_style"])
     lmp.command("pair_coeff       %s"%pcnew)
-    lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps) 
+    lmp.command("pair_coeff       * * ufm %f 1.5"%eps) 
 
-    for i in range(len(options["nelements"])):
+    for i in range(options["nelements"]):
         lmp.mass(i+1, options["mass"][i])
     return lmp
 
