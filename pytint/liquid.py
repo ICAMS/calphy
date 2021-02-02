@@ -93,6 +93,11 @@ class Liquid:
         self.pv = None
         self.fe = None
 
+        #box dimensions that need to be stored
+        self.lx = None
+        self.ly = None
+        self.lz = None
+
     def prepare_lattice(self):
         #process lattice
         l, alat, apc = pl.prepare_lattice(self.calc)
@@ -133,6 +138,9 @@ class Liquid:
         
         #add some computes
         lmp.command("variable         mvol equal vol")
+        lmp.command("variable         mlx equal lx")
+        lmp.command("variable         mly equal ly")
+        lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press") 
 
         #melting cycle
@@ -171,7 +179,7 @@ class Liquid:
         lmp.run(int(self.options["md"]["nsmall"])) 
         
         #start recording average values
-        lmp.command("fix              2 all ave/time %d %d %d v_mvol v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
+        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
             int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
 
         #monitor the average values until calculation is converged
@@ -181,16 +189,26 @@ class Liquid:
             ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
             #now we can check if it converted
             file = os.path.join(self.simfolder, "avg.dat")
-            quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
-            lx = (quant/self.ncells)**(1/3)
-            lx = lx[-ncount+1:]
-            mean = np.mean(lx)
-            std = np.std(lx)
+            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1,2,3,4), unpack=True)
+
+            lxpc = (lx/self.ncells)
+            lxpc = lxpc[-ncount+1:]
+            mean = np.mean(lxpc)
+            std = np.std(lxpc)            
             self.logger.info("At count %d mean lattice constant is %f std is %f"%(i+1, mean, std))
+
             if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
                 self.avglat = np.round(mean, decimals=3)
-                self.rho = self.apc/(self.avglat**3)
+
+                #process other means
+                self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
+                self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
+                self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
+
+                self.rho = self.natoms/(self.lx*self.ly*self.lz)
+
                 self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
+                self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
                 break
             laststd = std
 

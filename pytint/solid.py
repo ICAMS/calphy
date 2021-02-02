@@ -110,6 +110,11 @@ class Solid:
         self.pv = None
         self.fe = None
 
+        #box dimensions that need to be stored
+        self.lx = None
+        self.ly = None
+        self.lz = None
+
     def prepare_lattice(self):
         #process lattice
         l, alat, apc = pl.prepare_lattice(self.calc)
@@ -139,6 +144,9 @@ class Solid:
 
         #add some computes
         lmp.command("variable         mvol equal vol")
+        lmp.command("variable         mlx equal lx")
+        lmp.command("variable         mly equal ly")
+        lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press")
 
         if self.p == 0:
@@ -146,7 +154,7 @@ class Solid:
             lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
             lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
                                                 self.p, self.p, self.options["md"]["pdamp"]))
-            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
             lmp.command("thermo           10")
             lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
             lmp.command("unfix            1")
@@ -180,7 +188,7 @@ class Solid:
 
 
         #this is when the averaging routine starts
-        lmp.command("fix              2 all ave/time %d %d %d v_mvol v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
+        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
             int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
         
         laststd = 0.00
@@ -189,15 +197,24 @@ class Solid:
             ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
             #now we can check if it converted
             file = os.path.join(self.simfolder, "avg.dat")
-            quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
-            lx = (quant/self.ncells)**(1/3)
-            lx = lx[-ncount+1:]
-            mean = np.mean(lx)
-            std = np.std(lx)
+            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1,2, 3, 4), unpack=True)
+            
+            lxpc = (lx/self.ncells)
+            lxpc = lxpc[-ncount+1:]
+            mean = np.mean(lxpc)
+            std = np.std(lxpc)
             self.logger.info("At count %d mean lattice constant is %f std is %f"%(i+1, mean, std))
+            
             if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
                 self.avglat = np.round(mean, decimals=3)
+
+                #process other means
+                self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
+                self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
+                self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
+
                 self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
+                self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
                 break
             laststd = std
 
@@ -307,6 +324,9 @@ class Solid:
 
         conf = os.path.join(self.simfolder, "conf.dump")
         lmp = ph.read_dump(lmp, conf)
+
+        #remap the box to get the correct pressure
+
 
         #set up potential
         lmp = ph.set_potential(lmp, self.options)
