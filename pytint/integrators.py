@@ -444,7 +444,8 @@ def find_fe(p, x):
     return pressure, free_energy
 
 
-def integrate_rs(simfolder, f0, t, natoms, p=0, nsims=5, scale_energy=False):
+def integrate_rs(simfolder, f0, t, natoms, p=0, nsims=5, 
+    scale_energy=False, return_values=False):
     """
     Carry out the reversible scaling integration
 

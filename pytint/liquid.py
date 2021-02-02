@@ -3,11 +3,13 @@ Contains methods for liquid
 """
 
 import numpy as np
+import yaml
 
 from pytint.integrators import *
 import pyscal.traj_process as ptp
 import pytint.lattice as pl
 import pytint.helpers as ph
+
 
 
 class Liquid:
@@ -397,8 +399,8 @@ class Liquid:
         report["input"]["temperature"] = int(self.t)
         report["input"]["pressure"] = float(self.p)
         report["input"]["lattice"] = str(self.l)
-        report["input"]["element"] = float(self.options["element"])
-        report["input"]["concentration"] = float(self.options["concentration"])
+        report["input"]["element"] = " ".join(np.array(self.options["element"]).astype(str))
+        report["input"]["concentration"] = " ".join(np.array(self.calc["concentration"]).astype(str))
 
         #average quantities
         report["average"] = {}
@@ -482,7 +484,6 @@ class Liquid:
         
 
         lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")   
-        lmp.command("variable          i loop %d"%self.options["main"]["nsims"])
         lmp.command("run               ${te}")
         lmp.command("unfix             f1")
 
@@ -519,9 +520,9 @@ class Liquid:
         
         lmp.close()
 
-    def integrate_reversible_scaling(self, scale_energy=False):
+    def integrate_reversible_scaling(self, scale_energy=False, return_values=False):
         """
         Carry out the reversible scaling operation
         """
         integrate_rs(self.simfolder, self.fe, self.t, self.natoms, p=self.p,
-            nsims=self.nsims, scale_energy=scale_energy)
+            nsims=self.nsims, scale_energy=scale_energy, return_values=return_values)
