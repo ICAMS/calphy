@@ -212,58 +212,12 @@ class Liquid:
                 break
             laststd = std
 
+        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+        lmp.command("run               0")
+        lmp.command("undump            2")
+
         #finish run
         lmp.close()
-
-        #now the small extra routine
-        #to do a NVT melting
-        #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
-
-        #set up structure
-        lmp = ph.create_structure(lmp, self.calc)
-
-        #set up potential
-        lmp = ph.set_potential(lmp, self.options)
-
-        #Melt regime for the liquid
-        lmp.velocity("all create", self.thigh, np.random.randint(0, 10000))
-        #add some computes
-        lmp.command("variable         mtemp equal temp")
-        
-        #melting cycle should be done in loops
-        for thmult in np.arange(1.0, 2.0, 0.1):
-            #repeat melting cycle            
-            trajfile = os.path.join(self.simfolder, "traj.melt")
-            if os.path.exists(trajfile):
-                os.remove(trajfile)
-
-            self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.thigh, thmult))
-            lmp.fix("1 all nvt temp", self.thigh*thmult, self.thigh*thmult, self.options["md"]["tdamp"])
-            lmp.run(int(self.options["md"]["nsmall"]))
-            lmp.unfix(1)
-            lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
-            lmp.run(0)
-            lmp.undump(2)
-            
-            #we have to check if the structure melted, otherwise throw and error
-            #we have to check if the structure melted
-            solids = ph.find_solid_fraction("traj.melt")
-            self.logger.info("fraction of solids found: %f", solids/self.natoms)
-            if (solids/self.natoms < self.options["conv"]["liquid_frac"]):
-                melted = True
-                break
-        
-        #now assign correct temperature
-        lmp.velocity("all create", self.t, np.random.randint(0, 10000))
-        lmp.fix("1 all nvt temp", self.t, self.t, self.options["md"]["tdamp"])
-        trajfile = os.path.join(self.simfolder, "traj.dat")
-        lmp.dump("2 all custom", int(self.options["md"]["nsmall"]), trajfile,"id type mass x y z vx vy vz")
-
-        lmp.run(int(self.options["md"]["nsmall"])) 
-        lmp.close()
-        #lmp.command("fix              2 all ave/time 10 10 100 v_mtemp file avg2.dat")
-        
 
         self.process_traj()
 
@@ -314,6 +268,9 @@ class Liquid:
 
         # Define MEAM and UF potentials parameters.
         lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
+
+        #remap the box to get the correct pressure
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         ################################     Fixes, computes and constraints     ###############################
         # Integrator & thermostat.
@@ -472,6 +429,8 @@ class Liquid:
         #set up potential
         lmp = ph.set_potential(lmp, self.options)
 
+        #remap the box to get the correct pressure
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         #---------------------- Thermostat & Barostat ---------------------------------#
         lmp.command("fix               f1 all nph iso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
