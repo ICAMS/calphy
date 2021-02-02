@@ -6,7 +6,7 @@ import os
 import numpy as np
 
 def test_liquid_averaging():
-    options = read_yamlfile("tests/input.yaml")
+    options = read_yamlfile("examples/Cu_EAM/input.yaml")
     lqd = Liquid(t=1300, p=0, l="fcc", apc=4,
                     alat=3.766, c=0.0, options=options, simfolder=os.getcwd(),
                     thigh=2000)

@@ -24,7 +24,7 @@ calculations:
 md:
   #specify pair style and pair coeff here
   pair_style: eam/alloy
-  pair_coeff: "* * /home/sarath/Repos/pytint/examples/Cu_EAM/Cu01.eam.alloy Cu"
+  pair_coeff: "* * Cu01.eam.alloy Cu"
   #md timestep
   timestep: 0.001
   #number of steps

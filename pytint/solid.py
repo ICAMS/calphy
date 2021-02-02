@@ -6,10 +6,11 @@ reversible scaling.
 
 import numpy as np
 import yaml
+
 from pytint.integrators import *
-from pylammpsmpi import LammpsLibrary
-import pyscal.core as pc
-import logging
+import pyscal.traj_process as ptp
+import pytint.lattice as pl
+import pytint.helpers as ph
 
 class Solid:
     """
@@ -67,30 +68,54 @@ class Solid:
         main simulation directory
 
     """
-    def __init__(self, t=None, p=None, l=None, apc=None,
-                    alat=None, c=None, options=None, simfolder=None):
-        self.t = t
-        self.p = p
-        self.l = l
-        self.apc = apc
-        self.alat = alat
-        self.c = c
+    def __init__(self, options=None, kernel=None, simfolder=None):
         self.options = options
         self.simfolder = simfolder
+        self.kernel = kernel
+
+        self.calc = options["calculations"][kernel]
+        self.nsims = self.calc["nsims"]
+
+        self.t = self.calc["temperature"]
+        self.tend = self.calc["temperature_stop"]
+        self.thigh = self.calc["thigh"] 
+        self.p = self.calc["pressure"]
+
+        self.l = None
+        self.alat = None
+        self.apc = None
+        self.prepare_lattice()
 
         logfile = os.path.join(self.simfolder, "tint.log")
-        self._prepare_log(logfile)
+        self.logger = ph.prepare_log(logfile)
 
-    def _prepare_log(self, file):
-        #prepare log file
-        logger = logging.getLogger(__name__)
-        handler = logging.FileHandler(file)
-        formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.setLevel(logging.DEBUG)
-        logger.propagate = False
-        self.logger = logger
+        #other properties
+        self.cores = self.options["queue"]["cores"]
+        self.ncells = np.prod(self.calc["repeat"])
+        
+        if self.l == "file":
+            self.natoms = ph.check_data_file(self.calc["lattice"])
+            #reset apc
+            self.apc = self.natoms
+        else:
+            self.natoms = self.ncells*self.apc
+        
+        #properties that will be calculated later
+        self.avglat = None
+        self.k = None
+        self.ferr = None
+        self.fref = None
+        self.fideal = None
+        self.w = None
+        self.pv = None
+        self.fe = None
+
+    def prepare_lattice(self):
+        #process lattice
+        l, alat, apc = pl.prepare_lattice(self.calc)
+        self.l = l
+        self.alat = alat
+        self.apc = apc
 
     def run_averaging(self):
         """
@@ -104,23 +129,13 @@ class Solid:
         -------
         None
         """
-        cores = self.options["queue"]["cores"]
-        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
+        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
 
-        lmp.command("units            metal")
-        lmp.command("boundary         p p p")
-        lmp.command("atom_style       atomic")
-        lmp.command("timestep         %f"%self.options["md"]["timestep"])
+        #set up structure
+        lmp = ph.create_structure(lmp, self.calc)
 
-        lmp.command("lattice          %s %f"%(self.l, self.alat))
-        lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
-        lmp.command("create_box       1 box")
-        lmp.command("create_atoms     1 box")
-
-        lmp.command("pair_style       %s"%self.options["md"]["pair_style"])
-        lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
-
-        lmp.command("mass             * %f"%self.options["md"]["mass"])
+        #set up potential
+        lmp = ph.set_potential(lmp, self.options)
 
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -175,7 +190,7 @@ class Solid:
             #now we can check if it converted
             file = os.path.join(self.simfolder, "avg.dat")
             quant, ipress = np.loadtxt(file, usecols=(1,2), unpack=True)
-            lx = (quant/(self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]))**(1/3)
+            lx = (quant/self.ncells)**(1/3)
             lx = lx[-ncount+1:]
             mean = np.mean(lx)
             std = np.std(lx)
@@ -196,10 +211,7 @@ class Solid:
         lmp.command("run               0")
         lmp.command("undump            2")
         
-        sys = pc.System()
-        sys.read_inputfile("traj.dat")
-        sys.find_neighbors(method="cutoff", cutoff=0)
-        solids = sys.find_solids()
+        solids = ph.find_solid_fraction("traj.dat")
         if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
             lmp.close()
             raise RuntimeError("System melted, increase size or reduce temp!")
@@ -236,19 +248,38 @@ class Solid:
         lmp.command("run               0")
         lmp.command("undump            2")
         
-        sys = pc.System()
-        sys.read_inputfile("traj.dat")
-        sys.find_neighbors(method="cutoff", cutoff=0)
-        solids = sys.find_solids()
+        solids = ph.find_solid_fraction("traj.dat")
         if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
             lmp.close()
             raise RuntimeError("System melted, increase size or reduce temp!")
 
         lmp.close()
+        self.process_traj()
 
-        #now some housekeeping
-        ncells = self.options["md"]["nx"]*self.options["md"]["ny"]*self.options["md"]["nz"]
-        self.natoms = ncells*self.apc
+
+    def process_traj(self):
+        """
+        Process the out trajectory after averaging cycle and 
+        extract a configuration to run integration
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        
+        """
+        trajfile = os.path.join(self.simfolder, "traj.dat")
+        files = ptp.split_trajectory(trajfile)
+        conf = os.path.join(self.simfolder, "conf.dump")
+
+        ph.reset_timestep(files[-1], conf)
+
+        os.remove(trajfile)
+        for file in files:
+            os.remove(file)
 
 
     def run_integration(self, iteration=1):
@@ -264,10 +295,8 @@ class Solid:
         -------
         None
         """
-        cores = self.options["queue"]["cores"]
-        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
+        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
 
-        lmp.command("echo              log")
 
         lmp.command("variable          T0 equal 0.7*%f"%self.t)  # Initial temperature.
         lmp.command("variable          te equal %d"%self.options["md"]["te"])   # Equilibration time (steps).
@@ -276,22 +305,11 @@ class Solid:
         lmp.command("variable          rand equal %d"%np.random.randint(0, 1000))
 
 
-        #-------------------------- Atomic Setup --------------------------------------#  
-        lmp.command("units            metal")
-        lmp.command("boundary         p p p")
-        lmp.command("atom_style       atomic")
+        conf = os.path.join(self.simfolder, "conf.dump")
+        lmp = ph.read_dump(lmp, conf)
 
-        lmp.command("lattice          %s %f"%(self.l, self.avglat))
-        lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
-        lmp.command("create_box       1 box")
-        lmp.command("create_atoms     1 box")
-
-
-        lmp.command("neigh_modify    every 1 delay 0 check yes once no")
-
-        lmp.command("pair_style       %s"%self.options["md"]["pair_style"])
-        lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
-        lmp.command("mass             * %f"%self.options["md"]["mass"])
+        #set up potential
+        lmp = ph.set_potential(lmp, self.options)
 
         #---------------------- Thermostat & Barostat ---------------------------------#
         lmp.command("fix               f1 all nve")
@@ -390,7 +408,8 @@ class Solid:
         report["input"]["temperature"] = int(self.t)
         report["input"]["pressure"] = float(self.p)
         report["input"]["lattice"] = str(self.l)
-        report["input"]["concentration"] = float(self.c)
+        report["input"]["element"] = " ".join(np.array(self.options["element"]).astype(str))
+        report["input"]["concentration"] = " ".join(np.array(self.calc["concentration"]).astype(str))
 
         #average quantities
         report["average"] = {}
@@ -429,17 +448,16 @@ class Solid:
         # pressure needs to be scaled up from initial structure- then temperature
         
         t0 = self.t
-        tf = self.options["main"]["temperature"][-1]
+        tf = self.tend
         li = 1
         lf = t0/tf
         pi = self.p
         pf = lf*pi
 
-        cores = self.options["queue"]["cores"]
-        lmp = LammpsLibrary(mode="local", cores=cores, working_directory=self.simfolder)
+        #create lammps object
+        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
 
         lmp.command("echo              log")
-
         lmp.command("variable          T0 equal %f"%t0)  # Initial temperature.
         lmp.command("variable          te equal %d"%self.options["md"]["te"])   # Equilibration time (steps).
         lmp.command("variable          ts equal %d"%self.options["md"]["ts"])  # Switching time (steps).
@@ -447,35 +465,11 @@ class Solid:
         lmp.command("variable          lf equal %f"%lf)
         lmp.command("variable          rand equal %d"%np.random.randint(0, 1000))
 
+        conf = os.path.join(self.simfolder, "conf.dump")
+        lmp = ph.read_dump(lmp, conf)
 
-    #-------------------------- Atomic Setup --------------------------------------#  
-        lmp.command("units            metal")
-        lmp.command("boundary         p p p")
-        lmp.command("atom_style       atomic")
-
-        lmp.command("lattice          %s %f"%(self.l, self.avglat))
-        lmp.command("region           box block 0 %d 0 %d 0 %d"%(self.options["md"]["nx"], self.options["md"]["ny"], self.options["md"]["nz"]))
-        lmp.command("create_box       1 box")
-        lmp.command("create_atoms     1 box")
-
-
-        lmp.command("neigh_modify    every 1 delay 0 check yes once no")
-
-        lmp.command("pair_style       %s"%self.options["md"]["pair_style"])
-        lmp.command("pair_coeff       %s"%self.options["md"]["pair_coeff"])
-        lmp.command("mass             * %f"%self.options["md"]["mass"])
-
-        ##here we do the pressure routine
-        lmp.command("velocity          all create 100 ${rand} mom yes rot yes dist gaussian")
-        lmp.command("fix               f1 all nph aniso %f %f %f"%(pi, pi, self.options["md"]["pdamp"]))
-        lmp.command("run               %d"%int(self.options["md"]["nsmall"]))
-        lmp.command("fix               f2 all langevin 100 ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
-        lmp.command("run               %d"%int(self.options["md"]["nsmall"]))
-        #now unfix
-        lmp.command("unfix             f1")
-        lmp.command("unfix             f2")
-
-        lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")
+        #set up potential
+        lmp = ph.set_potential(lmp, self.options)
 
     #---------------------- Thermostat & Barostat ---------------------------------#
         lmp.command("fix               f1 all nph aniso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
@@ -506,8 +500,6 @@ class Solid:
         
 
         lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")   
-        lmp.command("variable          i loop %d"%self.options["main"]["nsims"])
-
         lmp.command("run               ${te}")
         lmp.command("unfix             f1")
 
@@ -530,10 +522,7 @@ class Solid:
         lmp.command("run               0")
         lmp.command("undump            2")
         
-        sys = pc.System()
-        sys.read_inputfile("traj.dat")
-        sys.find_neighbors(method="cutoff", cutoff=0)
-        solids = sys.find_solids()
+        solids = ph.find_solid_fraction("traj.dat")
         if (solids/lmp.natoms < 0.7):
             lmp.close()
             raise RuntimeError("System melted, increase size or reduce scaling!")
@@ -545,6 +534,7 @@ class Solid:
         lmp.command("unfix             f1")
 
         lmp.command("variable          lambda equal ramp(${lf},${li})")
+        
         lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
             pi, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")
@@ -563,4 +553,4 @@ class Solid:
         Carry out the reversible scaling operation
         """
         integrate_rs(self.simfolder, self.fe, self.t, self.natoms, p=self.p,
-            nsims=self.options["main"]["nsims"], scale_energy=scale_energy)
+            nsims=self.nsims, scale_energy=scale_energy, return_values=return_values)
