@@ -172,3 +172,26 @@ def read_yamlfile(file):
                             options["calculations"].append(cdict)
 
     return options
+
+def create_identifier(calc):
+    """
+    Generate an identifier
+
+    Parameters
+    ----------
+    calc: dict
+        a calculation dict
+
+    Returns
+    -------
+    identistring: string
+        unique identification string
+    """
+    #lattice processed
+    ts = int(calc["temperature"])
+    ps = int(calc["pressure"])
+    l = calc["lattice"]
+    prefix = calc["mode"]
+
+    identistring = "-".join([prefix, l, str(ts), str(ps)])
+    return identistring
