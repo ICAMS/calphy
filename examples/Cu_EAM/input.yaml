@@ -17,14 +17,14 @@ calculations:
   repeat: [3, 3, 3]
   #state - specify whether structure is solid or liquid
   #can be a single value or list
-  state: solid
+  state: liquid
   #number of independent switching to calculate error
   nsims: 1
 
 md:
   #specify pair style and pair coeff here
   pair_style: eam/alloy
-  pair_coeff: "* * /home/sarath/Repos/pytint/examples/Cu01.eam.alloy Cu"
+  pair_coeff: "* * /home/sarath/Repos/pytint/examples/Cu_EAM/Cu01.eam.alloy Cu"
   #md timestep
   timestep: 0.001
   #number of steps
@@ -43,7 +43,7 @@ queue:
   #def: local
   scheduler: local
   #no of cores  
-  cores: 4
+  cores: 2
   #job name
   #def: tis
   jobname: ti

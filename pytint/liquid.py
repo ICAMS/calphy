@@ -198,7 +198,7 @@ class Liquid:
         #now the small extra routine
         #to do a NVT melting
         #create lammps object
-        lmp = create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
 
         #set up structure
         lmp = ph.create_structure(lmp, self.calc)
@@ -279,7 +279,7 @@ class Liquid:
         """
 
         #create lammps object
-        lmp = create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
 
         
         lmp.command("variable        rnd      equal   round(random(0,999999,%d))"%np.random.randint(0, 10000))
@@ -434,7 +434,7 @@ class Liquid:
         pf = lf*pi
 
         #create lammps object
-        lmp = create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
 
         lmp.command("echo              log")
         lmp.command("variable          T0 equal %f"%t0)  # Initial temperature.

@@ -18,13 +18,13 @@ def check_data_file(file):
         lmp.close()
     except:
         raise TypeError("LAMMPS could not read in the data file. Please check!")
-	return natoms
+    return natoms
 
 def create_object(cores, directory, timestep):
-	"""
-	"""
-	lmp = LammpsLibrary(mode="local", cores=cores, 
-		working_directory=directory)
+    """
+    """
+    lmp = LammpsLibrary(mode="local", cores=cores, 
+        working_directory=directory)
     
     lmp.units("metal")
     lmp.boundary("p p p")
@@ -33,15 +33,15 @@ def create_object(cores, directory, timestep):
     return lmp
 
 def create_structure(lmp, calc):
-	l, alat, apc = pl.prepare_lattice(calc)
+    l, alat, apc = pl.prepare_lattice(calc)
 
-	if l == "file":
-		lmp.command("read_data      %s"%file)
-	else:
+    if l == "file":
+        lmp.command("read_data      %s"%file)
+    else:
         lmp.lattice(l, alat)
         lmp.region("box block", 0, calc["repeat"][0], 
-        	0, calc["repeat"][1], 
-        	0, calc["repeat"][2])
+            0, calc["repeat"][1], 
+            0, calc["repeat"][2])
         lmp.create_box("1 box")
         lmp.create_atoms("1 box")
     return lmp
@@ -51,8 +51,8 @@ def set_potential(lmp, options):
     lmp.pair_style(options["md"]["pair_style"])
     lmp.pair_coeff(options["md"]["pair_coeff"])
 
-    for i in range(len(options["nelements"])):
-    	lmp.mass(i+1, options["mass"][i])
+    for i in range(options["nelements"]):
+        lmp.mass(i+1, options["mass"][i])
     return lmp
 
 
@@ -66,16 +66,16 @@ def read_dump(lmp, file):
 
 
 def set_hybrid_potential(lmp, options, eps):
-	pc =  options["md"]["pair_coeff"]
-	pcraw = pc.split()
-	pcnew = " ".join([*pcraw[:2], *[options["md"]["pair_style"],], *pcraw[2:]])
+    pc =  options["md"]["pair_coeff"]
+    pcraw = pc.split()
+    pcnew = " ".join([*pcraw[:2], *[options["md"]["pair_style"],], *pcraw[2:]])
     
     lmp.command("pair_style       hybrid/overlay %s ufm 7.5"%options["md"]["pair_style"])
     lmp.command("pair_coeff       %s"%pcnew)
     lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps) 
 
     for i in range(len(options["nelements"])):
-    	lmp.mass(i+1, options["mass"][i])
+        lmp.mass(i+1, options["mass"][i])
     return lmp
 
 """

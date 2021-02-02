@@ -205,7 +205,7 @@ def create_identifier(calc):
     ts = int(calc["temperature"])
     ps = int(calc["pressure"])
     l = calc["lattice"]
-    print(calc.keys())
+    #print(calc.keys())
     prefix = calc["mode"]
 
     identistring = "-".join([prefix, l, str(ts), str(ps)])
