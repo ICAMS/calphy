@@ -12,7 +12,7 @@ import yaml
 from pytint.input import read_yamlfile, create_identifier
 from pytint.liquid import Liquid
 from pytint.solid import Solid
-import pytint.lattice as pl
+
 
 def routine_fe(job):
     """
@@ -57,18 +57,6 @@ def main():
 
     calc = options["calculations"][kernel]
     
-    #process lattice
-    lattice = calc["lattice"].upper()
-    if lattice in ["BCC", "FCC", "HCP", "DIA", "SC", "LQD"]:
-        #process lattice
-        alat, apc, l = pl.get_lattice(element, lattice)
-    elif os.path.exists(calc["lattice"]):
-        #its a file - do something
-        l = "file"
-    else:
-        raise ValueError("Unknown lattice found. Allowed options are BCC, FCC, HCP, DIA, SC or LQD; or an input file.")
-
-
     #format and parse the arguments
     #thigh is for now hardcoded    
     identistring = create_identifier(calc)
@@ -78,12 +66,6 @@ def main():
     if os.path.exists(simfolder):
         shutil.rmtree(simfolder)
     os.mkdir(simfolder)
-
-    #time to set up the job
-    #create a lattice object
-    #just tweak for diamond!
-    if l == "dia":
-        l = "diamond"
 
     #now we need to modify the routines
     if calc["state"] == "liquid":

@@ -137,17 +137,23 @@ def read_yamlfile(file):
                         cdict["pressure"] = press
                         cdict["lattice"] = lat
                         cdict["state"] = state[i]
-                        cdict["temperature_stop"] = temperature[-1] 
+                        cdict["temperature_stop"] = temperature[-1]
+                        cdict["nelements"] = options["nelements"]
+                        cdict["element"] = options["element"]
 
                         #optional keys
                         if "repeat" in calc.keys():
                             cdict["repeat"] = calc["repeat"]
                         else:
-                            cdict["repeat"] = [7, 7, 7]
+                            cdict["repeat"] = [1, 1, 1]
                         if "nsims" in calc.keys():
                             cdict["nsims"] = calc["nsims"]
                         else:
                             cdict["nsims"] = 1
+                        if "thigh" in calc.keys():
+                            cdict["thigh"] = calc["thigh"]
+                        else:
+                            cdict["thigh"] = 2.0*cdict["temperature_stop"]
 
                         options["calculations"].append(cdict)
                     else:
@@ -158,16 +164,22 @@ def read_yamlfile(file):
                             cdict["lattice"] = lat
                             cdict["state"] = state[i]
                             cdict["temperature_stop"] = temp
+                            cdict["nelements"] = options["nelements"]
+                            cdict["element"] = options["element"]
 
                             #optional keys
                             if "repeat" in calc.keys():
                                 cdict["repeat"] = calc["repeat"]
                             else:
-                                cdict["repeat"] = [7, 7, 7]
+                                cdict["repeat"] = [1, 1, 1]
                             if "nsims" in calc.keys():
                                 cdict["nsims"] = calc["nsims"]
                             else:
                                 cdict["nsims"] = 1
+                            if "thigh" in calc.keys():
+                                cdict["thigh"] = calc["thigh"]
+                            else:
+                                cdict["thigh"] = 2.0*cdict["temperature_stop"]
 
                             options["calculations"].append(cdict)
 

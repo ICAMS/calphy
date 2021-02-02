@@ -57,3 +57,28 @@ def get_lattice(symbol, lat):
 		lammps_lattice = lat.lower()
 
 	return lattice_constant, atoms_per_cell, lammps_lattice
+
+def prepare_lattice(calc):
+    #process lattice
+    lattice = calc["lattice"].upper()
+    
+    if lattice in ["BCC", "FCC", "HCP", "DIA", "SC", "LQD"]:
+        #process lattice
+        #throw error for multicomponent
+        if calc["nelements"] > 1:
+        	raise ValueError("Only files supported for multicomponent")
+
+        alat, apc, l = get_lattice(calc["element"][0], calc["lattice"])
+
+    elif os.path.exists(calc["lattice"]):
+        #its a file - do something
+        l = "file"
+        alat = 1.00
+        apc = 1
+    else:
+        raise ValueError("Unknown lattice found. Allowed options are BCC, FCC, HCP, DIA, SC or LQD; or an input file.")
+    
+    if l == "dia":
+        l = "diamond"
+
+    return l, alat, apc
