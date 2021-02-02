@@ -191,7 +191,7 @@ class Liquid:
             file = os.path.join(self.simfolder, "avg.dat")
             lx, ly, lz, ipress = np.loadtxt(file, usecols=(1,2,3,4), unpack=True)
 
-            lxpc = (lx/self.ncells)
+            lxpc = ((lx*ly*lz)/self.ncells)**(1/3)
             lxpc = lxpc[-ncount+1:]
             mean = np.mean(lxpc)
             std = np.std(lxpc)            

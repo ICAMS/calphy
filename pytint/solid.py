@@ -199,7 +199,7 @@ class Solid:
             file = os.path.join(self.simfolder, "avg.dat")
             lx, ly, lz, ipress = np.loadtxt(file, usecols=(1,2, 3, 4), unpack=True)
             
-            lxpc = (lx/self.ncells)
+            lxpc = ((lx*ly*lz)/self.ncells)**(1/3)
             lxpc = lxpc[-ncount+1:]
             mean = np.mean(lxpc)
             std = np.std(lxpc)
@@ -325,11 +325,11 @@ class Solid:
         conf = os.path.join(self.simfolder, "conf.dump")
         lmp = ph.read_dump(lmp, conf)
 
-        #remap the box to get the correct pressure
-
-
         #set up potential
         lmp = ph.set_potential(lmp, self.options)
+
+        #remap the box to get the correct pressure
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         #---------------------- Thermostat & Barostat ---------------------------------#
         lmp.command("fix               f1 all nve")
@@ -490,6 +490,9 @@ class Solid:
 
         #set up potential
         lmp = ph.set_potential(lmp, self.options)
+
+        #remap the box to get the correct pressure
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
     #---------------------- Thermostat & Barostat ---------------------------------#
         lmp.command("fix               f1 all nph aniso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
