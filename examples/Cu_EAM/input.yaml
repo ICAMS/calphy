@@ -12,12 +12,12 @@ calculations:
   pressure: [0]
   #lattice - specify from LQD, FCC, HCP, BCC, DIA, SC or file
   #can be a single value or a list
-  lattice: FCC
+  lattice: LQD
   #lattice repetitions - only used if lattice is specified
   repeat: [3, 3, 3]
   #state - specify whether structure is solid or liquid
   #can be a single value or list
-  state: solid
+  state: liquid
   #number of independent switching to calculate error
   nsims: 1
 
