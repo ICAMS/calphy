@@ -397,7 +397,8 @@ class Liquid:
         report["input"]["temperature"] = int(self.t)
         report["input"]["pressure"] = float(self.p)
         report["input"]["lattice"] = str(self.l)
-        report["input"]["concentration"] = float(self.c)
+        report["input"]["element"] = float(self.options["element"])
+        report["input"]["concentration"] = float(self.options["concentration"])
 
         #average quantities
         report["average"] = {}
