@@ -1,6 +1,7 @@
 """
 Helper methods for pytint
 """
+import os
 from pylammpsmpi import LammpsLibrary
 import logging
 import numpy as np
@@ -11,14 +12,17 @@ import pyscal.core as pc
 LAMMPS helper routines
 --------------------------------------------------------------------
 """
-def check_data_file(file):
-    try:
-        lmp = lammps()
-        lmp.command("read_data %s"%file)
-        natoms = lmp.natoms
-        lmp.close()
-    except:
-        raise TypeError("LAMMPS could not read in the data file. Please check!")
+def check_data_file(infile):
+    if os.path.exists(infile):
+        try:
+            lmp = create_object(1, os.getcwd(), 0.001)
+            lmp.read_data(infile)
+            natoms = lmp.natoms
+            lmp.close()
+        except:
+            raise TypeError("LAMMPS could not read in the data file. Please check!")
+    else:
+        raise FileNotFoundError("File not found!")
     return natoms
 
 def create_object(cores, directory, timestep):
@@ -37,7 +41,7 @@ def create_structure(lmp, calc):
     l, alat, apc = pl.prepare_lattice(calc)
 
     if l == "file":
-        lmp.command("read_data      %s"%file)
+        lmp.command("read_data      %s"%calc["lattice"])
     else:
         lmp.lattice(l, alat)
         lmp.region("box block", 0, calc["repeat"][0], 

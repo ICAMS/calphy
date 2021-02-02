@@ -1,6 +1,6 @@
 
 from mendeleev import element
-
+import os
 """
 Conversion factors for creating initial lattices
 """

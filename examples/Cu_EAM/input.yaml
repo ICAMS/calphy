@@ -12,7 +12,7 @@ calculations:
   pressure: [0]
   #lattice - specify from LQD, FCC, HCP, BCC, DIA, SC or file
   #can be a single value or a list
-  lattice: LQD
+  lattice: /home/sarath/Repos/pytint/examples/Cu_EAM/cu.data
   #lattice repetitions - only used if lattice is specified
   repeat: [3, 3, 3]
   #state - specify whether structure is solid or liquid

@@ -224,7 +224,11 @@ def create_identifier(calc):
     #lattice processed
     ts = int(calc["temperature"])
     ps = int(calc["pressure"])
+
     l = calc["lattice"]
+    l = l.split('/')
+    l = l[-1]
+    
     #print(calc.keys())
     prefix = calc["mode"]
 
