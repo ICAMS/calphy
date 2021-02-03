@@ -150,19 +150,17 @@ class Solid:
         lmp.command("variable         mpress equal press")
 
         if self.p == 0:
-            #This routine should be followed for zero pressure
+            #Use a berendsen routine for control of pressure and temp
             lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
-            lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("fix              1 all nve")
+            lmp.command("fix              3 all press/berendsen iso %f %f %f"%(self.p, self.p, 10))
             lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
             lmp.command("thermo           10")
-            lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
-            lmp.command("unfix            1")
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
 
-            lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
-            lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                self.p, self.p, self.options["md"]["pdamp"]))
-            lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+            lmp.command("fix              4 all temp/berendsen %f %f %f"%(self.t, self.t, 10))
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
+
         else:
             #Now this routine is for non-zero pressure
             #one has to equilibriate at a low temperature, but high pressure and then increase temp gradually
@@ -221,6 +219,8 @@ class Solid:
         #now run for msd
         lmp.command("unfix            1")
         lmp.command("unfix            2")
+        lmp.command("unfix            3")
+        lmp.command("unfix            4")
 
         #check for melting
         #check for melting
@@ -235,8 +235,8 @@ class Solid:
 
 
         lmp.command("fix              3 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
+        
         lmp.command("compute          1 all msd com yes")
-
         lmp.command("variable         msd equal c_1[4]")
 
         #we need a similar averaging routine here
