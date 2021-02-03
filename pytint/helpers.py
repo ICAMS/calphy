@@ -89,6 +89,28 @@ def remap_box(lmp, x, y, z):
     return lmp
 
 
+def compute_msd(lmp, options):
+    elements = options["elements"]
+    str1 = "fix  4 all ave/time %d %d %d "%(int(options["md"]["nevery"]),
+                                           int(options["md"]["nrepeat"]), 
+              int(options["md"]["nevery"]*options["md"]["nrepeat"]))
+
+    #set groups
+    for i in range(len(elements)):
+        lmp.command("group  g%d type %d"%(i+1, i+1))
+
+    str2 = []
+    for i in range(len(elements)):
+        lmp.command("compute          c%d g%d msd com yes"%(i+1, i+1))
+        lmp.command("variable         msd%d equal c_c%d[4]"%(i+1, i+1))
+        str2.append("v_msd%d"%(i+1))
+    str2.append("file")
+    str2.append("msd.dat")
+    str2 = " ".join(str2)
+    command = str1 + str2
+    lmp.command(command)
+    return lmp
+
 """
 PYSCAL helper routines
 ---------------------------------------------------------------------

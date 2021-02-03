@@ -132,7 +132,7 @@ def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, cm_correct
     mass = (np.array(mass)/Na)*1E-3
 
     #convert k from ev/A2 to J/m2
-    k = k*(eV2J/1E-20)
+    k = np.array(k)*(eV2J/1E-20)
     omega = np.sqrt(k/mass)
 
     #convert a to m

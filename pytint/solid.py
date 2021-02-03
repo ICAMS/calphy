@@ -157,12 +157,7 @@ class Solid:
             lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
             lmp.command("thermo           10")
             lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
-            lmp.command("unfix            1")
 
-            lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
-            lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                self.p, self.p, self.options["md"]["pdamp"]))
-            lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
         else:
             #Now this routine is for non-zero pressure
             #one has to equilibriate at a low temperature, but high pressure and then increase temp gradually
@@ -197,7 +192,7 @@ class Solid:
             ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
             #now we can check if it converted
             file = os.path.join(self.simfolder, "avg.dat")
-            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1,2, 3, 4), unpack=True)
+            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
             
             lxpc = ((lx*ly*lz)/self.ncells)**(1/3)
             lxpc = lxpc[-ncount+1:]
@@ -235,13 +230,9 @@ class Solid:
 
 
         lmp.command("fix              3 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
-        lmp.command("compute          1 all msd com yes")
-
-        lmp.command("variable         msd equal c_1[4]")
-
+        
+        lmp = ph.compute_msd(lmp, self.options)
         #we need a similar averaging routine here
-        lmp.command("fix              4 all ave/time %d %d %d v_msd file msd.dat"%(int(self.options["md"]["nevery"]),
-            int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
         laststd = 0.00
         for i in range(self.options["md"]["ncycles"]):
             lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
@@ -255,8 +246,16 @@ class Solid:
             std = np.std(quant)
             self.logger.info("At count %d mean k is %f std is %f"%(i+1, mean, std))
             if (np.abs(laststd - std) < self.options["conv"]["k_tol"]):
-                self.k = np.round(mean, decimals=2)
-                self.logger.info("finalized sprint constant %f"%(self.k))
+                #now reevaluate spring constants
+                k = []
+                for i in range(self.options["nelements"]):
+                    quant = np.loadtxt(file, usecols=(i+1, ), unpack=True)[-ncount+1:]
+                    quant = 3*kb*self.t/quant
+                    k.append(np.round(np.mean(quant), decimals=2))
+
+                self.k = k
+                self.logger.info("finalized sprint constants")
+                self.logger.info(self.k)
                 break
             laststd = std
 
@@ -318,7 +317,7 @@ class Solid:
         lmp.command("variable          T0 equal 0.7*%f"%self.t)  # Initial temperature.
         lmp.command("variable          te equal %d"%self.options["md"]["te"])   # Equilibration time (steps).
         lmp.command("variable          ts equal %d"%self.options["md"]["ts"])  # Switching time (steps).
-        lmp.command("variable          k equal %f"%self.k)
+        #lmp.command("variable          k equal %f"%self.k)
         lmp.command("variable          rand equal %d"%np.random.randint(0, 1000))
 
 
@@ -331,9 +330,21 @@ class Solid:
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
+        #create groups
+        for i in range(self.options["nelements"]):
+            lmp.command("group  g%d type %d"%(i+1, i+1))
+
+        for i in range(self.options["nelements"]):
+            lmp.command("variable   count%d count(g%d)"%(i+1, i+1))
+
+        lmp.command("run               0")
         #---------------------- Thermostat & Barostat ---------------------------------#
         lmp.command("fix               f1 all nve")
-        lmp.command("fix               f2 all ti/spring 10.0 1000 1000 function 2")
+        
+        #nelements 
+        for i in range(self.options["nelements"]):
+            lmp.command("fix               ff%d g%d ti/spring 10.0 1000 1000 function 2"%(i+1, i+1))
+        
         lmp.command("fix               f3 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], 
                                         np.random.randint(0, 10000)))
 
@@ -342,9 +353,13 @@ class Solid:
         lmp.command("fix_modify        f3 temp Tcm")
 
         lmp.command("variable          step    equal step")
+        
+        #nelements
         lmp.command("variable          dU1      equal pe/atoms")
-        lmp.command("variable          dU2      equal f_f2/atoms")
-        lmp.command("variable          lambda  equal f_f2[1]")
+        for i in range(self.options["nelements"]):
+            lmp.command("variable          dU%d      equal f_ff%d/v_count%d"%(i+2, i+1, i+1))
+        
+        lmp.command("variable          lambda  equal f_ff1[1]")
 
         lmp.command("variable          te_run  equal %d-1"%self.options["md"]["te"]) # Print correctly on fix print.
         lmp.command("variable          ts_run  equal %d+1"%self.options["md"]["ts"]) # Print correctly on fix print.
@@ -357,17 +372,35 @@ class Solid:
         #------------------------- Running the Simulation -----------------------------#
         lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")
 
-        lmp.command("fix               f2 all ti/spring %f %d %d function 2"%(self.k, self.options["md"]["ts"], self.options["md"]["te"]))
+        for i in range(self.options["nelements"]):
+            lmp.command("fix               ff%d g%d ti/spring %f %d %d function 2"%(i+1, i+1, self.k[i], 
+                self.options["md"]["ts"], self.options["md"]["te"]))
 
         # Forward. 
         lmp.command("run               ${te_run}")
-        lmp.command("fix               f4 all print 1 \"${dU1} ${dU2} ${lambda}\" screen no file forward_%d.dat "%iteration)
+        str1 = "fix f4 all print 1 \"${dU1} "
+        str2 = []
+        for i in range(self.options["nelements"]):
+            str2.append("${dU%d}"%(i+2))
+        str2.append("${lambda}\"")
+        str2 = " ".join(str2)
+        str3 = " screen no file forward_%d.dat"%iteration
+        command = str1 + str2 + str3
+        lmp.command(command)
         lmp.command("run               ${ts_run}")
         lmp.command("unfix             f4")
 
         # Backward. 
         lmp.command("run               ${te_run}")
-        lmp.command("fix               f4 all print 1 \"${dU1} ${dU2} ${lambda}\" screen no file backward_%d.dat"%iteration)
+        str1 = "fix f4 all print 1 \"${dU1} "
+        str2 = []
+        for i in range(self.options["nelements"]):
+            str2.append("${dU%d}"%(i+2))
+        str2.append("${lambda}\"")
+        str2 = " ".join(str2)
+        str3 = " screen no file forward_%d.dat"%iteration
+        command = str1 + str2 + str3
+        lmp.command(command)
         lmp.command("run               ${ts_run}")
         lmp.command("unfix             f4")
 
