@@ -154,7 +154,7 @@ def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, cm_correct
 
     return F_harm
 
-def integrate_path(fwdfilename, bkdfilename, usecols=(0, 1, 2), solid=True):
+def integrate_path(fwdfilename, bkdfilename, nelements=1, usecols=(0, 1, 2), solid=True):
     """
     Get a filename with columns du and dlambda and integrate
 
@@ -177,8 +177,24 @@ def integrate_path(fwdfilename, bkdfilename, usecols=(0, 1, 2), solid=True):
     q : float
         heat dissipation during switching of system
     """
-    fdui, fdur, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=usecols)
-    bdui, bdur, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=usecols)
+    if solid:
+        if nelements > 1:
+            fdui = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(0,))
+            bdui = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(0,))
+
+            fdur = np.zeros(len(fdui))
+            bdur = np.zeros(len(bdui))
+
+            for i in range(nelements):
+                fdur += np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(i+1,))
+                bdur += np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(i+1,))
+
+            flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(nelements+1,))
+            blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(nelements+1,))
+
+    else:
+        fdui, fdur, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=usecols)
+        bdui, bdur, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=usecols)
 
     #SOLID HAS NO ISSUES - NO SCALING NEEDED
     #THIS IS TEMPORARY
@@ -299,7 +315,7 @@ def calculate_fe_mix(temp, fepure, feimpure, concs, natoms=4000):
         fes.append(f)    
     return fes
 
-def find_w(mainfolder, nsims=5, full=False, usecols=(0,1,2), solid=True):
+def find_w(mainfolder, nelements=1, nsims=5, full=False, usecols=(0,1,2), solid=True):
     """
     Integrate the irreversible work and dissipation for independent simulations
 
@@ -336,7 +352,7 @@ def find_w(mainfolder, nsims=5, full=False, usecols=(0,1,2), solid=True):
         fwdfilename = os.path.join(mainfolder,fwdfilestring)
         bkdfilestring = 'backward_%d.dat' % (i+1)
         bkdfilename = os.path.join(mainfolder,bkdfilestring)
-        w, q = integrate_path(fwdfilename, bkdfilename, usecols=usecols, solid=solid)
+        w, q = integrate_path(fwdfilename, bkdfilename, nelements=nelements, usecols=usecols, solid=solid)
         ws.append(w)
         qs.append(q)
         
