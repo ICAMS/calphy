@@ -1,30 +1,31 @@
 
 # element name - could also be a list for multicomponent species
-element: 'Cu'
+element: ['Ni', 'Al']
 # mass - could also be a list for multicomponent species
-mass: 26.98
+mass: [26.98, 35.54]
 #now specify calculations
 calculations:
 - mode: ts #select from temperature-sweep or free-energy 
   #temperature of simulation - specify a list
   temperature: [1300, 1400]
+  concentration: [0.8, 0.2]
   #pressure - not implemented - always zero now
   pressure: [0]
   #lattice - specify from LQD, FCC, HCP, BCC, DIA, SC or file
   #can be a single value or a list
-  lattice: [FCC]
+  lattice: /home/sarath/Repos/pytint/examples/NiAl_EAM/nial.data
   #lattice repetitions - only used if lattice is specified
-  repeat: [2, 2, 2]
+  repeat: [3, 3, 3]
   #state - specify whether structure is solid or liquid
   #can be a single value or list
-  state: solid
+  state: liquid
   #number of independent switching to calculate error
   nsims: 1
 
 md:
   #specify pair style and pair coeff here
   pair_style: eam/alloy
-  pair_coeff: "* * /home/sarath/Repos/pytint/examples/Cu_EAM/Cu01.eam.alloy Cu"
+  pair_coeff: "* * /home/sarath/Repos/pytint/examples/NiAl_EAM/NiAl.eam.alloy Ni Al"
   #md timestep
   timestep: 0.001
   #number of steps
@@ -34,9 +35,9 @@ md:
   #barostat damping
   pdamp: 0.1
   #equilibriation time step for thermodynamic int
-  te: 1000
+  te: 10000
   #switching time step
-  ts: 1500
+  ts: 15000
   
 queue:
   #scheduler engine - sge, slurm etc

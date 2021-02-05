@@ -18,7 +18,7 @@ kbJ = const.physical_constants["Boltzmann constant"][0]
 Na = const.physical_constants["Avogadro constant"][0]
 eV2J = const.eV
 
-def get_ideal_gas_fe(temp, rho, natoms, mass, xa=1.0, xb=0.0):
+def get_ideal_gas_fe(temp, rho, natoms, mass, concentration):
     """
     Get the free energy of an single/binary ideal gas
 
@@ -49,8 +49,9 @@ def get_ideal_gas_fe(temp, rho, natoms, mass, xa=1.0, xb=0.0):
 
     """
     #find mass of one particle
-    mass = mass/Na
+    mass = np.array(mass)/Na
     beta = (1/(kb*temp)) #units - eV
+
     #omega needs to be in m
     omega = (beta*h*h/(2*np.pi*mass))**0.5
     #convert omega
@@ -59,18 +60,12 @@ def get_ideal_gas_fe(temp, rho, natoms, mass, xa=1.0, xb=0.0):
     omega = omega*1E10
     prefactor = 1/beta
 
-    if xa> 0:
-        ta = xa*(3*np.log(omega) + np.log(rho) -1 + np.log(xa))
-    else:
-        ta = 0
-    if xb> 0:
-        tb = xb*(3*np.log(omega) + np.log(rho) -1 + np.log(xb))
-    else:
-        tb = 0
-
+    fe = 0
+    for count, conc in enumerate(concentration):
+        fe += conc*(3*np.log(omega[count]) + np.log(rho) -1 + np.log(conc))
 
     #return prefactor*(ta + tb + (1/(2*natoms))*np.log(2*np.pi*natoms))
-    return prefactor*(ta + tb )
+    return prefactor*fe
 
 
 def get_uhlenbeck_ford_fe(temp, rho, p, sigma):
@@ -134,23 +129,32 @@ def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, cm_correct
 
     """
     #convert mass first for single particle in kg
-    mass = (mass/Na)*1E-3
+    mass = (np.array(mass)/Na)*1E-3
+
     #convert k from ev/A2 to J/m2
-    k = k*(eV2J/1E-20)
+    k = np.array(k)*(eV2J/1E-20)
     omega = np.sqrt(k/mass)
-    F_harm = -3*kb*temp*np.log((kb*temp)/(hbar*omega))
 
     #convert a to m
     a = a*1E-10
     vol = (natoms/atoms_per_cell) * (a**3)
 
-    if cm_correction:
-        F_cm = (kb*temp/natoms)*np.log((natoms/vol)*(2*np.pi*kbJ*temp/(natoms*k))**1.5)
-        F_harm = (F_harm + F_cm)
+    F_harm = 0
+    F_cm = 0
+
+    for count, om in enumerate(omega):
+        F_harm += np.log((kb*temp)/(hbar*om))
+        if cm_correction:
+            F_cm += np.log((natoms/vol)*(2*np.pi*kb*temp/(natoms*mass[count]*om*om))**1.5)
+    
+    F_harm = -3*kb*temp*F_harm
+    F_cm = (kb*temp/natoms)*F_cm
+
+    F_harm = F_harm + F_cm
 
     return F_harm
 
-def integrate_path(fwdfilename, bkdfilename, usecols=(0, 1, 2), solid=True):
+def integrate_path(fwdfilename, bkdfilename, nelements=1, usecols=(0, 1, 2), solid=True):
     """
     Get a filename with columns du and dlambda and integrate
 
@@ -173,8 +177,23 @@ def integrate_path(fwdfilename, bkdfilename, usecols=(0, 1, 2), solid=True):
     q : float
         heat dissipation during switching of system
     """
-    fdui, fdur, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=usecols)
-    bdui, bdur, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=usecols)
+    if solid:
+        fdui = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(0,))
+        bdui = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(0,))
+
+        fdur = np.zeros(len(fdui))
+        bdur = np.zeros(len(bdui))
+
+        for i in range(nelements):
+            fdur += np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(i+1,))
+            bdur += np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(i+1,))
+
+        flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(nelements+1,))
+        blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(nelements+1,))
+
+    else:
+        fdui, fdur, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=usecols)
+        bdui, bdur, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=usecols)
 
     #SOLID HAS NO ISSUES - NO SCALING NEEDED
     #THIS IS TEMPORARY
@@ -295,7 +314,7 @@ def calculate_fe_mix(temp, fepure, feimpure, concs, natoms=4000):
         fes.append(f)    
     return fes
 
-def find_w(mainfolder, nsims=5, full=False, usecols=(0,1,2), solid=True):
+def find_w(mainfolder, nelements=1, nsims=5, full=False, usecols=(0,1,2), solid=True):
     """
     Integrate the irreversible work and dissipation for independent simulations
 
@@ -332,7 +351,7 @@ def find_w(mainfolder, nsims=5, full=False, usecols=(0,1,2), solid=True):
         fwdfilename = os.path.join(mainfolder,fwdfilestring)
         bkdfilestring = 'backward_%d.dat' % (i+1)
         bkdfilename = os.path.join(mainfolder,bkdfilestring)
-        w, q = integrate_path(fwdfilename, bkdfilename, usecols=usecols, solid=solid)
+        w, q = integrate_path(fwdfilename, bkdfilename, nelements=nelements, usecols=usecols, solid=solid)
         ws.append(w)
         qs.append(q)
         
@@ -449,7 +468,8 @@ def find_fe(p, x):
     return pressure, free_energy
 
 
-def integrate_rs(simfolder, f0, t, natoms, p=0, nsims=5, scale_energy=False):
+def integrate_rs(simfolder, f0, t, natoms, p=0, nsims=5, 
+    scale_energy=False, return_values=False):
     """
     Carry out the reversible scaling integration
 
