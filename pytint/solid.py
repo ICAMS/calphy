@@ -335,7 +335,7 @@ class Solid:
             lmp.command("group  g%d type %d"%(i+1, i+1))
 
         for i in range(self.options["nelements"]):
-            lmp.command("variable   count%d count(g%d)"%(i+1, i+1))
+            lmp.command("variable   count%d equal count(g%d)"%(i+1, i+1))
 
         lmp.command("run               0")
         #---------------------- Thermostat & Barostat ---------------------------------#
@@ -398,13 +398,13 @@ class Solid:
             str2.append("${dU%d}"%(i+2))
         str2.append("${lambda}\"")
         str2 = " ".join(str2)
-        str3 = " screen no file forward_%d.dat"%iteration
+        str3 = " screen no file backward_%d.dat"%iteration
         command = str1 + str2 + str3
         lmp.command(command)
         lmp.command("run               ${ts_run}")
         lmp.command("unfix             f4")
 
-        lmp.command("unfix             f2")
+        #lmp.command("unfix             f2")
 
         lmp.close()
 
@@ -467,7 +467,7 @@ class Solid:
         #average quantities
         report["average"] = {}
         report["average"]["lattice_constant"] = float(self.avglat)
-        report["average"]["spring_constant"] = float(self.k)
+        report["average"]["spring_constant"] = " ".join(np.array(self.k).astype(str))
         
         #results
         report["results"] = {}

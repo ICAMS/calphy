@@ -90,7 +90,7 @@ def remap_box(lmp, x, y, z):
 
 
 def compute_msd(lmp, options):
-    elements = options["elements"]
+    elements = options["element"]
     str1 = "fix  4 all ave/time %d %d %d "%(int(options["md"]["nevery"]),
                                            int(options["md"]["nrepeat"]), 
               int(options["md"]["nevery"]*options["md"]["nrepeat"]))

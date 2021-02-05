@@ -12,12 +12,12 @@ calculations:
   pressure: [0]
   #lattice - specify from LQD, FCC, HCP, BCC, DIA, SC or file
   #can be a single value or a list
-  lattice: /home/sarath/Repos/pytint/examples/Cu_EAM/cu.data
+  lattice: [FCC]
   #lattice repetitions - only used if lattice is specified
-  repeat: [3, 3, 3]
+  repeat: [2, 2, 2]
   #state - specify whether structure is solid or liquid
   #can be a single value or list
-  state: liquid
+  state: solid
   #number of independent switching to calculate error
   nsims: 1
 
@@ -34,9 +34,9 @@ md:
   #barostat damping
   pdamp: 0.1
   #equilibriation time step for thermodynamic int
-  te: 10000
+  te: 1000
   #switching time step
-  ts: 15000
+  ts: 1500
   
 queue:
   #scheduler engine - sge, slurm etc

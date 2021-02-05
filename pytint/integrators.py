@@ -178,19 +178,18 @@ def integrate_path(fwdfilename, bkdfilename, nelements=1, usecols=(0, 1, 2), sol
         heat dissipation during switching of system
     """
     if solid:
-        if nelements > 1:
-            fdui = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(0,))
-            bdui = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(0,))
+        fdui = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(0,))
+        bdui = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(0,))
 
-            fdur = np.zeros(len(fdui))
-            bdur = np.zeros(len(bdui))
+        fdur = np.zeros(len(fdui))
+        bdur = np.zeros(len(bdui))
 
-            for i in range(nelements):
-                fdur += np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(i+1,))
-                bdur += np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(i+1,))
+        for i in range(nelements):
+            fdur += np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(i+1,))
+            bdur += np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(i+1,))
 
-            flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(nelements+1,))
-            blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(nelements+1,))
+        flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(nelements+1,))
+        blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(nelements+1,))
 
     else:
         fdui, fdur, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=usecols)
