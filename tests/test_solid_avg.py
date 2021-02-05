@@ -6,7 +6,7 @@ import os
 import numpy as np
 
 def test_solid_averaging():
-    options = read_yamlfile("tests/input.yaml")
+    options = read_yamlfile(os.path.join(os.getcwd(), "tests/input.yaml"))
     sol = Solid(options=options, kernel=0, simfolder=os.getcwd())
     sol.run_averaging()
     assert os.path.exists("msd.dat") == True

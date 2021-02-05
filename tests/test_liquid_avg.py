@@ -6,7 +6,7 @@ import os
 import numpy as np
 
 def test_liquid_averaging():
-    options = read_yamlfile("tests/input.yaml")
+    options = read_yamlfile(os.path.join(os.getcwd(), "tests/input.yaml"))
     lqd = Liquid(options=options, kernel=0, simfolder=os.getcwd())
     lqd.run_averaging()
     assert os.path.exists("traj.melt") == True
