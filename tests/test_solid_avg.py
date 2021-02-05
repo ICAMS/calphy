@@ -7,15 +7,13 @@ import numpy as np
 
 def test_solid_averaging():
     options = read_yamlfile("tests/input.yaml")
-    sol = Solid(t=1300, p=0, l="fcc", apc=4,
-                    alat=3.704, c=0.0, options=options, simfolder=os.getcwd(),
-                    )
+    sol = Solid(options=options, kernel=0, simfolder=os.getcwd())
     sol.run_averaging()
     assert os.path.exists("msd.dat") == True
 
     assert sol.natoms == 256
     assert np.abs(sol.alat - 3.704) < 1E-1
-    assert sol.k > 0
+    assert sol.k[0] > 0
 
     sol.run_integration(iteration=1)
     assert os.path.exists("forward_1.dat") == True
