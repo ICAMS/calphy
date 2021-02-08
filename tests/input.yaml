@@ -37,6 +37,9 @@ md:
   te: 1000
   #switching time step
   ts: 1500
+
+conv:
+  p_tol: 100
   
 queue:
   #scheduler engine - sge, slurm etc

@@ -212,6 +212,7 @@ class Liquid:
                 self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
                 self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
                 break
+            
             laststd = std
 
         lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")

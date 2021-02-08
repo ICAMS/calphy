@@ -1,7 +1,8 @@
 # pytint
 Python library for free energy calculations using thermodynamic integration
 
-> `pytint` is still in alpha phase. This documentation is outdated. It will updated soon..
+For documentation and examples - see the [examples folder](examples/1_getting_started.ipynb)
+
 
 ### Installing LAMMPS
 

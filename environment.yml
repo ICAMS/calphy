@@ -1,0 +1,14 @@
+name: pytint
+channels:
+  - conda-forge
+dependencies:
+  - pytest
+  - scipy
+  - pyyaml
+  - mendeleev
+  - openmpi 
+  - mpi4py
+  - lammps
+  - pylammpsmpi
+  - pyscal
+  - matplotlib
