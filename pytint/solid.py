@@ -424,7 +424,7 @@ class Solid:
         f1 = get_einstein_crystal_fe(self.t, 
             self.natoms, self.options["mass"], 
             self.avglat, self.k, self.apc)
-        w, q, qerr = find_w(self.simfolder, nsims=self.nsims, 
+        w, q, qerr = find_w(self.simfolder, nelements=self.options["nelements"], nsims=self.nsims, 
             full=True, solid=True)
         
         self.fref = f1
