@@ -314,7 +314,7 @@ def calculate_fe_mix(temp, fepure, feimpure, concs, natoms=4000):
         fes.append(f)    
     return fes
 
-def find_w(mainfolder, nelements=1, nsims=5, full=False, usecols=(0,1,2), solid=True):
+def find_w(mainfolder, nelements=1, concentration=[1,], nsims=5, full=False, usecols=(0,1,2), solid=True):
     """
     Integrate the irreversible work and dissipation for independent simulations
 
@@ -351,7 +351,7 @@ def find_w(mainfolder, nelements=1, nsims=5, full=False, usecols=(0,1,2), solid=
         fwdfilename = os.path.join(mainfolder,fwdfilestring)
         bkdfilestring = 'backward_%d.dat' % (i+1)
         bkdfilename = os.path.join(mainfolder,bkdfilestring)
-        w, q = integrate_path(fwdfilename, bkdfilename, nelements=nelements, usecols=usecols, solid=solid)
+        w, q = integrate_path(fwdfilename, bkdfilename, nelements=nelements, concentration=concentration, usecols=usecols, solid=solid)
         ws.append(w)
         qs.append(q)
         
