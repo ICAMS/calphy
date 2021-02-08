@@ -84,7 +84,8 @@ def read_yamlfile(file):
         "alat_tol": 0.0002,
         "k_tol": 0.01,
         "solid_frac": 0.7,
-        "liquid_frac": 0.05
+        "liquid_frac": 0.05,
+        "p_tol": 0.5,
     }
 
     #keys that need to be read in directly

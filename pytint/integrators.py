@@ -95,7 +95,7 @@ def get_uhlenbeck_ford_fe(temp, rho, p, sigma):
     return fe
 
 
-def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, cm_correction=True):
+def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, concentration, cm_correction=True):
     """
     Get the free energy of einstein crystal
 
@@ -143,9 +143,9 @@ def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, cm_correct
     F_cm = 0
 
     for count, om in enumerate(omega):
-        F_harm += np.log((kb*temp)/(hbar*om))
+        F_harm += concentration[count]*np.log((kb*temp)/(hbar*om))
         if cm_correction:
-            F_cm += np.log((natoms/vol)*(2*np.pi*kb*temp/(natoms*mass[count]*om*om))**1.5)
+            F_cm += np.log((natoms/vol)*concentration[count]*(2*np.pi*kb*temp/(natoms*mass[count]*om*om))**1.5)
     
     F_harm = -3*kb*temp*F_harm
     F_cm = (kb*temp/natoms)*F_cm

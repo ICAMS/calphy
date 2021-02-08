@@ -194,20 +194,21 @@ class Solid:
             file = os.path.join(self.simfolder, "avg.dat")
             lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
             
-            lxpc = ((lx*ly*lz)/self.ncells)**(1/3)
-            lxpc = lxpc[-ncount+1:]
+            #lxpc = ((lx*ly*lz)/self.ncells)**(1/3)
+            #lxpc = ipress[-ncount+1:]
+            lxpc = ipress
             mean = np.mean(lxpc)
             std = np.std(lxpc)
-            self.logger.info("At count %d mean lattice constant is %f std is %f"%(i+1, mean, std))
+            self.logger.info("At count %d mean pressure is %f std is %f"%(i+1, mean, std))
             
-            if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
-                self.avglat = np.round(mean, decimals=3)
+            #if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
+            if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
 
                 #process other means
                 self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
                 self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
                 self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
-
+                self.avglat = self.lx
                 self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
                 self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
                 break
@@ -423,7 +424,7 @@ class Solid:
         """
         f1 = get_einstein_crystal_fe(self.t, 
             self.natoms, self.options["mass"], 
-            self.avglat, self.k, self.apc)
+            self.avglat, self.k, self.apc, self.calc["concentration"])
         w, q, qerr = find_w(self.simfolder, nelements=self.options["nelements"], concentration=self.calc["concentration"], nsims=self.nsims, 
             full=True, solid=True)
         
