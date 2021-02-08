@@ -154,7 +154,7 @@ def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, cm_correct
 
     return F_harm
 
-def integrate_path(fwdfilename, bkdfilename, nelements=1, usecols=(0, 1, 2), solid=True):
+def integrate_path(fwdfilename, bkdfilename, nelements=1, concentration=[1,], usecols=(0, 1, 2), solid=True):
     """
     Get a filename with columns du and dlambda and integrate
 
@@ -185,8 +185,8 @@ def integrate_path(fwdfilename, bkdfilename, nelements=1, usecols=(0, 1, 2), sol
         bdur = np.zeros(len(bdui))
 
         for i in range(nelements):
-            fdur += np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(i+1,))
-            bdur += np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(i+1,))
+            fdur += concentration[i]*np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(i+1,))
+            bdur += concentration[i]*np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(i+1,))
 
         flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(nelements+1,))
         blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(nelements+1,))
