@@ -1,0 +1,69 @@
+# element name - could also be a list for multicomponent species
+element: 'Cu'
+# mass - could also be a list for multicomponent species
+mass: 26.98
+#now specify calculations
+calculations:
+- mode: ts #select from temperature-sweep or free-energy 
+  #temperature of simulation - specify a list
+  temperature: [1300, 1400]
+  #pressure - not implemented - always zero now
+  pressure: [0]
+  #lattice - specify from LQD, FCC, HCP, BCC, DIA, SC or file
+  #can be a single value or a list
+  lattice: [FCC]
+  #lattice repetitions - only used if lattice is specified
+  repeat: [2, 2, 2]
+  #state - specify whether structure is solid or liquid
+  #can be a single value or list
+  state: solid
+  #number of independent switching to calculate error
+  nsims: 1
+
+md:
+  #specify pair style and pair coeff here
+  pair_style: eam/alloy
+  pair_coeff: "* * /home/sarath/Repos/pytint/examples/Cu_EAM/Cu01.eam.alloy Cu"
+  #md timestep
+  timestep: 0.001
+  #number of steps
+  nsmall: 1000
+  #thermostat damping
+  tdamp: 0.1
+  #barostat damping
+  pdamp: 0.1
+  #equilibriation time step for thermodynamic int
+  te: 1000
+  #switching time step
+  ts: 1500
+  
+queue:
+  #scheduler engine - sge, slurm etc
+  #def: local
+  scheduler: local
+  #no of cores  
+  cores: 2
+  #job name
+  #def: tis
+  jobname: ti
+  #walltime for job
+  #def: 23:59:00
+  walltime: "23:50:00"
+  #name of submission queue
+  #def: shorttime
+  queuename: shorttime
+  #memory to be used for a single job
+  #def: 3GB
+  memory: 3GB
+  #module to be loaded
+  #modules:
+  #  - anaconda/4
+  #Commands to run 
+  commands:
+    # the following two comments are only needed if you run in conda env
+    # otherwise can be ignored
+    - conda activate ace
+  #any other extra options
+  #options:
+  # - "-j Y"  
+

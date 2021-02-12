@@ -95,7 +95,7 @@ def get_uhlenbeck_ford_fe(temp, rho, p, sigma):
     return fe
 
 
-def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, concentration, cm_correction=True):
+def get_einstein_crystal_fe(temp, natoms, mass, a, k, concentration, cm_correction=True):
     """
     Get the free energy of einstein crystal
 
@@ -116,9 +116,6 @@ def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, concentrat
     k : spring constant, float
         units - eV/Angstrom^2
 
-    atoms_per_cell : int
-        number of atoms per unit cell
-
     cm_correction : bool, optional, default - True
         add the centre of mass correction to free energy
 
@@ -137,18 +134,18 @@ def get_einstein_crystal_fe(temp, natoms, mass, a, k, atoms_per_cell, concentrat
 
     #convert a to m
     a = a*1E-10
-    vol = (natoms/atoms_per_cell) * (a**3)
+    vol = (a**3)
 
     F_harm = 0
     F_cm = 0
 
     for count, om in enumerate(omega):
-        F_harm += concentration[count]*np.log((kb*temp)/(hbar*om))
+        F_harm += concentration[count]*np.log((hbar*om)/(kb*temp))
         if cm_correction:
-            F_cm += np.log((natoms/vol)*concentration[count]*(2*np.pi*kb*temp/(natoms*mass[count]*om*om))**1.5)
+            F_cm += np.log((natoms*concentration[count]/vol)*(2*np.pi*kb*temp/(natoms*concentration[count]*mass[count]*om*om))**1.5)
     
-    F_harm = -3*kb*temp*F_harm
-    F_cm = (kb*temp/natoms)*F_cm
+    F_harm = 3*kb*temp*F_harm
+    F_cm = kb*temp*F_cm
 
     F_harm = F_harm + F_cm
 
