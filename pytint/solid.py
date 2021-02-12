@@ -98,8 +98,10 @@ class Solid:
             self.natoms = ph.check_data_file(self.calc["lattice"])
             #reset apc
             self.apc = self.natoms
+            self.calc["repeat"] = [1,1,1]
         else:
             self.natoms = self.ncells*self.apc
+
         
         #properties that will be calculated later
         self.avglat = None
@@ -209,7 +211,7 @@ class Solid:
                 self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
                 self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
                 self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
-                self.avglat = self.lx
+                self.avglat = self.lx/self.calc["repeat"][0]
                 self.vol = self.lx*self.ly*self.lz
                 self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
                 self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
@@ -324,14 +326,22 @@ class Solid:
         lmp.command("variable          rand equal %d"%np.random.randint(0, 1000))
 
 
-        conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
+        if self.l == "file":
+            conf = os.path.join(self.simfolder, "conf.dump")
+            lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
+
+            #remap the box to get the correct pressure
+            lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        else:
+            lmp.lattice(self.l, self.avglat)
+            lmp.region("box block", 0, self.calc["repeat"][0], 
+                0, self.calc["repeat"][1], 
+                0, self.calc["repeat"][2])
+            lmp.create_box("1 box")
+            lmp.create_atoms("1 box")
 
         #set up potential
         lmp = ph.set_potential(lmp, self.options)
-
-        #remap the box to get the correct pressure
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         #create groups
         for i in range(self.options["nelements"]):
