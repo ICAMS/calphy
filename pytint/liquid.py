@@ -64,6 +64,7 @@ class Liquid:
         self.l = None
         self.alat = None
         self.apc = None
+        self.vol = None
         self.prepare_lattice()
 
         logfile = os.path.join(self.simfolder, "tint.log")
@@ -207,6 +208,7 @@ class Liquid:
                 self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
                 self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
                 self.avglat = self.lx
+                self.vol = self.lx*self.ly*self.lz
                 self.rho = self.natoms/(self.lx*self.ly*self.lz)
 
                 self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
@@ -360,7 +362,7 @@ class Liquid:
         if self.p != 0:
             #add pressure contribution
             p = self.p/(10000*160.21766208)
-            v = (self.lx*self.ly*self.lz)/self.natoms
+            v = self.vol/self.natoms
             self.pv = p*v
         else:
             self.pv = 0

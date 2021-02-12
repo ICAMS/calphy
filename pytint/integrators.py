@@ -95,7 +95,7 @@ def get_uhlenbeck_ford_fe(temp, rho, p, sigma):
     return fe
 
 
-def get_einstein_crystal_fe(temp, natoms, mass, a, k, concentration, cm_correction=True):
+def get_einstein_crystal_fe(temp, natoms, mass, vol, k, concentration, cm_correction=True):
     """
     Get the free energy of einstein crystal
 
@@ -132,9 +132,8 @@ def get_einstein_crystal_fe(temp, natoms, mass, a, k, concentration, cm_correcti
     k = np.array(k)*(eV2J/1E-20)
     omega = np.sqrt(k/mass)
 
-    #convert a to m
-    a = a*1E-10
-    vol = (a**3)
+    #convert a to m3
+    vol = vol*1E-30
 
     F_harm = 0
     F_cm = 0

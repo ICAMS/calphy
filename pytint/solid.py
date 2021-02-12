@@ -84,6 +84,7 @@ class Solid:
         self.l = None
         self.alat = None
         self.apc = None
+        self.vol = None
         self.prepare_lattice()
 
         logfile = os.path.join(self.simfolder, "tint.log")
@@ -209,6 +210,7 @@ class Solid:
                 self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
                 self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
                 self.avglat = self.lx
+                self.vol = self.lx*self.ly*self.lz
                 self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
                 self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
                 break
@@ -424,7 +426,7 @@ class Solid:
         """
         f1 = get_einstein_crystal_fe(self.t, 
             self.natoms, self.options["mass"], 
-            self.avglat, self.k, self.apc, self.calc["concentration"])
+            self.vol, self.k, self.calc["concentration"])
         w, q, qerr = find_w(self.simfolder, nelements=self.options["nelements"], concentration=self.calc["concentration"], nsims=self.nsims, 
             full=True, solid=True)
         
@@ -435,7 +437,7 @@ class Solid:
         if self.p != 0:
             #add pressure contribution
             p = self.p/(10000*160.21766208)
-            v = (self.lx*self.ly*self.lz)/self.natoms
+            v = self.vol/self.natoms
             self.pv = p*v
         else:
             self.pv = 0 
