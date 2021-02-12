@@ -186,7 +186,7 @@ class Solid:
 
 
         #this is when the averaging routine starts
-        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
+        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mvol file avg.dat"%(int(self.options["md"]["nevery"]),
             int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
         
         laststd = 0.00
@@ -195,17 +195,17 @@ class Solid:
             ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
             #now we can check if it converted
             file = os.path.join(self.simfolder, "avg.dat")
-            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
+            lx, ly, lz, ipress, vol = np.loadtxt(file, usecols=(1, 2, 3, 4, 5), unpack=True)
             
             #lxpc = ((lx*ly*lz)/self.ncells)**(1/3)
             #lxpc = ipress[-ncount+1:]
-            lxpc = ipress
+            lxpc = vol[-ncount+1:]/self.natoms
             mean = np.mean(lxpc)
             std = np.std(lxpc)
-            self.logger.info("At count %d mean pressure is %f std is %f"%(i+1, mean, std))
+            self.logger.info("At count %d mean vol/atom is %f std is %f"%(i+1, mean, std))
             
-            #if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
-            if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
+            if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
+            #if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
 
                 #process other means
                 self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
