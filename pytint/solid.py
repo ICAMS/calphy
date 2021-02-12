@@ -368,9 +368,9 @@ class Solid:
         lmp.command("variable          ts_run  equal %d+1"%self.options["md"]["ts"]) # Print correctly on fix print.
 
         #------------------------- Thermo stuff ---------------------------------------#
-        lmp.command("thermo_style      custom step pe c_Tcm")
+        lmp.command("thermo_style      custom step pe c_Tcm press")
         lmp.command("timestep          0.001")
-        lmp.command("thermo            10000")
+        lmp.command("thermo            100")
 
         #------------------------- Running the Simulation -----------------------------#
         lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")
