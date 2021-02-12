@@ -435,7 +435,7 @@ class Solid:
         if self.p != 0:
             #add pressure contribution
             p = self.p/(10000*160.21766208)
-            v = (self.avglat**3)/self.apc
+            v = (self.lx*self.ly*self.lz)/self.natoms
             self.pv = p*v
         else:
             self.pv = 0 
