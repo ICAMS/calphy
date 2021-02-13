@@ -26,7 +26,7 @@ def create_object(cores, directory, timestep):
     return lmp
 
 def create_structure(lmp, calc):
-    l, alat, apc = pl.prepare_lattice(calc)
+    l, alat, apc, conc = pl.prepare_lattice(calc)
 
     if l == "file":
         lmp.command("read_data      %s"%calc["lattice"])
