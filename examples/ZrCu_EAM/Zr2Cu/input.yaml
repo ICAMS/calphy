@@ -1,0 +1,25 @@
+element: ['Zr', 'Cu']
+mass: [91.224, 63.546]
+calculations:
+- mode: ts 
+  temperature: [300, 900]
+  pressure: [0]
+  lattice: [/home/users/menonsqr/Repos/pytint/examples/ZrCu_EAM/Zr2Cu/Zr2Cu.data]
+  state: [solid]
+  nsims: 1
+
+md:
+  pair_style: eam/fs
+  pair_coeff: "* * /home/users/menonsqr/Repos/pytint/examples/ZrCu_EAM/ZrCu.eam.fs Zr Cu"
+  timestep: 0.001
+  tdamp: 0.1
+  pdamp: 0.1
+  te: 25000
+  ts: 50000
+  
+queue:
+  scheduler: local
+  cores: 28
+  commands:
+    - source ~/.zghrc
+    - conda activate py3
