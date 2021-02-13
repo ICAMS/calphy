@@ -193,7 +193,7 @@ class Liquid:
             lxpc = ipress
             mean = np.mean(lxpc)
             std = np.std(lxpc)
-            volatom = np.mean((lx*ly*lz)/natoms)            
+            volatom = np.mean((lx*ly*lz)/self.natoms)            
             self.logger.info("At count %d mean pressure is %f with vol/atom %f"%(i+1, mean, volatom))
 
             #if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
