@@ -85,7 +85,7 @@ class Liquid:
         self.eps = self.t*50.0*kb
 
         #properties that will be calculated later
-        self.avglat = None
+        self.volatom = None
         self.rho = None
         self.ferr = None
         self.fref = None
@@ -196,8 +196,9 @@ class Liquid:
             #lxpc = lxpc[-ncount+1:]
             lxpc = ipress
             mean = np.mean(lxpc)
-            std = np.std(lxpc)            
-            self.logger.info("At count %d mean pressure is %f std is %f"%(i+1, mean, std))
+            std = np.std(lxpc)
+            volatom = np.mean((lx*ly*lz)/natoms)            
+            self.logger.info("At count %d mean pressure is %f with vol/atom %f"%(i+1, mean, volatom))
 
             #if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
             if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
@@ -207,11 +208,11 @@ class Liquid:
                 self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
                 self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
                 self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
-                self.avglat = self.lx
+                self.volatom = volatom
                 self.vol = self.lx*self.ly*self.lz
                 self.rho = self.natoms/(self.lx*self.ly*self.lz)
 
-                self.logger.info("finalized lattice constant %f pressure %f"%(self.avglat, np.mean(ipress)))
+                self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
                 self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
                 break
             
@@ -384,7 +385,7 @@ class Liquid:
 
         #average quantities
         report["average"] = {}
-        report["average"]["lattice_constant"] = float(self.avglat)
+        report["average"]["vol/atom"] = float(self.volatom)
         report["average"]["density"] = float(self.rho)
         
         #results
