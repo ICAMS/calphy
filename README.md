@@ -59,4 +59,4 @@ The combined libraries **should be available** on the system or the environment 
 - [Command line interface](examples/cli.md)
 - Examples
     - [Cu](examples/Cu_EAM/cu_example.ipynb): Example demonstrating the calculation of melting temperature for Copper.
-    - [CuZr](examples/CuZr_EAM/cuzr_example.ipynb): Example demonstarting the calculation of free energy for pure Cu and CuZr B2 structure)
+    - [CuZr](examples/CuZr_EAM/zrcu_example.ipynb): Example demonstarting the calculation of free energy for pure Cu and CuZr B2 structure)
