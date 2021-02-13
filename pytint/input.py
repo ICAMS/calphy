@@ -135,6 +135,9 @@ def read_yamlfile(file):
                     if mode == "ts":
                         cdict = {}
                         cdict["mode"] = calc["mode"]
+                        #we need to check for temperature length here
+                        if not len(temperature)==2:
+                            raise ValueError("At least two temperature values are needed for ts")
                         cdict["temperature"] = temperature[0]
                         cdict["pressure"] = press
                         cdict["lattice"] = lat
