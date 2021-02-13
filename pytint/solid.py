@@ -85,6 +85,7 @@ class Solid:
         self.alat = None
         self.apc = None
         self.vol = None
+        self.concentration = None
         self.prepare_lattice()
 
         logfile = os.path.join(self.simfolder, "tint.log")
@@ -93,13 +94,7 @@ class Solid:
         #other properties
         self.cores = self.options["queue"]["cores"]
         self.ncells = np.prod(self.calc["repeat"])
-        
-        if self.l == "file":
-            self.natoms = ph.check_data_file(self.calc["lattice"])
-            #reset apc
-            self.apc = self.natoms
-        else:
-            self.natoms = self.ncells*self.apc
+        self.natoms = self.ncells*self.apc        
         
         #properties that will be calculated later
         self.volatom = None
@@ -118,10 +113,11 @@ class Solid:
 
     def prepare_lattice(self):
         #process lattice
-        l, alat, apc = pl.prepare_lattice(self.calc)
+        l, alat, apc, conc = pl.prepare_lattice(self.calc)
         self.l = l
         self.alat = alat
         self.apc = apc
+        self.concentration = conc
 
     def run_averaging(self):
         """
@@ -427,8 +423,8 @@ class Solid:
         """
         f1 = get_einstein_crystal_fe(self.t, 
             self.natoms, self.options["mass"], 
-            self.vol, self.k, self.calc["concentration"])
-        w, q, qerr = find_w(self.simfolder, nelements=self.options["nelements"], concentration=self.calc["concentration"], nsims=self.nsims, 
+            self.vol, self.k, self.concentration)
+        w, q, qerr = find_w(self.simfolder, nelements=self.options["nelements"], concentration=self.concentration, nsims=self.nsims, 
             full=True, solid=True)
         
         self.fref = f1
@@ -466,7 +462,7 @@ class Solid:
         report["input"]["pressure"] = float(self.p)
         report["input"]["lattice"] = str(self.l)
         report["input"]["element"] = " ".join(np.array(self.options["element"]).astype(str))
-        report["input"]["concentration"] = " ".join(np.array(self.calc["concentration"]).astype(str))
+        report["input"]["concentration"] = " ".join(np.array(self.concentration).astype(str))
 
         #average quantities
         report["average"] = {}

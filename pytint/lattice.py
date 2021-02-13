@@ -1,6 +1,10 @@
 
 from mendeleev import element
 import os
+from pylammpsmpi import LammpsLibrary
+import numpy as np
+import pyscal.core as pc
+
 """
 Conversion factors for creating initial lattices
 """
@@ -58,6 +62,32 @@ def get_lattice(symbol, lat):
 
 	return lattice_constant, atoms_per_cell, lammps_lattice
 
+def check_data_file(infile):
+    if os.path.exists(infile):
+        try:
+            lmp = create_object(1, os.getcwd(), 0.001)
+            lmp.read_data(infile)
+            natoms = lmp.natoms
+            #now we convert to a dump file and read the concentration
+            trajfile = ".".join([infile, "dump"])
+            lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
+            lmp.run(0)
+            lmp.undump(2)
+            #now use pyscal to read it in,
+            sys = pc.System()
+            sys.read_inputfile(trajfile)
+            atoms = sys.atoms
+            types = [atom.type for atom in atoms]
+            xx, xxcounts = np.unique(types, return_counts=True)
+            conc = xxcounts/np.sum(xxcounts)
+            lmp.close()
+            return natoms, conc
+        except:
+            raise TypeError("LAMMPS could not read in the data file. Please check!")
+    else:
+        raise FileNotFoundError("File not found!")
+
+
 def prepare_lattice(calc):
     #process lattice
     lattice = calc["lattice"].upper()
@@ -69,16 +99,19 @@ def prepare_lattice(calc):
         	raise ValueError("Only files supported for multicomponent")
 
         alat, apc, l = get_lattice(calc["element"][0], calc["lattice"])
+        conc = [1,]
 
     elif os.path.exists(calc["lattice"]):
+    	natoms, conc = check_data_file(calc["lattice"]) 
         #its a file - do something
         l = "file"
         alat = 1.00
-        apc = 1
+        apc = natoms
     else:
         raise ValueError("Unknown lattice found. Allowed options are BCC, FCC, HCP, DIA, SC or LQD; or an input file.")
     
     if l == "dia":
         l = "diamond"
 
-    return l, alat, apc
+    return l, alat, apc, conc
+

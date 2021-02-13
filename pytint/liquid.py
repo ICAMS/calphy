@@ -65,6 +65,7 @@ class Liquid:
         self.alat = None
         self.apc = None
         self.vol = None
+        self.concentration = None
         self.prepare_lattice()
 
         logfile = os.path.join(self.simfolder, "tint.log")
@@ -73,13 +74,7 @@ class Liquid:
         #other properties
         self.cores = self.options["queue"]["cores"]
         self.ncells = np.prod(self.calc["repeat"])
-        
-        if self.l == "file":
-            self.natoms = ph.check_data_file(self.calc["lattice"])
-            #reset apc
-            self.apc = self.natoms
-        else:
-            self.natoms = self.ncells*self.apc
+        self.natoms = self.ncells*self.apc
         
         #the UFM system properties
         self.eps = self.t*50.0*kb
@@ -101,10 +96,11 @@ class Liquid:
 
     def prepare_lattice(self):
         #process lattice
-        l, alat, apc = pl.prepare_lattice(self.calc)
+        l, alat, apc, conc = pl.prepare_lattice(self.calc)
         self.l = l
         self.alat = alat
         self.apc = apc
+        self.concentration = conc
 
 
     def run_averaging(self):
@@ -353,7 +349,7 @@ class Liquid:
 
         #we need to find concentration too to find ideal gas fe for multi species
         f2 = get_ideal_gas_fe(self.t, self.rho, 
-            self.natoms, self.options["mass"], self.calc["concentration"])
+            self.natoms, self.options["mass"], self.concentration)
         
         self.ferr = qerr
         self.fref = f1
@@ -381,7 +377,7 @@ class Liquid:
         report["input"]["pressure"] = float(self.p)
         report["input"]["lattice"] = str(self.l)
         report["input"]["element"] = " ".join(np.array(self.options["element"]).astype(str))
-        report["input"]["concentration"] = " ".join(np.array(self.calc["concentration"]).astype(str))
+        report["input"]["concentration"] = " ".join(np.array(self.concentration).astype(str))
 
         #average quantities
         report["average"] = {}

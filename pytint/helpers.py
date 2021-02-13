@@ -12,18 +12,6 @@ import pyscal.core as pc
 LAMMPS helper routines
 --------------------------------------------------------------------
 """
-def check_data_file(infile):
-    if os.path.exists(infile):
-        try:
-            lmp = create_object(1, os.getcwd(), 0.001)
-            lmp.read_data(infile)
-            natoms = lmp.natoms
-            lmp.close()
-        except:
-            raise TypeError("LAMMPS could not read in the data file. Please check!")
-    else:
-        raise FileNotFoundError("File not found!")
-    return natoms
 
 def create_object(cores, directory, timestep):
     """

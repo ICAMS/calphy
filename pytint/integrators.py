@@ -524,7 +524,7 @@ def integrate_rs(simfolder, f0, t, natoms, p=0, nsims=5,
     f = f0/flambda + 1.5*kb*temp*np.log(flambda) + wmean
 
     if not return_values:
-        outfile = os.path.join(simfolder, "reversible_scaling.dat")
+        outfile = os.path.join(simfolder, "temperature_sweep.dat")
         np.savetxt(outfile, np.column_stack((temp, f, werr)))
     else:
         return (temp, f, werr)
