@@ -4,6 +4,7 @@ import os
 from pylammpsmpi import LammpsLibrary
 import numpy as np
 import pyscal.core as pc
+from pytint.helpers import create_object
 
 """
 Conversion factors for creating initial lattices
@@ -70,7 +71,8 @@ def check_data_file(infile):
             natoms = lmp.natoms
             #now we convert to a dump file and read the concentration
             trajfile = ".".join([infile, "dump"])
-            lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
+            lmp.command("mass * 1.0")
+            lmp.dump("2 all custom", 1, trajfile,"id type x y z")
             lmp.run(0)
             lmp.undump(2)
             #now use pyscal to read it in,
