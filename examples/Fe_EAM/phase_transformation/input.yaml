@@ -1,0 +1,35 @@
+element: Fe
+mass: 55.845
+calculations:
+- mode: ts
+  temperature: [100, 1400]
+  pressure: [0]
+  lattice: [BCC]
+  repeat: [13, 13, 13]
+  state: [solid]
+  nsims: 1
+- mode: ts
+  temperature: [100, 1400]
+  pressure: [0]
+  lattice: [FCC]
+  repeat: [10, 10, 10]
+  state: [solid]
+  nsims: 1
+  lattice_constant: [6.00]
+
+
+md:
+  pair_style: eam
+  pair_coeff: "* * /home/users/menonsqr/Repos/pytint/examples/Fe_EAM/Fe.eam"
+  timestep: 0.001
+  nsmall: 10000
+  tdamp: 0.1
+  pdamp: 0.1
+  te: 25000
+  ts: 50000
+  
+queue:
+  scheduler: local
+  cores: 14
+  commands:
+    - conda activate py3
