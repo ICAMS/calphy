@@ -22,6 +22,26 @@ def check_and_convert_to_list(data):
     else:
         return data
 
+
+def prepare_optional_keys(calc, cdict):
+
+    #optional keys
+    if "repeat" in calc.keys():
+        cdict["repeat"] = calc["repeat"]
+        if not (cdict["repeat"][0] == cdict["repeat"][1] == cdict["repeat"][2]):
+            raise ValueError("For LAMMPS structure creation, use nx=ny=nz")
+    else:
+        cdict["repeat"] = [1, 1, 1]
+    if "nsims" in calc.keys():
+        cdict["nsims"] = calc["nsims"]
+    else:
+        cdict["nsims"] = 1
+    if "thigh" in calc.keys():
+        cdict["thigh"] = calc["thigh"]
+    else:
+        cdict["thigh"] = 2.0*cdict["temperature_stop"]
+    return cdict
+
 def read_yamlfile(file):
     """
     Read a yaml input file
@@ -128,6 +148,11 @@ def read_yamlfile(file):
             temperature = check_and_convert_to_list(calc["temperature"])
             mode = calc["mode"]
             
+            #prepare lattice constant values
+            if "lattice_constant" in calc.keys():
+                lattice_constant = check_and_convert_to_list(calc["lattice_constant"])
+            else:
+                lattice_constant = [0 for x in range(options["nelements"])]
 
             #now start looping
             for i, lat in enumerate(lattice):
@@ -145,24 +170,10 @@ def read_yamlfile(file):
                         cdict["temperature_stop"] = temperature[-1]
                         cdict["nelements"] = options["nelements"]
                         cdict["element"] = options["element"]
-
-                        #optional keys
-                        if "repeat" in calc.keys():
-                            cdict["repeat"] = calc["repeat"]
-                            if not (cdict["repeat"][0] == cdict["repeat"][1] == cdict["repeat"][2]):
-                                raise ValueError("For LAMMPS structure creation, use nx=ny=nz")
-                        else:
-                            cdict["repeat"] = [1, 1, 1]
-                        if "nsims" in calc.keys():
-                            cdict["nsims"] = calc["nsims"]
-                        else:
-                            cdict["nsims"] = 1
-                        if "thigh" in calc.keys():
-                            cdict["thigh"] = calc["thigh"]
-                        else:
-                            cdict["thigh"] = 2.0*cdict["temperature_stop"]
-
+                        cdict["lattice_constant"] = lattice_constant[i]
+                        cdict = prepare_optional_keys(calc, cdict)
                         options["calculations"].append(cdict)
+
                     else:
                         for temp in temperature:
                             cdict = {}
@@ -174,23 +185,8 @@ def read_yamlfile(file):
                             cdict["temperature_stop"] = temp
                             cdict["nelements"] = options["nelements"]
                             cdict["element"] = options["element"]
-
-                            #optional keys
-                            if "repeat" in calc.keys():
-                                cdict["repeat"] = calc["repeat"]
-                                if not (cdict["repeat"][0] == cdict["repeat"][1] == cdict["repeat"][2]):
-                                    raise ValueError("For LAMMPS structure creation, use nx=ny=nz")
-                            else:
-                                cdict["repeat"] = [1, 1, 1]
-                            if "nsims" in calc.keys():
-                                cdict["nsims"] = calc["nsims"]
-                            else:
-                                cdict["nsims"] = 1
-                            if "thigh" in calc.keys():
-                                cdict["thigh"] = calc["thigh"]
-                            else:
-                                cdict["thigh"] = 2.0*cdict["temperature_stop"]
-
+                            cdict["lattice_constant"] = lattice_constant[i]
+                            cdict = prepare_optional_keys(calc, cdict)
                             options["calculations"].append(cdict)
 
     return options

@@ -101,6 +101,11 @@ def prepare_lattice(calc):
             raise ValueError("Only files supported for multicomponent")
 
         alat, apc, l = get_lattice(calc["element"][0], calc["lattice"])
+
+        #replace lattice constant
+        if calc["lattice_constant"] != 0:
+            alat = calc["lattice_constant"]
+        
         conc = [1,]
 
     elif os.path.exists(calc["lattice"]):
