@@ -85,6 +85,25 @@ The various keys are-
    state: [solid, liquid]
    ```
    The `state` input is closely related to the `lattice` command. It should be of the same length as the `lattice` input. For each of the lattice specified, `state` command specifies which reference state to use.
+
+- `lattice_constant` : lattice constant for input structures          
+   _type_: list of floats   
+   _example_:
+   ```
+   lattice_constant: 3.68
+   lattice_constant: [3.68, 5.43]
+   ```
+   Lattice constant values to be used for initial structure creation. Only required if the structure is created through LAMMPS. If not specified, the experimental lattice constant will be used.
+
+- `iso` : Specify if the barostat is isotropic or anisotropic.            
+   _type_: list of bools   
+   _example_:
+   ```
+   iso: True
+   iso: [True, False]
+   ```
+   Specify whether the barostat will control the pressure isotropically or anisotropically.
+
    
 - `repeat` : The number of unit cells to be replicated in each direction.         
    _type_: list of ints of length 3     
