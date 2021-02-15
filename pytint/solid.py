@@ -80,6 +80,12 @@ class Solid:
         self.tend = self.calc["temperature_stop"]
         self.thigh = self.calc["thigh"] 
         self.p = self.calc["pressure"]
+        
+        if self.calc["iso"]:
+            self.iso = "iso"
+        else:
+            self.iso = "aniso"
+
 
         self.l = None
         self.alat = None
@@ -149,8 +155,8 @@ class Solid:
         if self.p == 0:
             #This routine should be followed for zero pressure
             lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
-            lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                                self.iso, self.p, self.p, self.options["md"]["pdamp"]))
             lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
             lmp.command("thermo           10")
             lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
@@ -160,22 +166,22 @@ class Solid:
             #one has to equilibriate at a low temperature, but high pressure and then increase temp gradually
             #start at 0.25 temp, and increase to 0.50, while keeping high pressure
             lmp.command("velocity         all create %f %d"%(0.25*self.t, np.random.randint(0, 10000)))
-            lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(0.25*self.t, 0.5*self.t, self.options["md"]["tdamp"], 
-                                                self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.25*self.t, 0.5*self.t, self.options["md"]["tdamp"], 
+                                                self.iso, self.p, self.p, self.options["md"]["pdamp"]))
             lmp.command("thermo_style     custom step pe press vol etotal temp")
             lmp.command("thermo           10")
             lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
             lmp.command("unfix            1")
 
             #now heat again
-            lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(0.5*self.t, self.t, self.options["md"]["tdamp"], 
-                                                self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.5*self.t, self.t, self.options["md"]["tdamp"], 
+                                                self.iso, self.p, self.p,  self.options["md"]["pdamp"]))
             lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
             lmp.command("unfix            1")
 
             #now run normal cycle
-            lmp.command("fix              1 all npt temp %f %f %f iso %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                                self.iso, self.p, self.p,  self.options["md"]["pdamp"]))
             lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
 
 
@@ -528,7 +534,7 @@ class Solid:
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
     #---------------------- Thermostat & Barostat ---------------------------------#
-        lmp.command("fix               f1 all nph aniso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
+        lmp.command("fix               f1 all nph %s %f %f %f"%(self.iso, self.p, self.p, self.options["md"]["pdamp"]))
         lmp.command("fix               f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
         lmp.command("run               ${te}")
         lmp.command("unfix             f1")
@@ -538,7 +544,7 @@ class Solid:
         lmp.command("variable         ycm equal xcm(all,y)")
         lmp.command("variable         zcm equal xcm(all,z)")
         
-        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.p, self.p, self.options["md"]["pdamp"]))
+        lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, self.p, self.p, self.options["md"]["pdamp"]))
         lmp.command("fix              f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
         
     #------------------ Computes, variables & modifications -----------------------#
@@ -563,7 +569,7 @@ class Solid:
         lmp.command("variable          lambda equal ramp(${li},${lf})")
 
         #we need to similar to liquid here
-        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pi, 
+        lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, pi, 
             pf, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
@@ -583,7 +589,7 @@ class Solid:
             lmp.close()
             raise RuntimeError("System melted, increase size or reduce scaling!")
         
-        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
+        lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%( self.iso, pf, 
             pf, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("run               ${te}")
@@ -591,7 +597,7 @@ class Solid:
 
         lmp.command("variable          lambda equal ramp(${lf},${li})")
         
-        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
+        lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, pf, 
             pi, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])

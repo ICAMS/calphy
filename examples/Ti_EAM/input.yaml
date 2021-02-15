@@ -1,0 +1,35 @@
+element: 'Ti'
+mass: 47.867
+calculations:
+- mode: ts 
+  temperature: [1000, 1300]
+  pressure: [0]
+  lattice: [BCC]
+  repeat: [13, 13, 13]
+  state: solid
+  nsims: 3
+- mode: ts
+  temperature: [1000, 1300]
+  pressure: [0]
+  lattice: [HCP]
+  repeat: [10, 10, 10]
+  iso: [False]
+  state: solid
+  nsims: 3
+
+md:
+  pair_style: eam/fs
+  pair_coeff: "* * /home/users/menonsqr/Repos/pytint/examples/Ti_EAM/Ti.eam.fs Ti"
+  timestep: 0.001
+  tdamp: 0.1
+  pdamp: 0.1
+  te: 25000
+  ts: 50000
+  
+queue:
+  scheduler: local
+  cores: 14
+  commands:
+    - source ~/.zghrc
+    - conda activate py3
+

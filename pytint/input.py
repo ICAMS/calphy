@@ -153,6 +153,11 @@ def read_yamlfile(file):
                 lattice_constant = check_and_convert_to_list(calc["lattice_constant"])
             else:
                 lattice_constant = [0 for x in range(options["nelements"])]
+            #prepare lattice constant values
+            if "iso" in calc.keys():
+                iso = check_and_convert_to_list(calc["iso"])
+            else:
+                iso = [True for x in range(options["nelements"])]
 
             #now start looping
             for i, lat in enumerate(lattice):
@@ -171,6 +176,7 @@ def read_yamlfile(file):
                         cdict["nelements"] = options["nelements"]
                         cdict["element"] = options["element"]
                         cdict["lattice_constant"] = lattice_constant[i]
+                        cdict["iso"] = iso[i]
                         cdict = prepare_optional_keys(calc, cdict)
                         options["calculations"].append(cdict)
 
@@ -186,6 +192,7 @@ def read_yamlfile(file):
                             cdict["nelements"] = options["nelements"]
                             cdict["element"] = options["element"]
                             cdict["lattice_constant"] = lattice_constant[i]
+                            cdict["iso"] = iso[i]
                             cdict = prepare_optional_keys(calc, cdict)
                             options["calculations"].append(cdict)
 
