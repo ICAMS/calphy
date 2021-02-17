@@ -152,12 +152,12 @@ def read_yamlfile(file):
             if "lattice_constant" in calc.keys():
                 lattice_constant = check_and_convert_to_list(calc["lattice_constant"])
             else:
-                lattice_constant = [0 for x in range(options["nelements"])]
+                lattice_constant = [0 for x in range(len(lattice))]
             #prepare lattice constant values
             if "iso" in calc.keys():
                 iso = check_and_convert_to_list(calc["iso"])
             else:
-                iso = [True for x in range(options["nelements"])]
+                iso = [True for x in range(len(lattice))]
 
             #now start looping
             for i, lat in enumerate(lattice):
