@@ -196,6 +196,14 @@ def read_yamlfile(file):
                             cdict = prepare_optional_keys(calc, cdict)
                             options["calculations"].append(cdict)
 
+                            if mode == "alchemy":
+                                #if alchemy mode is selected: make sure that hybrid pair styles
+                                #are provided in a file
+                                if os.path.exists(calc["pair_file"]):
+                                    cdict["pair_file"] = calc["pair_file"]
+                                else:
+                                    raise FileNotFoundError("Alchemy mode needs a pair file to be specified")
+
     return options
 
 def create_identifier(calc):
