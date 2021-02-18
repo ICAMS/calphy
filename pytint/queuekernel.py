@@ -36,7 +36,19 @@ def routine_ts(job):
     for i in range(job.nsims):
         job.reversible_scaling(iteration=(i+1))
     
-    job.integrate_reversible_scaling(scale_energy=True)    
+    job.integrate_reversible_scaling(scale_energy=True)
+
+def routine_alchemy(job):
+    """
+    Perform an FE calculation routine
+    """
+    job.run_averaging()
+    #now run integration loops
+    for i in range(job.nsims):
+        job.run_integration(iteration=(i+1))
+
+    job.thermodynamic_integration()
+    job.submit_report()    
 
 def main():
     arg = ap.ArgumentParser()
@@ -80,5 +92,7 @@ def main():
         routine_fe(job)
     elif calc["mode"] == "ts":
         routine_ts(job)
+    elif calc["mode"] == "alchemy":
+        routine_alchemy(job)
     else:
-        raise ValueError("Mode should be either fe or ts")
+        raise ValueError("Mode should be either fe/ts/alchemy")

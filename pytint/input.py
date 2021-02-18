@@ -203,7 +203,10 @@ def read_yamlfile(file):
                                     cdict["pair_file"] = calc["pair_file"]
                                 else:
                                     raise FileNotFoundError("Alchemy mode needs a pair file to be specified")
-
+                                if os.path.exists(calc["compute_file"]):
+                                    cdict["compute_file"] = calc["compute_file"]
+                                else:
+                                    raise FileNotFoundError("Alchemy mode needs a compute file to be specified")
     return options
 
 def create_identifier(calc):
