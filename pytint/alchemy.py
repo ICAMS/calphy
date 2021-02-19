@@ -399,7 +399,7 @@ class Alchemy:
         None
         """
         w, q, qerr = find_w(self.simfolder, nelements=self.options["nelements"], concentration=self.concentration, nsims=self.nsims, 
-            full=True, solid=True)
+            full=True, solid=False, alchemy=True)
         
         self.w = w
         self.ferr = qerr
