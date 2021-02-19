@@ -269,7 +269,7 @@ class Solid:
                 args = np.argsort(self.concentration)[::-1]
                 safek = self.k[args[0]]
 
-                for i in range(self.option["nelements"]):
+                for i in range(self.options["nelements"]):
                     if self.concentration[i]*self.natoms < 2:
                         self.logger.info("resetting spring constant of species %d from %f to %f to preserve sanity"%(i, self.k[i], safek))
                         self.k[i] = safek
