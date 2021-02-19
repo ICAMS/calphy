@@ -94,6 +94,10 @@ class Liquid:
         self.ly = None
         self.lz = None
 
+        #now manually tune pair styles
+        self.options["md"]["pair_style"] = self.options["md"]["pair_style"][0]
+        self.options["md"]["pair_coeff"] = self.options["md"]["pair_coeff"][0]
+
     def prepare_lattice(self):
         #process lattice
         l, alat, apc, conc = pl.prepare_lattice(self.calc)

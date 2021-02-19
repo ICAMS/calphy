@@ -114,6 +114,15 @@ class Alchemy:
         self.ly = None
         self.lz = None
 
+        #now backup pair styles: to use in integration mode
+        self.pair_style = self.options["md"]["pair_style"]
+        self.pair_coeff = self.options["md"]["pair_coeff"]
+
+        #now manually tune pair styles
+        self.options["md"]["pair_style"] = self.options["md"]["pair_style"][0]
+        self.options["md"]["pair_coeff"] = self.options["md"]["pair_coeff"][0]
+
+
     def prepare_lattice(self):
         #process lattice
         l, alat, apc, conc = pl.prepare_lattice(self.calc)
@@ -279,10 +288,7 @@ class Alchemy:
         conf = os.path.join(self.simfolder, "conf.dump")
         lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
 
-        # Define MEAM and UF potentials parameters.
-        #this is through file
-        lmp.command("include  %s"%self.calc["pair_file"])
-        #lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
+        lmp = ph.set_double_hybrid_potential(lmp, self.options, self.pair_style, self.pair_coeff)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -294,11 +300,14 @@ class Alchemy:
         lmp.command("variable        rnd equal round(random(0,999999,0))")
 
         # Compute pair definitions
-        lmp.command("include  %s"%self.calc["compute_file"])
+        #lmp.command("include  %s"%self.calc["compute_file"])
 
-        lmp.command("compute         c1 all pair %s"%self.options["md"]["pair_style"])
-        lmp.command("compute         c2 all pair ufm")
-        #------------------------------------------------------------------------------------------------------#
+        if self.pair_style[0] == self.pair_style[1]:
+            lmp.command("compute         c1 all pair %s 1"%self.pair_style[0])
+            lmp.command("compute         c2 all pair %s 2"%self.pair_style[0])
+        else:
+            lmp.command("compute         c1 all pair %s"%self.pair_style[0])
+            lmp.command("compute         c2 all pair %s"%self.pair_style[0])
 
 
         ##########################################     Output setup     ########################################
@@ -316,18 +325,33 @@ class Alchemy:
         ##########################################     Run simulation     ######################################
         # Turn UF potential off (completely) to equilibrate the Sw potential.
         lmp.command("variable        zero equal 0")
-        lmp.command("fix             f0 all adapt 0 pair ufm scale * * v_zero")
+
+        if self.pair_style[0] == self.pair_style[1]:
+            lmp.command("fix             f0 all adapt 0 pair %s:1 scale * * v_zero"%self.pair_style[0])
+        else:
+            lmp.command("fix             f0 all adapt 0 pair %s scale * * v_zero"%self.pair_style[0])
         lmp.command("run             0")
         lmp.command("unfix           f0")
+
 
         # Equilibrate the fluid interacting by Sw potential and switch to UF potential (Forward realization).
         lmp.command("run             %d"%self.options["md"]["te"])
 
         lmp.command("print           \"${dU1} ${dU2} ${li}\" file forward_%d.dat"%iteration)
         lmp.command("variable        lambda_sw equal ramp(${li},${lf})")                 # Linear lambda protocol from 1 to 0.
-        lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
+
+        if self.pair_style[0] == self.pair_style[1]:
+            lmp.command("fix             f3 all adapt 1 pair %s:1 scale * * v_lambda_sw"%self.pair_style[0])
+        else:
+            lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.pair_style[0])        
+        
         lmp.command("variable        lambda_ufm equal ramp(${lf},${li})")                  # Linear lambda protocol from 0 to 1.
-        lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
+        
+        if self.pair_style[0] == self.pair_style[1]:
+            lmp.command("fix             f4 all adapt 1 pair %s:1 scale * * v_lambda_ufm"%self.pair_style[1])
+        else:
+            lmp.command("fix             f4 all adapt 1 pair %s scale * * v_lambda_ufm"%self.pair_style[1])
+        
         lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_sw}\" screen no append forward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
@@ -340,9 +364,19 @@ class Alchemy:
 
         lmp.command("print           \"${dU1} ${dU2} ${lf}\" file backward_%d.dat"%iteration)
         lmp.command("variable        lambda_sw equal ramp(${lf},${li})")                 # Linear lambda protocol from 0 to 1.
-        lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
+        
+        if self.pair_style[0] == self.pair_style[1]:
+            lmp.command("fix             f3 all adapt 1 pair %s:1 scale * * v_lambda_sw"%self.pair_style[0])
+        else:
+            lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.pair_style[0])        
+        
         lmp.command("variable        lambda_ufm equal ramp(${li},${lf})")                  # Linear lambda protocol from 1 to 0.
-        lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
+        
+        if self.pair_style[0] == self.pair_style[1]:
+            lmp.command("fix             f4 all adapt 1 pair %s:2 scale * * v_lambda_ufm"%self.pair_style[1])
+        else:
+            lmp.command("fix             f4 all adapt 1 pair %s scale * * v_lambda_ufm"%self.pair_style[1])
+        
         lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_sw}\" screen no append backward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 

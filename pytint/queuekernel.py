@@ -12,6 +12,7 @@ import yaml
 from pytint.input import read_yamlfile, create_identifier
 from pytint.liquid import Liquid
 from pytint.solid import Solid
+from pytint.alchemy import Alchemy
 
 
 def routine_fe(job):
@@ -80,10 +81,13 @@ def main():
     os.mkdir(simfolder)
 
     #now we need to modify the routines
-    if calc["state"] == "liquid":
-        job = Liquid(options=options, kernel=kernel, simfolder=simfolder)
+    if calc["mode"] == "alchemy":
+        job = Alchemy(options=options, kernel=kernel, simfolder=simfolder)
     else:
-        job = Solid(options=options, kernel=kernel, simfolder=simfolder)
+        if calc["state"] == "liquid":
+            job = Liquid(options=options, kernel=kernel, simfolder=simfolder)
+        else:
+            job = Solid(options=options, kernel=kernel, simfolder=simfolder)
 
     #integration routine
     os.chdir(simfolder)

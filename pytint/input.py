@@ -127,6 +127,8 @@ def read_yamlfile(file):
 
     options["element"] = check_and_convert_to_list(indata["element"])
     options["mass"] = check_and_convert_to_list(indata["mass"])
+    options["md"]["pair_style"] = check_and_convert_to_list(indata["md"]["pair_style"])
+    options["md"]["pair_coeff"] = check_and_convert_to_list(indata["md"]["pair_coeff"])
 
     if not len(options["element"]) == len(options["mass"]):
         raise ValueError("length of elements and mass should be same!")
@@ -198,15 +200,8 @@ def read_yamlfile(file):
 
                             if mode == "alchemy":
                                 #if alchemy mode is selected: make sure that hybrid pair styles
-                                #are provided in a file
-                                if os.path.exists(calc["pair_file"]):
-                                    cdict["pair_file"] = calc["pair_file"]
-                                else:
-                                    raise FileNotFoundError("Alchemy mode needs a pair file to be specified")
-                                if os.path.exists(calc["compute_file"]):
-                                    cdict["compute_file"] = calc["compute_file"]
-                                else:
-                                    raise FileNotFoundError("Alchemy mode needs a compute file to be specified")
+                                if not len(options["md"]["pair_style"]) == 2:
+                                    raise ValueError("Two pair styles need to be provided")
     return options
 
 def create_identifier(calc):

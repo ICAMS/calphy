@@ -71,6 +71,30 @@ def set_hybrid_potential(lmp, options, eps):
         lmp.mass(i+1, options["mass"][i])
     return lmp
 
+def set_double_hybrid_potential(lmp, options, pair_style, pair_coeff):
+    
+    pc1 =  pair_coeff[0]
+    pcraw1 = pc1.split()
+    
+    pc2 =  pair_coeff[1]
+    pcraw2 = pc2.split()
+
+    if pair_style[0] == pair_style[1]:
+        pcnew1 = " ".join([*pcraw1[:2], *[pair_style[0],], "1", *pcraw1[2:]])
+        pcnew2 = " ".join([*pcraw2[:2], *[pair_style[1],], "2", *pcraw2[2:]])
+    else:
+        pcnew1 = " ".join([*pcraw1[:2], *[pair_style[0],], *pcraw1[2:]])
+        pcnew2 = " ".join([*pcraw2[:2], *[pair_style[1],], *pcraw2[2:]])
+
+    lmp.command("pair_style       hybrid/overlay %s %s"%(pair_style[0], pair_style[1]))
+    
+    lmp.command("pair_coeff       %s"%pcnew1)
+    lmp.command("pair_coeff       %s"%pcnew2) 
+
+    for i in range(options["nelements"]):
+        lmp.mass(i+1, options["mass"][i])
+    return lmp
+
 def remap_box(lmp, x, y, z):
     lmp.command("run 0")
     lmp.command("change_box     all x final 0.0 %f y final 0.0 %f z final 0.0 %f remap units box"%(x, y, z))
