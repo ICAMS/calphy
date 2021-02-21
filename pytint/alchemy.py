@@ -327,9 +327,9 @@ class Alchemy:
         lmp.command("variable        zero equal 0")
 
         if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("fix             f0 all adapt 0 pair %s:1 scale * * v_zero"%self.pair_style[0])
+            lmp.command("fix             f0 all adapt 0 pair %s:2 scale * * v_zero"%self.pair_style[1])
         else:
-            lmp.command("fix             f0 all adapt 0 pair %s scale * * v_zero"%self.pair_style[0])
+            lmp.command("fix             f0 all adapt 0 pair %s scale * * v_zero"%self.pair_style[1])
         lmp.command("run             0")
         lmp.command("unfix           f0")
 
@@ -348,7 +348,7 @@ class Alchemy:
         lmp.command("variable        lambda_ufm equal ramp(${lf},${li})")                  # Linear lambda protocol from 0 to 1.
         
         if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("fix             f4 all adapt 1 pair %s:1 scale * * v_lambda_ufm"%self.pair_style[1])
+            lmp.command("fix             f4 all adapt 1 pair %s:2 scale * * v_lambda_ufm"%self.pair_style[1])
         else:
             lmp.command("fix             f4 all adapt 1 pair %s scale * * v_lambda_ufm"%self.pair_style[1])
         
