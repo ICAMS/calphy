@@ -179,6 +179,10 @@ def read_yamlfile(file):
                         cdict["element"] = options["element"]
                         cdict["lattice_constant"] = lattice_constant[i]
                         cdict["iso"] = iso[i]
+                        if "fix_lattice" in calc.keys():
+                            cdict["fix_lattice"] = calc["fix_lattice"]
+                        else:
+                            cdict["fix_lattice"] = False
                         cdict = prepare_optional_keys(calc, cdict)
                         options["calculations"].append(cdict)
 
@@ -195,6 +199,10 @@ def read_yamlfile(file):
                             cdict["element"] = options["element"]
                             cdict["lattice_constant"] = lattice_constant[i]
                             cdict["iso"] = iso[i]
+                            if "fix_lattice" in calc.keys():
+                                cdict["fix_lattice"] = calc["fix_lattice"]
+                            else:
+                                cdict["fix_lattice"] = False
                             cdict = prepare_optional_keys(calc, cdict)
                             options["calculations"].append(cdict)
 

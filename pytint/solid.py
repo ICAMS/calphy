@@ -156,45 +156,97 @@ class Solid:
         lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press")
 
-        if self.p == 0:
-            #This routine should be followed for zero pressure
+        if not self.calc["fix_lattice"]:
+            if self.p == 0:
+                #This routine should be followed for zero pressure
+                lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
+                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                                    self.iso, self.p, self.p, self.options["md"]["pdamp"]))
+                lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
+                lmp.command("thermo           10")
+                lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+
+            else:
+                #Now this routine is for non-zero pressure
+                #one has to equilibriate at a low temperature, but high pressure and then increase temp gradually
+                #start at 0.25 temp, and increase to 0.50, while keeping high pressure
+                lmp.command("velocity         all create %f %d"%(0.25*self.t, np.random.randint(0, 10000)))
+                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.25*self.t, 0.5*self.t, self.options["md"]["tdamp"], 
+                                                    self.iso, self.p, self.p, self.options["md"]["pdamp"]))
+                lmp.command("thermo_style     custom step pe press vol etotal temp")
+                lmp.command("thermo           10")
+                lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+                lmp.command("unfix            1")
+
+                #now heat again
+                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.5*self.t, self.t, self.options["md"]["tdamp"], 
+                                                    self.iso, self.p, self.p,  self.options["md"]["pdamp"]))
+                lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+                lmp.command("unfix            1")
+
+                #now run normal cycle
+                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                                    self.iso, self.p, self.p,  self.options["md"]["pdamp"]))
+                lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+
+
+            #this is when the averaging routine starts
+            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
+                int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
+            
+            laststd = 0.00
+            for i in range(int(self.options["md"]["ncycles"])):
+                lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
+                ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
+                #now we can check if it converted
+                file = os.path.join(self.simfolder, "avg.dat")
+                lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
+                
+                #lxpc = ((lx*ly*lz)/self.ncells)**(1/3)
+                #lxpc = ipress[-ncount+1:]
+                lxpc = ipress
+                mean = np.mean(lxpc)
+                std = np.std(lxpc)
+                volatom = np.mean((lx*ly*lz)/self.natoms)
+                self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
+                
+                #if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
+                if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
+
+                    #process other means
+                    self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
+                    self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
+                    self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
+                    self.volatom = volatom
+                    self.vol = self.lx*self.ly*self.lz
+                    self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
+                    self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
+                    break
+                laststd = std
+
+            #now run for msd
+            lmp.command("unfix            1")
+            lmp.command("unfix            2")
+
+            #check for melting
+            #check for melting
+            lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+            lmp.command("run               0")
+            lmp.command("undump            2")
+            
+            solids = ph.find_solid_fraction("traj.dat")
+            if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
+                lmp.close()
+                raise RuntimeError("System melted, increase size or reduce temp!")
+        else:
+            #routine in which lattice constant will not varied, but is set to a given fixed value
+            lmp.command("fix              1 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
             lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
-            lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                self.iso, self.p, self.p, self.options["md"]["pdamp"]))
             lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
             lmp.command("thermo           10")
-            lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
-
-        else:
-            #Now this routine is for non-zero pressure
-            #one has to equilibriate at a low temperature, but high pressure and then increase temp gradually
-            #start at 0.25 temp, and increase to 0.50, while keeping high pressure
-            lmp.command("velocity         all create %f %d"%(0.25*self.t, np.random.randint(0, 10000)))
-            lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.25*self.t, 0.5*self.t, self.options["md"]["tdamp"], 
-                                                self.iso, self.p, self.p, self.options["md"]["pdamp"]))
-            lmp.command("thermo_style     custom step pe press vol etotal temp")
-            lmp.command("thermo           10")
-            lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
-            lmp.command("unfix            1")
-
-            #now heat again
-            lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.5*self.t, self.t, self.options["md"]["tdamp"], 
-                                                self.iso, self.p, self.p,  self.options["md"]["pdamp"]))
-            lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
-            lmp.command("unfix            1")
-
-            #now run normal cycle
-            lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                self.iso, self.p, self.p,  self.options["md"]["pdamp"]))
-            lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
-
-
-        #this is when the averaging routine starts
-        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
-            int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
-        
-        laststd = 0.00
-        for i in range(int(self.options["md"]["ncycles"])):
+            #this is when the averaging routine starts
+            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
+                int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
             lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
             ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
             #now we can check if it converted
@@ -205,38 +257,22 @@ class Solid:
             #lxpc = ipress[-ncount+1:]
             lxpc = ipress
             mean = np.mean(lxpc)
+            #here we actually have to set the pressure
+            self.p = mean
             std = np.std(lxpc)
             volatom = np.mean((lx*ly*lz)/self.natoms)
             self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
-            
-            #if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
-            if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
+            self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
+            self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
+            self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
+            self.volatom = volatom
+            self.vol = self.lx*self.ly*self.lz
+            self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
+            self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
+            #now run for msd
+            lmp.command("unfix            1")
+            lmp.command("unfix            2")
 
-                #process other means
-                self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
-                self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
-                self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
-                self.volatom = volatom
-                self.vol = self.lx*self.ly*self.lz
-                self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
-                self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
-                break
-            laststd = std
-
-        #now run for msd
-        lmp.command("unfix            1")
-        lmp.command("unfix            2")
-
-        #check for melting
-        #check for melting
-        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
-        lmp.command("run               0")
-        lmp.command("undump            2")
-        
-        solids = ph.find_solid_fraction("traj.dat")
-        if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
-            lmp.close()
-            raise RuntimeError("System melted, increase size or reduce temp!")
 
 
         lmp.command("fix              3 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
