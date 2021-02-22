@@ -39,6 +39,16 @@ def routine_ts(job):
     
     job.integrate_reversible_scaling(scale_energy=True)
 
+
+def routine_only_ts(job):
+    """
+    Perform sweep without free energy calculation
+    """
+    job.run_averaging()
+    for i in range(job.nsims):
+        job.reversible_scaling(iteration=(i+1))
+
+
 def routine_alchemy(job):
     """
     Perform an FE calculation routine
@@ -96,7 +106,9 @@ def main():
         routine_fe(job)
     elif calc["mode"] == "ts":
         routine_ts(job)
+    elif calc["mode"] == "mts":
+        routine_only_ts(job)
     elif calc["mode"] == "alchemy":
         routine_alchemy(job)
     else:
-        raise ValueError("Mode should be either fe/ts/alchemy")
+        raise ValueError("Mode should be either fe/ts/mts/alchemy")

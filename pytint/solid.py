@@ -247,29 +247,35 @@ class Solid:
             #this is when the averaging routine starts
             lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
                 int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
-            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
-            ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
-            #now we can check if it converted
-            file = os.path.join(self.simfolder, "avg.dat")
-            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
-            
-            #lxpc = ((lx*ly*lz)/self.ncells)**(1/3)
-            #lxpc = ipress[-ncount+1:]
-            lxpc = ipress
-            mean = np.mean(lxpc)
-            #here we actually have to set the pressure
-            self.p = mean
-            std = np.std(lxpc)
-            volatom = np.mean((lx*ly*lz)/self.natoms)
-            self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
-            self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
-            self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
-            self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
-            self.volatom = volatom
-            self.vol = self.lx*self.ly*self.lz
-            self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
-            self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
-            #now run for msd
+
+            lastmean = 100000000
+            for i in range(int(self.options["md"]["ncycles"])):
+                lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
+                ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
+                #now we can check if it converted
+                file = os.path.join(self.simfolder, "avg.dat")
+                lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
+                
+                #lxpc = ((lx*ly*lz)/self.ncells)**(1/3)
+                #lxpc = ipress[-ncount+1:]
+                lxpc = ipress
+                mean = np.mean(lxpc)
+                if (np.abs(mean - lastmean)) < self.options["conv"]["p_tol"]:
+                    #here we actually have to set the pressure
+                    self.p = mean
+                    std = np.std(lxpc)
+                    volatom = np.mean((lx*ly*lz)/self.natoms)
+                    self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
+                    self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
+                    self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
+                    self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
+                    self.volatom = volatom
+                    self.vol = self.lx*self.ly*self.lz
+                    self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
+                    self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
+                    #now run for msd
+                    break
+                lastmean = mean
             lmp.command("unfix            1")
             lmp.command("unfix            2")
 
