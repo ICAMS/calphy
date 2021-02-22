@@ -164,7 +164,7 @@ def read_yamlfile(file):
             #now start looping
             for i, lat in enumerate(lattice):
                 for press in pressure:
-                    if mode == "ts":
+                    if (mode == "ts") or (mode == "mts"):
                         cdict = {}
                         cdict["mode"] = calc["mode"]
                         #we need to check for temperature length here
