@@ -359,6 +359,58 @@ def find_w(mainfolder, nelements=1, concentration=[1,], nsims=5, full=False, use
     else:
         return np.mean(ws)
 
+
+def integrate_mts(folder1, folder2, natoms1, natoms2, 
+    pressure, temperature, nsims=5, scale_energy=True):
+    """
+    Perform a CC integration
+    """
+    for i in tqdm(range(nsims)):
+        
+        fsu, fsp, fsv, fsl = np.loadtxt(os.path.join(folder1, "forward_%d.dat"%(i+1)), unpack=True)
+        bsu, bsp, bsv, bsl = np.loadtxt(os.path.join(folder1, "forward_%d.dat"%(i+1)), unpack=True)
+        flu, flp, flv, fll = np.loadtxt(os.path.join(folder2, "forward_%d.dat"%(i+1)), unpack=True)
+        blu, blp, blv, bll = np.loadtxt(os.path.join(folder2, "forward_%d.dat"%(i+1)), unpack=True)
+        
+        if scale_energy:
+            fsu = fsu/fsl
+            bsu = bsu/bsl
+            flu = flu/fll
+            blu = blu/bll
+        
+        #now convert the pressure units
+        fsp = fsp/(10000*160.21766208)
+        bsp = bsp/(10000*160.21766208)
+        flp = flp/(10000*160.21766208)
+        blp = blp/(10000*160.21766208)
+
+        #scale volume per number of atoms
+        fsv = fsv/natoms1
+        bsv = bsv/natoms1
+        flv = flv/natoms2
+        blv = blv/natoms2
+
+        #get the integrand
+        fx = (fsu-flu)/(fsv-flv)
+        bx = (bsu-blu)/(bsv-blv)
+
+        #now integrate with cumtrapz
+        wf = cumtrapz(fx, fsl, initial=0)
+        wb = cumtrapz(bx[::-1], bsl[::-1], initial=0)
+        w = (wf + wb) / (2*fsl)
+        ws.append(w)
+
+    wmean = np.mean(ws, axis=0)
+    werr = np.std(ws, axis=0)
+    xp = fsl*(pressure/(10000*160.21766208)) - wmean
+    temp = temperature/fsl
+
+    #convert back
+    xp = xp*160.217*10000
+
+    #return the values
+    return xp, temp
+
 def press(x, coef):
     """
     Find pressure of system
