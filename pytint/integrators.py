@@ -196,8 +196,12 @@ def integrate_path(fwdfilename, bkdfilename, nelements=1, concentration=[1,], us
     #THIS IS TEMPORARY
     #UFM ENERGY IS NOT SCALED IN LAMMPS-THIS IS WRONG! BUT UNTIL THEN, WE KEEP THIS
     if not solid:
-        if not alchemy:
             #now scale with lambda
+            # What happens here?
+            # - Solid is not affected because fix/adapt is not used
+            # - Liquid : UFM system energy is not scaled with fix:adapt (this is actually wrong, but works for us)
+            # - Liquid : So we only unscale the system of interest in liquid
+            # - Alchemy : Both system energies are scaled with fix:adapt, so we need to unscale both
             for i in range(len(fdui)):
                 if flambda[i] !=0:
                     fdui[i] = fdui[i]/flambda[i]
@@ -205,14 +209,18 @@ def integrate_path(fwdfilename, bkdfilename, nelements=1, concentration=[1,], us
                 if blambda[i] !=0:
                     bdui[i] = bdui[i]/blambda[i]
 
-            """
-            for i in range(len(fdur)):
-                if flambda[i] !=0:
-                    fdur[i] = fdur[i]/flambda[i]
-            for i in range(len(bdur)):
-                if blambda[i] !=0:
-                    bdur[i] = bdur[i]/blambda[i]
-            """
+            if alchemy:
+                """
+                This is the unscaling happening here - ideally when liquid ufm is fixed, this will not
+                just be for alchemy, but for all non solid calculations
+                """            
+                for i in range(len(fdur)):
+                    if flambda[i] !=0:
+                        fdur[i] = fdur[i]/flambda[i]
+                for i in range(len(bdur)):
+                    if blambda[i] !=0:
+                        bdur[i] = bdur[i]/blambda[i]
+            
 
     fdu = fdui - fdur
     bdu = bdui - bdur
