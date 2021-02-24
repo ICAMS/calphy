@@ -370,23 +370,22 @@ def find_w(mainfolder, nelements=1, concentration=[1,], nsims=5, full=False, use
 
 
 def integrate_mts(folder1, folder2, natoms1, natoms2, 
-    pressure, temperature, nsims=5, scale_energy=True):
-    """
-    Perform a CC integration
-    """
-    for i in range(nsims):
-        
+    pressure, temperature, nsims=5, scale_energy=True, 
+                  full=False, stdscale=0):
+
+    ws = []
+    for i in tqdm(range(nsims)):
         fsu, fsp, fsv, fsl = np.loadtxt(os.path.join(folder1, "forward_%d.dat"%(i+1)), unpack=True)
-        bsu, bsp, bsv, bsl = np.loadtxt(os.path.join(folder1, "forward_%d.dat"%(i+1)), unpack=True)
+        bsu, bsp, bsv, bsl = np.loadtxt(os.path.join(folder1, "backward_%d.dat"%(i+1)), unpack=True)
         flu, flp, flv, fll = np.loadtxt(os.path.join(folder2, "forward_%d.dat"%(i+1)), unpack=True)
-        blu, blp, blv, bll = np.loadtxt(os.path.join(folder2, "forward_%d.dat"%(i+1)), unpack=True)
-        
+        blu, blp, blv, bll = np.loadtxt(os.path.join(folder2, "backward_%d.dat"%(i+1)), unpack=True)
+
         if scale_energy:
             fsu = fsu/fsl
             bsu = bsu/bsl
             flu = flu/fll
             blu = blu/bll
-        
+
         #now convert the pressure units
         fsp = fsp/(10000*160.21766208)
         bsp = bsp/(10000*160.21766208)
@@ -403,12 +402,21 @@ def integrate_mts(folder1, folder2, natoms1, natoms2,
         fx = (fsu-flu)/(fsv-flv)
         bx = (bsu-blu)/(bsv-blv)
 
-        #now integrate with cumtrapz
         wf = cumtrapz(fx, fsl, initial=0)
         wb = cumtrapz(bx[::-1], bsl[::-1], initial=0)
-        w = (wf + wb) / (2*fsl)
-        ws.append(w)
 
+        w = (wf + wb) / (2*fsl)
+        q = (wf - wb) / (2*fsl)
+        
+        if stdscale > 0:
+            peak  = (w-np.roll(w, shift=-1))
+            stdcut = np.std(peak[:-1])
+            for i in range(len(peak[:-1])):
+                if not (-stdscale*stdcut < peak[i] < stdscale*stdcut):
+                    w[i:] = w[i:] + peak[i]
+        ws.append(w)
+    
+    #return ws
     wmean = np.mean(ws, axis=0)
     werr = np.std(ws, axis=0)
     xp = fsl*(pressure/(10000*160.21766208)) - wmean
@@ -418,7 +426,11 @@ def integrate_mts(folder1, folder2, natoms1, natoms2,
     xp = xp*160.217*10000
 
     #return the values
-    return xp, temp
+    if not full:
+        return xp, temp
+    else:
+        return xp, temp, werr
+
 
 def press(x, coef):
     """
