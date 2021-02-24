@@ -304,10 +304,10 @@ class Alchemy:
 
         if self.pair_style[0] == self.pair_style[1]:
             lmp.command("compute         c1 all pair %s 1"%self.pair_style[0])
-            lmp.command("compute         c2 all pair %s 2"%self.pair_style[0])
+            lmp.command("compute         c2 all pair %s 2"%self.pair_style[1])
         else:
             lmp.command("compute         c1 all pair %s"%self.pair_style[0])
-            lmp.command("compute         c2 all pair %s"%self.pair_style[0])
+            lmp.command("compute         c2 all pair %s"%self.pair_style[1])
 
 
         ##########################################     Output setup     ########################################

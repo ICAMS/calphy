@@ -365,7 +365,7 @@ def integrate_mts(folder1, folder2, natoms1, natoms2,
     """
     Perform a CC integration
     """
-    for i in tqdm(range(nsims)):
+    for i in range(nsims):
         
         fsu, fsp, fsv, fsl = np.loadtxt(os.path.join(folder1, "forward_%d.dat"%(i+1)), unpack=True)
         bsu, bsp, bsv, bsl = np.loadtxt(os.path.join(folder1, "forward_%d.dat"%(i+1)), unpack=True)

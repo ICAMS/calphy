@@ -665,7 +665,7 @@ class Solid:
         
         lmp.close()
 
-
+        
     def integrate_reversible_scaling(self, scale_energy=False, return_values=False):
         """
         Carry out the reversible scaling operation
