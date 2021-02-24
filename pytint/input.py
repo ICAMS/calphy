@@ -127,6 +127,8 @@ def read_yamlfile(file):
 
     options["element"] = check_and_convert_to_list(indata["element"])
     options["mass"] = check_and_convert_to_list(indata["mass"])
+    options["md"]["pair_style"] = check_and_convert_to_list(indata["md"]["pair_style"])
+    options["md"]["pair_coeff"] = check_and_convert_to_list(indata["md"]["pair_coeff"])
 
     if not len(options["element"]) == len(options["mass"]):
         raise ValueError("length of elements and mass should be same!")
@@ -162,7 +164,7 @@ def read_yamlfile(file):
             #now start looping
             for i, lat in enumerate(lattice):
                 for press in pressure:
-                    if mode == "ts":
+                    if (mode == "ts") or (mode == "mts"):
                         cdict = {}
                         cdict["mode"] = calc["mode"]
                         #we need to check for temperature length here
@@ -177,6 +179,10 @@ def read_yamlfile(file):
                         cdict["element"] = options["element"]
                         cdict["lattice_constant"] = lattice_constant[i]
                         cdict["iso"] = iso[i]
+                        if "fix_lattice" in calc.keys():
+                            cdict["fix_lattice"] = calc["fix_lattice"]
+                        else:
+                            cdict["fix_lattice"] = False
                         cdict = prepare_optional_keys(calc, cdict)
                         options["calculations"].append(cdict)
 
@@ -193,9 +199,17 @@ def read_yamlfile(file):
                             cdict["element"] = options["element"]
                             cdict["lattice_constant"] = lattice_constant[i]
                             cdict["iso"] = iso[i]
+                            if "fix_lattice" in calc.keys():
+                                cdict["fix_lattice"] = calc["fix_lattice"]
+                            else:
+                                cdict["fix_lattice"] = False
                             cdict = prepare_optional_keys(calc, cdict)
                             options["calculations"].append(cdict)
 
+                            if mode == "alchemy":
+                                #if alchemy mode is selected: make sure that hybrid pair styles
+                                if not len(options["md"]["pair_style"]) == 2:
+                                    raise ValueError("Two pair styles need to be provided")
     return options
 
 def create_identifier(calc):

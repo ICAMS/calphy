@@ -150,7 +150,8 @@ def get_einstein_crystal_fe(temp, natoms, mass, vol, k, concentration, cm_correc
 
     return F_harm
 
-def integrate_path(fwdfilename, bkdfilename, nelements=1, concentration=[1,], usecols=(0, 1, 2), solid=True):
+def integrate_path(fwdfilename, bkdfilename, nelements=1, concentration=[1,], usecols=(0, 1, 2), solid=True,
+    alchemy=False):
     """
     Get a filename with columns du and dlambda and integrate
 
@@ -195,23 +196,32 @@ def integrate_path(fwdfilename, bkdfilename, nelements=1, concentration=[1,], us
     #THIS IS TEMPORARY
     #UFM ENERGY IS NOT SCALED IN LAMMPS-THIS IS WRONG! BUT UNTIL THEN, WE KEEP THIS
     if not solid:
+            #now scale with lambda
+            # What happens here?
+            # - Solid is not affected because fix/adapt is not used
+            # - Liquid : UFM system energy is not scaled with fix:adapt (this is actually wrong, but works for us)
+            # - Liquid : So we only unscale the system of interest in liquid
+            # - Alchemy : Both system energies are scaled with fix:adapt, so we need to unscale both
+            for i in range(len(fdui)):
+                if flambda[i] !=0:
+                    fdui[i] = fdui[i]/flambda[i]
+            for i in range(len(bdui)):
+                if blambda[i] !=0:
+                    bdui[i] = bdui[i]/blambda[i]
 
-        #now scale with lambda
-        for i in range(len(fdui)):
-            if flambda[i] !=0:
-                fdui[i] = fdui[i]/flambda[i]
-        for i in range(len(bdui)):
-            if blambda[i] !=0:
-                bdui[i] = bdui[i]/blambda[i]
-
-        """
-        for i in range(len(fdur)):
-            if flambda[i] !=0:
-                fdur[i] = fdur[i]/flambda[i]
-        for i in range(len(bdur)):
-            if blambda[i] !=0:
-                bdur[i] = bdur[i]/blambda[i]
-        """
+            if alchemy:
+                """
+                This is the unscaling happening here - ideally when liquid ufm is fixed, this will not
+                just be for alchemy, but for all non solid calculations
+                """
+                #this for the ref system : so forward and backard lambdas are reversed!
+                for i in range(len(fdur)):
+                    if blambda[i] !=0:
+                        fdur[i] = fdur[i]/blambda[i]
+                for i in range(len(bdur)):
+                    if flambda[i] !=0:
+                        bdur[i] = bdur[i]/flambda[i]
+            
 
     fdu = fdui - fdur
     bdu = bdui - bdur
@@ -310,7 +320,8 @@ def calculate_fe_mix(temp, fepure, feimpure, concs, natoms=4000):
         fes.append(f)    
     return fes
 
-def find_w(mainfolder, nelements=1, concentration=[1,], nsims=5, full=False, usecols=(0,1,2), solid=True):
+def find_w(mainfolder, nelements=1, concentration=[1,], nsims=5, full=False, usecols=(0,1,2), solid=True,
+    alchemy=False):
     """
     Integrate the irreversible work and dissipation for independent simulations
 
@@ -347,7 +358,8 @@ def find_w(mainfolder, nelements=1, concentration=[1,], nsims=5, full=False, use
         fwdfilename = os.path.join(mainfolder,fwdfilestring)
         bkdfilestring = 'backward_%d.dat' % (i+1)
         bkdfilename = os.path.join(mainfolder,bkdfilestring)
-        w, q = integrate_path(fwdfilename, bkdfilename, nelements=nelements, concentration=concentration, usecols=usecols, solid=solid)
+        w, q = integrate_path(fwdfilename, bkdfilename, nelements=nelements, concentration=concentration, usecols=usecols, solid=solid,
+            alchemy=alchemy)
         ws.append(w)
         qs.append(q)
         
@@ -355,6 +367,70 @@ def find_w(mainfolder, nelements=1, concentration=[1,], nsims=5, full=False, use
         return np.mean(ws), np.mean(qs), np.std(qs)
     else:
         return np.mean(ws)
+
+
+def integrate_mts(folder1, folder2, natoms1, natoms2, 
+    pressure, temperature, nsims=5, scale_energy=True, 
+                  full=False, stdscale=0):
+
+    ws = []
+    for i in tqdm(range(nsims)):
+        fsu, fsp, fsv, fsl = np.loadtxt(os.path.join(folder1, "forward_%d.dat"%(i+1)), unpack=True)
+        bsu, bsp, bsv, bsl = np.loadtxt(os.path.join(folder1, "backward_%d.dat"%(i+1)), unpack=True)
+        flu, flp, flv, fll = np.loadtxt(os.path.join(folder2, "forward_%d.dat"%(i+1)), unpack=True)
+        blu, blp, blv, bll = np.loadtxt(os.path.join(folder2, "backward_%d.dat"%(i+1)), unpack=True)
+
+        if scale_energy:
+            fsu = fsu/fsl
+            bsu = bsu/bsl
+            flu = flu/fll
+            blu = blu/bll
+
+        #now convert the pressure units
+        fsp = fsp/(10000*160.21766208)
+        bsp = bsp/(10000*160.21766208)
+        flp = flp/(10000*160.21766208)
+        blp = blp/(10000*160.21766208)
+
+        #scale volume per number of atoms
+        fsv = fsv/natoms1
+        bsv = bsv/natoms1
+        flv = flv/natoms2
+        blv = blv/natoms2
+
+        #get the integrand
+        fx = (fsu-flu)/(fsv-flv)
+        bx = (bsu-blu)/(bsv-blv)
+
+        wf = cumtrapz(fx, fsl, initial=0)
+        wb = cumtrapz(bx[::-1], bsl[::-1], initial=0)
+
+        w = (wf + wb) / (2*fsl)
+        q = (wf - wb) / (2*fsl)
+        
+        if stdscale > 0:
+            peak  = (w-np.roll(w, shift=-1))
+            stdcut = np.std(peak[:-1])
+            for i in range(len(peak[:-1])):
+                if not (-stdscale*stdcut < peak[i] < stdscale*stdcut):
+                    w[i:] = w[i:] + peak[i]
+        ws.append(w)
+    
+    #return ws
+    wmean = np.mean(ws, axis=0)
+    werr = np.std(ws, axis=0)
+    xp = fsl*(pressure/(10000*160.21766208)) - wmean
+    temp = temperature/fsl
+
+    #convert back
+    xp = xp*160.217*10000
+
+    #return the values
+    if not full:
+        return xp, temp
+    else:
+        return xp, temp, werr
+
 
 def press(x, coef):
     """
