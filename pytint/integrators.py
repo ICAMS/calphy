@@ -213,13 +213,14 @@ def integrate_path(fwdfilename, bkdfilename, nelements=1, concentration=[1,], us
                 """
                 This is the unscaling happening here - ideally when liquid ufm is fixed, this will not
                 just be for alchemy, but for all non solid calculations
-                """            
+                """
+                #this for the ref system : so forward and backard lambdas are reversed!
                 for i in range(len(fdur)):
-                    if flambda[i] !=0:
-                        fdur[i] = fdur[i]/flambda[i]
-                for i in range(len(bdur)):
                     if blambda[i] !=0:
-                        bdur[i] = bdur[i]/blambda[i]
+                        fdur[i] = fdur[i]/blambda[i]
+                for i in range(len(bdur)):
+                    if flambda[i] !=0:
+                        bdur[i] = bdur[i]/flambda[i]
             
 
     fdu = fdui - fdur
