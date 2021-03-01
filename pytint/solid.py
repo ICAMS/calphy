@@ -237,7 +237,7 @@ class Solid:
             solids = ph.find_solid_fraction("traj.dat")
             if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
                 lmp.close()
-                raise RuntimeError("System melted, increase size or reduce temp!")
+                raise RuntimeError("System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting conv:\n solid_frac: 0")
         else:
             #routine in which lattice constant will not varied, but is set to a given fixed value
             lmp.command("fix              1 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
@@ -641,7 +641,7 @@ class Solid:
         lmp.command("undump            2")
         
         solids = ph.find_solid_fraction("traj.dat")
-        if (solids/lmp.natoms < 0.7):
+        if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
             lmp.close()
             raise RuntimeError("System melted, increase size or reduce scaling!")
         
