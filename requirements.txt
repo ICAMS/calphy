@@ -8,3 +8,4 @@ openmpi
 pylammpsmpi
 pyscal
 pytest
+tqdm

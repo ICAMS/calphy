@@ -12,3 +12,4 @@ dependencies:
   - pylammpsmpi
   - pyscal
   - matplotlib
+  - tqdm
