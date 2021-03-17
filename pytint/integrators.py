@@ -573,6 +573,8 @@ def integrate_rs(simfolder, f0, t, natoms, p=0, nsims=5,
     
     """
     ws = []
+    p = p/(10000*160.21766208)
+    
     for i in range(1, nsims+1):
         fdx, fp, fvol, flambda = np.loadtxt(os.path.join(simfolder, "forward_%d.dat"%i), unpack=True, comments="#")
         bdx, bp, bvol, blambda = np.loadtxt(os.path.join(simfolder, "backward_%d.dat"%i), unpack=True, comments="#")
@@ -582,7 +584,6 @@ def integrate_rs(simfolder, f0, t, natoms, p=0, nsims=5,
             bdx /= blambda
 
         #add pressure contribution
-        p = p/(10000*160.21766208)
         fvol = fvol/natoms
         bvol = bvol/natoms
         fdx = fdx + p*fvol
