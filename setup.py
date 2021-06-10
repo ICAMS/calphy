@@ -1,7 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""The setup script."""
+"""
+Setup script for calphy
+
+Copyright 2021  (c) Sarath Menon^1, Yury Lysogorskiy^1, Ralf Drautz^1
+^1: Ruhr-University Bochum, Bochum, Germany
+
+"""
 
 from setuptools import setup, find_packages, Extension
 
@@ -9,11 +15,10 @@ with open('README.md') as readme_file:
     readme = readme_file.read()
 
 setup_requirements = ['pytest-runner', ]
-
 test_requirements = ['pytest>=3', ]
 
 setup(
-    author="Sarath Menon",
+    author="Sarath Menon, Yury Lysogorskiy, Ralf Drautz",
     author_email='sarathmenon@mailbox.org',
     python_requires='>=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*',
     classifiers=[
@@ -26,24 +31,25 @@ setup(
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
     ],
-    description="a thermodynamic integration helper for python",
+    description="free energy calculation for python",
     install_requires=['matplotlib'],
     license="GNU General Public License v3",
     long_description=readme,
     include_package_data=True,
-    keywords='pytint',
-    name='pytint',
-    packages=find_packages(include=['pytint', 'pytint.*']),
+    keywords='calphy',
+    name='calphy',
+    packages=find_packages(include=['calphy', 'calphy.*']),
     setup_requires=setup_requirements,
     test_suite='tests',
     tests_require=test_requirements,
-    url='https://github.com/srmnitc/pytint',
+    url='https://git.noc.ruhr-uni-bochum.de/atomicclusterexpansion/calphy',
     version='0.3.18',
     zip_safe=False,
     entry_points={
         'console_scripts': [
-            'tint = pytint.kernel:main',
-            'tint_kernel = pytint.queuekernel:main',
+            'tint = calphy.kernel:main',
+            'tint_kernel = calphy.queuekernel:main',
         ],
     }
 )
+
