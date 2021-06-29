@@ -6,7 +6,7 @@ from pylammpsmpi import LammpsLibrary
 import logging
 import numpy as np
 from lammps import lammps
-import pytint.lattice as pl
+import calphy.lattice as pl
 import pyscal.core as pc
 """
 LAMMPS helper routines

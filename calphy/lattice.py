@@ -4,7 +4,7 @@ import os
 from pylammpsmpi import LammpsLibrary
 import numpy as np
 import pyscal.core as pc
-from pytint.helpers import create_object
+from calphy.helpers import create_object
 
 """
 Conversion factors for creating initial lattices

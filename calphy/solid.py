@@ -7,10 +7,10 @@ reversible scaling.
 import numpy as np
 import yaml
 
-from pytint.integrators import *
+from calphy.integrators import *
 import pyscal.traj_process as ptp
-import pytint.lattice as pl
-import pytint.helpers as ph
+import calphy.lattice as pl
+import calphy.helpers as ph
 
 class Solid:
     """

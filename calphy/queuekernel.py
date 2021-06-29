@@ -9,10 +9,10 @@ import argparse as ap
 import subprocess
 import yaml
 
-from pytint.input import read_yamlfile, create_identifier
-from pytint.liquid import Liquid
-from pytint.solid import Solid
-from pytint.alchemy import Alchemy
+from calphy.input import read_yamlfile, create_identifier
+from calphy.liquid import Liquid
+from calphy.solid import Solid
+from calphy.alchemy import Alchemy
 
 
 def routine_fe(job):

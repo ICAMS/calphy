@@ -16,8 +16,8 @@ import time
 import yaml
 import warnings
 
-from pytint.input import read_yamlfile, create_identifier
-import pytint.queue as pq
+from calphy.input import read_yamlfile, create_identifier
+import calphy.queue as pq
 import argparse as ap
 
 
