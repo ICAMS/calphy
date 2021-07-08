@@ -1,4 +1,4 @@
-# Example 01: Phase transformation in Fe
+# Example 02: Phase transformation in Fe
 
 In this example, we will make use of the temperature sweep algorithm in `calphy` to calculate the transformation temperature for BCC to FCC transition in Fe.
 
