@@ -88,5 +88,7 @@ lmp = lammps()
 
 - [Inputfile](examples/inputfile.md)
 - [Command line interface](examples/cli.md)
-- Examples
+- Examples  
+    > Note that the examples use small system sizes and switching times so that the functionality can be illustrated. For better results, it is recommended to increase both of these quantities.
     - [Free energy calculation](examples/example_01)
+    - [BCC to FCC transition in Fe](examples/example_02): Use free energy calculation and temperature sweep to calculate phase transition temperature in Fe.
