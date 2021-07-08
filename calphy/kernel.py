@@ -17,7 +17,7 @@ import yaml
 import warnings
 
 from calphy.input import read_yamlfile, create_identifier
-import calphy.queue as pq
+import calphy.scheduler as pq
 import argparse as ap
 
 
