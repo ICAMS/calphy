@@ -89,7 +89,4 @@ lmp = lammps()
 - [Inputfile](examples/inputfile.md)
 - [Command line interface](examples/cli.md)
 - Examples
-    - [Cu](examples/Cu_EAM/cu_example.ipynb): Example demonstrating the calculation of melting temperature for Copper.
-    - [Fe](examples/Fe_EAM/fe_example.ipynb): Calculation of free energy of BCC Fe and calculating the phase transformation temperature for bcc->fcc.
-    - [Ti](examples/Ti_EAM/ti_example.ipynb): Example demonstrating the calculation of temperature for the hcp->bcc transformation in Ti.
-    - [CuZr](examples/ZrCu_EAM/zrcu_example.ipynb): Example demonstarting the calculation of free energy for pure Cu and CuZr B2 structure)
+    - [Free energy calculation](examples/example_01)
