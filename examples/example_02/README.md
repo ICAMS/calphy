@@ -45,5 +45,12 @@ ft, ffe, fferr = np.loadtxt("ts-FCC-100-0/temperature_sweep.dat", unpack=True)
 args = np.argsort(np.abs(bfe-ffe))
 print(bt[args[0]], "K")
 
+plt.plot(bt, bfe, color="#E53935", label="bcc")
+plt.plot(ft, ffe, color="#0097A7", label="fcc")
+plt.xlabel("Temperature (K)", fontsize=12)
+plt.ylabel("F (ev/atom)", fontsize=12)
+plt.legend()
 ```
+<img src="fe_transition.png" width="500" />
+
 A jupyter notebook that calculates the transition temperature is shown [here](analysis.ipynb).
