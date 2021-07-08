@@ -47,8 +47,8 @@ setup(
     zip_safe=False,
     entry_points={
         'console_scripts': [
-            'tint = calphy.kernel:main',
-            'tint_kernel = calphy.queuekernel:main',
+            'calphy = calphy.kernel:main',
+            'calphy_kernel = calphy.queuekernel:main',
         ],
     }
 )
