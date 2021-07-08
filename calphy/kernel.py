@@ -63,7 +63,7 @@ def run_jobs(inputfile):
             raise ValueError("Unknown scheduler")
 
         #for lattice just provide the number of position
-        scheduler.maincommand = "tint_kernel -i %s -k %d"%(inputfile, 
+        scheduler.maincommand = "calphy_kernel -i %s -k %d"%(inputfile, 
             count)
         scheduler.write_script(scriptpath)
         _ = scheduler.submit()
