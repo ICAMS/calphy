@@ -1,7 +1,7 @@
-## Running `pytint`
+## Running `calphy`
 
-After the calculations are specified in the input file, `pytint` can be run by:
+After the calculations are specified in the input file, `calphy` can be run by:
 
 ```
-tint -i inputfilename
+calphy -i inputfilename
 ```
