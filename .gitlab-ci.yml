@@ -9,7 +9,6 @@ install:
   script:
   - conda env list
   - rm -rf /home/gitlab-runner/.conda/envs/calphy_test
-  - conda clean --packages --tarballs
   - conda remove --name calphy_test --all
   - conda config --add channels conda-forge
   - conda create --name calphy_test python pytest tqdm numpy scipy pyyaml mendeleev pylammpsmpi pyscal --force
