@@ -8,9 +8,9 @@ install:
     - python
   script:
   - conda env list
-  - conda remove --name pytint_test --all
+  - conda remove --name calphy_test --all
   - conda config --add channels conda-forge
-  - conda create --name pytint_test python=3.7 pytest tqdm numpy scipy pyyaml mendeleev lammps mpi4py openmpi pylammpsmpi pyscal pytest --force
+  - conda create --name calphy_test python=3.7 pytest tqdm numpy scipy pyyaml mendeleev lammps mpi4py openmpi pylammpsmpi pyscal pytest --force
   - conda env list
 
 test:
@@ -18,6 +18,6 @@ test:
   tags:
     - python
   script:
-  - source activate pytint_test
+  - source activate calphy_test
   - python setup.py install
   - pytest tests/
