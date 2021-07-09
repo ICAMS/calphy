@@ -2,6 +2,22 @@
 
 Python library and command line tool for calculation of free energies.
 
+## Dependencies
+
+- lammps              2021.05.27  
+- mendeleev           0.7.0       `pip install mendeleev`
+- pylammpsmpi         0.0.8       `pip install pylammpsmpi`
+- pyscal              2.10.14     `pip install git+https://github.com/srmnitc/pyscal`
+- pyyaml              5.4.1       `pip install pyyaml`
+- scipy               1.7.0       `pip install scipy`
+- tqdm                4.61.2      `pip install tqdm`
+
+### Optional
+
+- matplotlib          3.4.2       `pip install matplotlib`
+- pytest              6.2.4       `pip install pytest`
+
+
 ## Installing
 
 > **NOTE**: If you are planning to use a custom version of LAMMPS, read the 'Notes on the LAMMPS installation' section first.
