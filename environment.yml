@@ -1,4 +1,4 @@
-name: pytint
+name: calphy
 channels:
   - conda-forge
 dependencies:

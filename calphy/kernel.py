@@ -16,8 +16,8 @@ import time
 import yaml
 import warnings
 
-from pytint.input import read_yamlfile, create_identifier
-import pytint.queue as pq
+from calphy.input import read_yamlfile, create_identifier
+import calphy.scheduler as pq
 import argparse as ap
 
 
@@ -63,7 +63,7 @@ def run_jobs(inputfile):
             raise ValueError("Unknown scheduler")
 
         #for lattice just provide the number of position
-        scheduler.maincommand = "tint_kernel -i %s -k %d"%(inputfile, 
+        scheduler.maincommand = "calphy_kernel -i %s -k %d"%(inputfile, 
             count)
         scheduler.write_script(scriptpath)
         _ = scheduler.submit()

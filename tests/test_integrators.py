@@ -1,5 +1,5 @@
 import pytest
-from pytint.integrators import *
+from calphy.integrators import *
 
 def test_ideal_gas():
 	a = get_ideal_gas_fe(1000, 0.07, 1000, [26], [1])

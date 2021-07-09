@@ -1,7 +1,7 @@
 import pytest
-from pytint.input import read_yamlfile
-import pytint.lattice as pl
-from pytint.liquid import Liquid
+from calphy.input import read_yamlfile
+import calphy.lattice as pl
+from calphy.liquid import Liquid
 import os
 import numpy as np
 

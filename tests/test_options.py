@@ -1,5 +1,5 @@
 import pytest
-from pytint.input import read_yamlfile
+from calphy.input import read_yamlfile
 
 def test_options():
 	options = read_yamlfile("examples/Cu_EAM/input.yaml")
