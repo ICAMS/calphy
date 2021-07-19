@@ -13,8 +13,16 @@ Documentation
 
 .. toctree::
    inputfile
+   cli
    calphy
 
+Examples
+~~~~~~~~
+
+.. toctree::
+   :maxdepth: 2
+
+   example_link
 
 
 Indices and tables
@@ -23,3 +31,5 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+
+.. math::

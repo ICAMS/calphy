@@ -45,9 +45,10 @@ for t, p in zip(temp, press):
 
 To compare our results, we will use a Simon equation, given by,
 
-$$
-T_m(P) = T_{m0}(P/a + 1)^b
-$$
+.. math::
+    
+    T_m(P) = T_{m0}(P/a + 1)^b
+
 
 We will use reported values for parameters $T_{m0}$, $a$ and $b$ from two different publications:
 
