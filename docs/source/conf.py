@@ -14,7 +14,7 @@ import os
 import sys
 import sphinx_rtd_theme
 
-sys.path.insert(0, os.path.abspath('../../pytint/'))
+sys.path.insert(0, os.path.abspath('../../calphy/'))
 
 def skip(app, what, name, obj, would_skip, options):
     if name in ( '__init__',):
@@ -25,8 +25,8 @@ def setup(app):
 
 # -- Project information -----------------------------------------------------
 
-project = 'pytint'
-copyright = '2021, Sarath Menon'
+project = 'calphy'
+copyright = '2021, Sarath Menon, Yury Lysogorskiy, Ralf Drautz'
 author = 'Sarath Menon'
 
 

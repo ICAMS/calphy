@@ -1,93 +1,93 @@
-pytint package
+calphy package
 ==============
 
 Submodules
 ----------
 
-pytint.fitting module
+calphy.alchemy module
 ---------------------
 
-.. automodule:: pytint.fitting
+.. automodule:: calphy.alchemy
    :members:
    :undoc-members:
    :show-inheritance:
 
-pytint.input module
+calphy.helpers module
+---------------------
+
+.. automodule:: calphy.helpers
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+calphy.input module
 -------------------
 
-.. automodule:: pytint.input
+.. automodule:: calphy.input
    :members:
    :undoc-members:
    :show-inheritance:
 
-pytint.integrators module
+calphy.integrators module
 -------------------------
 
-.. automodule:: pytint.integrators
+.. automodule:: calphy.integrators
    :members:
    :undoc-members:
    :show-inheritance:
 
-pytint.kernel module
+calphy.kernel module
 --------------------
 
-.. automodule:: pytint.kernel
+.. automodule:: calphy.kernel
    :members:
    :undoc-members:
    :show-inheritance:
 
-pytint.lattice module
+calphy.lattice module
 ---------------------
 
-.. automodule:: pytint.lattice
+.. automodule:: calphy.lattice
    :members:
    :undoc-members:
    :show-inheritance:
 
-pytint.liquid module
+calphy.liquid module
 --------------------
 
-.. automodule:: pytint.liquid
+.. automodule:: calphy.liquid
    :members:
    :undoc-members:
    :show-inheritance:
 
-pytint.queue module
--------------------
-
-.. automodule:: pytint.queue
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-pytint.queuekernel module
+calphy.queuekernel module
 -------------------------
 
-.. automodule:: pytint.queuekernel
+.. automodule:: calphy.queuekernel
    :members:
    :undoc-members:
    :show-inheritance:
 
-pytint.reversiblescaling module
--------------------------------
+calphy.scheduler module
+-----------------------
 
-.. automodule:: pytint.reversiblescaling
+.. automodule:: calphy.scheduler
    :members:
    :undoc-members:
    :show-inheritance:
 
-pytint.solid module
+calphy.solid module
 -------------------
 
-.. automodule:: pytint.solid
+.. automodule:: calphy.solid
    :members:
    :undoc-members:
    :show-inheritance:
 
-pytint.splines module
+calphy.splines module
 ---------------------
 
-.. automodule:: pytint.splines
+.. automodule:: calphy.splines
    :members:
    :undoc-members:
    :show-inheritance:
@@ -95,7 +95,7 @@ pytint.splines module
 Module contents
 ---------------
 
-.. automodule:: pytint
+.. automodule:: calphy
    :members:
    :undoc-members:
    :show-inheritance:
