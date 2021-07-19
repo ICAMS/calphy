@@ -48,7 +48,7 @@ extensions = [
 html_theme = 'sphinx_rtd_theme'
 #html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
-html_logo = "../_static/pyscal_logo1.png"
+html_logo = "../_static/calphy_logo.png"
 html_theme_options = {
     'logo_only' : True,
     'canonical_url' : 'https://pyscal.readthedocs.io/',
