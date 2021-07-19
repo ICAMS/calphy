@@ -6,15 +6,14 @@
 calphy
 ======
 
-
+.. toctree::
+   gettingstarted	
 
 Documentation
 ~~~~~~~~~~~~~
 
 .. toctree::
-   inputfile
-   cli
-   calphy
+   documentation
 
 Examples
 ~~~~~~~~
@@ -24,6 +23,11 @@ Examples
 
    example_link
 
+API reference
+~~~~~~~~~~~~~
+
+.. toctree::
+   calphy
 
 Indices and tables
 ==================
