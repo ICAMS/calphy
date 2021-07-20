@@ -110,3 +110,11 @@ lmp = lammps()
     - [BCC to FCC transition in Fe](examples/example_02): Use free energy calculation and temperature sweep to calculate phase transition temperature in Fe.
     - [Melting temperature of Cu](examples/example_03): Use free energy calculation and temperature sweep to calculate melting temperature.
     - [Pressure-temperature phase diagram of Cu](examples/example_04): Calculate Gibbs free energy and reversible scaling to calculate the pressure-temperature phase diagram of Cu.
+
+## Citing calphy
+
+If you find calphy useful, please consider citing:
+Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz. 
+“Automated Free Energy Calculation from Atomistic Simulations.” 
+ArXiv:2107.08980 [Cond-Mat], July 19, 2021. 
+http://arxiv.org/abs/2107.08980.
