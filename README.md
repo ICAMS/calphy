@@ -1,6 +1,6 @@
 # calphy
 
-Python library and command line tool for calculation of free energies.
+Python library and command line tool for calculation of free energies. Read the documentation [here](https://calphy.readthedocs.io/en/latest/index.html).
 
 ## Dependencies
 
