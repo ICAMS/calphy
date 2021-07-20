@@ -1,4 +1,40 @@
-#UF model functions    
+"""
+calphy: a Python library and command line interface for automated free
+energy calculations.
+
+Copyright 2021  (c) Sarath Menon^1, Yury Lysogorskiy^1, Ralf Drautz^1
+^1: Ruhr-University Bochum, Bochum, Germany
+
+More information about the program can be found in:
+Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz. 
+“Automated Free Energy Calculation from Atomistic Simulations.” 
+ArXiv:2107.08980 [Cond-Mat], July 19, 2021. 
+http://arxiv.org/abs/2107.08980.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+See the LICENSE file.
+
+For more information contact:
+sarath.menon@ruhr-uni-bochum.de
+
+The splines are from:
+
+# Supplemental Material for The Uhlenbeck-Ford model: Exact virial coefficients and application as a reference system in fluid-phase free-energy calculationsâ€
+# Authors: Rodolfo Paula Leite(1), Rodrigo Freitas(2), Rodolfo Azevedo(3), and Maurice de Koning(1)
+# 1 - Instituto de FiÌsica "Gleb Wataghin", Universidade Estadual de Campinas, UNICAMP, 13083-859, Campinas, SaÌƒo Paulo, Brazil
+# 2 - Department of Materials Science and Engineering, University of California, Berkeley, CA 94720, U.S.A.
+# 3 - Instituto de ComputacÌ§aÌƒo, Universidade Estadual de Campinas, UNICAMP, 13083-852, Campinas, SaÌƒo Paulo, Brazil
+"""
+ 
 spline1  = [[-14.175243817292000, 1.036718109543200, 1.000000000000000, 0.000000000000000],
             [20.125731451941000, 0.779460795023800, 1.000643143286300, -0.000000535952739],
             [-21.719681990149000, 1.407141996654600, 0.997504737278147, 0.000004694723942],
