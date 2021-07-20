@@ -30,65 +30,26 @@ sarath.menon@ruhr-uni-bochum.de
 import numpy as np
 import yaml
 
-from calphy.integrators import *
 import pyscal.traj_process as ptp
+from calphy.integrators import *
 import calphy.lattice as pl
 import calphy.helpers as ph
 
 class Alchemy:
     """
-    Solid method class
+    Class for alchemical transformations
 
     Parameters
     ----------
-    t : float
-        Temperature for the calculation
-        Unit: K
-
-    p : float
-        pressure for the calculation
-        Unit: bar
-
-    l : string
-        lattice to be used for the calculation
-
-    apc : int
-        number of atoms in a single unit cell
-    
-    alat : float
-        lattice constant
-
     options : dict
         dict of input options
+    
+    kernel : int
+        the index of the calculation that should be run from
+        the list of calculations in the input file
 
     simfolder : string
         base folder for running calculations
-
-    Attributes
-    ----------
-    t : float
-        temperature
-
-    p : float
-        pressure
-    
-    l : string
-        lattice
-
-    apc : int
-        number of atoms in unit cell
-
-    alat : float
-        lattice constant
-
-    c : float
-        concentration
-
-    options : dict
-        dict containing options
-
-    simfolder : string
-        main simulation directory
 
     """
     def __init__(self, options=None, kernel=None, simfolder=None):
@@ -149,7 +110,22 @@ class Alchemy:
 
 
     def prepare_lattice(self):
-        #process lattice
+        """
+        Prepare the lattice for the simulation
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Calculates the lattic, lattice constant, number of atoms per unit cell
+        and concentration of the input system.
+        """
         l, alat, apc, conc = pl.prepare_lattice(self.calc)
         self.l = l
         self.alat = alat
@@ -167,6 +143,15 @@ class Alchemy:
         Returns
         -------
         None
+
+        Notes
+        -----
+        Run averaging routine using LAMMPS. Starting from the initial lattice two different routines can
+        be followed:
+        If pressure is specified, MD simulations are run until the pressure converges within the given
+        threshold value.
+        Fix lattice option is not implemented at present.
+        At the end of the run, the averaged box dimensions are calculated. 
         """
         lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
 
@@ -260,6 +245,7 @@ class Alchemy:
         lmp.command("run               0")
         lmp.command("undump            2")
         
+        #check for solid atoms
         solids = ph.find_solid_fraction("traj.dat")
         if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
             lmp.close()
@@ -296,37 +282,46 @@ class Alchemy:
 
     def run_integration(self, iteration=1):
         """
-        Write TI integrate script
+        Run integration routine
+
+        Parameters
+        ----------
+        iteration : int, optional
+            iteration number for running independent iterations
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Run the integration routine where the initial and final systems are connected using
+        the lambda parameter. See algorithm 4 in publication.
         """
 
         #create lammps object
         lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
-
         
-        lmp.command("variable        rnd      equal   round(random(0,999999,%d))"%np.random.randint(0, 10000))
-        lmp.command("variable        dt       equal   %f"%self.options["md"]["timestep"])             # Timestep (ps).
         # Adiabatic switching parameters.
-        lmp.command("variable        li       equal   1.0")               # Initial lambda.
-        lmp.command("variable        lf       equal   0.0")               # Final lambda.
-        #------------------------------------------------------------------------------------------------------#
-
+        lmp.command("variable        li       equal   1.0")
+        lmp.command("variable        lf       equal   0.0")
+        
+        #read dump file
         conf = os.path.join(self.simfolder, "conf.dump")
         lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
 
+        #set up hybrid potential
         lmp = ph.set_double_hybrid_potential(lmp, self.options, self.pair_style, self.pair_coeff)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
-        ################################     Fixes, computes and constraints     ###############################
         # Integrator & thermostat.
         lmp.command("fix             f1 all nve")                              
-        lmp.command("fix             f2 all langevin %f %f %f ${rnd}"%(self.t, self.t, self.options["md"]["tdamp"]))
-        lmp.command("variable        rnd equal round(random(0,999999,0))")
+        lmp.command("fix             f2 all langevin %f %f %f %d"%(self.t, self.t, 
+            self.options["md"]["tdamp"], np.random.randint(0, 10000)))
 
         # Compute pair definitions
-        #lmp.command("include  %s"%self.calc["compute_file"])
-
         if self.pair_style[0] == self.pair_style[1]:
             lmp.command("compute         c1 all pair %s 1"%self.pair_style[0])
             lmp.command("compute         c2 all pair %s 2"%self.pair_style[1])
@@ -334,86 +329,92 @@ class Alchemy:
             lmp.command("compute         c1 all pair %s"%self.pair_style[0])
             lmp.command("compute         c2 all pair %s"%self.pair_style[1])
 
-
-        ##########################################     Output setup     ########################################
         # Output variables.
         lmp.command("variable        step equal step")
         lmp.command("variable        dU1 equal c_c1/atoms")             # Driving-force obtained from NEHI procedure.
         lmp.command("variable        dU2 equal c_c2/atoms")
 
-        # Thermo output.
-        lmp.command("thermo_style    custom step v_dU1 v_dU2")
-        lmp.command("thermo          1000")
-        #------------------------------------------------------------------------------------------------------#
 
-
-        ##########################################     Run simulation     ######################################
-        # Turn UF potential off (completely) to equilibrate the Sw potential.
+        # Turn one second potential
         lmp.command("variable        zero equal 0")
 
         if self.pair_style[0] == self.pair_style[1]:
             lmp.command("fix             f0 all adapt 0 pair %s:2 scale * * v_zero"%self.pair_style[1])
         else:
             lmp.command("fix             f0 all adapt 0 pair %s scale * * v_zero"%self.pair_style[1])
+        
+        #do a short run and unfix
         lmp.command("run             0")
         lmp.command("unfix           f0")
 
-
-        # Equilibrate the fluid interacting by Sw potential and switch to UF potential (Forward realization).
+        # Equilibriate the stucture
         lmp.command("run             %d"%self.options["md"]["te"])
 
+        #save the necessary items to a file: first step
         lmp.command("print           \"${dU1} ${dU2} ${li}\" file forward_%d.dat"%iteration)
-        lmp.command("variable        lambda_sw equal ramp(${li},${lf})")                 # Linear lambda protocol from 1 to 0.
+        
+        #Forward switching : i to f
+        lmp.command("variable        lambda_p1 equal ramp(${li},${lf})")
+        lmp.command("variable        lambda_p2 equal ramp(${lf},${li})")
 
+        #first potential
         if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("fix             f3 all adapt 1 pair %s:1 scale * * v_lambda_sw"%self.pair_style[0])
+            lmp.command("fix             f3 all adapt 1 pair %s:1 scale * * v_lambda_p1"%self.pair_style[0])
         else:
-            lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.pair_style[0])        
-        
-        lmp.command("variable        lambda_ufm equal ramp(${lf},${li})")                  # Linear lambda protocol from 0 to 1.
-        
+            lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_p1"%self.pair_style[0])        
+
+        #second potential
         if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("fix             f4 all adapt 1 pair %s:2 scale * * v_lambda_ufm"%self.pair_style[1])
+            lmp.command("fix             f4 all adapt 1 pair %s:2 scale * * v_lambda_p2"%self.pair_style[1])
         else:
-            lmp.command("fix             f4 all adapt 1 pair %s scale * * v_lambda_ufm"%self.pair_style[1])
+            lmp.command("fix             f4 all adapt 1 pair %s scale * * v_lambda_p2"%self.pair_style[1])
         
-        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_sw}\" screen no append forward_%d.dat"%iteration)
+        #now run forward switching
+        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_p1}\" screen no append forward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
+        #unfix everything
         lmp.command("unfix           f3")
         lmp.command("unfix           f4")
         lmp.command("unfix           f5")
 
-        # Equilibrate the fluid interacting by UF potential and switch to sw potential (Backward realization).
+        # Equilibriate at the second
         lmp.command("run             %d"%self.options["md"]["te"])
 
+        #print initial header
         lmp.command("print           \"${dU1} ${dU2} ${lf}\" file backward_%d.dat"%iteration)
-        lmp.command("variable        lambda_sw equal ramp(${lf},${li})")                 # Linear lambda protocol from 0 to 1.
         
+        #start ramp
+        lmp.command("variable        lambda_p1 equal ramp(${lf},${li})")
+        lmp.command("variable        lambda_p2 equal ramp(${li},${lf})")
+
+        #set up first potential
         if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("fix             f3 all adapt 1 pair %s:1 scale * * v_lambda_sw"%self.pair_style[0])
+            lmp.command("fix             f3 all adapt 1 pair %s:1 scale * * v_lambda_p1"%self.pair_style[0])
         else:
-            lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.pair_style[0])        
+            lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_p1"%self.pair_style[0])        
         
-        lmp.command("variable        lambda_ufm equal ramp(${li},${lf})")                  # Linear lambda protocol from 1 to 0.
-        
+        #second potential
         if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("fix             f4 all adapt 1 pair %s:2 scale * * v_lambda_ufm"%self.pair_style[1])
+            lmp.command("fix             f4 all adapt 1 pair %s:2 scale * * v_lambda_p2"%self.pair_style[1])
         else:
-            lmp.command("fix             f4 all adapt 1 pair %s scale * * v_lambda_ufm"%self.pair_style[1])
+            lmp.command("fix             f4 all adapt 1 pair %s scale * * v_lambda_p2"%self.pair_style[1])
         
-        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_sw}\" screen no append backward_%d.dat"%iteration)
+        #perform switching calculations
+        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_p1}\" screen no append backward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
+        #unfix
         lmp.command("unfix           f3")
         lmp.command("unfix           f4")
         lmp.command("unfix           f5")
-        #------------------------------------------------------------------------------------------------------#
+        
+        #close LAMMPS object
         lmp.close()
 
     def thermodynamic_integration(self):
         """
-        Calculate free energy
+        Calculate free energy after integration step
 
         Parameters
         ----------
@@ -422,19 +423,24 @@ class Alchemy:
         Returns
         -------
         None
+
+        Notes
+        -----
+        Calculates the final work, energy dissipation; In alchemical mode, there is reference system,
+        the calculated free energy is the same as the work.
         """
-        w, q, qerr = find_w(self.simfolder, nelements=self.options["nelements"], concentration=self.concentration, nsims=self.nsims, 
+        w, q, qerr = find_w(self.simfolder, nelements=self.options["nelements"], 
+            concentration=self.concentration, nsims=self.nsims, 
             full=True, solid=False, alchemy=True)
         
         self.w = w
         self.ferr = qerr
-
         self.fe = self.w
 
 
     def submit_report(self):
         """
-        Submit final report containing results
+        Submit final report containing the results
 
         Parameters
         ----------
