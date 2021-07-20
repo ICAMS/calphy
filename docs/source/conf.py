@@ -76,4 +76,5 @@ exclude_patterns = []
 
 html_static_path = ['../_static']
 def setup(app):
-    app.add_stylesheet("theme_extra.css")
+    #app.add_stylesheet("theme_extra.css")
+    app.add_css_file("theme_extra.css")
