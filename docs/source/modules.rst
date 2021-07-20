@@ -1,7 +1,7 @@
-pytint
+calphy
 ======
 
 .. toctree::
    :maxdepth: 4
 
-   pytint
+   calphy

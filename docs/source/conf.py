@@ -13,8 +13,17 @@
 import os
 import sys
 import sphinx_rtd_theme
+import shutil
+import glob
 
-sys.path.insert(0, os.path.abspath('../../pytint/'))
+sys.path.insert(0, os.path.abspath('../../calphy/'))
+
+#copy necessary figures
+cdir = os.getcwd()
+figs = glob.glob("../../examples/*/*.png")
+
+for fig in figs:
+    shutil.copy(fig, "../_static/")
 
 def skip(app, what, name, obj, would_skip, options):
     if name in ( '__init__',):
@@ -25,8 +34,8 @@ def setup(app):
 
 # -- Project information -----------------------------------------------------
 
-project = 'pytint'
-copyright = '2021, Sarath Menon'
+project = 'calphy'
+copyright = '2021, Sarath Menon, Yury Lysogorskiy, Ralf Drautz'
 author = 'Sarath Menon'
 
 
@@ -43,19 +52,21 @@ extensions = [
     'sphinx.ext.githubpages',
     'sphinx.ext.napoleon',
     'sphinx_rtd_theme',
+    'm2r2',
 ]
 
 html_theme = 'sphinx_rtd_theme'
 #html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
-html_logo = "../_static/pyscal_logo1.png"
+html_logo = "../_static/calphy_logo.png"
 html_theme_options = {
     'logo_only' : True,
     'canonical_url' : 'https://pyscal.readthedocs.io/',
 }
 
-html_extra_path = ['../_static']
+html_extra_path = ['../_static' ]
 
+source_suffix = ['.rst', '.md']
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.

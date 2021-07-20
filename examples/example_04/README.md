@@ -45,11 +45,12 @@ for t, p in zip(temp, press):
 
 To compare our results, we will use a Simon equation, given by,
 
-$$
-T_m(P) = T_{m0}(P/a + 1)^b
-$$
+.. math::
+    
+    T_m(P) = T_{m0}(P/a + 1)^b
 
-We will use reported values for parameters $T_{m0}$, $a$ and $b$ from two different publications:
+
+We will use reported values for parameters :math:`T_{m0}`, :math:`a` and :math:`b` from two different publications:
 
 - [Wang, Shuaichuang, Gongmu Zhang, Haifeng Liu, and Haifeng Song. “Modified Z Method to Calculate Melting Curve by Molecular Dynamics.” The Journal of Chemical Physics 138, no. 13 (April 7, 2013): 134101.](https://doi.org/10.1063/1.4798225)
 
