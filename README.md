@@ -28,7 +28,7 @@ It is **strongly** recommended to install and use `calphy` within a conda enviro
 Once a conda distribution is available, the following steps will help set up an environment to use `calphy`. First step is to clone the repository.
 
 ```
-git clone https://git.noc.ruhr-uni-bochum.de/atomicclusterexpansion/calphy.git
+git clone https://github.com/ICAMS/calphy.git
 ```
 
 After cloning, an environment can be created from the included file-
