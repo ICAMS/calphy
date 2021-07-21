@@ -64,7 +64,7 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://git.noc.ruhr-uni-bochum.de/atomicclusterexpansion/calphy',
-    version='0.5.0',
+    version='0.5.1',
     zip_safe=False,
     entry_points={
         'console_scripts': [
