@@ -17,7 +17,10 @@ queue:
 
 The default `scheduler` is local, which means that the calculations are run on the local machine. Instead `slurm` or `sge` can be specified to run on computing clusters. The number of cores, walltime, queue name etc can be set during the respective keywords. Note that if you are using a conda environment, it needs to be activated. This can be done using the `commands` argument. Anything listed within the `commands` argument is copied directly to the submission script. 
 
-## Adding a new schedulercalculations:
+## Adding a new scheduler
+
+```
+calculations:
 - mode: ts 
   temperature: [1200, 1400]
   pressure: [0]
@@ -25,7 +28,7 @@ The default `scheduler` is local, which means that the calculations are run on t
   repeat: [5, 5, 5]
   state: [solid, liquid]
   nsims: 1
-
+```
 
 In the current version only `slurm` and `sge` schedulers are supported. There are two ways in which a new scheduler can be added, they are described below:
 
