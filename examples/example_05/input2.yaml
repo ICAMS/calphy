@@ -1,0 +1,26 @@
+element: Fe
+mass: 55.845
+calculations:
+- mode: fe 
+  temperature: [1000]
+  pressure: [0]
+  lattice: [BCC, LQD]
+  repeat: [5, 5, 5]
+  state: [solid, liquid]
+  nsims: 1
+
+md:
+  pair_style: eam
+  pair_coeff: "* * ../../potentials/Fe.eam"
+  timestep: 0.001
+  nsmall: 10000
+  tdamp: 0.1
+  pdamp: 0.1
+  te: 10000
+  ts: 25000
+  
+queue:
+  scheduler: local
+  cores: 4
+  commands:
+    - conda activate calphy
