@@ -265,3 +265,26 @@ def create_identifier(calc):
 
     identistring = "-".join([prefix, l, str(ts), str(ps)])
     return identistring
+
+def read_inputfile(file):
+    """
+    Read calphy inputfile
+
+    Parameters
+    ----------
+    file : string
+        input file
+
+    Returns
+    -------
+    options : dict
+        dictionary containing input options
+
+    """
+    options = read_yamlfile(file)
+
+    for i in range(len(options["calculations"])):
+        identistring = create_identifier(options["calculations"][i])
+        options["calculations"][i]["directory"] = identistring
+
+    return options
