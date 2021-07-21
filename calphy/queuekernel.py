@@ -51,6 +51,7 @@ def routine_fe(job):
 
     job.thermodynamic_integration()
     job.submit_report()
+    return job
 
 def routine_ts(job):
     """
@@ -63,6 +64,7 @@ def routine_ts(job):
         job.reversible_scaling(iteration=(i+1))
     
     job.integrate_reversible_scaling(scale_energy=True)
+    return job
 
 
 def routine_only_ts(job):
@@ -72,6 +74,7 @@ def routine_only_ts(job):
     job.run_averaging()
     for i in range(job.nsims):
         job.reversible_scaling(iteration=(i+1))
+    return job
 
 
 def routine_alchemy(job):
@@ -84,7 +87,86 @@ def routine_alchemy(job):
         job.run_integration(iteration=(i+1))
 
     job.thermodynamic_integration()
-    job.submit_report()    
+    job.submit_report()
+    return job    
+
+def create_folders(calc):
+    """
+    Create the necessary folder for calculation
+
+    Parameters
+    ----------
+    calc : dict
+        calculation block
+
+    Returns
+    -------
+    folder : string
+        create folder
+    """
+    identistring = create_identifier(calc)
+    simfolder = os.path.join(os.getcwd(), identistring)
+
+    #if folder exists, delete it -> then create
+    if os.path.exists(simfolder):
+        shutil.rmtree(simfolder)
+    os.mkdir(simfolder)
+    return simfolder
+
+def setup_calculation(options, kernel):
+    """
+    Set up a calculation
+
+    Parameters
+    ----------
+    options: dict
+        options object
+
+    kernel: int
+        index of the calculation to be run
+
+    Returns
+    -------
+    job: Phase class
+        job class
+    """
+    calc = options["calculations"][kernel]
+    simfolder = create_folders(calc)
+    
+    #now we need to modify the routines
+    if calc["mode"] == "alchemy":
+        job = Alchemy(options=options, kernel=kernel, simfolder=simfolder)
+    else:
+        if calc["state"] == "liquid":
+            job = Liquid(options=options, kernel=kernel, simfolder=simfolder)
+        else:
+            job = Solid(options=options, kernel=kernel, simfolder=simfolder)
+
+    return job
+
+def run_calculation(job):
+    """
+    Run calphy calculation
+
+    Parameters
+    ----------
+    job: Phase class
+
+    Returns
+    -------
+    job : Phase class
+    """
+    if job.calc["mode"] == "fe":
+        job = routine_fe(job)
+    elif job.calc["mode"] == "ts":
+        job = routine_ts(job)
+    elif job.calc["mode"] == "mts":
+        job = routine_only_ts(job)
+    elif job.calc["mode"] == "alchemy":
+        job = routine_alchemy(job)
+    else:
+        raise ValueError("Mode should be either fe/ts/mts/alchemy")
+    return job
 
 def main():
     arg = ap.ArgumentParser()
@@ -128,12 +210,12 @@ def main():
     os.chdir(simfolder)
 
     if calc["mode"] == "fe":
-        routine_fe(job)
+        _ = routine_fe(job)
     elif calc["mode"] == "ts":
-        routine_ts(job)
+        _ = routine_ts(job)
     elif calc["mode"] == "mts":
-        routine_only_ts(job)
+        _ = routine_only_ts(job)
     elif calc["mode"] == "alchemy":
-        routine_alchemy(job)
+        _ = routine_alchemy(job)
     else:
         raise ValueError("Mode should be either fe/ts/mts/alchemy")

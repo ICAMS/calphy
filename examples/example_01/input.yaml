@@ -8,6 +8,7 @@ calculations:
   repeat: [5, 5, 5]
   state: [solid]
   nsims: 1
+  lattice_constant: 2.884
 
 md:
   pair_style: eam
