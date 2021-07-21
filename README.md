@@ -1,6 +1,6 @@
 # calphy
 
-Python library and command line tool for calculation of free energies.
+Python library and command line tool for calculation of free energies. Read the documentation [here](https://calphy.readthedocs.io/en/latest/index.html).
 
 ## Dependencies
 
@@ -28,7 +28,7 @@ It is **strongly** recommended to install and use `calphy` within a conda enviro
 Once a conda distribution is available, the following steps will help set up an environment to use `calphy`. First step is to clone the repository.
 
 ```
-git clone https://git.noc.ruhr-uni-bochum.de/atomicclusterexpansion/calphy.git
+git clone https://github.com/ICAMS/calphy.git
 ```
 
 After cloning, an environment can be created from the included file-
@@ -110,3 +110,11 @@ lmp = lammps()
     - [BCC to FCC transition in Fe](examples/example_02): Use free energy calculation and temperature sweep to calculate phase transition temperature in Fe.
     - [Melting temperature of Cu](examples/example_03): Use free energy calculation and temperature sweep to calculate melting temperature.
     - [Pressure-temperature phase diagram of Cu](examples/example_04): Calculate Gibbs free energy and reversible scaling to calculate the pressure-temperature phase diagram of Cu.
+
+## Citing calphy
+
+If you find calphy useful, please consider citing:
+Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz. 
+“Automated Free Energy Calculation from Atomistic Simulations.” 
+ArXiv:2107.08980 [Cond-Mat], July 19, 2021. 
+http://arxiv.org/abs/2107.08980.

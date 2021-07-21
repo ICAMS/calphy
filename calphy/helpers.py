@@ -34,13 +34,26 @@ import numpy as np
 from lammps import lammps
 import calphy.lattice as pl
 import pyscal.core as pc
-"""
-LAMMPS helper routines
---------------------------------------------------------------------
-"""
+
 
 def create_object(cores, directory, timestep):
     """
+    Create LAMMPS object
+
+    Parameters
+    ----------
+    cores : int
+        number of cores
+
+    directory: string
+        location of the work directory
+
+    timestep: float
+        timestep for the simulation
+
+    Returns
+    -------
+    lmp : LammpsLibrary object
     """
     lmp = LammpsLibrary(mode="local", cores=cores, 
         working_directory=directory)
@@ -52,6 +65,20 @@ def create_object(cores, directory, timestep):
     return lmp
 
 def create_structure(lmp, calc):
+    """
+    Create structure using LAMMPS
+
+    Parameters
+    ----------
+    lmp: LammpsLibrary object
+
+    calc: dict
+        calculation dict with the necessary input
+
+    Returns
+    -------
+    lmp : LammpsLibrary object
+    """
     l, alat, apc, conc = pl.prepare_lattice(calc)
 
     if l == "file":
@@ -67,6 +94,19 @@ def create_structure(lmp, calc):
 
 
 def set_potential(lmp, options):
+    """
+    Set the interatomic potential
+
+    Parameters
+    ----------
+    lmp : LammpsLibrary object
+
+    options : dict
+
+    Returns
+    -------
+    lmp : LammpsLibrary object
+    """
     lmp.pair_style(options["md"]["pair_style"])
     lmp.pair_coeff(options["md"]["pair_coeff"])
 

@@ -34,107 +34,39 @@ from calphy.integrators import *
 import pyscal.traj_process as ptp
 import calphy.lattice as pl
 import calphy.helpers as ph
+import calphy.phase as cph
 
-
-
-class Liquid:
+class Liquid(cph.Phase):
     """
-    Liquid class
+    Class for free energy calculation with liquid as the reference state
 
     Parameters
     ----------
-    t : float
-        simulation temperature
+    options : dict
+        dict of input options
+    
+    kernel : int
+        the index of the calculation that should be run from
+        the list of calculations in the input file
 
-    p : float
-        pressure
+    simfolder : string
+        base folder for running calculations
 
-    l : int
-        selected lattice indicator
-
-    apc : int
-        atoms per cell
-
-    alat : float
-        lattice constant
-
-    c : float
-        concentration
-
-    options: options class
-        input options
-
-    simfolder: string
-        simulation folder
-
-    thigh : float
-        temperature to melt the structure 
     """
     def __init__(self, options=None, kernel=None, simfolder=None):
         """
         Set up class
         """
-        self.options = options
-        self.simfolder = simfolder
-        self.kernel = kernel
+        #call base class
+        super().__init__(options=options,
+        kernel=kernel, simfolder=simfolder)
 
-        self.calc = options["calculations"][kernel]
-        self.nsims = self.calc["nsims"]
 
-        self.t = self.calc["temperature"]
-        self.tend = self.calc["temperature_stop"]
-        self.thigh = self.calc["thigh"] 
-        self.p = self.calc["pressure"]
-
-        self.l = None
-        self.alat = None
-        self.apc = None
-        self.vol = None
-        self.concentration = None
-        self.prepare_lattice()
-
-        logfile = os.path.join(self.simfolder, "tint.log")
-        self.logger = ph.prepare_log(logfile)
-
-        #other properties
-        self.cores = self.options["queue"]["cores"]
-        self.ncells = np.prod(self.calc["repeat"])
-        self.natoms = self.ncells*self.apc
-        
-        #the UFM system properties
-        self.eps = self.t*50.0*kb
-
-        #properties that will be calculated later
-        self.volatom = None
-        self.rho = None
-        self.ferr = None
-        self.fref = None
-        self.fideal = None
-        self.w = None
-        self.pv = None
-        self.fe = None
-
-        #box dimensions that need to be stored
-        self.lx = None
-        self.ly = None
-        self.lz = None
-
-        #now manually tune pair styles
-        self.options["md"]["pair_style"] = self.options["md"]["pair_style"][0]
-        self.options["md"]["pair_coeff"] = self.options["md"]["pair_coeff"][0]
-
-    def prepare_lattice(self):
-        #process lattice
-        l, alat, apc, conc = pl.prepare_lattice(self.calc)
-        self.l = l
-        self.alat = alat
-        self.apc = apc
-        self.concentration = conc
 
 
     def run_averaging(self):
         """
-        Run averaging cycle
+        Run averaging routine
 
         Parameters
         ----------
@@ -146,10 +78,14 @@ class Liquid:
 
         Notes
         -----
-        Run the averaging cycle to find the equilibrium number
-        density at the given temperature.
+        Run averaging routine using LAMMPS. Starting from the initial lattice two different routines can
+        be followed:
+        If pressure is specified, MD simulations are run until the pressure converges within the given
+        threshold value.
+        If `fix_lattice` option is True, then the input structure is used as it is and the corresponding pressure
+        is calculated.
+        At the end of the run, the averaged box dimensions are calculated. 
         """
-        
         #create lammps object
         lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
 
@@ -170,8 +106,12 @@ class Liquid:
         lmp.command("variable         mpress equal press") 
 
         #melting cycle
-        # try with different multiples of thmult until the structure melts.
+        #try with different multiples of thmult until the structure melts.
+        #TODO : Add option to skip melting cycle
+        
         melted = False
+        
+        #this is the multiplier for thigh to try melting routines
         for thmult in np.arange(1.0, 2.0, 0.1):
             
             trajfile = os.path.join(self.simfolder, "traj.melt")
@@ -194,7 +134,7 @@ class Liquid:
                 melted = True
                 break
         
-        #if not melted throw error
+        #if melting cycle is over and still not melted, raise error
         if not melted:
             raise ValueError("Liquid system did not melt, maybe try a higher thigh temperature.")
 
@@ -210,6 +150,8 @@ class Liquid:
 
         #monitor the average values until calculation is converged
         laststd = 0.00
+        converged = False
+
         for i in range(self.options["md"]["ncycles"]):
             lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
             ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
@@ -217,18 +159,13 @@ class Liquid:
             file = os.path.join(self.simfolder, "avg.dat")
             lx, ly, lz, ipress = np.loadtxt(file, usecols=(1,2,3,4), unpack=True)
 
-            #lxpc = ((lx*ly*lz)/self.ncells)**(1/3)
-            #lxpc = lxpc[-ncount+1:]
             lxpc = ipress
             mean = np.mean(lxpc)
             std = np.std(lxpc)
             volatom = np.mean((lx*ly*lz)/self.natoms)            
             self.logger.info("At count %d mean pressure is %f with vol/atom %f"%(i+1, mean, volatom))
 
-            #if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
             if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
-                #self.avglat = np.round(mean, decimals=3)
-
                 #process other means
                 self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
                 self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
@@ -239,25 +176,133 @@ class Liquid:
 
                 self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
                 self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
+                converged = True
                 break
             
             laststd = std
+
+        if not converged:
+            raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
 
         lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
         lmp.command("run               0")
         lmp.command("undump            2")
 
-        #finish run
+        #finish run and close object
         lmp.close()
 
+        #process the trajectory
         self.process_traj()
 
 
 
-    def process_traj(self):
+
+    def run_integration(self, iteration=1):
         """
-        Process the out trajectory after averaging cycle and 
-        extract a configuration to run integration
+        Run integration routine
+
+        Parameters
+        ----------
+        iteration : int, optional
+            iteration number for running independent iterations
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Run the integration routine where the initial and final systems are connected using
+        the lambda parameter. See algorithm 4 in publication.
+        """
+        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+
+        # Adiabatic switching parameters.
+        lmp.command("variable        li       equal   1.0")
+        lmp.command("variable        lf       equal   0.0")
+
+        #read in the conf file
+        conf = os.path.join(self.simfolder, "conf.dump")
+        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
+
+        #set hybrid ufm and normal potential
+        lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
+
+        #remap the box to get the correct pressure
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+
+        #apply the necessary thermostat
+        lmp.command("fix             f1 all nve")                              
+        lmp.command("fix             f2 all langevin %f %f %f %d"%(self.t, self.t, self.options["md"]["tdamp"],
+            np.random.randint(0, 10000)))
+
+        # Compute the potential energy of each pair style.
+        lmp.command("compute         c1 all pair %s"%self.options["md"]["pair_style"])
+        lmp.command("compute         c2 all pair ufm")
+
+        # Output variables.
+        lmp.command("variable        step equal step")
+        lmp.command("variable        dU1 equal c_c1/atoms")             # Driving-force obtained from NEHI procedure.
+        lmp.command("variable        dU2 equal c_c2/atoms")
+
+        #force thermo to evaluate variables
+        lmp.command("thermo_style    custom step v_dU1 v_dU2")
+        lmp.command("thermo          1000")
+
+        #switching completely to potential of interest
+        lmp.command("variable        zero equal 0")
+        lmp.command("fix             f0 all adapt 0 pair ufm scale * * v_zero")
+        lmp.command("run             0")
+        lmp.command("unfix           f0")
+
+        #Equilibrate system
+        lmp.command("run             %d"%self.options["md"]["te"])
+
+        #print header
+        lmp.command("print           \"${dU1} ${dU2} ${li}\" file forward_%d.dat"%iteration)
+        
+        #set up scaling variables
+        lmp.command("variable        lambda_p1 equal ramp(${li},${lf})")
+        lmp.command("variable        lambda_p2 equal ramp(${lf},${li})")
+
+        #Forward switching run
+        lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_p1"%self.options["md"]["pair_style"])
+        lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_p2")
+        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_p1}\" screen no append forward_%d.dat"%iteration)
+        lmp.command("run             %d"%self.options["md"]["ts"])
+
+        #unfix things
+        lmp.command("unfix           f3")
+        lmp.command("unfix           f4")
+        lmp.command("unfix           f5")
+
+        #Equilibriate at UFM potential
+        lmp.command("run             %d"%self.options["md"]["te"])
+
+        #print file header
+        lmp.command("print           \"${dU1} ${dU2} ${lf}\" file backward_%d.dat"%iteration)
+        
+        #set up scaling variables
+        lmp.command("variable        lambda_p1 equal ramp(${lf},${li})")
+        lmp.command("variable        lambda_p2 equal ramp(${li},${lf})")
+
+        #Reverse switching run
+        lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_p1"%self.options["md"]["pair_style"])
+        lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_p2")
+        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_p1}\" screen no append backward_%d.dat"%iteration)
+        lmp.command("run             %d"%self.options["md"]["ts"])
+
+        #unfix things
+        lmp.command("unfix           f3")
+        lmp.command("unfix           f4")
+        lmp.command("unfix           f5")
+        
+        #close object
+        lmp.close()
+    
+    def thermodynamic_integration(self):
+        """
+        Calculate free energy after integration step
 
         Parameters
         ----------
@@ -266,117 +311,20 @@ class Liquid:
         Returns
         -------
         None
-        
-        """
-        trajfile = os.path.join(self.simfolder, "traj.dat")
-        files = ptp.split_trajectory(trajfile)
-        conf = os.path.join(self.simfolder, "conf.dump")
 
-        ph.reset_timestep(files[-1], conf)
-
-        os.remove(trajfile)
-        for file in files:
-            os.remove(file)
-
-    def run_integration(self, iteration=1):
-        """
-        Write TI integrate script
-        """
-
-        #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
-
-        
-        lmp.command("variable        rnd      equal   round(random(0,999999,%d))"%np.random.randint(0, 10000))
-        lmp.command("variable        dt       equal   %f"%self.options["md"]["timestep"])             # Timestep (ps).
-        # Adiabatic switching parameters.
-        lmp.command("variable        li       equal   1.0")               # Initial lambda.
-        lmp.command("variable        lf       equal   0.0")               # Final lambda.
-        #------------------------------------------------------------------------------------------------------#
-
-        conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
-
-        # Define MEAM and UF potentials parameters.
-        lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
-
-        #remap the box to get the correct pressure
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
-
-        ################################     Fixes, computes and constraints     ###############################
-        # Integrator & thermostat.
-        lmp.command("fix             f1 all nve")                              
-        lmp.command("fix             f2 all langevin %f %f %f ${rnd}"%(self.t, self.t, self.options["md"]["tdamp"]))
-        lmp.command("variable        rnd equal round(random(0,999999,0))")
-
-        # Compute the potential energy of each pair style.
-        lmp.command("compute         c1 all pair %s"%self.options["md"]["pair_style"])
-        lmp.command("compute         c2 all pair ufm")
-        #------------------------------------------------------------------------------------------------------#
-
-
-        ##########################################     Output setup     ########################################
-        # Output variables.
-        lmp.command("variable        step equal step")
-        lmp.command("variable        dU1 equal c_c1/atoms")             # Driving-force obtained from NEHI procedure.
-        lmp.command("variable        dU2 equal c_c2/atoms")
-
-        # Thermo output.
-        lmp.command("thermo_style    custom step v_dU1 v_dU2")
-        lmp.command("thermo          1000")
-        #------------------------------------------------------------------------------------------------------#
-
-
-        ##########################################     Run simulation     ######################################
-        # Turn UF potential off (completely) to equilibrate the Sw potential.
-        lmp.command("variable        zero equal 0")
-        lmp.command("fix             f0 all adapt 0 pair ufm scale * * v_zero")
-        lmp.command("run             0")
-        lmp.command("unfix           f0")
-
-        # Equilibrate the fluid interacting by Sw potential and switch to UF potential (Forward realization).
-        lmp.command("run             %d"%self.options["md"]["te"])
-
-        lmp.command("print           \"${dU1} ${dU2} ${li}\" file forward_%d.dat"%iteration)
-        lmp.command("variable        lambda_sw equal ramp(${li},${lf})")                 # Linear lambda protocol from 1 to 0.
-        lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
-        lmp.command("variable        lambda_ufm equal ramp(${lf},${li})")                  # Linear lambda protocol from 0 to 1.
-        lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
-        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_sw}\" screen no append forward_%d.dat"%iteration)
-        lmp.command("run             %d"%self.options["md"]["ts"])
-
-        lmp.command("unfix           f3")
-        lmp.command("unfix           f4")
-        lmp.command("unfix           f5")
-
-        # Equilibrate the fluid interacting by UF potential and switch to sw potential (Backward realization).
-        lmp.command("run             %d"%self.options["md"]["te"])
-
-        lmp.command("print           \"${dU1} ${dU2} ${lf}\" file backward_%d.dat"%iteration)
-        lmp.command("variable        lambda_sw equal ramp(${lf},${li})")                 # Linear lambda protocol from 0 to 1.
-        lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_sw"%self.options["md"]["pair_style"])
-        lmp.command("variable        lambda_ufm equal ramp(${li},${lf})")                  # Linear lambda protocol from 1 to 0.
-        lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_ufm")
-        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_sw}\" screen no append backward_%d.dat"%iteration)
-        lmp.command("run             %d"%self.options["md"]["ts"])
-
-        lmp.command("unfix           f3")
-        lmp.command("unfix           f4")
-        lmp.command("unfix           f5")
-        #------------------------------------------------------------------------------------------------------#
-        lmp.close()
-    
-    def thermodynamic_integration(self):
-        """
-        Perform thermodynamic integration
+        Notes
+        -----
+        Calculates the final work, energy dissipation and free energy by
+        matching with UFM model
         """
         w, q, qerr = find_w(self.simfolder, nsims=self.nsims, 
             full=True, solid=False)  
-        #WARNING: hardcoded UFM parameters           
+        
+        #TODO: Hardcoded UFM parameters - enable option to change          
         f1 = get_uhlenbeck_ford_fe(self.t, 
             self.rho, 50, 1.5)
 
-        #we need to find concentration too to find ideal gas fe for multi species
+        #Get ideal gas fe
         f2 = get_ideal_gas_fe(self.t, self.rho, 
             self.natoms, self.options["mass"], self.concentration)
         
@@ -385,57 +333,32 @@ class Liquid:
         self.fideal = f2
         self.w = w
 
+        #add pressure contribution if required
         if self.p != 0:
-            #add pressure contribution
             p = self.p/(10000*160.21766208)
             v = self.vol/self.natoms
             self.pv = p*v
         else:
             self.pv = 0
 
+        #calculate final free energy
         self.fe = self.fideal + self.fref - self.w + self.pv
 
 
-    def submit_report(self):
-
-        report = {}
-
-        #input quantities
-        report["input"] = {}
-        report["input"]["temperature"] = int(self.t)
-        report["input"]["pressure"] = float(self.p)
-        report["input"]["lattice"] = str(self.l)
-        report["input"]["element"] = " ".join(np.array(self.options["element"]).astype(str))
-        report["input"]["concentration"] = " ".join(np.array(self.concentration).astype(str))
-
-        #average quantities
-        report["average"] = {}
-        report["average"]["vol/atom"] = float(self.volatom)
-        report["average"]["density"] = float(self.rho)
-        
-        #results
-        report["results"] = {}
-        report["results"]["free_energy"] = float(self.fe)
-        report["results"]["error"] = float(self.ferr)
-        report["results"]["reference_system"] = float(self.fref) + float(self.fideal)
-        report["results"]["work"] = float(self.w)
-        report["results"]["pv"] = float(self.pv)
-
-        reportfile = os.path.join(self.simfolder, "report.yaml")
-        with open(reportfile, 'w') as f:
-            yaml.dump(report, f)
 
     def reversible_scaling(self, iteration=1):
         """
-        Write TI integrate script
+        Perform reversible scaling calculation in NPT
+
+        Parameters
+        ----------
+        iteration : int, optional
+            iteration of the calculation. Default 1
+
+        Returns
+        -------
+        None
         """
-        #rev scale needs tstart and tend; here self.t will be start
-        #tend will be the final temp
-        
-        #first we need to do an averaging scheme
-        #but only if iteration is 1
-        
-        #Now do reversible scaling
         t0 = self.t
         tf = self.tend
         li = 1
@@ -447,13 +370,10 @@ class Liquid:
         lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
 
         lmp.command("echo              log")
-        lmp.command("variable          T0 equal %f"%t0)  # Initial temperature.
-        lmp.command("variable          te equal %d"%self.options["md"]["te"])   # Equilibration time (steps).
-        lmp.command("variable          ts equal %d"%self.options["md"]["ts"])  # Switching time (steps).
         lmp.command("variable          li equal %f"%li)
         lmp.command("variable          lf equal %f"%lf)
-        lmp.command("variable          rand equal %d"%np.random.randint(0, 1000))
 
+        #read in conf file
         conf = os.path.join(self.simfolder, "conf.dump")
         lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
 
@@ -463,74 +383,75 @@ class Liquid:
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
-        #---------------------- Thermostat & Barostat ---------------------------------#
+        #set thermostat and run equilibrium
         lmp.command("fix               f1 all nph iso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
-        lmp.command("fix               f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
-        lmp.command("run               ${te}")
+        lmp.command("fix               f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+        lmp.command("run               %d"%self.options["md"]["te"])
         lmp.command("unfix             f1")
         lmp.command("unfix             f2")
 
+        #now fix com
         lmp.command("variable         xcm equal xcm(all,x)")
         lmp.command("variable         ycm equal xcm(all,y)")
         lmp.command("variable         zcm equal xcm(all,z)")
         
         lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.p, self.p, self.options["md"]["pdamp"]))
-        lmp.command("fix              f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(t0, t0, self.options["md"]["tdamp"], np.random.randint(0, 10000)))
         
-        #------------------ Computes, variables & modifications -----------------------#
+        #compute com and modify fix
         lmp.command("compute           tcm all temp/com")
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix_modify        f2 temp tcm")
 
         lmp.command("variable          step    equal step")
-        lmp.command("variable          dU      equal c_thermo_pe/atoms")
-        lmp.command("variable          te_run  equal ${te}-1")
-        lmp.command("variable          ts_run  equal ${ts}+1")
+        lmp.command("variable          dU      equal c_thermo_pe/atoms")        
         lmp.command("thermo_style      custom step pe c_tcm press vol")
-        lmp.command("timestep          %f"%self.options["md"]["timestep"])
         lmp.command("thermo            10000")
-        
 
-        lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")   
-        lmp.command("run               ${te}")
+        #create velocity and equilibriate
+        lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(t0, np.random.randint(0, 10000)))   
+        lmp.command("run               %d"%self.options["md"]["te"])
+        
+        #unfix nph
         lmp.command("unfix             f1")
 
+        #define ramp
         lmp.command("variable          lambda equal ramp(${li},${lf})")
 
-        #we need to similar to liquid here
+        #start scaling over switching time
         lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pi, 
             pf, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
         lmp.command("fix               f4 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
-        lmp.command("run               ${ts}")
+        lmp.command("run               %d"%self.options["md"]["ts"])
+
+        #unfix
         lmp.command("unfix             f3")
         lmp.command("unfix             f4")
         lmp.command("unfix             f1")
 
+         #equilibriate scaled hamiltonian
         lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
             pf, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")        
-        lmp.command("run               ${te}")
+        lmp.command("run               %d"%self.options["md"]["te"])
         lmp.command("unfix             f1")
 
+        #reverse lambda ramp
         lmp.command("variable          lambda equal ramp(${lf},${li})")
-        
+
+        #apply fix and perform switching        
         lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
             pi, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all adapt 1 pair %s scale * * v_lambda"%self.options["md"]["pair_style"])
         lmp.command("fix               f4 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
-        lmp.command("run               ${ts}")
+        lmp.command("run               %d"%self.options["md"]["ts"])
         lmp.command("unfix             f3")
         lmp.command("unfix             f4")
         lmp.command("unfix             f1")
         
+        #close the object
         lmp.close()
 
-    def integrate_reversible_scaling(self, scale_energy=False, return_values=False):
-        """
-        Carry out the reversible scaling operation
-        """
-        integrate_rs(self.simfolder, self.fe, self.t, self.natoms, p=self.p,
-            nsims=self.nsims, scale_energy=scale_energy, return_values=return_values)
