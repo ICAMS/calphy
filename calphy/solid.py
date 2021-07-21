@@ -60,9 +60,6 @@ class Solid(cph.Phase):
         kernel=kernel, simfolder=simfolder)
 
 
-        
-
-
     def run_averaging(self):
         """
         Run averaging routine

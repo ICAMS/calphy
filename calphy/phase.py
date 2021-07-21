@@ -222,6 +222,8 @@ class Phase:
         with open(reportfile, 'w') as f:
             yaml.dump(report, f)
 
+        self.logger.info("Report written in %s"%reportfile)
+
     def integrate_reversible_scaling(self, scale_energy=False, return_values=False):
         """
         Perform integration after reversible scaling
