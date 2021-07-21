@@ -39,8 +39,6 @@ class Solid:
     """
     Class for free energy calculation with solid as the reference state
 
-    Class for alchemical transformations
-
     Parameters
     ----------
     options : dict
@@ -436,8 +434,12 @@ class Solid:
         
         lmp.command("variable          lambda  equal f_ff1[1]")
 
+        #add thermo command to force variable evaluation
+        lmp.command("thermo_style      custom step pe c_Tcm")
+        lmp.command("thermo            10000")
+
         #Create velocity
-        lmp.command("velocity          all create ${T0} ${rand} mom yes rot yes dist gaussian")
+        lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(self.t, np.random.randint(0, 10000)))
 
         #reapply 
         for i in range(self.options["nelements"]):
@@ -626,6 +628,8 @@ class Solid:
         #get output variables
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU      equal c_thermo_pe/atoms")        
+        lmp.command("thermo_style      custom step pe c_tcm press vol")
+        lmp.command("thermo            10000")
 
         #create velocity and equilibriate
         lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(t0, np.random.randint(0, 10000)))   

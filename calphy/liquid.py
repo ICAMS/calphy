@@ -328,6 +328,10 @@ class Liquid:
         lmp.command("variable        dU1 equal c_c1/atoms")             # Driving-force obtained from NEHI procedure.
         lmp.command("variable        dU2 equal c_c2/atoms")
 
+        #force thermo to evaluate variables
+        lmp.command("thermo_style    custom step v_dU1 v_dU2")
+        lmp.command("thermo          1000")
+
         #switching completely to potential of interest
         lmp.command("variable        zero equal 0")
         lmp.command("fix             f0 all adapt 0 pair ufm scale * * v_zero")
@@ -347,7 +351,7 @@ class Liquid:
         #Forward switching run
         lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_p1"%self.options["md"]["pair_style"])
         lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_p2")
-        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_sw}\" screen no append forward_%d.dat"%iteration)
+        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_p1}\" screen no append forward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
         #unfix things
@@ -368,7 +372,7 @@ class Liquid:
         #Reverse switching run
         lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_p1"%self.options["md"]["pair_style"])
         lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_p2")
-        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_sw}\" screen no append backward_%d.dat"%iteration)
+        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_p1}\" screen no append backward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
         #unfix things
@@ -502,7 +506,7 @@ class Liquid:
 
         #set thermostat and run equilibrium
         lmp.command("fix               f1 all nph iso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
-        lmp.command("fix               f2 all langevin ${T0} ${T0} %f %d zero yes"%(self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+        lmp.command("fix               f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], np.random.randint(0, 10000)))
         lmp.command("run               %d"%self.options["md"]["te"])
         lmp.command("unfix             f1")
         lmp.command("unfix             f2")
@@ -522,6 +526,8 @@ class Liquid:
 
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU      equal c_thermo_pe/atoms")        
+        lmp.command("thermo_style      custom step pe c_tcm press vol")
+        lmp.command("thermo            10000")
 
         #create velocity and equilibriate
         lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(t0, np.random.randint(0, 10000)))   
