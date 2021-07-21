@@ -225,6 +225,7 @@ class Phase:
         report["results"]["reference_system"] = float(self.fref)
         report["results"]["work"] = float(self.w)
         report["results"]["pv"] = float(self.pv)
+        self.report = report
 
         reportfile = os.path.join(self.simfolder, "report.yaml")
         with open(reportfile, 'w') as f:
