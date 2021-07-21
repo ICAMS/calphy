@@ -34,8 +34,9 @@ import pyscal.traj_process as ptp
 from calphy.integrators import *
 import calphy.lattice as pl
 import calphy.helpers as ph
+import calphy.phase as cph
 
-class Alchemy:
+class Alchemy(cph.Phase):
     """
     Class for alchemical transformations
 
@@ -53,84 +54,11 @@ class Alchemy:
 
     """
     def __init__(self, options=None, kernel=None, simfolder=None):
-        self.options = options
-        self.simfolder = simfolder
-        self.kernel = kernel
 
-        self.calc = options["calculations"][kernel]
-        self.nsims = self.calc["nsims"]
+        #call base class
+        super().__init__(options=options,
+        kernel=kernel, simfolder=simfolder)
 
-        self.t = self.calc["temperature"]
-        self.tend = self.calc["temperature_stop"]
-        self.thigh = self.calc["thigh"] 
-        self.p = self.calc["pressure"]
-        
-        if self.calc["iso"]:
-            self.iso = "iso"
-        else:
-            self.iso = "aniso"
-
-
-        self.l = None
-        self.alat = None
-        self.apc = None
-        self.vol = None
-        self.concentration = None
-        self.prepare_lattice()
-
-        logfile = os.path.join(self.simfolder, "tint.log")
-        self.logger = ph.prepare_log(logfile)
-
-        #other properties
-        self.cores = self.options["queue"]["cores"]
-        self.ncells = np.prod(self.calc["repeat"])
-        self.natoms = self.ncells*self.apc        
-        
-        #properties that will be calculated later
-        self.volatom = None
-        self.ferr = None
-        self.fref = None
-        self.fideal = None
-        self.w = None
-        self.pv = None
-        self.fe = None
-
-        #box dimensions that need to be stored
-        self.lx = None
-        self.ly = None
-        self.lz = None
-
-        #now backup pair styles: to use in integration mode
-        self.pair_style = self.options["md"]["pair_style"]
-        self.pair_coeff = self.options["md"]["pair_coeff"]
-
-        #now manually tune pair styles
-        self.options["md"]["pair_style"] = self.options["md"]["pair_style"][0]
-        self.options["md"]["pair_coeff"] = self.options["md"]["pair_coeff"][0]
-
-
-    def prepare_lattice(self):
-        """
-        Prepare the lattice for the simulation
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        Calculates the lattic, lattice constant, number of atoms per unit cell
-        and concentration of the input system.
-        """
-        l, alat, apc, conc = pl.prepare_lattice(self.calc)
-        self.l = l
-        self.alat = alat
-        self.apc = apc
-        self.concentration = conc
 
     def run_averaging(self):
         """
@@ -213,15 +141,12 @@ class Alchemy:
             file = os.path.join(self.simfolder, "avg.dat")
             lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
             
-            #lxpc = ((lx*ly*lz)/self.ncells)**(1/3)
-            #lxpc = ipress[-ncount+1:]
             lxpc = ipress
             mean = np.mean(lxpc)
             std = np.std(lxpc)
             volatom = np.mean((lx*ly*lz)/self.natoms)
             self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
             
-            #if (np.abs(laststd - std) < self.options["conv"]["alat_tol"]):
             if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
 
                 #process other means
@@ -251,34 +176,11 @@ class Alchemy:
             lmp.close()
             raise RuntimeError("System melted, increase size or reduce temp!")
 
+        #close object and process traj
         lmp.close()
         self.process_traj()
 
     
-    def process_traj(self):
-        """
-        Process the out trajectory after averaging cycle and 
-        extract a configuration to run integration
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-        
-        """
-        trajfile = os.path.join(self.simfolder, "traj.dat")
-        files = ptp.split_trajectory(trajfile)
-        conf = os.path.join(self.simfolder, "conf.dump")
-
-        ph.reset_timestep(files[-1], conf)
-
-        os.remove(trajfile)
-        for file in files:
-            os.remove(file)
-
 
     def run_integration(self, iteration=1):
         """
@@ -438,38 +340,3 @@ class Alchemy:
         self.fe = self.w
 
 
-    def submit_report(self):
-        """
-        Submit final report containing the results
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-        """
-        report = {}
-
-        #input quantities
-        report["input"] = {}
-        report["input"]["temperature"] = int(self.t)
-        report["input"]["pressure"] = float(self.p)
-        report["input"]["lattice"] = str(self.l)
-        report["input"]["element"] = " ".join(np.array(self.options["element"]).astype(str))
-        report["input"]["concentration"] = " ".join(np.array(self.concentration).astype(str))
-
-        #average quantities
-        report["average"] = {}
-        report["average"]["vol/atom"] = float(self.volatom)
-        
-        #results
-        report["results"] = {}
-        report["results"]["free_energy"] = float(self.fe)
-        report["results"]["error"] = float(self.ferr)
-        report["results"]["work"] = float(self.w)
-
-        reportfile = os.path.join(self.simfolder, "report.yaml")
-        with open(reportfile, 'w') as f:
-            yaml.dump(report, f)

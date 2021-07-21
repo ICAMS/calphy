@@ -34,8 +34,9 @@ from calphy.integrators import *
 import pyscal.traj_process as ptp
 import calphy.lattice as pl
 import calphy.helpers as ph
+import calphy.phase as cph
 
-class Liquid:
+class Liquid(cph.Phase):
     """
     Class for free energy calculation with liquid as the reference state
 
@@ -56,78 +57,11 @@ class Liquid:
         """
         Set up class
         """
-        logfile = os.path.join(self.simfolder, "tint.log")
-        self.logger = ph.prepare_log(logfile)
+        #call base class
+        super().__init__(options=options,
+        kernel=kernel, simfolder=simfolder)
 
-        self.options = options
-        self.simfolder = simfolder
-        self.kernel = kernel
 
-        self.calc = options["calculations"][kernel]
-        self.nsims = self.calc["nsims"]
-
-        self.t = self.calc["temperature"]
-        self.tend = self.calc["temperature_stop"]
-        self.thigh = self.calc["thigh"] 
-        self.p = self.calc["pressure"]
-
-        self.l = None
-        self.alat = None
-        self.apc = None
-        self.vol = None
-        self.concentration = None
-        self.prepare_lattice()
-
-        #other properties
-        self.cores = self.options["queue"]["cores"]
-        self.ncells = np.prod(self.calc["repeat"])
-        self.natoms = self.ncells*self.apc
-        
-        #the UFM system properties
-        #TODO : Add option to customize UFM parameters
-        self.eps = self.t*50.0*kb
-
-        #properties that will be calculated later
-        self.volatom = None
-        self.rho = None
-        self.ferr = None
-        self.fref = None
-        self.fideal = None
-        self.w = None
-        self.pv = None
-        self.fe = None
-
-        #box dimensions that need to be stored
-        self.lx = None
-        self.ly = None
-        self.lz = None
-
-        #now manually tune pair styles
-        self.options["md"]["pair_style"] = self.options["md"]["pair_style"][0]
-        self.options["md"]["pair_coeff"] = self.options["md"]["pair_coeff"][0]
-
-    def prepare_lattice(self):
-        """
-        Prepare the lattice for the simulation
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        Calculates the lattic, lattice constant, number of atoms per unit cell
-        and concentration of the input system.
-        """
-        l, alat, apc, conc = pl.prepare_lattice(self.calc)
-        self.l = l
-        self.alat = alat
-        self.apc = apc
-        self.concentration = conc
 
 
     def run_averaging(self):
@@ -262,29 +196,6 @@ class Liquid:
 
 
 
-    def process_traj(self):
-        """
-        Process the out trajectory after averaging cycle and 
-        extract a configuration to run integration
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-        
-        """
-        trajfile = os.path.join(self.simfolder, "traj.dat")
-        files = ptp.split_trajectory(trajfile)
-        conf = os.path.join(self.simfolder, "conf.dump")
-
-        ph.reset_timestep(files[-1], conf)
-
-        os.remove(trajfile)
-        for file in files:
-            os.remove(file)
 
     def run_integration(self, iteration=1):
         """
@@ -434,44 +345,6 @@ class Liquid:
         self.fe = self.fideal + self.fref - self.w + self.pv
 
 
-    def submit_report(self):
-        """
-        Submit final report containing results
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-        """
-        report = {}
-
-        #input quantities
-        report["input"] = {}
-        report["input"]["temperature"] = int(self.t)
-        report["input"]["pressure"] = float(self.p)
-        report["input"]["lattice"] = str(self.l)
-        report["input"]["element"] = " ".join(np.array(self.options["element"]).astype(str))
-        report["input"]["concentration"] = " ".join(np.array(self.concentration).astype(str))
-
-        #average quantities
-        report["average"] = {}
-        report["average"]["vol/atom"] = float(self.volatom)
-        report["average"]["density"] = float(self.rho)
-        
-        #results
-        report["results"] = {}
-        report["results"]["free_energy"] = float(self.fe)
-        report["results"]["error"] = float(self.ferr)
-        report["results"]["reference_system"] = float(self.fref) + float(self.fideal)
-        report["results"]["work"] = float(self.w)
-        report["results"]["pv"] = float(self.pv)
-
-        reportfile = os.path.join(self.simfolder, "report.yaml")
-        with open(reportfile, 'w') as f:
-            yaml.dump(report, f)
 
     def reversible_scaling(self, iteration=1):
         """
@@ -582,25 +455,3 @@ class Liquid:
         #close the object
         lmp.close()
 
-    def integrate_reversible_scaling(self, scale_energy=False, return_values=False):
-        """
-        Perform integration after reversible scaling
-
-        Parameters
-        ----------
-        scale_energy : bool, optional
-            If True, scale the energy during reversible scaling. 
-
-        return_values : bool, optional
-            If True, return integrated values
-
-        Returns
-        -------
-        res : list of lists of shape 1x3
-            Only returned if `return_values` is True.
-        """
-        res = integrate_rs(self.simfolder, self.fe, self.t, self.natoms, p=self.p,
-            nsims=self.nsims, scale_energy=scale_energy, return_values=return_values)
-
-        if return_values:
-            return res
