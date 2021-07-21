@@ -56,6 +56,9 @@ class Liquid:
         """
         Set up class
         """
+        logfile = os.path.join(self.simfolder, "tint.log")
+        self.logger = ph.prepare_log(logfile)
+
         self.options = options
         self.simfolder = simfolder
         self.kernel = kernel
@@ -74,9 +77,6 @@ class Liquid:
         self.vol = None
         self.concentration = None
         self.prepare_lattice()
-
-        logfile = os.path.join(self.simfolder, "tint.log")
-        self.logger = ph.prepare_log(logfile)
 
         #other properties
         self.cores = self.options["queue"]["cores"]
@@ -216,6 +216,8 @@ class Liquid:
 
         #monitor the average values until calculation is converged
         laststd = 0.00
+        converged = False
+
         for i in range(self.options["md"]["ncycles"]):
             lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
             ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
@@ -240,9 +242,13 @@ class Liquid:
 
                 self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
                 self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
+                converged = True
                 break
             
             laststd = std
+
+        if not converged:
+            raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
 
         lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
         lmp.command("run               0")

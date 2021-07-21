@@ -53,9 +53,13 @@ class Solid:
 
     """
     def __init__(self, options=None, kernel=None, simfolder=None):
+
         self.options = options
         self.simfolder = simfolder
         self.kernel = kernel
+        
+        logfile = os.path.join(self.simfolder, "tint.log")
+        self.logger = ph.prepare_log(logfile)
 
         self.calc = options["calculations"][kernel]
         self.nsims = self.calc["nsims"]
@@ -64,12 +68,12 @@ class Solid:
         self.tend = self.calc["temperature_stop"]
         self.thigh = self.calc["thigh"] 
         self.p = self.calc["pressure"]
+        self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %f bar"%(self.t, self.tend, self.p))
         
         if self.calc["iso"]:
             self.iso = "iso"
         else:
             self.iso = "aniso"
-
 
         self.l = None
         self.alat = None
@@ -77,9 +81,6 @@ class Solid:
         self.vol = None
         self.concentration = None
         self.prepare_lattice()
-
-        logfile = os.path.join(self.simfolder, "tint.log")
-        self.logger = ph.prepare_log(logfile)
 
         #other properties
         self.cores = self.options["queue"]["cores"]
@@ -127,6 +128,10 @@ class Solid:
         self.alat = alat
         self.apc = apc
         self.concentration = conc
+        self.logger.info("Lattice: %s with a=%f"%(self.l, self.alat))
+        self.logger.info("%d atoms in the unit cell"%self.apc)
+        self.logger.info("concentration:")
+        self.logger.info(self.concentration)
 
     def run_averaging(self):
         """
@@ -204,6 +209,8 @@ class Solid:
                 int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
             
             laststd = 0.00
+            converged = False
+
             for i in range(int(self.options["md"]["ncycles"])):
                 lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
                 ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
@@ -227,8 +234,12 @@ class Solid:
                     self.vol = self.lx*self.ly*self.lz
                     self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
                     self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
+                    converged = True
                     break
                 laststd = std
+            
+            if not converged:
+                raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
 
             #now run for msd
             lmp.command("unfix            1")
