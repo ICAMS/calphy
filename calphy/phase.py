@@ -58,7 +58,7 @@ class Phase:
         self.simfolder = simfolder
         self.kernel = kernel
         
-        logfile = os.path.join(self.simfolder, "tint.log")
+        logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile)
 
         self.calc = options["calculations"][kernel]
