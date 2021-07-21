@@ -166,6 +166,7 @@ class Solid(cph.Phase):
                 laststd = std
             
             if not converged:
+                lmp.close()
                 raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
 
             #now run for msd
@@ -195,6 +196,7 @@ class Solid(cph.Phase):
                 int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
 
             lastmean = 100000000
+            converged = False
             for i in range(int(self.options["md"]["ncycles"])):
                 lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
                 ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
@@ -218,11 +220,15 @@ class Solid(cph.Phase):
                     self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
                     self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
                     #now run for msd
+                    converged = True
                     break
                 lastmean = mean
             lmp.command("unfix            1")
             lmp.command("unfix            2")
 
+        if not converged:
+            lmp.close()
+            raise ValueError("spring constant did not converge")
 
         #start MSD calculation routine
         lmp.command("fix              3 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))

@@ -134,6 +134,8 @@ class Alchemy(cph.Phase):
             int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
         
         laststd = 0.00
+        converged = False
+
         for i in range(int(self.options["md"]["ncycles"])):
             lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
             ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
@@ -157,9 +159,14 @@ class Alchemy(cph.Phase):
                 self.vol = self.lx*self.ly*self.lz
                 self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
                 self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
+                converged = True
                 break
             laststd = std
 
+        if not converged:
+            lmp.close()
+            raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
+            
         #now run for msd
         lmp.command("unfix            1")
         lmp.command("unfix            2")

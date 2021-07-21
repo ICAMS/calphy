@@ -126,6 +126,14 @@ class Phase:
             self.logger.info("second pair_style: %s"%self.pair_style[1])
             self.logger.info("second pair_coeff: %s"%self.pair_coeff[1])
 
+    def __repr__(self):
+        """
+        String of the class
+        """
+        data = "%s system with T=%f, P=%f in %s lattice for mode %s"%(self.calc["state"],
+            self.t, self.p, self.l, self.calc["mode"]) 
+        return data
+
     def prepare_lattice(self):
         """
         Prepare the lattice for the simulation

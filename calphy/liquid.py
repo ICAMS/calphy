@@ -136,6 +136,7 @@ class Liquid(cph.Phase):
         
         #if melting cycle is over and still not melted, raise error
         if not melted:
+            lmp.close()
             raise ValueError("Liquid system did not melt, maybe try a higher thigh temperature.")
 
         #now assign correct temperature and equilibrate
@@ -182,6 +183,7 @@ class Liquid(cph.Phase):
             laststd = std
 
         if not converged:
+            lmp.close()
             raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
 
         lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
