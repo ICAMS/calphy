@@ -224,6 +224,21 @@ class Phase:
 
         self.logger.info("Report written in %s"%reportfile)
 
+        #now we have to write out the results
+        self.logger.info("Please cite the following publications:")
+        self.logger.info("- http://arxiv.org/abs/2107.08980")
+
+        if self.calc["mode"] == "fe":
+            if self.calc["state"] == "solid":
+                self.logger.info("- 10.1016/j.commatsci.2015.10.050")
+            else:
+                self.logger.info("- 10.1016/j.commatsci.2018.12.029")
+                self.logger.info("- 10.1063/1.4967775")
+        elif self.calc["mode"] == "ts":
+            self.logger.info("- 10.1103/PhysRevLett.83.3973")
+        elif self.calc["mode"] == "mts":
+            self.logger.info("- 10.1063/1.1420486") 
+
     def integrate_reversible_scaling(self, scale_energy=False, return_values=False):
         """
         Perform integration after reversible scaling
