@@ -128,7 +128,7 @@ class Liquid(cph.Phase):
             lmp.undump(2)
             
             #we have to check if the structure melted
-            solids = ph.find_solid_fraction("traj.melt")
+            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.melt"))
             self.logger.info("fraction of solids found: %f", solids/self.natoms)
             if (solids/self.natoms < self.options["conv"]["liquid_frac"]):
                 melted = True

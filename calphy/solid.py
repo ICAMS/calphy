@@ -180,7 +180,7 @@ class Solid(cph.Phase):
             lmp.command("undump            2")
             
             #check for solid atoms
-            solids = ph.find_solid_fraction("traj.dat")
+            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
             if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
                 lmp.close()
                 raise RuntimeError("System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting conv:\n solid_frac: 0")
@@ -279,7 +279,7 @@ class Solid(cph.Phase):
         lmp.command("undump            2")
         
         #check for solid atoms
-        solids = ph.find_solid_fraction("traj.dat")
+        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
         if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
             lmp.close()
             raise RuntimeError("System melted, increase size or reduce temp!")

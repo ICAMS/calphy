@@ -178,7 +178,7 @@ class Alchemy(cph.Phase):
         lmp.command("undump            2")
         
         #check for solid atoms
-        solids = ph.find_solid_fraction("traj.dat")
+        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
         if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
             lmp.close()
             raise RuntimeError("System melted, increase size or reduce temp!")
