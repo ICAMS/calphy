@@ -1,0 +1,17 @@
+name: calphy
+channels:
+  - conda-forge
+dependencies:
+  - cmake
+  - gcc_linux-64
+  - gxx_linux-64
+  - gfortran_linux-64
+  - pytest
+  - scipy
+  - pyyaml
+  - mendeleev
+  - openmpi 
+  - mpi4py
+  - pyscal
+  - matplotlib
+  - tqdm

@@ -20,9 +20,10 @@ Python library and command line tool for calculation of free energies. Read the 
 
 ## Installing
 
-> **NOTE**: If you are planning to use a custom version of LAMMPS, read the 'Notes on the LAMMPS installation' section first.
-    
+### Standard installation
 
+Standard installation uses the conda forge LAMMPS package. In this version, only `pair_style eam` is compatible with calphy.
+    
 It is **strongly** recommended to install and use `calphy` within a conda environment. To see how you can install conda see [here](https://docs.conda.io/projects/conda/en/latest/user-guide/install/).
 
 Once a conda distribution is available, the following steps will help set up an environment to use `calphy`. First step is to clone the repository.
@@ -51,20 +52,23 @@ python setup.py install --user
 ```
 The environment is now set up to run calphy.
 
-### Notes on the LAMMPS installation
+### PACE support
 
 > **NOTE**: 08 July 2021: The upcoming release of [LAMMPS](https://github.com/lammps/lammps/releases) will significantly change the compilation procedure and render the below information outdated.
 
-- The above commands will install LAMMPS from the conda-forge channel. With this version of LAMMPS, only `eam` pair style is supported!
-
-- For other pair styles such as Stillinger-Weber, MEAM, ADP, and SNAP, a custom version of LAMMPS is available. Please contact [here](mailto:sarath.menon@rub.de).
-
-- For using with pair style PACE, the LAMMPS distribution has to be compiled manually:
+If you want support for `pair_style pace` [1], or want to use a custom version of LAMMPS, it is recommended to follow these steps:
 
 ```
-wget https://github.com/lammps/lammps/archive/refs/tags/stable_29Oct2020.tar.gz
-tar -xvf stable_29Oct2020.tar.gz
-cd lammps-stable_29Oct2020
+git clone https://github.com/ICAMS/calphy.git
+conda env create -f calphy/environment-nolammps.yml
+```
+
+Now proceed with LAMMPS installation
+
+```
+wget https://github.com/lammps/lammps/archive/refs/tags/patch_27May2021.tar.gz
+tar -xvf patch_27May2021.tar.gz
+cd lammps-patch_27May2021
 mkdir build_lib
 cd build_lib
 cmake -D BUILD_LIB=ON -D BUILD_SHARED_LIBS=ON -D BUILD_MPI=ON -D PKG_MANYBODY=ON -D PKG_USER-MISC=ON -D PKG_USER-PACE=ON ../cmake
@@ -72,17 +76,13 @@ make # -j${NUM_CPUS}
 cp liblammps${SHLIB_EXT}* ../src
 ```
 
-If the commands are run within a conda environment and errors during compilation are observed, try installing the following packages:
-
-```
-conda install -c conda-forge cmake gcc_linux-64 gxx_linux-64 gfortran_linux-64
-```
 Now the python wrapper can be installed:
 
 ```
 cd ../src
 make install-python 
 ```
+
 In the case of a conda environment, the following commands can be used to copy the compiled libraries to an accessible path:
 
 ```
@@ -99,6 +99,25 @@ Once LAMMPS is compiled and the libraries are available in an accessible locatio
 from lammps import lammps
 lmp = lammps()
 ```
+
+Now, we install `pylammpsmpi` using,
+
+```
+pip install pylammpsmpi
+```
+
+and finally `calphy`:
+
+```
+cd calphy
+python setup.py install --user
+```
+[1]  Lysogorskiy, Yury, Cas van der Oord, Anton Bochkarev, Sarath Menon, Matteo Rinaldi, Thomas Hammerschmidt, Matous Mrovec, et al. “Performant Implementation of the Atomic Cluster Expansion (PACE) and Application to Copper and Silicon.” Npj Computational Materials 7, no. 1 (December 2021): 97. https://doi.org/10.1038/s41524-021-00559-9.
+
+
+### Support for other pair styles
+
+`calphy` also supports Stillinger-Weber, Tersoff, MEAM, SNAP, and ADP pair styles using a custom version. If you are interested in using these pair styles, please contact [us](mailto:sarath.menon@rub.de).
 
 ## Documentation
 
