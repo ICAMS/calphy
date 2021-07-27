@@ -243,6 +243,10 @@ class Alchemy(cph.Phase):
         lmp.command("variable        dU1 equal c_c1/atoms")             # Driving-force obtained from NEHI procedure.
         lmp.command("variable        dU2 equal c_c2/atoms")
 
+        # Thermo output.
+        lmp.command("thermo_style    custom step v_dU1 v_dU2")
+        lmp.command("thermo          1000")
+
 
         # Turn one second potential
         lmp.command("variable        zero equal 0")
