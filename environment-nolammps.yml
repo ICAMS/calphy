@@ -1,4 +1,4 @@
-name: calphy
+name: calphy2
 channels:
   - conda-forge
 dependencies:
