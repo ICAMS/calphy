@@ -10,9 +10,9 @@ In this section, the installation method for `calphy` is explained. Depending on
 
 | pair style                                              	| installation 	|
 |---------------------------------------------------------	|--------------	|
-| eam, eam/fs, eam/alloy                                  	| [method 1](#method-1)     	|
-| pace                                                    	| [method 2](#method-2)     	|
-| adp, snap, sw, tersoff, tersoff/mod, tersoff/modc, meam 	| [method 3](#method-3)     	|
+| eam, eam/fs, eam/alloy                                  	| [method 1](#id1)     	|
+| pace                                                    	| [method 2](#id2)     	|
+| adp, snap, sw, tersoff, tersoff/mod, tersoff/modc, meam 	| [method 3](#id3)     	|
 
 ### Dependencies
 
