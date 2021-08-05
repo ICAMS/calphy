@@ -11,7 +11,7 @@ In this section, the installation method for `calphy` is explained. Depending on
 | pair style                                              	| installation 	|
 |---------------------------------------------------------	|--------------	|
 | eam, eam/fs, eam/alloy                                  	| [method 1](#m1)     	|
-| pace                                                    	| [method 2](#m2)     	|
+| pace                                                    	| [method 2](#method-2)     	|
 | adp, snap, sw, tersoff, tersoff/mod, tersoff/modc, meam 	| [method 3](#m3)     	|
 
 ### Dependencies
@@ -61,7 +61,7 @@ python setup.py install --user
 ```
 The environment is now set up to run calphy.
 
-### <a name="m2"></a>Method 2
+### Method 2
 
 > This method supports `pace` pair style [1]. Additionally it can also be used if a custom version of LAMMPS is required. Drect free energy calculations for solid state can be carried out for any pair style using this installation.
 
