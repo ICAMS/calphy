@@ -2,8 +2,13 @@
 
 Python library and command line tool for calculation of free energies.
 
-Read the `calphy` documentation including examples [here](https://calphy.readthedocs.io/en/latest/index.html).
+## Installation, examples and documentation
 
+- Read the `calphy` installation instructions and documentation including examples [here](https://calphy.readthedocs.io/en/latest/index.html).
+
+- For a description of the methods and algorithms implemented in `calphy`, please see the [associated publication](http://arxiv.org/abs/2107.08980).
+
+ 
 ## Citing calphy
 
 If you find calphy useful, please consider citing:
