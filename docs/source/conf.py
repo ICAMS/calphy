@@ -62,7 +62,7 @@ html_theme = 'furo'
 html_logo = "../_static/calphy_logo.png"
 html_theme_options = {
     'logo_only' : True,
-    'canonical_url' : 'https://pyscal.readthedocs.io/',
+    'canonical_url' : 'https://calphy.readthedocs.io/',
 }
 
 html_extra_path = ['../_static' ]
@@ -75,7 +75,7 @@ source_suffix = ['.rst', '.md']
 exclude_patterns = []
 
 
-html_static_path = ['../_static']
-def setup(app):
-    #app.add_stylesheet("theme_extra.css")
-    app.add_css_file("theme_extra.css")
+#html_static_path = ['../_static']
+#def setup(app):
+#    #app.add_stylesheet("theme_extra.css")
+#    app.add_css_file("theme_extra.css")
