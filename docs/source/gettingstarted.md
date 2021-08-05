@@ -10,9 +10,9 @@ In this section, the installation method for `calphy` is explained. Depending on
 
 | pair style                                              	| installation 	|
 |---------------------------------------------------------	|--------------	|
-| eam, eam/fs, eam/alloy                                  	| [method 1](#m1)     	|
+| eam, eam/fs, eam/alloy                                  	| [method 1](#method-1)     	|
 | pace                                                    	| [method 2](#method-2)     	|
-| adp, snap, sw, tersoff, tersoff/mod, tersoff/modc, meam 	| [method 3](#m3)     	|
+| adp, snap, sw, tersoff, tersoff/mod, tersoff/modc, meam 	| [method 3](#method-3)     	|
 
 ### Dependencies
 
@@ -29,7 +29,7 @@ In this section, the installation method for `calphy` is explained. Depending on
 - matplotlib          3.4.2       `pip install matplotlib`
 - pytest              6.2.4       `pip install pytest`
 
-### <a name="m1"></a>Method 1: Standard Installation 
+### Method 1 
 
 > This method only supports the `eam`, `eam/fs` and `eam/alloy` pair styles. However, direct free energy calculations for solid state can be carried out for any pair style using this installation.
 
@@ -125,9 +125,7 @@ cd calphy
 python setup.py install --user
 ```
 
-[1]  Lysogorskiy, Yury, Cas van der Oord, Anton Bochkarev, Sarath Menon, Matteo Rinaldi, Thomas Hammerschmidt, Matous Mrovec, et al. “Performant Implementation of the Atomic Cluster Expansion (PACE) and Application to Copper and Silicon.” Npj Computational Materials 7, no. 1 (December 2021): 97. https://doi.org/10.1038/s41524-021-00559-9.
-
-### <a name="m3"></a>Method 3
+### Method 3
 
 > This method supports adp, meam, snap, sw, tersoff, tersoff/mod and tersoff/modc pair styles. Additionally it can also be used if a custom version of LAMMPS is required. Drect free energy calculations for solid state can be carried out for any pair style using this installation.
 
@@ -204,3 +202,5 @@ and finally `calphy`:
 cd calphy
 python setup.py install --user
 ```
+
+[1]  Lysogorskiy, Yury, Cas van der Oord, Anton Bochkarev, Sarath Menon, Matteo Rinaldi, Thomas Hammerschmidt, Matous Mrovec, et al. “Performant Implementation of the Atomic Cluster Expansion (PACE) and Application to Copper and Silicon.” Npj Computational Materials 7, no. 1 (December 2021): 97. https://doi.org/10.1038/s41524-021-00559-9.
