@@ -172,12 +172,12 @@ class Alchemy(cph.Phase):
             lmp.command("unfix            1")
             lmp.command("unfix            2")
 
-            #check for melting
-            #check for melting
-            lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
-            lmp.command("run               0")
-            lmp.command("undump            2")
-            
+        
+        #dump is common for both
+        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+        lmp.command("run               0")
+        lmp.command("undump            2")
+
 
         #close object and process traj
         lmp.close()
