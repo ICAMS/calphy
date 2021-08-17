@@ -66,6 +66,10 @@ def prepare_optional_keys(calc, cdict):
         cdict["thigh"] = calc["thigh"]
     else:
         cdict["thigh"] = 2.0*cdict["temperature_stop"]
+    if "npt" in calc.keys():
+        cdict["npt"] = calc["npt"]
+    else:
+        cdict["npt"] = False
     return cdict
 
 def read_yamlfile(file):
