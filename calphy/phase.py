@@ -29,6 +29,7 @@ sarath.menon@ruhr-uni-bochum.de
 
 import numpy as np
 import yaml
+import copy
 
 import pyscal.traj_process as ptp
 from calphy.integrators import *
@@ -54,14 +55,14 @@ class Phase:
     """
     def __init__(self, options=None, kernel=None, simfolder=None):
 
-        self.options = options.copy()
+        self.options = copy.deepcopy(options)
         self.simfolder = simfolder
         self.kernel = kernel
         
         logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile)
 
-        self.calc = options["calculations"][kernel].copy()
+        self.calc = copy.deepcopy(options["calculations"][kernel])
         self.nsims = self.calc["nsims"]
 
         self.t = self.calc["temperature"]
