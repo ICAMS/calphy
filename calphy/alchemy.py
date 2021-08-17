@@ -190,7 +190,7 @@ class Alchemy(cph.Phase):
             mean = np.mean(ipress)
             self.p = mean
             volatom = np.mean((lx*ly*lz)/self.natoms)
-            self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
+            self.logger.info("At count 0 mean pressure is %f with %f vol/atom"%(mean, volatom))
             self.lx = np.round(np.mean(lx), decimals=3)
             self.ly = np.round(np.mean(ly), decimals=3)
             self.lz = np.round(np.mean(lz), decimals=3)
