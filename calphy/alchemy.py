@@ -172,7 +172,34 @@ class Alchemy(cph.Phase):
             lmp.command("unfix            1")
             lmp.command("unfix            2")
 
-        
+        else:
+            #we should do a small run to eqbrte atom positions
+            lmp.command("fix              1 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
+            lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
+            lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
+            lmp.command("thermo           10")            
+            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
+                int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
+            
+            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
+            lmp.command("unfix            1")
+            lmp.command("unfix            2")
+
+            file = os.path.join(self.simfolder, "avg.dat")
+            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
+            mean = np.mean(ipress)
+            self.p = mean
+            volatom = np.mean((lx*ly*lz)/self.natoms)
+            self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
+            self.lx = np.round(np.mean(lx), decimals=3)
+            self.ly = np.round(np.mean(ly), decimals=3)
+            self.lz = np.round(np.mean(lz), decimals=3)
+            self.volatom = volatom
+            self.vol = self.lx*self.ly*self.lz
+            self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
+            self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
+
+
         #dump is common for both
         lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
         lmp.command("run               0")
