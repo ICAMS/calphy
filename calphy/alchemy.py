@@ -249,9 +249,12 @@ class Alchemy(cph.Phase):
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         # Integrator & thermostat.
-        lmp.command("fix             f1 all nve")                              
-        lmp.command("fix             f2 all langevin %f %f %f %d"%(self.t, self.t, 
-            self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+        if self.calc["npt"]:
+            lmp.command("fix             f1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, 
+                self.options["md"]["tdamp"], self.iso, self.p, self.p, self.options["md"]["pdamp"]))        
+        else:
+            lmp.command("fix             f1 all nvt temp %f %f %f"%(self.t, self.t, 
+                self.options["md"]["tdamp"]))
 
         # Compute pair definitions
         if self.pair_style[0] == self.pair_style[1]:
@@ -347,6 +350,7 @@ class Alchemy(cph.Phase):
         
         #close LAMMPS object
         lmp.close()
+
 
     def thermodynamic_integration(self):
         """
