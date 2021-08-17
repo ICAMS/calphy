@@ -54,14 +54,14 @@ class Phase:
     """
     def __init__(self, options=None, kernel=None, simfolder=None):
 
-        self.options = options
+        self.options = options.copy()
         self.simfolder = simfolder
         self.kernel = kernel
         
         logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile)
 
-        self.calc = options["calculations"][kernel]
+        self.calc = options["calculations"][kernel].copy()
         self.nsims = self.calc["nsims"]
 
         self.t = self.calc["temperature"]
