@@ -33,6 +33,7 @@ import shutil
 import argparse as ap
 import subprocess
 import yaml
+import time
 
 from calphy.input import read_yamlfile, create_identifier
 from calphy.liquid import Liquid
@@ -44,10 +45,17 @@ def routine_fe(job):
     """
     Perform an FE calculation routine
     """
+    ts = time.time()
     job.run_averaging()
+    te = (time.time() - ts)
+    job.logger.info("Averaging routine finished in %f s"%te)
+
     #now run integration loops
     for i in range(job.nsims):
+        ts = time.time()
         job.run_integration(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("Integration cycle %d finished in %f s"%(i+1, te))
 
     job.thermodynamic_integration()
     job.submit_report()
@@ -61,7 +69,10 @@ def routine_ts(job):
 
     #now do rev scale steps
     for i in range(job.nsims):
+        ts = time.time()
         job.reversible_scaling(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("TS integration cycle %d finished in %f s"%(i+1, te))
     
     job.integrate_reversible_scaling(scale_energy=True)
     return job
@@ -71,9 +82,16 @@ def routine_only_ts(job):
     """
     Perform sweep without free energy calculation
     """
+    ts = time.time()
     job.run_averaging()
+    te = (time.time() - ts)
+    job.logger.info("Averaging routine finished in %f s"%te)
+
     for i in range(job.nsims):
+        ts = time.time()
         job.reversible_scaling(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("TS integration cycle %d finished in %f s"%(i+1, te))
     return job
 
 
@@ -81,10 +99,17 @@ def routine_alchemy(job):
     """
     Perform an FE calculation routine
     """
+    ts = time.time()
     job.run_averaging()
+    te = (time.time() - ts)
+    job.logger.info("Averaging routine finished in %f s"%te)
+
     #now run integration loops
     for i in range(job.nsims):
+        ts = time.time()
         job.run_integration(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("Alchemy integration cycle %d finished in %f s"%(i+1, te))
 
     job.thermodynamic_integration()
     job.submit_report()
