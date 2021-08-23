@@ -32,7 +32,7 @@ import os
 from pylammpsmpi import LammpsLibrary
 import numpy as np
 import pyscal.core as pc
-from calphy.helpers import create_object
+
 
 """
 Conversion factors for creating initial lattices
@@ -94,7 +94,12 @@ def get_lattice(symbol, lat):
 def check_data_file(infile):
     if os.path.exists(infile):
         try:
-            lmp = create_object(1, os.getcwd(), 0.001)
+            lmp = LammpsLibrary(mode="local", cores=1, 
+                working_directory=os.getcwd())
+            lmp.units("metal")
+            lmp.boundary("p p p")
+            lmp.atom_style("atomic")
+            lmp.timestep(0.001)            
             lmp.read_data(infile)
             natoms = lmp.natoms
             #now we convert to a dump file and read the concentration
