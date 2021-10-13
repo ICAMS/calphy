@@ -12,7 +12,7 @@ Python library and command line tool for calculation of free energies.
  
 ## Citing calphy
 
-If you find calphy useful, please consider citing:
+If you find calphy useful, please consider citing:  
 Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz. 
 [“Automated Free Energy Calculation from Atomistic Simulations.”](https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.5.103801) 
 Physical Review Materials 5(10), 2021
