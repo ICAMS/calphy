@@ -20,3 +20,4 @@ DOI: 10.1103/PhysRevMaterials.5.103801
 
 Download bibtex [here](https://journals.aps.org/prmaterials/export/10.1103/PhysRevMaterials.5.103801?type=bibtex&download=true)
 
+This fork will implement a fix for free energy calculation
