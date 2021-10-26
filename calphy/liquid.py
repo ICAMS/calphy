@@ -196,9 +196,6 @@ class Liquid(cph.Phase):
         #process the trajectory
         self.process_traj()
 
-
-
-
     def run_integration(self, iteration=1):
         """
         Run integration routine
@@ -219,85 +216,47 @@ class Liquid(cph.Phase):
         """
         lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
 
-        # Adiabatic switching parameters.
-        lmp.command("variable        li       equal   1.0")
-        lmp.command("variable        lf       equal   0.0")
 
         #read in the conf file
         conf = os.path.join(self.simfolder, "conf.dump")
         lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
 
         #set hybrid ufm and normal potential
-        lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
+        lmp = ph.set_potential(lmp, self.options)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         #apply the necessary thermostat
-        lmp.command("fix             f1 all nve")                              
-        lmp.command("fix             f2 all langevin %f %f %f %d"%(self.t, self.t, self.options["md"]["tdamp"],
+        lmp.command("fix             f1 all nve")
+        lmp.command("fix             f2 all ti/ufm %f 1.5 7.5 100 100 function 2")
+        lmp.command("fix             f3 all langevin %f %f %f %d"%(self.t, self.t, self.options["md"]["tdamp"],
             np.random.randint(0, 10000)))
-
-        # Compute the potential energy of each pair style.
-        lmp.command("compute         c1 all pair %s"%self.options["md"]["pair_style"])
-        lmp.command("compute         c2 all pair ufm")
-
+        
         # Output variables.
         lmp.command("variable        step equal step")
-        lmp.command("variable        dU1 equal c_c1/atoms")             # Driving-force obtained from NEHI procedure.
-        lmp.command("variable        dU2 equal c_c2/atoms")
-
+        lmp.command("variable        dU1 equal pe/atoms")
+        lmp.command("variable        dU2 equal f_f2/atoms")
+        lmp.command("variable        lambda equal f_f2[1]")
+        
         #force thermo to evaluate variables
         lmp.command("thermo_style    custom step v_dU1 v_dU2")
         lmp.command("thermo          1000")
-
-        #switching completely to potential of interest
-        lmp.command("variable        zero equal 0")
-        lmp.command("fix             f0 all adapt 0 pair ufm scale * * v_zero")
-        lmp.command("run             0")
-        lmp.command("unfix           f0")
-
-        #Equilibrate system
-        lmp.command("run             %d"%self.options["md"]["te"])
-
-        #print header
-        lmp.command("print           \"${dU1} ${dU2} ${li}\" file forward_%d.dat"%iteration)
         
-        #set up scaling variables
-        lmp.command("variable        lambda_p1 equal ramp(${li},${lf})")
-        lmp.command("variable        lambda_p2 equal ramp(${lf},${li})")
-
-        #Forward switching run
-        lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_p1"%self.options["md"]["pair_style"])
-        lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_p2")
-        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_p1}\" screen no append forward_%d.dat"%iteration)
-        lmp.command("run             %d"%self.options["md"]["ts"])
-
-        #unfix things
-        lmp.command("unfix           f3")
-        lmp.command("unfix           f4")
-        lmp.command("unfix           f5")
-
-        #Equilibriate at UFM potential
-        lmp.command("run             %d"%self.options["md"]["te"])
-
-        #print file header
-        lmp.command("print           \"${dU1} ${dU2} ${lf}\" file backward_%d.dat"%iteration)
+        #Create velocity
+        lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(self.t, np.random.randint(0, 10000)))
         
-        #set up scaling variables
-        lmp.command("variable        lambda_p1 equal ramp(${lf},${li})")
-        lmp.command("variable        lambda_p2 equal ramp(${li},${lf})")
+        lmp.command("fix              f2 all ti/ufm %f 1.5 7.5 %d %d"%(self.eps, 
+                                            self.options["md"]["ts"], self.options["md"]["te"]))
+        lmp.command("run              %d"%self.options["md"]["te"])
+        lmp.command("fix              f4 all print 1 \"${dU1} ${dU2} ${lambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("run              %d"%self.options["md"]["ts"])
+        lmp.command("unfix            f4")
 
-        #Reverse switching run
-        lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_p1"%self.options["md"]["pair_style"])
-        lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_p2")
-        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_p1}\" screen no append backward_%d.dat"%iteration)
-        lmp.command("run             %d"%self.options["md"]["ts"])
-
-        #unfix things
-        lmp.command("unfix           f3")
-        lmp.command("unfix           f4")
-        lmp.command("unfix           f5")
+        lmp.command("run              %d"%self.options["md"]["te"])
+        lmp.command("fix              f4 all print 1 \"${dU1} ${dU2} ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("run              %d"%self.options["md"]["ts"])
+        lmp.command("unfix            f4")
         
         #close object
         lmp.close()
