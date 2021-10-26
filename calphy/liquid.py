@@ -303,7 +303,7 @@ class Liquid(cph.Phase):
             self.pv = 0
 
         #calculate final free energy
-        self.fe = self.fideal + self.fref - self.w + self.pv
+        self.fe = self.fideal + self.fref + self.w + self.pv
 
 
 
