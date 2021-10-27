@@ -233,6 +233,10 @@ class Liquid(cph.Phase):
         lmp.command("fix             f3 all langevin %f %f %f %d"%(self.t, self.t, self.options["md"]["tdamp"],
             np.random.randint(0, 10000)))
         
+        #add com correction
+        lmp.command("compute           Tcm all temp/com")
+        lmp.command("fix_modify        f3 temp Tcm")
+        
         # Output variables.
         lmp.command("variable        step equal step")
         lmp.command("variable        dU1 equal pe/atoms")
