@@ -229,7 +229,7 @@ class Liquid(cph.Phase):
 
         #apply the necessary thermostat
         lmp.command("fix             f1 all nve")
-        lmp.command("fix             f2 all ti/ufm %f 1.5 7.5 100 100 function 2")
+        lmp.command("fix             f2 all ti/ufm %f 1.5 7.5 100 100 function 2"%self.eps)
         lmp.command("fix             f3 all langevin %f %f %f %d"%(self.t, self.t, self.options["md"]["tdamp"],
             np.random.randint(0, 10000)))
         
@@ -240,7 +240,7 @@ class Liquid(cph.Phase):
         lmp.command("variable        lambda equal f_f2[1]")
         
         #force thermo to evaluate variables
-        lmp.command("thermo_style    custom step v_dU1 v_dU2")
+        lmp.command("thermo_style    custom step pe v_dU1 v_dU2")
         lmp.command("thermo          1000")
         
         #Create velocity
