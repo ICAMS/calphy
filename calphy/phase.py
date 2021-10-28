@@ -271,3 +271,91 @@ class Phase:
 
         if return_values:
             return res
+
+
+    def temperature_scaling(self, iteration=1):
+        """
+        Perform temperature scaling calculation in NPT
+
+        Parameters
+        ----------
+        iteration : int, optional
+            iteration of the calculation. Default 1
+
+        Returns
+        -------
+        None
+        """
+        t0 = self.t
+        tf = self.tend
+        li = 1
+        lf = t0/tf
+        p0 = self.p
+        pf = lf*p0
+
+        #create lammps object
+        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+
+        lmp.command("echo              log")
+        lmp.command("variable          li equal %f"%li)
+        lmp.command("variable          lf equal %f"%lf)
+
+        #read in conf
+        conf = os.path.join(self.simfolder, "conf.dump")
+        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
+
+        #set up potential
+        lmp = ph.set_potential(lmp, self.options)
+
+        #remap the box to get the correct pressure
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+
+
+        #equilibrate first
+        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.options["md"]["tdamp"],
+                                        self.iso, p0, p0, self.options["md"]["pdamp"]))
+        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("unfix             1")
+
+
+        #now scale system to final temp, thereby recording enerfy at every step
+        lmp.command("variable          step    equal step")
+        lmp.command("variable          dU      equal pe/atoms")
+        lmp.command("variable          lambda equal ramp(${li},${lf})")
+
+        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, tf, self.options["md"]["tdamp"],
+                                        self.iso, p0, pf, self.options["md"]["pdamp"]))
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("run               %d"%self.options["md"]["ts"])
+
+        lmp.command("unfix             f2")
+        lmp.command("unfix             f3")
+
+        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(tf, tf, self.options["md"]["tdamp"],
+                                        self.iso, pf, pf, self.options["md"]["pdamp"]))
+        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("unfix             1")
+
+        #start reverse loop
+        lmp.command("variable          lambda equal ramp(${lf},${li})")
+
+        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(tf, t0, self.options["md"]["tdamp"],
+                                        self.iso, pf, p0, self.options["md"]["pdamp"]))
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("run               %d"%self.options["md"]["ts"])
+
+
+    def temperature_scaling(self, iteration=1):
+        """
+        Perform temperature scaling calculation in NPT
+
+        Parameters
+        ----------
+        iteration : int, optional
+            iteration of the calculation. Default 1
+
+        Returns
+        -------
+        None
+        """
+
