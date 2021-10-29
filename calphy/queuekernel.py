@@ -219,10 +219,14 @@ def run_calculation(job):
         job = routine_ts(job)
     elif job.calc["mode"] == "mts":
         job = routine_only_ts(job)
+    elif calc["mode"] == "tscale":
+        job = routine_tscale(job)
+    elif calc["mode"] == "pscale":
+        job = routine_pscale(job)
     elif job.calc["mode"] == "alchemy":
         job = routine_alchemy(job)
     else:
-        raise ValueError("Mode should be either fe/ts/mts/alchemy")
+        raise ValueError("Mode should be either fe/ts/mts/tscale/pscale/alchemy")
     return job
 
 def main():
@@ -272,7 +276,11 @@ def main():
         _ = routine_ts(job)
     elif calc["mode"] == "mts":
         _ = routine_only_ts(job)
+    elif calc["mode"] == "tscale":
+        _ = routine_tscale(job)
+    elif calc["mode"] == "pscale":
+        _ = routine_pscale(job)
     elif calc["mode"] == "alchemy":
         _ = routine_alchemy(job)
     else:
-        raise ValueError("Mode should be either fe/ts/mts/alchemy")
+        raise ValueError("Mode should be either fe/ts/mts/tscale/pscale/alchemy")
