@@ -618,3 +618,62 @@ def integrate_rs(simfolder, f0, t, natoms, p=0, nsims=5,
         np.savetxt(outfile, np.column_stack((temp, f, werr)))
     else:
         return (temp, f, werr)
+
+def integrate_ps(simfolder, f0, natoms, nsims=5, 
+    return_values=False):
+    """
+    Carry out the reversible scaling integration
+
+    Parameters
+    ----------
+    simfolder : string
+        main simulation folder
+
+    f0 : float
+        initial free energy for integration
+
+    nsims : int, optional
+        number of independent switching
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Writes the output in a file reversible_scaling.dat
+    
+    """
+
+    ws = []
+
+    for i in range(1, nsims+1):
+        fdx, fp, fvol, flambda = np.loadtxt(os.path.join(simfolder, "forward_%d.dat"%i), unpack=True, comments="#")
+        bdx, bp, bvol, blambda = np.loadtxt(os.path.join(simfolder, "backward_%d.dat"%i), unpack=True, comments="#")
+        
+        fvol = fvol/natoms
+        bvol = bvol/natoms
+        
+        fp = fp/(10000*160.21766208)
+        bp = bp/(10000*160.21766208)
+
+        fdx = fp*fvol
+        bdx = bp*bvol
+
+        wf = cumtrapz(fdx, flambda,initial=0)
+        wb = cumtrapz(bdx[::-1], blambda[::-1], initial=0)
+
+        w = (wf + wb)/(flambda)
+        ws.append(w)
+
+    wmean = np.mean(ws, axis=0)
+    werr = np.std(ws, axis=0)
+    press = flambda
+
+    f = f0 + wmean
+
+    if not return_values:
+        outfile = os.path.join(simfolder, "pressure_sweep.dat")
+        np.savetxt(outfile, np.column_stack((press, f, werr)))
+    else:
+        return (press, f, werr)

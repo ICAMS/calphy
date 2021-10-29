@@ -414,3 +414,28 @@ class Phase:
                                         self.iso, pf, p0, self.options["md"]["pdamp"]))
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run               %d"%self.options["md"]["ts"])
+
+    
+    
+    def integrate_pressure_scaling(self, return_values=False):
+        """
+        Perform integration after reversible scaling
+
+        Parameters
+        ----------
+        scale_energy : bool, optional
+            If True, scale the energy during reversible scaling. 
+
+        return_values : bool, optional
+            If True, return integrated values
+
+        Returns
+        -------
+        res : list of lists of shape 1x3
+            Only returned if `return_values` is True.
+        """
+        res = integrate_ps(self.simfolder, self.fe, self.natoms,
+            nsims=self.nsims, return_values=return_values)
+
+        if return_values:
+            return res

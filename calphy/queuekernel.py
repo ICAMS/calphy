@@ -90,7 +90,7 @@ def routine_tscale(job):
         te = (time.time() - ts)
         job.logger.info("Temperature scaling cycle %d finished in %f s"%(i+1, te))
     
-    job.integrate_temperature_scaling()
+    job.integrate_reversible_scaling(scale_energy=False)
     return job
 
 def routine_pscale(job):
