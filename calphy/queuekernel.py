@@ -127,6 +127,22 @@ def routine_only_ts(job):
     return job
 
 
+def routine_only_tscale(job):
+    """
+    Perform sweep without free energy calculation
+    """
+    ts = time.time()
+    job.run_averaging()
+    te = (time.time() - ts)
+    job.logger.info("Averaging routine finished in %f s"%te)
+
+    for i in range(job.nsims):
+        ts = time.time()
+        job.temperature_scaling(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("Temperature scaling cycle %d finished in %f s"%(i+1, te))
+    return job
+
 def routine_alchemy(job):
     """
     Perform an FE calculation routine
@@ -217,8 +233,10 @@ def run_calculation(job):
         job = routine_fe(job)
     elif job.calc["mode"] == "ts":
         job = routine_ts(job)
-    elif job.calc["mode"] == "mts":
+    elif job.calc["mode"] == "dccts":
         job = routine_only_ts(job)
+    elif job.calc["mode"] == "dcctscale":
+        job = routine_only_tscale(job)
     elif calc["mode"] == "tscale":
         job = routine_tscale(job)
     elif calc["mode"] == "pscale":
@@ -226,7 +244,7 @@ def run_calculation(job):
     elif job.calc["mode"] == "alchemy":
         job = routine_alchemy(job)
     else:
-        raise ValueError("Mode should be either fe/ts/mts/tscale/pscale/alchemy")
+        raise ValueError("Mode should be either fe/ts/dccts/dcctscale/tscale/pscale/alchemy")
     return job
 
 def main():
@@ -274,8 +292,10 @@ def main():
         _ = routine_fe(job)
     elif calc["mode"] == "ts":
         _ = routine_ts(job)
-    elif calc["mode"] == "mts":
+    elif job.calc["mode"] == "dccts":
         _ = routine_only_ts(job)
+    elif job.calc["mode"] == "dcctscale":
+        _ = routine_only_tscale(job)
     elif calc["mode"] == "tscale":
         _ = routine_tscale(job)
     elif calc["mode"] == "pscale":
@@ -283,4 +303,4 @@ def main():
     elif calc["mode"] == "alchemy":
         _ = routine_alchemy(job)
     else:
-        raise ValueError("Mode should be either fe/ts/mts/tscale/pscale/alchemy")
+        raise ValueError("Mode should be either fe/ts/dccts/dcctscale/tscale/pscale/alchemy")
