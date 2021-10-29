@@ -196,7 +196,7 @@ def read_yamlfile(file):
             #now start looping
             for i, lat in enumerate(lattice):
                 #if mode is pscale, then we do not loop over pressure
-                if (mode == "ts") or (mode == "mts") or (mode == "tscale"):
+                if (mode == "ts") or (mode == "dccts") or (mode == "tscale") or (mode == "dcctscale"):
                     for press in pressure:
                         cdict = {}
                         cdict["mode"] = calc["mode"]
