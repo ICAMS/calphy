@@ -205,6 +205,7 @@ def read_yamlfile(file):
                             raise ValueError("At least two temperature values are needed for ts/tscale")
                         cdict["temperature"] = temperature[0]
                         cdict["pressure"] = press
+                        cdict["pressure_stop"] = press
                         cdict["lattice"] = lat
                         cdict["state"] = state[i]
                         cdict["temperature_stop"] = temperature[-1]
@@ -250,6 +251,7 @@ def read_yamlfile(file):
                             cdict["mode"] = calc["mode"]
                             cdict["temperature"] = temp
                             cdict["pressure"] = press
+                            cdict["pressure_stop"] = press
                             cdict["lattice"] = lat
                             cdict["state"] = state[i]
                             cdict["temperature_stop"] = temp
@@ -270,7 +272,7 @@ def read_yamlfile(file):
                                     raise ValueError("Two pair styles need to be provided")
 
     return options
-    
+
 
 def create_identifier(calc):
     """
