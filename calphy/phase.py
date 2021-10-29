@@ -69,6 +69,7 @@ class Phase:
         self.tend = self.calc["temperature_stop"]
         self.thigh = self.calc["thigh"] 
         self.p = self.calc["pressure"]
+        self.pend = self.calc["pressure_stop"]
         self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %f bar"%(self.t, self.tend, self.p))
 
         if self.calc["iso"]:
