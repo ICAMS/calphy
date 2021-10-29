@@ -30,6 +30,7 @@ sarath.menon@ruhr-uni-bochum.de
 import os
 import yaml
 import warnings
+import numpy as np
 
 def check_and_convert_to_list(data):
     """
@@ -185,6 +186,7 @@ def read_yamlfile(file):
                 lattice_constant = check_and_convert_to_list(calc["lattice_constant"])
             else:
                 lattice_constant = [0 for x in range(len(lattice))]
+            
             #prepare lattice constant values
             if "iso" in calc.keys():
                 iso = check_and_convert_to_list(calc["iso"])
@@ -193,13 +195,14 @@ def read_yamlfile(file):
 
             #now start looping
             for i, lat in enumerate(lattice):
-                for press in pressure:
-                    if (mode == "ts") or (mode == "mts"):
+                #if mode is pscale, then we do not loop over pressure
+                if (mode == "ts") or (mode == "mts") or (mode == "tscale"):
+                    for press in pressure:
                         cdict = {}
                         cdict["mode"] = calc["mode"]
                         #we need to check for temperature length here
                         if not len(temperature)==2:
-                            raise ValueError("At least two temperature values are needed for ts")
+                            raise ValueError("At least two temperature values are needed for ts/tscale")
                         cdict["temperature"] = temperature[0]
                         cdict["pressure"] = press
                         cdict["lattice"] = lat
@@ -216,7 +219,32 @@ def read_yamlfile(file):
                         cdict = prepare_optional_keys(calc, cdict)
                         options["calculations"].append(cdict)
 
-                    else:
+                elif mode == "pscale":
+                    #pressure scale mode
+                    for temp in temperature:
+                        cdict = {}
+                        cdict["mode"] = calc["mode"]
+                        if not len(pressure)==2:
+                            raise ValueError("At least two pressure values are needed for pscale")
+                        cdict["pressure"] = pressure[0]
+                        cdict["pressure_stop"] = pressure[-1]
+                        cdict["temperature"] = temp
+                        cdict["lattice"] = lat
+                        cdict["state"] = state[i]
+                        cdict["temperature_stop"] = temp
+                        cdict["nelements"] = options["nelements"]
+                        cdict["element"] = options["element"]
+                        cdict["lattice_constant"] = lattice_constant[i]
+                        cdict["iso"] = iso[i]
+                        if "fix_lattice" in calc.keys():
+                            cdict["fix_lattice"] = calc["fix_lattice"]
+                        else:
+                            cdict["fix_lattice"] = False
+                        cdict = prepare_optional_keys(calc, cdict)
+                        options["calculations"].append(cdict)
+                    
+                else:
+                    for press in pressure:
                         for temp in temperature:
                             cdict = {}
                             cdict["mode"] = calc["mode"]
@@ -240,7 +268,9 @@ def read_yamlfile(file):
                                 #if alchemy mode is selected: make sure that hybrid pair styles
                                 if not len(options["md"]["pair_style"]) == 2:
                                     raise ValueError("Two pair styles need to be provided")
+
     return options
+    
 
 def create_identifier(calc):
     """
