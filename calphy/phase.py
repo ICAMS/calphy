@@ -288,7 +288,7 @@ class Phase:
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         #set thermostat and run equilibrium
-        lmp.command("fix               f1 all nph iso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
+        lmp.command("fix               f1 all nph %s %f %f %f"%(self.iso, self.p, self.p, self.options["md"]["pdamp"]))
         lmp.command("fix               f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], np.random.randint(0, 10000)))
         lmp.command("run               %d"%self.options["md"]["te"])
         lmp.command("unfix             f1")
@@ -299,7 +299,7 @@ class Phase:
         lmp.command("variable         ycm equal xcm(all,y)")
         lmp.command("variable         zcm equal xcm(all,z)")
         
-        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.p, self.p, self.options["md"]["pdamp"]))
+        lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, self.p, self.p, self.options["md"]["pdamp"]))
         lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(t0, t0, self.options["md"]["tdamp"], np.random.randint(0, 10000)))
         
         #compute com and modify fix
@@ -337,7 +337,7 @@ class Phase:
         lmp.command("pair_coeff       %s"%pcnew2)
 
         #start scaling over switching time
-        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pi, 
+        lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, pi, 
             pf, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
@@ -352,7 +352,7 @@ class Phase:
         lmp = ph.set_potential(lmp, self.options)
 
         #equilibriate scaled hamiltonian
-        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
+        lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, pf, 
             pf, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")        
         lmp.command("run               %d"%self.options["md"]["te"])
@@ -364,7 +364,7 @@ class Phase:
             if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
                 lmp.close()
                 raise RuntimeError("System melted, increase size or reduce scaling!")
-            
+
 
 
         #reverse scaling
@@ -379,7 +379,7 @@ class Phase:
         lmp.command("pair_coeff       %s"%pcnew2)
 
         #apply fix and perform switching        
-        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
+        lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, pf, 
             pi, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
