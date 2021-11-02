@@ -249,6 +249,140 @@ class Phase:
         elif self.calc["mode"] == "mts":
             self.logger.info("- 10.1063/1.1420486") 
 
+
+    def reversible_scaling(self, iteration=1):
+        """
+        Perform reversible scaling calculation in NPT
+
+        Parameters
+        ----------
+        iteration : int, optional
+            iteration of the calculation. Default 1
+
+        Returns
+        -------
+        None
+        """
+        t0 = self.t
+        tf = self.tend
+        li = 1
+        lf = t0/tf
+        pi = self.p
+        pf = lf*pi
+
+        #create lammps object
+        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+
+        lmp.command("echo              log")
+        lmp.command("variable          li equal %f"%li)
+        lmp.command("variable          lf equal %f"%lf)
+
+        #read in conf file
+        conf = os.path.join(self.simfolder, "conf.dump")
+        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
+
+        #set up potential
+        lmp = ph.set_potential(lmp, self.options)
+
+        #remap the box to get the correct pressure
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+
+        #set thermostat and run equilibrium
+        lmp.command("fix               f1 all nph iso %f %f %f"%(self.p, self.p, self.options["md"]["pdamp"]))
+        lmp.command("fix               f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("unfix             f1")
+        lmp.command("unfix             f2")
+
+        #now fix com
+        lmp.command("variable         xcm equal xcm(all,x)")
+        lmp.command("variable         ycm equal xcm(all,y)")
+        lmp.command("variable         zcm equal xcm(all,z)")
+        
+        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.p, self.p, self.options["md"]["pdamp"]))
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(t0, t0, self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+        
+        #compute com and modify fix
+        lmp.command("compute           tcm all temp/com")
+        lmp.command("fix_modify        f1 temp tcm")
+        lmp.command("fix_modify        f2 temp tcm")
+
+        lmp.command("variable          step    equal step")
+        lmp.command("variable          dU      equal c_thermo_pe/atoms")        
+        lmp.command("thermo_style      custom step pe c_tcm press vol")
+        lmp.command("thermo            10000")
+
+        #create velocity and equilibriate
+        lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(t0, np.random.randint(0, 10000)))   
+        lmp.command("run               %d"%self.options["md"]["te"])
+        
+        #unfix nph
+        lmp.command("unfix             f1")
+
+
+        lmp.command("variable         flambda equal ramp(${li},${lf})")
+        lmp.command("variable         blambda equal ramp(${lf},${li})")
+        lmp.command("variable         fscale equal v_flambda-1.0")
+        lmp.command("variable         bscale equal v_blambda-1.0")
+        lmp.command("variable         one equal 1.0")
+
+        #set up potential
+        pc =  self.options["md"]["pair_coeff"]
+        pcraw = pc.split()
+        pcnew1 = " ".join([*pcraw1[:2], *[pair_style[0],], "1", *pcraw1[2:]])
+        pcnew2 = " ".join([*pcraw2[:2], *[pair_style[1],], "2", *pcraw2[2:]])
+
+        lmp.command("pair_style       hybrid/scaled v_one %s v_fscale %s"%(self.options["md"]["pair_style"], self.options["md"]["pair_style"]))
+        lmp.command("pair_coeff       %s"%pcnew1)
+        lmp.command("pair_coeff       %s"%pcnew2)
+
+        #start scaling over switching time
+        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pi, 
+            pf, self.options["md"]["pdamp"]))
+        lmp.command("fix_modify        f1 temp tcm")
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("run               %d"%self.options["md"]["ts"])
+
+        #unfix
+        lmp.command("unfix             f3")
+        lmp.command("unfix             f1")
+
+
+        #switch potential
+        lmp = ph.set_potential(lmp, self.options)
+
+        #equilibriate scaled hamiltonian
+        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
+            pf, self.options["md"]["pdamp"]))
+        lmp.command("fix_modify        f1 temp tcm")        
+        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("unfix             f1")
+
+
+        #reverse scaling
+        lmp.command("variable         flambda equal ramp(${li},${lf})")
+        lmp.command("variable         blambda equal ramp(${lf},${li})")
+        lmp.command("variable         fscale equal v_flambda-1.0")
+        lmp.command("variable         bscale equal v_blambda-1.0")
+        lmp.command("variable         one equal 1.0")
+
+        lmp.command("pair_style       hybrid/scaled v_one %s v_bscale %s"%(self.options["md"]["pair_style"], self.options["md"]["pair_style"]))
+        lmp.command("pair_coeff       %s"%pcnew1)
+        lmp.command("pair_coeff       %s"%pcnew2)
+
+        #apply fix and perform switching        
+        lmp.command("fix              f1 all nph iso %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(pf, 
+            pi, self.options["md"]["pdamp"]))
+        lmp.command("fix_modify        f1 temp tcm")
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("run               %d"%self.options["md"]["ts"])
+        
+        lmp.command("unfix             f3")
+        lmp.command("unfix             f1")
+        
+        #close the object
+        lmp.close()
+
     def integrate_reversible_scaling(self, scale_energy=False, return_values=False):
         """
         Perform integration after reversible scaling
