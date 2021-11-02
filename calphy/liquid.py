@@ -256,7 +256,7 @@ class Liquid(cph.Phase):
         pcraw = pc.split()
         pcnew = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"],], *pcraw[2:]])
 
-        lmp.command("pair_coeff       * * %s"%pcnew)
+        lmp.command("pair_coeff       %s"%pcnew)
         lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps)
 
         lmp.command("compute          c1 all pair %s"%self.options["md"]["pair_style"])
@@ -316,7 +316,7 @@ class Liquid(cph.Phase):
 
         lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.options["md"]["pair_style"])
 
-        lmp.command("pair_coeff       * * %s"%pcnew)
+        lmp.command("pair_coeff       %s"%pcnew)
         lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps)
 
         lmp.command("compute          c1 all pair %s"%self.options["md"]["pair_style"])
