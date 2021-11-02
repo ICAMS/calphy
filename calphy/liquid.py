@@ -229,11 +229,10 @@ class Liquid(cph.Phase):
 
         #set hybrid ufm and normal potential
         #lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
+        lmp = ph.set_potential(lmp, self.options)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
-
-        lmp = ph.set_potential(lmp, self.options)
 
         
         lmp.command("fix              f1 all nve")
@@ -251,7 +250,7 @@ class Liquid(cph.Phase):
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%options["md"]["pair_style"])
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.options["md"]["pair_style"])
 
         pc =  self.options["md"]["pair_coeff"]
         pcraw = pc.split()
@@ -260,7 +259,7 @@ class Liquid(cph.Phase):
         lmp.command("pair_coeff       * * %s"%pcnew)
         lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps)
 
-        lmp.command("compute          c1 all pair %s"%options["md"]["pair_style"])
+        lmp.command("compute          c1 all pair %s"%self.options["md"]["pair_style"])
         lmp.command("compute          c2 all pair ufm")
 
         lmp.command("variable         step equal step")
@@ -315,12 +314,12 @@ class Liquid(cph.Phase):
         lmp.command("variable         flambda equal ramp(${lf},${li})")
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%options["md"]["pair_style"])
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.options["md"]["pair_style"])
 
         lmp.command("pair_coeff       * * %s"%pcnew)
         lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps)
 
-        lmp.command("compute          c1 all pair %s"%options["md"]["pair_style"])
+        lmp.command("compute          c1 all pair %s"%self.options["md"]["pair_style"])
         lmp.command("compute          c2 all pair ufm")
 
         lmp.command("variable         step equal step")
