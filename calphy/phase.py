@@ -329,8 +329,8 @@ class Phase:
         #set up potential
         pc =  self.options["md"]["pair_coeff"]
         pcraw = pc.split()
-        pcnew1 = " ".join([*pcraw1[:2], *[pair_style[0],], "1", *pcraw1[2:]])
-        pcnew2 = " ".join([*pcraw2[:2], *[pair_style[1],], "2", *pcraw2[2:]])
+        pcnew1 = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"],], "1", *pcraw[2:]])
+        pcnew2 = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"],], "2", *pcraw[2:]])
 
         lmp.command("pair_style       hybrid/scaled v_one %s v_fscale %s"%(self.options["md"]["pair_style"], self.options["md"]["pair_style"]))
         lmp.command("pair_coeff       %s"%pcnew1)
@@ -340,7 +340,7 @@ class Phase:
         lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, pi, 
             pf, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")
-        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${flambda}\" screen no file forward_%d.dat"%iteration)
         lmp.command("run               %d"%self.options["md"]["ts"])
 
         #unfix
@@ -382,7 +382,7 @@ class Phase:
         lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, pf, 
             pi, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")
-        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${blambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run               %d"%self.options["md"]["ts"])
         
         lmp.command("unfix             f3")
