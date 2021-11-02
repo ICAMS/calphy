@@ -229,12 +229,12 @@ def integrate_path(fwdfilename, bkdfilename, nelements=1, concentration=[1,], us
             # - Liquid : UFM system energy is not scaled with fix:adapt (this is actually wrong, but works for us)
             # - Liquid : So we only unscale the system of interest in liquid
             # - Alchemy : Both system energies are scaled with fix:adapt, so we need to unscale both
-            for i in range(len(fdui)):
-                if flambda[i] !=0:
-                    fdui[i] = fdui[i]/flambda[i]
-            for i in range(len(bdui)):
-                if blambda[i] !=0:
-                    bdui[i] = bdui[i]/blambda[i]
+            #for i in range(len(fdui)):
+            #    if flambda[i] !=0:
+            #        fdui[i] = fdui[i]/flambda[i]
+            #for i in range(len(bdui)):
+            #    if blambda[i] !=0:
+            #        bdui[i] = bdui[i]/blambda[i]
 
             if alchemy:
                 """

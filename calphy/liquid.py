@@ -228,76 +228,121 @@ class Liquid(cph.Phase):
         lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
 
         #set hybrid ufm and normal potential
-        lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
+        #lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
-        #apply the necessary thermostat
-        lmp.command("fix             f1 all nve")                              
-        lmp.command("fix             f2 all langevin %f %f %f %d"%(self.t, self.t, self.options["md"]["tdamp"],
-            np.random.randint(0, 10000)))
+        lmp = ph.set_potential(lmp, self.options)
 
-        # Compute the potential energy of each pair style.
-        lmp.command("compute         c1 all pair %s"%self.options["md"]["pair_style"])
-        lmp.command("compute         c2 all pair ufm")
-
-        # Output variables.
-        lmp.command("variable        step equal step")
-        lmp.command("variable        dU1 equal c_c1/atoms")             # Driving-force obtained from NEHI procedure.
-        lmp.command("variable        dU2 equal c_c2/atoms")
-
-        #force thermo to evaluate variables
-        lmp.command("thermo_style    custom step v_dU1 v_dU2")
-        lmp.command("thermo          1000")
-
-        #switching completely to potential of interest
-        lmp.command("variable        zero equal 0")
-        lmp.command("fix             f0 all adapt 0 pair ufm scale * * v_zero")
-        lmp.command("run             0")
-        lmp.command("unfix           f0")
-
-        #Equilibrate system
-        lmp.command("run             %d"%self.options["md"]["te"])
-
-        #print header
-        lmp.command("print           \"${dU1} ${dU2} ${li}\" file forward_%d.dat"%iteration)
         
-        #set up scaling variables
-        lmp.command("variable        lambda_p1 equal ramp(${li},${lf})")
-        lmp.command("variable        lambda_p2 equal ramp(${lf},${li})")
+        lmp.command("fix              f1 all nve")
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                        np.random.randint(0, 10000)))
+        lmp.command("run               %d"%self.options["md"]["te"])
 
-        #Forward switching run
-        lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_p1"%self.options["md"]["pair_style"])
-        lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_p2")
-        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_p1}\" screen no append forward_%d.dat"%iteration)
-        lmp.command("run             %d"%self.options["md"]["ts"])
+        lmp.command("unfix            f1")
+        lmp.command("unfix            f2")
 
-        #unfix things
-        lmp.command("unfix           f3")
-        lmp.command("unfix           f4")
-        lmp.command("unfix           f5")
+        #---------------------------------------------------------------
+        # FWD cycle
+        #---------------------------------------------------------------
 
-        #Equilibriate at UFM potential
-        lmp.command("run             %d"%self.options["md"]["te"])
+        lmp.command("variable         flambda equal ramp(${li},${lf})")
+        lmp.command("variable         blambda equal 1.0-v_flambda")
 
-        #print file header
-        lmp.command("print           \"${dU1} ${dU2} ${lf}\" file backward_%d.dat"%iteration)
-        
-        #set up scaling variables
-        lmp.command("variable        lambda_p1 equal ramp(${lf},${li})")
-        lmp.command("variable        lambda_p2 equal ramp(${li},${lf})")
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%options["md"]["pair_style"])
 
-        #Reverse switching run
-        lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_p1"%self.options["md"]["pair_style"])
-        lmp.command("fix             f4 all adapt 1 pair ufm scale * * v_lambda_p2")
-        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_p1}\" screen no append backward_%d.dat"%iteration)
-        lmp.command("run             %d"%self.options["md"]["ts"])
+        pc =  self.options["md"]["pair_coeff"]
+        pcraw = pc.split()
+        pcnew = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"],], *pcraw[2:]])
 
-        #unfix things
-        lmp.command("unfix           f3")
-        lmp.command("unfix           f4")
-        lmp.command("unfix           f5")
+        lmp.command("pair_coeff       * * %s"%pcnew)
+        lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps)
+
+        lmp.command("compute          c1 all pair %s"%options["md"]["pair_style"])
+        lmp.command("compute          c2 all pair ufm")
+
+        lmp.command("variable         step equal step")
+        lmp.command("variable         dU1 equal c_c1/atoms")
+        lmp.command("variable         dU2 equal c_c2/atoms")
+
+        lmp.command("thermo_style     custom step v_dU1 v_dU2")
+        lmp.command("thermo           1000")
+
+
+        lmp.command("velocity         all create %f %d mom yes rot yes dist gaussian"%(self.t, np.random.randint(0, 10000)))
+
+        lmp.command("fix              f1 all nve")
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                        np.random.randint(0, 10000)))
+        lmp.command("compute          Tcm all temp/com")
+        lmp.command("fix_modify       f2 temp Tcm")
+
+        lmp.command("fix              f3 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("run               %d"%self.options["md"]["ts"])
+
+        lmp.command("unfix            f1")
+        lmp.command("unfix            f2")
+        lmp.command("unfix            f3")
+        lmp.command("uncompute        c1")
+        lmp.command("uncompute        c2")
+
+        #---------------------------------------------------------------
+        # EQBRM cycle
+        #---------------------------------------------------------------
+
+        lmp.command("pair_style       ufm 7.5")
+        lmp.command("pair_coeff       * * %f 1.5"%self.eps)
+
+        lmp.command("thermo_style     custom step pe")
+        lmp.command("thermo           1000")
+
+        lmp.command("fix              f1 all nve")
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                        np.random.randint(0, 10000)))
+        lmp.command("fix_modify       f2 temp Tcm")
+
+        lmp.command("run               %d"%self.options["md"]["te"])
+
+        lmp.command("unfix            f1")
+        lmp.command("unfix            f2")
+
+        #---------------------------------------------------------------
+        # BKD cycle
+        #---------------------------------------------------------------
+
+        lmp.command("variable         flambda equal ramp(${lf},${li})")
+        lmp.command("variable         blambda equal 1.0-v_flambda")
+
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%options["md"]["pair_style"])
+
+        lmp.command("pair_coeff       * * %s"%pcnew)
+        lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps)
+
+        lmp.command("compute          c1 all pair %s"%options["md"]["pair_style"])
+        lmp.command("compute          c2 all pair ufm")
+
+        lmp.command("variable         step equal step")
+        lmp.command("variable         dU1 equal c_c1/atoms")
+        lmp.command("variable         dU2 equal c_c2/atoms")
+
+        lmp.command("thermo_style     custom step v_dU1 v_dU2")
+        lmp.command("thermo           1000")
+
+        lmp.command("fix              f1 all nve")
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], 
+                                        np.random.randint(0, 10000)))
+        lmp.command("fix_modify       f2 temp Tcm")
+
+        lmp.command("fix              f3 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("run               %d"%self.options["md"]["ts"])
+
+        lmp.command("unfix            f1")
+        lmp.command("unfix            f2")
+        lmp.command("unfix            f3")
+        lmp.command("uncompute        c1")
+        lmp.command("uncompute        c2")
         
         #close object
         lmp.close()
