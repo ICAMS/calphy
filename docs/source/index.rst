@@ -6,6 +6,9 @@
 calphy
 ======
 
+calphy is a Python library and command line application which can be used for automated calculation of free energies through molecular dynamics calculations.
+
+
 .. toctree::
    gettingstarted	
 
