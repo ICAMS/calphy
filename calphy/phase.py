@@ -250,7 +250,7 @@ class Phase:
             self.logger.info("- 10.1063/1.1420486") 
 
 
-    def reversible_scaling(self, iteration=1):
+    def reversible_scaling(self, iteration=1, solid=False):
         """
         Perform reversible scaling calculation in NPT
 
@@ -357,6 +357,14 @@ class Phase:
         lmp.command("fix_modify        f1 temp tcm")        
         lmp.command("run               %d"%self.options["md"]["te"])
         lmp.command("unfix             f1")
+
+
+        if solid:
+            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
+            if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
+                lmp.close()
+                raise RuntimeError("System melted, increase size or reduce scaling!")
+            
 
 
         #reverse scaling
