@@ -3,34 +3,56 @@
 
 The inputfile is `yaml` formatted. In this section the possible keys in the inputfile is discussed. The input file consists of two main keys, and four separate blocks. For a sample of the inputfile see the end of this document. The table below gives a quick overview of all available keywords in calphy.
 
-
-
-
-| Main keys  | | | | |
-| :-: | :-: | :-: | :-: | :-: |
+| Main keys  | |
+| :-: | :-: |
 | [element](#element) | [mass](#mass) | 
+
+| `calculations` block  | | | | |
+| :-: | :-: | :-: | :-: | :-: |
+| [mode](#mode) | [lattice](#lattice) | [state](#state) | [temperature](#temperature) | [pressure](#pressure) |
+| [lattice_constant](#lattice_constant) | [iso](#iso) | [fix_lattice](#fix_lattice) | [repeat](#repeat) | [nsims](#nsims) | 
+
+| `md` block  | | | | |
+| :-: | :-: | :-: | :-: | :-: |
+| [pair_style](#pair_style) | [pair_coeff](#pair_coeff) | [timestep](#timestep) | [nsmall](#nsmall) | [nevery](#nevery) |
+| [nrepeat](#nrepeat) | [ncycles](#ncycles) | [tdamp](#tdamp) | [pdamp](#pdamp) | [te](#te) |
+| [ts](#ts) |
+
+| `queue` block  | | | | |
+| :-: | :-: | :-: | :-: | :-: |
+| [scheduler](#scheduler) | [cores](#cores) | [jobname](#jobname) | [walltime](#walltime) | [queuename](#queuename) |
+| [memory](#memory) | [commands](#commands) | [modules](#modules) | [options](#options) |
+
+| `conv` block  | | | | |
+| :-: | :-: | :-: | :-: | :-: |
+| [alat_tol](#alat_tol) | [k_tol](#k_tol) | [solid_frac](#solid_frac) | [liquid_frac](#liquid_frac) | [p_tol](#p_tol) |
 
 ## main keys
 
-- <a name="element"></a>`element` : Chemical symbol(s) of the element(s) in the simulation.   
-   _type_: string/list of strings  
-   _example_:
-   ```
-   element: 'Cu'
-   element: ['Cu', 'Zr']
-   ```
+#### <a name="element"></a>`element`
 
-- <a name="mass"></a>`mass` : Mass of the element(s) in the simulation. It should follow the same order as that of `element`.     
-   _type_: float/list of floats    
-   _example_:
-   ```
-   mass: 63.546
-   mass: [63.546, 91.224]
-   ```
+_type_: string/list of strings  
+_example_:
+```
+element: 'Cu'
+element: ['Cu', 'Zr']
+```
+Chemical symbol(s) of the element(s) in the simulation.   
+   
+#### <a name="mass"></a>`mass`
 
-## `calculation` block
+_type_: float/list of floats    
+_example_:
+```
+mass: 63.546
+mass: [63.546, 91.224]
+```
 
-Other than these two main keys, all other options are specified in blocks. The first block is the `calculations` block. This block can list all the calculations that `pytint` should perform and it can have more than one entry. A sample calculation block is shown below.
+Mass of the element(s) in the simulation. It should follow the same order as that of `element`, and should be of the same length.
+
+## `calculations` block
+
+Other than these two main keys, all other options are specified in blocks. The first block is the `calculations` block. This block can list all the calculations that `calphy` should perform and it can have more than one entry. A sample calculation block is shown below.
 
 ```
 calculations:
@@ -45,87 +67,142 @@ calculations:
 
 The various keys are-
 
-- `mode` : Calculation mode. Either `fe` for free energy calculations or `ts` for temperature sweep.     
-   _type_: string, `fe` or `ts`  
-   _example_:
-   ```
-   mode: fe
-   mode: ts
-   ```
-- `temperature` : Temperatures for the simulation in Kelvin.         
-   _type_: list of floats   
-   _example_:
-   ```
-   temperature: [1200, 1300]
-   ```
-   The way temperature is used `pytint` depends on the selected mode of calculation. If the `mode` is `fe`, a free energy calculation is launched for each temperature on the list. If the mode is `ts`, a temperature sweep is carried out. In that case, only two values of temperature should be specified.
+#### <a name="mode"></a>`mode`  
+
+_type_: string, `fe` or `ts`  
+_example_:
+```
+mode: fe
+mode: ts
+```
+
+Calculation mode. The modes can be chosen from `fe`, `ts`, `mts` or `alchemy`. `fe` performs a direct free energy calculation, while `ts` performs a direct free energy calculation followed by reversible scaling to find temperature dependence. `mts` performs only reversible scaling part and can be used for dynamic Clausius-Clapeyron integration. Mode `alchemy` is used for switching between two different interatomic potentials, or for integration over concentration.  
    
-- `pressure` : Pressure for the simulation in bars.         
-   _type_: list of floats   
-   _example_:
-   ```
-   pressure: [0, 10000]
-   ```
-   For each pressure specified in the list, one calculation will be started. For example, in the following combination-
-   ```
-   mode: fe
-   temperature: [1000, 1200]
-   pressure: [0, 10000]
-   ```  
-   A total of 2 temperatures * 2 pressures, 4 calculations will be started. If the mode is `ts` for the same configuration above, 2 calculations will be started. 
+#### <a name="temperature"></a>`temperature`  
 
-- `lattice` : Lattice to be used for the calculations.         
-   _type_: string of list of strings   
-   _example_:
-   ```
-   lattice: FCC
-   lattice: [FCC, LQD]
-   lattice: [FCC, conf.data]
-   ```
-   The `lattice` option can use either LAMMPS for creation of input structure or use an input file in the LAMMPS data format. To use LAMMPS to create the structure, the keyword specified should be from the following: `BCC`, `FCC`, `HCP`, `DIA`, `SC` and `LQD`. LAMMPS lattice creation can **only be used for single species**. If `LQD` is specified, a solid structure will be first created and melted within the MD run. Alternatively, a LAMMPS data file can be specified which contains the configuration.
+_type_: float or list of floats   
+_example_:
+```
+temperature: [1200, 1300]
+```
 
-- `state` : The protocol to be used for the calculation.         
-   _type_: string of list of strings   
-   _example_:
-   ```
-   state: solid
-   state: [solid, liquid]
-   ```
-   The `state` input is closely related to the `lattice` command. It should be of the same length as the `lattice` input. For each of the lattice specified, `state` command specifies which reference state to use.
+Temperatures for the simulation in Kelvin. The way temperature is used in `calphy` depends on the selected mode of calculation. If the `mode` is `fe` or `alchemy`, a calculation is launched for each temperature on the list. If the mode is `ts` or `mts`, a temperature sweep is carried out. In that case, only two values of temperature should be specified.
 
-- `lattice_constant` : lattice constant for input structures          
-   _type_: list of floats   
-   _example_:
-   ```
-   lattice_constant: 3.68
-   lattice_constant: [3.68, 5.43]
-   ```
-   Lattice constant values to be used for initial structure creation. Only required if the structure is created through LAMMPS. If not specified, the experimental lattice constant will be used.
 
-- `iso` : Specify if the barostat is isotropic or anisotropic.            
-   _type_: list of bools   
-   _example_:
-   ```
-   iso: True
-   iso: [True, False]
-   ```
-   Specify whether the barostat will control the pressure isotropically or anisotropically.
+#### <a name="pressure"></a>`pressure`  
 
+_type_: list of floats   
+_example_:
+```
+pressure: [0, 10000]
+```
+
+Pressure for the simulation in bars. Calculations are performed at each pressure specified. For each pressure specified in the list, one calculation will be started. For example, in the following combination-
+
+```
+mode: fe
+temperature: [1000, 1200]
+pressure: [0, 10000]
+```  
+
+A total of 2 temperatures * 2 pressures, 4 calculations will be started. If the mode is `ts` for the same configuration above, 2 calculations will be started.
+
+#### <a name="lattice"></a>`lattice`
+
+_type_: string of list of strings   
+_example_:
+```
+lattice: FCC
+lattice: [FCC, LQD]
+lattice: [FCC, conf.data]
+```
    
-- `repeat` : The number of unit cells to be replicated in each direction.         
-   _type_: list of ints of length 3     
-   _example_:
-   ```
-   repeat: [3,3,3]
-   ```
-   `repeat` command specifies the number of unit cells required in each x, y and z directions. This is only used if `lattice` command uses one of the LAMMPS structure keywords.
+Lattice to be used for the calculations. The `lattice` option can use either LAMMPS for creation of input structure or use an input file in the LAMMPS data format. To use LAMMPS to create the structure, the keyword specified should be from the following: `BCC`, `FCC`, `HCP`, `DIA`, `SC` and `LQD`. LAMMPS lattice creation can **only be used for single species**. If `LQD` is specified, a solid structure will be first created and melted within the MD run. Alternatively, a LAMMPS data file can be specified which contains the configuration.
+    
+#### <a name="state"></a>`state`         
    
-- `nsims` : The number of backward and forward interactions to be carried out.         
-   _type_: int     
-   _example_:
-   ```
-   nsims: 3
-   ```
+_type_: string of list of strings   
+_example_:
+```
+state: solid
+state: [solid, liquid]
+```
+
+The protocol to be used for the calculation. The `state` input is closely related to the `lattice` command. It should be of the same length as the `lattice` input. For each of the lattice specified, `state` command specifies which reference state to use.
+
+#### <a name="lattice_constant"></a>`lattice_constant`
+
+_type_: list of floats   
+_example_:
+```
+lattice_constant: 3.68
+lattice_constant: [3.68, 5.43]
+```
+
+Lattice constant for input structures. Lattice constant values to be used for initial structure creation. Only required if the structure is created through LAMMPS. If not specified, the experimental lattice constant will be used.
+
+#### <a name="iso"></a>`iso`            
+
+_type_: list of bools   
+_example_:
+```
+iso: True
+iso: [True, False]
+```
+
+Specify whether the barostat will control the pressure isotropically or anisotropically.
+   
+#### <a name="fix_lattice"></a>`fix_lattice`
+
+_type_: list of bools   
+_example_:
+```
+fix_lattice: True
+fix_lattice: [True, False]
+```
+
+This option can be used to skip the equilibriation cycle. For example, if you need to calculate the free energy of a strained lattice, this option can be set to True. Then, either a data file with the strained structure can be provided, or `lattice_constant` option can be used to specify a strained lattice constant.
+
+#### <a name="repeat"></a>`repeat`
+
+_type_: list of ints of length 3     
+_example_:
+```
+repeat: [3,3,3]
+```
+
+`repeat` command specifies the number of unit cells required in each x, y and z directions. This is only used if `lattice` command uses one of the LAMMPS structure keywords.
+
+#### <a name="nsims"></a>`nsims`         
+
+_type_: int     
+_example_:
+```
+nsims: 3
+```
+
+The number of backward and forward integrations to be carried out in the non-equilibrium method. If more than one integration cycle is used, the errors can also be evaluated.
+   
+#### <a name="thigh"></a>`thigh`
+
+_type_: float     
+_example_:
+```
+thigh: 1600
+```
+
+The temperature used to melt a solid structure to create a liquid. If `state` is chosen as `liquid`, calphy performs a melting cycle to create an equilibrated liquid structure. calphy starts from the given input structure, and heats it using 2 times the highest temperature provided in the `temperature` option. If the structure is not melted, the temperature is increased progressively. `thigh` keyword can be used to set the temperature to overheat the structure and melt it.   
+
+#### <a name="npt"></a>`npt`
+
+_type_: bool    
+_example_:
+```
+npt: True
+```
+
+`npt` determines if alchemical transformations are carried out in the NPT ensemble. If False, the calculations are carried out in the NVT ensemble. This means that the calculated work during alchemical transformation is calculated on the equilibrated volume of the first pair style. Only used for mode `alchemy`. 
+
 
 ## `md` block
 
@@ -142,58 +219,122 @@ md:
   ts: 15000
 ```
 
-- `pair_style` : The [pair style](https://lammps.sandia.gov/doc/pair_style.html) command for LAMMPS.         
-   _type_: string       
-   _example_:
-   ```
-   pair_style: eam/alloy
-   pair_style: eam/fs
-   pair_style: pace
-   ```
+#### <a name="pair_style"></a>`pair_style`
 
-- `pair_coeff` : The [pair coeff](https://lammps.sandia.gov/doc/pair_coeff.html) command for LAMMPS.         
-   _type_: string       
-   _example_:
-   ```
-   pair_coeff: "* * Cu_EAM/Cu01.eam.alloy Cu"
-   pair_coeff: "* * CuZr_EAM/CuZr.eam.fs Cu Zr"
-   ```
+_type_: string or list of strings       
+_example_:
+```
+pair_style: eam/alloy
+pair_style: eam/fs
+pair_style: pace
+```
 
-- `timestep` : The timestep for MD in picoseconds.         
-   _type_: float         
-   _example_:
-   ```
-   timestep: 0.001
-   ```
+The [pair style](https://lammps.sandia.gov/doc/pair_style.html) command for LAMMPS. All styles supported in LAMMPS can be used with calphy. Except for mode `alchemy`, only the first value in the list will be used. For mode `alchemy`, there should be two pair styles specified, and the alchemical transformation is carried out between the two.
 
-- `tdamp` : The thermostat damping for MD in time units.         
-   _type_: float         
-   _example_:
-   ```
-   tdamp: 0.1
-   ```
-- `pdamp` : The pressure damping for MD in time units.         
-   _type_: float         
-   _example_:
-   ```
-   pdamp: 0.1
-   ```
-- `te` : The number of time steps for equilibrating the system.         
-   _type_: int         
-   _example_:
-   ```
-   te: 10000
-   ```
-- `ts` : The number of time steps for switching between the system of interest and reference system.         
-   _type_: int         
-   _example_:
-   ```
-   ts: 10000
-   ```
+#### <a name="pair_coeff"></a>`pair_coeff`
+
+_type_: string or list of strings      
+_example_:
+```
+pair_coeff: "* * Cu_EAM/Cu01.eam.alloy Cu"
+pair_coeff: "* * CuZr_EAM/CuZr.eam.fs Cu Zr"
+```
+
+The [pair coeff](https://lammps.sandia.gov/doc/pair_coeff.html) command for LAMMPS. It should be the same length as `pair_style`. Except for mode `alchemy`, only the first value in the list will be used. For mode `alchemy`, there should be two pair styles specified, and the alchemical transformation is carried out between the two.
+
+#### <a name="timestep"></a>`timestep`        
+
+_type_: float         
+_example_:
+```
+timestep: 0.001
+```
+
+The timestep for MD in picoseconds. 
+
+#### <a name="tdamp"></a>`tdamp`
+
+_type_: float         
+_example_:
+```
+tdamp: 0.1
+```
+
+The thermostat damping constant for MD. A [Langevin thermostat](https://docs.lammps.org/fix_langevin.html) is used for calculations in calphy.
+
+#### <a name="pdamp"></a>`pdamp`
+
+_type_: float         
+_example_:
+```
+pdamp: 0.1
+```
+
+Pressure damping for MD. A [Parrinello-Rahman](https://docs.lammps.org/fix_nh.html) barostat is used for calculations in calphy.
+
+#### <a name="te"></a>`te`
+
+_type_: int         
+_example_:
+```
+te: 10000
+```
+
+The number of time steps for equilibrating the system.
+
+#### <a name="ts"></a>`ts`
+
+_type_: int         
+_example_:
+```
+ts: 10000
+```
+
+The number of time steps for switching between the system of interest and reference system.
+
+#### <a name="nsmall"></a>`nsmall`
+
+_type_: int         
+_example_:
+```
+nsmall: 10000
+```
+
+The number of time steps for equilibration cycles to calculate spring constant and average volume.
+   
+#### <a name="nevery"></a>`nevery`         
+
+_type_: int         
+_example_:
+```
+nevery: 100
+```
+
+Keywords to tune how often average values are recorded in LAMMPS. Please see [here](https://docs.lammps.org/fix_ave_time.html) for more details.
+   
+#### <a name="nrepeat"></a>`nrepeat`         
+
+_type_: int         
+_example_:
+```
+nrepeat: 10
+```
+
+Keywords to tune how often average values are recorded in LAMMPS. Please see [here](https://docs.lammps.org/fix_ave_time.html) for more details.
+
+#### <a name="ncycles"></a>`ncycles`        
+
+_type_: int         
+_example_:
+```
+ncycles: 100
+```
+
+Number of cycles to try converging the pressure of the system. If the pressure is not converged after `ncycles`, an error will be raised. In each `ncycle`, `nsmall` MD steps will be run.
 
 ## `queue` block
 
-This block consints of the options for specifying the scheduler for carrying out the calculations. An example block is given below-
+This block consists of the options for specifying the scheduler for carrying out the calculations. An example block is given below-
 
 ```
 queue:
@@ -209,63 +350,102 @@ queue:
     - conda activate env
 ```
 
-- `scheduler` : The scheduler to be used for the job. Can be `local`, `slurm` or `sge`.         
-   _type_: string         
-   _example_:
-   ```
-   scheduler: slurm
-   ```
-   The code has been tested only on local and slurm.
+#### <a name="scheduler"></a>`scheduler`
 
-- `cores` : The number of cores to be used for the job.  
-   _type_: int           
-   _example_:
-   ```
-   cores: 4
-   ```
-- `jobname` : Name of the job.         
-   _type_: string         
-   _example_:
-   ```
-   jobname: cu
-   ```
-   Not used for `local`.
+_type_: string         
+_example_:
+```
+scheduler: slurm
+```
 
-- `walltime` : Walltime for the job.         
-   _type_: string         
-   _example_:
-   ```
-   walltime: "23:50:00"
-   ```
-   Not used for `local`.
+The scheduler to be used for the job. Can be `local`, `slurm` or `sge`. The code has been tested only on local and slurm.
 
-- `queuename` : Name of the queue.         
-   _type_: string         
-   _example_:
-   ```
-   queuename: "shorttime"
-   ```
-   Not used for `local`.
+#### <a name="cores"></a>`cores`
 
-- `memory` : memory to be used per core.         
-   _type_: string         
-   _example_:
-   ```
-   memory: 3GB
-   ```
-   Not used for `local`.
+_type_: int           
+_example_:
+```
+cores: 4
+```
 
-- `commands` : Command that will be run **before** the actual calculations are carried out.         
-   _type_: list of strings         
-   _example_:
-   ```
-   command:
-     - source .bashrc
-     - conda activate ace
-     - module load lammps
-   ```
-   This section can be used to specify commands that need to be run before the actual calculation. If the calculations are run within a conda environment, the activate command for conda should be specified here. If additional modules need to be loaded, that can also be specified here.
+The number of cores to be used for the job.
    
+#### <a name="jobname"></a>`jobname`         
+
+_type_: string         
+_example_:
+```
+jobname: cu
+```
+
+Name of the job. Not used for `local`.
+
+#### <a name="walltime"></a>`walltime`         
+
+_type_: string         
+_example_:
+```
+walltime: "23:50:00"
+```
+
+Walltime for the job. Not used for `local`.
+  
+#### <a name="queuename"></a>`queuename`         
+
+_type_: string         
+_example_:
+```
+queuename: "shorttime"
+```
+
+Name of the queue. Not used for `local`.
+
+#### <a name="memory"></a>`memory`         
+
+_type_: string         
+_example_:
+```
+memory: 3GB
+```
+
+Memory to be used per core. Not used for `local`.
+
+#### <a name="commands"></a>`commands`         
+
+_type_: list of strings         
+_example_:
+```
+command:
+ - source .bashrc
+ - conda activate ace
+ - module load lammps
+```
+
+Command that will be run **before** the actual calculations are carried out. This section can be used to specify commands that need to be run before the actual calculation. If the calculations are run within a conda environment, the activate command for conda should be specified here. If additional modules need to be loaded, that can also be specified here.
+   
+#### <a name="modules"></a>`modules`         
+
+_type_: list of strings         
+_example_:
+```
+modules:
+  - anaconda
+  - lammps
+```
+
+List of modules to be loaded before running the calculations. The given module names will be prefixed by `module load`.
+
+#### <a name="options"></a>`options`         
+
+_type_: string         
+_example_:
+```
+options:
+  - memory: 3GB
+```
+
+Extra options to be added to the submission script.
+
 ## `conv` block
 
 This block helps to tune the internal convergence parameters that `pytint` uses. Generally, tuning these parameters are not required.
@@ -278,32 +458,37 @@ conv:
    p_tol: 0.5
 ```
 
-- `k_tol` : tolerance for the convergence of spring constant calculation.         
+#### <a name="k_tol"></a>`k_tol` : tolerance for the convergence of spring constant calculation.         
    _type_: float         
    _example_:
    ```
    ktol: 0.01
    ```
+   </br>
 
-- `solid_frac` : The minimum amount of solid particles that should be there in solid.         
+#### <a name="solid_frac"></a>`solid_frac` : The minimum amount of solid particles that should be there in solid.         
    _type_: float         
    _example_:
    ```
    solid_frac: 0.7
    ```
+   </br>
 
-- `liquid_frac` : Maximum fraction of solid atoms allowed in liquid after melting.         
+#### <a name="liquid_frac"></a>`liquid_frac` : Maximum fraction of solid atoms allowed in liquid after melting.         
    _type_: float         
    _example_:
    ```
    liquid_frac: 0.05
    ```
-- `p_tol` : tolerance for the convergence of pressure.         
+   </br>
+   
+#### <a name="p_tol"></a>`p_tol` : tolerance for the convergence of pressure.         
    _type_: float         
    _example_:
    ```
    p_tol: 0.5
    ```
+   </br>
 
 
 

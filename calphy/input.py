@@ -69,7 +69,7 @@ def prepare_optional_keys(calc, cdict):
     if "npt" in calc.keys():
         cdict["npt"] = calc["npt"]
     else:
-        cdict["npt"] = False
+        cdict["npt"] = True
     return cdict
 
 def read_yamlfile(file):
@@ -191,6 +191,11 @@ def read_yamlfile(file):
             else:
                 iso = [True for x in range(len(lattice))]
 
+            if "fix_lattice" in calc.keys():
+                fix_lattice = check_and_convert_to_list(calc["fix_lattice"])
+            else:
+                fix_lattice = [False for x in range(len(lattice))]
+
             #now start looping
             for i, lat in enumerate(lattice):
                 for press in pressure:
@@ -209,10 +214,7 @@ def read_yamlfile(file):
                         cdict["element"] = options["element"]
                         cdict["lattice_constant"] = lattice_constant[i]
                         cdict["iso"] = iso[i]
-                        if "fix_lattice" in calc.keys():
-                            cdict["fix_lattice"] = calc["fix_lattice"]
-                        else:
-                            cdict["fix_lattice"] = False
+                        cdict["fix_lattice"] = fix_lattice[i]
                         cdict = prepare_optional_keys(calc, cdict)
                         options["calculations"].append(cdict)
 
@@ -229,10 +231,7 @@ def read_yamlfile(file):
                             cdict["element"] = options["element"]
                             cdict["lattice_constant"] = lattice_constant[i]
                             cdict["iso"] = iso[i]
-                            if "fix_lattice" in calc.keys():
-                                cdict["fix_lattice"] = calc["fix_lattice"]
-                            else:
-                                cdict["fix_lattice"] = False
+                            cdict["fix_lattice"] = fix_lattice[i]
                             cdict = prepare_optional_keys(calc, cdict)
                             options["calculations"].append(cdict)
 
