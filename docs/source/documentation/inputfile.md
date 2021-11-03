@@ -1,11 +1,18 @@
 
-# `pytint` input file
+# `calphy` input file
 
-The inputfile is `yaml` formatted. In this section the possible keys in the inputfile is discussed. The input file consists of two main keys, and four separate blocks. For a sample of the inputfile see the end of this document. The two main keys are as shown below-
+The inputfile is `yaml` formatted. In this section the possible keys in the inputfile is discussed. The input file consists of two main keys, and four separate blocks. For a sample of the inputfile see the end of this document. The table below gives a quick overview of all available keywords in calphy.
+
+
+
+
+| Main keys  | | | | |
+| :-: | :-: | :-: | :-: | :-: |
+| [element](#element) | [mass](#mass) | 
 
 ## main keys
 
-- `element` : Chemical symbol(s) of the element(s) in the simulation.   
+- <a name="element"></a>`element` : Chemical symbol(s) of the element(s) in the simulation.   
    _type_: string/list of strings  
    _example_:
    ```
@@ -13,7 +20,7 @@ The inputfile is `yaml` formatted. In this section the possible keys in the inpu
    element: ['Cu', 'Zr']
    ```
 
-- `mass` : Mass of the element(s) in the simulation. It should follow the same order as that of `element`.     
+- <a name="mass"></a>`mass` : Mass of the element(s) in the simulation. It should follow the same order as that of `element`.     
    _type_: float/list of floats    
    _example_:
    ```

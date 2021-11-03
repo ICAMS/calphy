@@ -41,13 +41,11 @@ be found in the `associated
 publication <https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.5.103801>`__.
 
 
-.. toctree::
-   gettingstarted	
-
 Documentation
 ~~~~~~~~~~~~~
 
 .. toctree::
+   gettingstarted 
    documentation
 
 Examples

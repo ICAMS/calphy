@@ -12,7 +12,6 @@
 #
 import os
 import sys
-import sphinx_rtd_theme
 import shutil
 import glob
 
@@ -51,7 +50,6 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
     'sphinx.ext.napoleon',
-    'sphinx_rtd_theme',
     'm2r2',
 ]
 
