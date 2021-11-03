@@ -51,6 +51,7 @@ extensions = [
     'sphinx.ext.githubpages',
     'sphinx.ext.napoleon',
     'm2r2',
+    'sphinx_markdown_tables',
 ]
 
 #html_theme = 'sphinx_rtd_theme'
