@@ -448,7 +448,7 @@ Extra options to be added to the submission script.
 
 ## `conv` block
 
-This block helps to tune the internal convergence parameters that `pytint` uses. Generally, tuning these parameters are not required.
+This block helps to tune the internal convergence parameters that `calphy` uses. Generally, tuning these parameters are not required.
 
 ```
 conv:
@@ -458,38 +458,45 @@ conv:
    p_tol: 0.5
 ```
 
-#### <a name="k_tol"></a>`k_tol` : tolerance for the convergence of spring constant calculation.         
-   _type_: float         
-   _example_:
-   ```
-   ktol: 0.01
-   ```
-   </br>
+#### <a name="k_tol"></a>`k_tol`
 
-#### <a name="solid_frac"></a>`solid_frac` : The minimum amount of solid particles that should be there in solid.         
-   _type_: float         
-   _example_:
-   ```
-   solid_frac: 0.7
-   ```
-   </br>
+_type_: float         
+_example_:
+```
+ktol: 0.01
+```
 
-#### <a name="liquid_frac"></a>`liquid_frac` : Maximum fraction of solid atoms allowed in liquid after melting.         
-   _type_: float         
-   _example_:
-   ```
-   liquid_frac: 0.05
-   ```
-   </br>
-   
-#### <a name="p_tol"></a>`p_tol` : tolerance for the convergence of pressure.         
-   _type_: float         
-   _example_:
-   ```
-   p_tol: 0.5
-   ```
-   </br>
+tolerance for the convergence of spring constant calculation.
 
+#### <a name="solid_frac"></a>`solid_frac`
+
+_type_: float         
+_example_:
+```
+solid_frac: 0.7
+```
+
+The minimum amount of solid particles that should be there in solid.
+
+#### <a name="liquid_frac"></a>`liquid_frac`
+
+_type_: float         
+_example_:
+```
+liquid_frac: 0.05
+```
+
+Maximum fraction of solid atoms allowed in liquid after melting.
+
+#### <a name="p_tol"></a>`p_tol`
+
+_type_: float         
+_example_:
+```
+p_tol: 0.5
+```
+
+tolerance for the convergence of pressure.
 
 
 
