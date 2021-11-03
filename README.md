@@ -1,6 +1,16 @@
 # calphy
 
-Python library and command line tool for calculation of free energies.
+`calphy`(pronounced _cal-phee_) is a Python library and command line tool for calculation of free energies. It uses [LAMMPS](https://www.lammps.org/) as the molecular dynamics driver to enable calculation of free energies using thermodynamic integration in a completely automated and efficient manner. The various methods that calphy can perform are:
+
+- $F(V_i,T_i)$ and $G(P_i,T_i)$ for both solid and liquid phases at the given thermodynamic conditions using [non-equilibrium Hamiltonian interpolation](https://linkinghub.elsevier.com/retrieve/pii/S0927025615007089).
+- $F(T_i \to T_f)$ and $G(T_i \to T_f)$, temperature dependence of Gibbs and Helmholtz free energies using the [reversible scaling](https://link.aps.org/doi/10.1103/PhysRevLett.83.3973) approach.
+- Calculation of solid-solid or solid-liquid phase transition temperatures.
+- Calculation of coexistence lines using [dynamic Clausius-Clapeyron integration](http://aip.scitation.org/doi/10.1063/1.1420486).
+- Calculation of specific heat $c_P(T)$ as a function of temperature.
+- Calculation of $F(x, T)$ and $G(x, T)$ for multicomponent systems using [alchemical transformations](https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.5.103801).
+- [Upsampling calculations](https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.5.103801).
+
+Calphy works with all [interatomic potentials implemented in LAMMPS](https://docs.lammps.org/pairs.html) and can obtain reliable results with low error bars in as low as 50 ps of simulation time with less than 3000 atoms. More information about the methods in calphy can be found in the [associated publication](https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.5.103801).
 
 ## Installation, examples and documentation
 
@@ -13,7 +23,7 @@ Python library and command line tool for calculation of free energies.
 ## Citing calphy
 
 If you find calphy useful, please consider citing:  
-Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz. 
+Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz.   
 [“Automated Free Energy Calculation from Atomistic Simulations.”](https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.5.103801) 
 Physical Review Materials 5(10), 2021  
 DOI: 10.1103/PhysRevMaterials.5.103801  
