@@ -71,7 +71,7 @@ The environment is now set up to run calphy.
 - matplotlib          >=3.4.2       `pip install matplotlib`
 - pytest              >=6.2.4       `pip install pytest`
 
-## About [LAMMPS](https://www.lammps.org/) for `calphy`
+### About [LAMMPS](https://www.lammps.org/) for `calphy`
 
 calphy uses LAMMPS as the driver for molecular dynamics simulations. For calphy to work, LAMMPS needs to be compiled as a library along with the Python interface. The easiest way to do this is to install LAMMPS through the conda-forge channel using:
 
