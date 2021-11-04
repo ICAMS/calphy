@@ -34,6 +34,7 @@ import argparse as ap
 import subprocess
 import yaml
 import time
+import datetime
 
 from calphy.input import read_yamlfile, create_identifier
 from calphy.liquid import Liquid
@@ -133,8 +134,14 @@ def create_folders(calc):
     simfolder = os.path.join(os.getcwd(), identistring)
 
     #if folder exists, delete it -> then create
-    if os.path.exists(simfolder):
-        shutil.rmtree(simfolder)
+    try:
+        if os.path.exists(simfolder):
+            shutil.rmtree(simfolder)
+    except OSError:
+        newstr = '-'.join(str(datetime.datetime.now()).split())
+        newstr = '-'.join([simfolder, newstr])
+        shutil.move(simfolder, newstr)
+
     os.mkdir(simfolder)
     return simfolder
 
