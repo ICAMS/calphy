@@ -237,7 +237,7 @@ class Phase:
 
         #now we have to write out the results
         self.logger.info("Please cite the following publications:")
-        self.logger.info("- http://arxiv.org/abs/2107.08980")
+        self.logger.info("- 10.1103/PhysRevMaterials.5.103801")
 
         if self.calc["mode"] == "fe":
             if self.calc["state"] == "solid":

@@ -262,7 +262,7 @@ class MeltingTemp:
         new_lqdfe = np.polyval(lqdfit, new_t)
 
         arg = np.argsort(np.abs(new_solfe-new_lqdfe))[0]
-        tpred = new_t[new_arg]
+        tpred = new_t[arg]
         self.logger.info("Predicted melting temperature from extrapolation: %f"%tpred)
         
         #this means we have not really found the group, change temp again!
