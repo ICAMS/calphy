@@ -35,6 +35,7 @@ import pyscal.traj_process as ptp
 from calphy.integrators import *
 import calphy.lattice as pl
 import calphy.helpers as ph
+from calphy.errors import *
 
 class Phase:
     """
@@ -358,13 +359,14 @@ class Phase:
         lmp.command("run               %d"%self.options["md"]["te"])
         lmp.command("unfix             f1")
 
-
+        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
         if solid:
-            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
             if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
                 lmp.close()
-                raise RuntimeError("System melted, increase size or reduce scaling!")
-
+                raise MeltedError("System melted, increase size or reduce scaling!")
+        else:
+            if (solids/lmp.natoms > self.options["conv"]["liquid_frac"]):
+                raise SolidifiedError('System solidified, increase temperature')
 
 
         #reverse scaling
