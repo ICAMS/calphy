@@ -70,6 +70,19 @@ def prepare_optional_keys(calc, cdict):
         cdict["npt"] = calc["npt"]
     else:
         cdict["npt"] = True
+    if "tguess" in calc.keys():
+        cdict["tguess"] = calc["tguess"]
+    else:
+        cdict["tguess"] = None
+    if "dtemp" in calc.keys():
+        cdict["dtemp"] = calc["dtemp"]
+    else:
+        cdict["dtemp"] = 200
+    if "maxattempts" in calc.keys():
+        cdict["maxattempts"] = calc["maxattempts"]
+    else:
+        cdict["maxattempts"] = 5
+
     return cdict
 
 def read_yamlfile(file):
@@ -113,7 +126,10 @@ def read_yamlfile(file):
         "pdamp": 0.1,
         #eqbr and switching time
         "te": 25000,
-        "ts": 50000
+        "ts": 50000,
+        "tguess": None,
+        "dtemp": 200,
+        "maxattempts": 5,
     }
 
     #queue properties
