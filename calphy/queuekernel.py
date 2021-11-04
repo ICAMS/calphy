@@ -237,6 +237,7 @@ def main():
 
     #now we need to modify the routines
     if calc["mode"] == "melting_temperature":
+        os.remove(simfolder)
         simfolder = None
         job = MeltingTemp(options=options, kernel=kernel, simfolder=simfolder)
     elif calc["mode"] == "alchemy":

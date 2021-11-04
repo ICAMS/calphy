@@ -58,6 +58,7 @@ class MeltingTemp:
         self.options = options
         self.kernel = kernel
         self.simfolder = simfolder
+        self.org_tm = 0
         self.calc = self.options['calculations'][kernel]
         self.dtemp = self.calc['dtemp']
         self.maxattempts = self.calc['maxattempts']
@@ -67,7 +68,7 @@ class MeltingTemp:
         self.get_props(self.calc['element'][0])
         self.get_trange()
         self.arg = None
-        self.org_tm = 0
+        
 
         logfile = os.path.join(os.getcwd(), "calphy.log")
         self.logger = ph.prepare_log(logfile)
