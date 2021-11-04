@@ -40,7 +40,7 @@ from calphy.input import read_yamlfile, create_identifier
 from calphy.liquid import Liquid
 from calphy.solid import Solid
 from calphy.alchemy import Alchemy
-
+from calphy.routines import MeltingTemp
 
 def routine_fe(job):
     """
@@ -114,7 +114,7 @@ def routine_alchemy(job):
 
     job.thermodynamic_integration()
     job.submit_report()
-    return job    
+    return job 
 
 def create_folders(calc):
     """
@@ -163,12 +163,16 @@ def setup_calculation(options, kernel):
         job class
     """
     calc = options["calculations"][kernel]
-    simfolder = create_folders(calc)
     
     #now we need to modify the routines
-    if calc["mode"] == "alchemy":
+    if calc["mode"] == "melting_temperature":
+        simfolder = None
+        job = MeltingTemp(options=options, kernel=kernel, simfolder=simfolder)
+    elif calc["mode"] == "alchemy":
+        simfolder = create_folders(calc)
         job = Alchemy(options=options, kernel=kernel, simfolder=simfolder)
     else:
+        simfolder = create_folders(calc)
         if calc["state"] == "liquid":
             job = Liquid(options=options, kernel=kernel, simfolder=simfolder)
         else:
@@ -196,8 +200,10 @@ def run_calculation(job):
         job = routine_only_ts(job)
     elif job.calc["mode"] == "alchemy":
         job = routine_alchemy(job)
+    elif job.calc["mode"] == "melting_temperature":
+        job.calculate_tm()
     else:
-        raise ValueError("Mode should be either fe/ts/mts/alchemy")
+        raise ValueError("Mode should be either fe/ts/mts/alchemy/melting_temperature")
     return job
 
 def main():
@@ -230,6 +236,9 @@ def main():
     os.mkdir(simfolder)
 
     #now we need to modify the routines
+    if calc["mode"] == "melting_temperature":
+        simfolder = None
+        job = MeltingTemp(options=options, kernel=kernel, simfolder=simfolder)
     if calc["mode"] == "alchemy":
         job = Alchemy(options=options, kernel=kernel, simfolder=simfolder)
     else:
@@ -249,5 +258,7 @@ def main():
         _ = routine_only_ts(job)
     elif calc["mode"] == "alchemy":
         _ = routine_alchemy(job)
+    elif job.calc["mode"] == "melting_temperature":
+        _ = job.calculate_tm()
     else:
-        raise ValueError("Mode should be either fe/ts/mts/alchemy")
+        raise ValueError("Mode should be either fe/ts/mts/alchemy/melting_temperature")
