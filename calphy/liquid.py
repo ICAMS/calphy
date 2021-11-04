@@ -173,6 +173,7 @@ class Liquid(cph.Phase):
             solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
             self.logger.info("fraction of solids found: %f", solids/self.natoms)
             if (solids/self.natoms > self.options["conv"]["liquid_frac"]):
+                lmp.close()
                 raise SolidifiedError('System solidified, increase temperature')
 
 

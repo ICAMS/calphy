@@ -376,6 +376,7 @@ class Phase:
                 raise MeltedError("System melted, increase size or reduce scaling!")
         else:
             if (solids/lmp.natoms > self.options["conv"]["liquid_frac"]):
+                lmp.close()
                 raise SolidifiedError('System solidified, increase temperature')
 
 
