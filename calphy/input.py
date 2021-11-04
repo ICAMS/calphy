@@ -52,36 +52,24 @@ def check_and_convert_to_list(data):
 def prepare_optional_keys(calc, cdict):
 
     #optional keys
-    if "repeat" in calc.keys():
-        cdict["repeat"] = calc["repeat"]
-        if not (cdict["repeat"][0] == cdict["repeat"][1] == cdict["repeat"][2]):
-            raise ValueError("For LAMMPS structure creation, use nx=ny=nz")
-    else:
-        cdict["repeat"] = [1, 1, 1]
-    if "nsims" in calc.keys():
-        cdict["nsims"] = calc["nsims"]
-    else:
-        cdict["nsims"] = 1
-    if "thigh" in calc.keys():
-        cdict["thigh"] = calc["thigh"]
-    else:
-        cdict["thigh"] = 2.0*cdict["temperature_stop"]
-    if "npt" in calc.keys():
-        cdict["npt"] = calc["npt"]
-    else:
-        cdict["npt"] = True
-    if "tguess" in calc.keys():
-        cdict["tguess"] = calc["tguess"]
-    else:
-        cdict["tguess"] = None
-    if "dtemp" in calc.keys():
-        cdict["dtemp"] = calc["dtemp"]
-    else:
-        cdict["dtemp"] = 200
-    if "maxattempts" in calc.keys():
-        cdict["maxattempts"] = calc["maxattempts"]
-    else:
-        cdict["maxattempts"] = 5
+    keydict = {
+        "repeat": [1, 1, 1],
+        "nsims": 1,
+        "thigh": 2.0*cdict["temperature_stop"],
+        "npt": True,
+        "tguess": None,
+        "dtemp": 200,
+        "maxattempts": 5,
+    }
+
+    for key, val in keydict.items():
+        if key in calc.keys():
+            cdict[key] = calc[key]
+        else:
+            cdict[key] = val
+
+    if not (cdict["repeat"][0] == cdict["repeat"][1] == cdict["repeat"][2]):
+        raise ValueError("For LAMMPS structure creation, use nx=ny=nz")
 
     return cdict
 
