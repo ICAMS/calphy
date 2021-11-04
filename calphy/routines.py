@@ -220,26 +220,27 @@ class MeltingTemp:
         -------
         None
         """
-        returncode = self.run_jobs()
-        
-        if returncode == 3:
-            self.tmin = self.tmin + self.dtemp
-            self.tmax = self.tmax + self.dtemp
 
-        elif returncode == 2:
-            self.tmin = self.tmin - self.dtemp
-            if self.tmin < 0:
-                self.tmin = 0
-            self.tmax = self.tmax - self.dtemp
-            
-        else:
-            return True
+        for i in range(100):
+            returncode = self.run_jobs()
         
-        self.start_calculation()
-        self.attempts += 1
-        self.logger.info('Attempt incremented to %d'%self.attempts)
-        if (self.attempts > self.maxattempts):
-            raise ValueError('Maximum number of tries reached')
+            if returncode == 3:
+                self.tmin = self.tmin + self.dtemp
+                self.tmax = self.tmax + self.dtemp
+
+            elif returncode == 2:
+                self.tmin = self.tmin - self.dtemp
+                if self.tmin < 0:
+                    self.tmin = 0
+                self.tmax = self.tmax - self.dtemp
+                
+            else:
+                return True
+            
+            self.attempts += 1
+            if (self.attempts>self.maxattempts):
+                raise ValueError('Maximum number of tries reached')
+
 
     def extrapolate_tm(self, arg):
         """
@@ -248,29 +249,30 @@ class MeltingTemp:
         solfit = np.polyfit(self.solres[0], self.solres[1], 1)
         lqdfit = np.polyfit(self.lqdres[0], self.lqdres[1], 1)
 
-        if arg==0:
-            self.tmin = self.tmin-self.dtemp
-            if self.tmin < 0:
-                self.tmin = 0
-            new_t = np.linspace(self.tmin, self.tmax, 1000)
+        found = False
+
+        for i in range(100):
+            if arg==0:
+                self.tmin = self.tmin-self.dtemp
+                if self.tmin < 0:
+                    self.tmin = 0
+                new_t = np.linspace(self.tmin, self.tmax, 1000)
+            elif arg==999:
+                self.tmax = self.tmax + self.dtemp
+                new_t = np.linspace(self.tmin, self.tmax, 1000)
+            else:
+                break
+            #evaluate in new range
+            new_solfe = np.polyval(solfit, new_t)
+            new_lqdfe = np.polyval(lqdfit, new_t)
+    
+            arg = np.argsort(np.abs(new_solfe-new_lqdfe))[0]
+            tpred = new_t[arg]
         else:
-            self.tmax = self.tmax + self.dtemp
-            new_t = np.linspace(self.tmin, self.tmax, 1000)
-
-        #evaluate in new range
-        new_solfe = np.polyval(solfit, new_t)
-        new_lqdfe = np.polyval(lqdfit, new_t)
-
-        arg = np.argsort(np.abs(new_solfe-new_lqdfe))[0]
-        tpred = new_t[arg]
-        self.logger.info("Predicted melting temperature from extrapolation: %f"%tpred)
+            raise ValueError('failed to extrapolate melting temperature')
         
-        #this means we have not really found the group, change temp again!
-        if ((arg==0) or (arg==999)):
-            self.logger.info("Increasing temperature range")
-            self.extrapolate_tm(arg)
-        else:  
-            return tpred
+        self.logger.info("Predicted melting temperature from extrapolation: %f"%tpred)
+        return tpred    
                 
         
     def find_tm(self):
@@ -285,33 +287,40 @@ class MeltingTemp:
         -------
         None
         """
-        arg = np.argsort(np.abs(self.solres[1]-self.lqdres[1]))[0]
-        self.arg = arg
+        for i in range(100):
+            arg = np.argsort(np.abs(self.solres[1]-self.lqdres[1]))[0]
+            self.arg = arg
         
-        if ((arg==0) or (arg==len(self.solres[1])-1)):
-            self.logger.info('From calculation, melting temperature is not within the selected range.')
-            
-            #now here we need to find a guess value;
-            tpred = self.extrapolate_tm(arg)
-            #now we have to run calcs again
-            self.tmin = tpred - self.dtemp
-            if self.tmin < 0:
-                self.tmin = 0
-            self.tmax = tpred + self.dtemp
-            self.logger.info('Restarting calculation with predicted melting temperature +/- %f'%self.dtemp)
-            self.start_calculation()
-            self.find_tm()
+            if ((arg==0) or (arg==len(self.solres[1])-1)):
+                self.logger.info('From calculation, melting temperature is not within the selected range.')
+                if arg==len(self.solres[1])-1:
+                    arg = 999
+                #the above is just a trick to extrapolate
+                #now here we need to find a guess value;
+                tpred = self.extrapolate_tm(arg)
+                #now we have to run calcs again
+                self.tmin = tpred - self.dtemp
+                if self.tmin < 0:
+                    self.tmin = 0
+                self.tmax = tpred + self.dtemp
+                self.logger.info('Restarting calculation with predicted melting temperature +/- %f'%self.dtemp)
+                self.start_calculation()
                 
-        else:
-            self.calc_tm = self.solres[0][arg]
-            #get errors
-            suberr = np.sqrt(self.solres[2][arg]**2 + self.lqdres[2][arg]**2)
-            sol_slope = (self.solres[1][arg+50]-self.solres[1][arg-50])/(self.solres[0][arg+50]-self.solres[0][arg-50])
-            lqd_slope = (self.lqdres[1][arg+50]-self.lqdres[1][arg-50])/(self.lqdres[0][arg+50]-self.lqdres[0][arg-50])
-            slope_diff = sol_slope-lqd_slope
-            tmerr = suberr/slope_diff
-            self.tmerr = tmerr
-            return self.calc_tm, self.tmerr
+            else:
+                self.calc_tm = self.solres[0][arg]
+                #get errors
+                suberr = np.sqrt(self.solres[2][arg]**2 + self.lqdres[2][arg]**2)
+                sol_slope = (self.solres[1][arg+50]-self.solres[1][arg-50])/(self.solres[0][arg+50]-self.solres[0][arg-50])
+                lqd_slope = (self.lqdres[1][arg+50]-self.lqdres[1][arg-50])/(self.lqdres[0][arg+50]-self.lqdres[0][arg-50])
+                slope_diff = sol_slope-lqd_slope
+                tmerr = suberr/slope_diff
+                self.tmerr = tmerr
+                return self.calc_tm, self.tmerr
+            
+            self.attempts += 1
+            self.logger.info('Attempt incremented to %d'%self.attempts)
+            if self.attempts>self.maxattempts:
+                raise ValueError('Maximum number of tries reached')
     
     def calculate_tm(self):
         #do a first round of calculation
