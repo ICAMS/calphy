@@ -237,7 +237,10 @@ def read_yamlfile(file):
                             cdict["temperature"] = temperature[0]
                             cdict["pressure"] = press
                             cdict["lattice"] = lat
-                            cdict["state"] = state[i]
+                            if state[i] in ['solid', 'liquid']:
+                                cdict["state"] = state[i]
+                            else:
+                                raise ValueError('state has to be either solid or liquid')
                             cdict["temperature_stop"] = temperature[-1]
                             cdict["nelements"] = options["nelements"]
                             cdict["element"] = options["element"]
@@ -253,7 +256,11 @@ def read_yamlfile(file):
                                 cdict["temperature"] = temp
                                 cdict["pressure"] = press
                                 cdict["lattice"] = lat
-                                cdict["state"] = state[i]
+                                if state[i] in ['solid', 'liquid']:
+                                    cdict["state"] = state[i]
+                                else:
+                                    raise ValueError('state has to be either solid or liquid')
+
                                 cdict["temperature_stop"] = temp
                                 cdict["nelements"] = options["nelements"]
                                 cdict["element"] = options["element"]

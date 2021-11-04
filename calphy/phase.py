@@ -251,7 +251,7 @@ class Phase:
             self.logger.info("- 10.1063/1.1420486") 
 
 
-    def reversible_scaling(self, iteration=1, solid=False):
+    def reversible_scaling(self, iteration=1):
         """
         Perform reversible scaling calculation in NPT
 
@@ -264,6 +264,10 @@ class Phase:
         -------
         None
         """
+        solid = False
+        if self.calc['state'] == 'solid':
+            solid = True
+
         t0 = self.t
         tf = self.tend
         li = 1
