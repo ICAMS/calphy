@@ -359,6 +359,12 @@ class Phase:
         lmp.command("run               %d"%self.options["md"]["te"])
         lmp.command("unfix             f1")
 
+
+        #check melting or freezing
+        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+        lmp.command("run               0")
+        lmp.command("undump            2")
+        
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
         if solid:
             if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
