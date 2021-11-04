@@ -35,6 +35,7 @@ import pyscal.traj_process as ptp
 import calphy.lattice as pl
 import calphy.helpers as ph
 import calphy.phase as cph
+from calphy.errors import *
 
 class Liquid(cph.Phase):
     """
@@ -166,6 +167,7 @@ class Liquid(cph.Phase):
             volatom = np.mean((lx*ly*lz)/self.natoms)            
             self.logger.info("At count %d mean pressure is %f with vol/atom %f"%(i+1, mean, volatom))
 
+            #check melting;
             if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
                 #process other means
                 self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
