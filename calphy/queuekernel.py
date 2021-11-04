@@ -239,7 +239,7 @@ def main():
     if calc["mode"] == "melting_temperature":
         simfolder = None
         job = MeltingTemp(options=options, kernel=kernel, simfolder=simfolder)
-    if calc["mode"] == "alchemy":
+    elif calc["mode"] == "alchemy":
         job = Alchemy(options=options, kernel=kernel, simfolder=simfolder)
     else:
         if calc["state"] == "liquid":
