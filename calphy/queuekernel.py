@@ -241,14 +241,13 @@ def main():
         job = MeltingTemp(options=options, kernel=kernel, simfolder=simfolder)
     elif calc["mode"] == "alchemy":
         job = Alchemy(options=options, kernel=kernel, simfolder=simfolder)
+        os.chdir(simfolder)
     else:
         if calc["state"] == "liquid":
             job = Liquid(options=options, kernel=kernel, simfolder=simfolder)
         else:
             job = Solid(options=options, kernel=kernel, simfolder=simfolder)
-
-    #integration routine
-    os.chdir(simfolder)
+        os.chdir(simfolder)
 
     if calc["mode"] == "fe":
         _ = routine_fe(job)
