@@ -269,8 +269,8 @@ class MeltingTemp:
         if ((arg==0) or (arg==999)):
             self.logger.info("Increasing temperature range")
             self.extrapolate_tm(arg)
-            
-        return tpred
+        else:  
+            return tpred
                 
         
     def find_tm(self):
