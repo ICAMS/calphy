@@ -168,7 +168,7 @@ class MeltingTemp:
         self.soljob = cq.setup_calculation(self.options, 0)
         self.lqdjob = cq.setup_calculation(self.options, 1)
         
-        self.logger.info("Free energy of %s and %s phases will be calculated"%(self.soljob['lattice'], self.lqdjob['lattice']))
+        self.logger.info("Free energy of %s and %s phases will be calculated"%(self.soljob.calc['lattice'], self.lqdjob.calc['lattice']))
         self.logger.info("Temperature range of %f-%f"%(self.tmin, self.tmax))
         self.logger.info('Starting solid fe calculation')
         
