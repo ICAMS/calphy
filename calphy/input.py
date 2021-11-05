@@ -182,20 +182,38 @@ def read_yamlfile(file):
             
             #now start looping
             #First handle the complex protocols, otherwise go to other simple protocols
+            if 'lattice' in calc.keys():
+                lattice = check_and_convert_to_list(calc["lattice"])
+            else:
+                lattice = []
+            if 'pressure' in calc.keys():
+                pressure = check_and_convert_to_list(calc["pressure"])
+            else:
+                pressure = []
+
+
             if (mode=='melting_temperature'):
                 cdict = {}
                 cdict["mode"] = calc["mode"]
-                #only read temp if provided
-                #if len(temperature)==2:
-                #    cdict["temperature"] = temperature[0]
-                #    cdict["temperature_stop"] = temperature[-1]
-                #else:
                 cdict["temperature"] = 0
                 cdict["temperature_stop"] = 0
 
-                #pressure is zero
-                cdict["pressure"] = 0
-                cdict["lattice"] = None
+                #now if lattice is provided-> use that; but length should be one
+                if len(lattice) == 1:
+                    cdict["lattice"] = lattice[0]
+                elif len(lattice)>1:
+                    raise ValueError('For melting_temperature mode, please provide only one lattice')
+                else:
+                    cdict["lattice"] = None
+
+                if len(pressure) == 1:
+                    cdict["pressure"] = pressure[0]
+                elif len(pressure)>1:
+                    raise ValueError('For melting_temperature mode, please provide only one pressure')
+                else:
+                    cdict["pressure"] = 0
+
+                #pressure is zero                
                 cdict["state"] = None
                 cdict["nelements"] = options["nelements"]
                 cdict["element"] = options["element"]
@@ -208,9 +226,7 @@ def read_yamlfile(file):
 
             #now handle other normal modes
             else:   
-                lattice = check_and_convert_to_list(calc["lattice"])
                 state = check_and_convert_to_list(calc["state"])
-                pressure = check_and_convert_to_list(calc["pressure"])
                 temperature = check_and_convert_to_list(calc["temperature"])
 
                 #prepare lattice constant values
