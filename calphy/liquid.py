@@ -35,6 +35,7 @@ import pyscal.traj_process as ptp
 import calphy.lattice as pl
 import calphy.helpers as ph
 import calphy.phase as cph
+from calphy.errors import *
 
 class Liquid(cph.Phase):
     """
@@ -137,7 +138,7 @@ class Liquid(cph.Phase):
         #if melting cycle is over and still not melted, raise error
         if not melted:
             lmp.close()
-            raise ValueError("Liquid system did not melt, maybe try a higher thigh temperature.")
+            raise SolidifiedError("Liquid system did not melt, maybe try a higher thigh temperature.")
 
         #now assign correct temperature and equilibrate
         lmp.velocity("all create", self.t, np.random.randint(0, 10000))
@@ -166,6 +167,17 @@ class Liquid(cph.Phase):
             volatom = np.mean((lx*ly*lz)/self.natoms)            
             self.logger.info("At count %d mean pressure is %f with vol/atom %f"%(i+1, mean, volatom))
 
+            lmp.command("dump              2 all custom 1 traj.dat id type mass x y z")
+            lmp.command("run               0")
+            lmp.command("undump            2")
+            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
+            self.logger.info("fraction of solids found: %f", solids/self.natoms)
+            if (solids/self.natoms > self.options["conv"]["liquid_frac"]):
+                lmp.close()
+                raise SolidifiedError('System solidified, increase temperature')
+
+
+            #check melting;
             if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
                 #process other means
                 self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)

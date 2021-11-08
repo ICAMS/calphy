@@ -35,6 +35,7 @@ from calphy.integrators import *
 import calphy.lattice as pl
 import calphy.helpers as ph
 import calphy.phase as cph
+from calphy.errors import *
 
 class Solid(cph.Phase):
     """
@@ -183,7 +184,7 @@ class Solid(cph.Phase):
             solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
             if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
                 lmp.close()
-                raise RuntimeError("System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting conv:\n solid_frac: 0")
+                raise MeltedError("System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting conv:\n solid_frac: 0")
         else:
             #routine in which lattice constant will not varied, but is set to a given fixed value
             lmp.command("fix              1 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
@@ -282,7 +283,7 @@ class Solid(cph.Phase):
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
         if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
             lmp.close()
-            raise RuntimeError("System melted, increase size or reduce temp!")
+            raise MeltedError("System melted, increase size or reduce temp!")
 
         #close object and process traj
         lmp.close()

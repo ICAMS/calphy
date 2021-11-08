@@ -52,24 +52,25 @@ def check_and_convert_to_list(data):
 def prepare_optional_keys(calc, cdict):
 
     #optional keys
-    if "repeat" in calc.keys():
-        cdict["repeat"] = calc["repeat"]
-        if not (cdict["repeat"][0] == cdict["repeat"][1] == cdict["repeat"][2]):
-            raise ValueError("For LAMMPS structure creation, use nx=ny=nz")
-    else:
-        cdict["repeat"] = [1, 1, 1]
-    if "nsims" in calc.keys():
-        cdict["nsims"] = calc["nsims"]
-    else:
-        cdict["nsims"] = 1
-    if "thigh" in calc.keys():
-        cdict["thigh"] = calc["thigh"]
-    else:
-        cdict["thigh"] = 2.0*cdict["temperature_stop"]
-    if "npt" in calc.keys():
-        cdict["npt"] = calc["npt"]
-    else:
-        cdict["npt"] = True
+    keydict = {
+        "repeat": [1, 1, 1],
+        "nsims": 1,
+        "thigh": 2.0*cdict["temperature_stop"],
+        "npt": True,
+        "tguess": None,
+        "dtemp": 200,
+        "maxattempts": 5,
+    }
+
+    for key, val in keydict.items():
+        if key in calc.keys():
+            cdict[key] = calc[key]
+        else:
+            cdict[key] = val
+
+    if not (cdict["repeat"][0] == cdict["repeat"][1] == cdict["repeat"][2]):
+        raise ValueError("For LAMMPS structure creation, use nx=ny=nz")
+
     return cdict
 
 def read_yamlfile(file):
@@ -113,7 +114,10 @@ def read_yamlfile(file):
         "pdamp": 0.1,
         #eqbr and switching time
         "te": 25000,
-        "ts": 50000
+        "ts": 50000,
+        "tguess": None,
+        "dtemp": 200,
+        "maxattempts": 5,
     }
 
     #queue properties
@@ -174,71 +178,122 @@ def read_yamlfile(file):
         #Loop 3: over temperature if needed - depends on mode
         for calc in indata["calculations"]:
             #check and convert items to lists if needed
-            lattice = check_and_convert_to_list(calc["lattice"])
-            state = check_and_convert_to_list(calc["state"])
-            pressure = check_and_convert_to_list(calc["pressure"])
-            temperature = check_and_convert_to_list(calc["temperature"])
             mode = calc["mode"]
             
-            #prepare lattice constant values
-            if "lattice_constant" in calc.keys():
-                lattice_constant = check_and_convert_to_list(calc["lattice_constant"])
-            else:
-                lattice_constant = [0 for x in range(len(lattice))]
-            #prepare lattice constant values
-            if "iso" in calc.keys():
-                iso = check_and_convert_to_list(calc["iso"])
-            else:
-                iso = [True for x in range(len(lattice))]
-
-            if "fix_lattice" in calc.keys():
-                fix_lattice = check_and_convert_to_list(calc["fix_lattice"])
-            else:
-                fix_lattice = [False for x in range(len(lattice))]
-
             #now start looping
-            for i, lat in enumerate(lattice):
-                for press in pressure:
-                    if (mode == "ts") or (mode == "mts"):
-                        cdict = {}
-                        cdict["mode"] = calc["mode"]
-                        #we need to check for temperature length here
-                        if not len(temperature)==2:
-                            raise ValueError("At least two temperature values are needed for ts")
-                        cdict["temperature"] = temperature[0]
-                        cdict["pressure"] = press
-                        cdict["lattice"] = lat
-                        cdict["state"] = state[i]
-                        cdict["temperature_stop"] = temperature[-1]
-                        cdict["nelements"] = options["nelements"]
-                        cdict["element"] = options["element"]
-                        cdict["lattice_constant"] = lattice_constant[i]
-                        cdict["iso"] = iso[i]
-                        cdict["fix_lattice"] = fix_lattice[i]
-                        cdict = prepare_optional_keys(calc, cdict)
-                        options["calculations"].append(cdict)
+            #First handle the complex protocols, otherwise go to other simple protocols
+            if 'lattice' in calc.keys():
+                lattice = check_and_convert_to_list(calc["lattice"])
+            else:
+                lattice = []
+            if 'pressure' in calc.keys():
+                pressure = check_and_convert_to_list(calc["pressure"])
+            else:
+                pressure = []
 
-                    else:
-                        for temp in temperature:
+
+            if (mode=='melting_temperature'):
+                cdict = {}
+                cdict["mode"] = calc["mode"]
+                cdict["temperature"] = 0
+                cdict["temperature_stop"] = 0
+
+                #now if lattice is provided-> use that; but length should be one
+                if len(lattice) == 1:
+                    cdict["lattice"] = lattice[0]
+                elif len(lattice)>1:
+                    raise ValueError('For melting_temperature mode, please provide only one lattice')
+                else:
+                    cdict["lattice"] = None
+
+                if len(pressure) == 1:
+                    cdict["pressure"] = pressure[0]
+                elif len(pressure)>1:
+                    raise ValueError('For melting_temperature mode, please provide only one pressure')
+                else:
+                    cdict["pressure"] = 0
+
+                #pressure is zero                
+                cdict["state"] = None
+                cdict["nelements"] = options["nelements"]
+                cdict["element"] = options["element"]
+                cdict["lattice_constant"] = 0
+                cdict["iso"] = False
+                cdict["fix_lattice"] = False
+                cdict = prepare_optional_keys(calc, cdict)
+                options["calculations"].append(cdict)                      
+
+
+            #now handle other normal modes
+            else:   
+                state = check_and_convert_to_list(calc["state"])
+                temperature = check_and_convert_to_list(calc["temperature"])
+
+                #prepare lattice constant values
+                if "lattice_constant" in calc.keys():
+                    lattice_constant = check_and_convert_to_list(calc["lattice_constant"])
+                else:
+                    lattice_constant = [0 for x in range(len(lattice))]
+                #prepare lattice constant values
+                if "iso" in calc.keys():
+                    iso = check_and_convert_to_list(calc["iso"])
+                else:
+                    iso = [True for x in range(len(lattice))]
+
+                if "fix_lattice" in calc.keys():
+                    fix_lattice = check_and_convert_to_list(calc["fix_lattice"])
+                else:
+                    fix_lattice = [False for x in range(len(lattice))]
+
+
+                for i, lat in enumerate(lattice):
+                    for press in pressure:
+                        if (mode == "ts") or (mode == "mts"):
                             cdict = {}
                             cdict["mode"] = calc["mode"]
-                            cdict["temperature"] = temp
+                            #we need to check for temperature length here
+                            if not len(temperature)==2:
+                                raise ValueError("At least two temperature values are needed for ts")
+                            cdict["temperature"] = temperature[0]
                             cdict["pressure"] = press
                             cdict["lattice"] = lat
-                            cdict["state"] = state[i]
-                            cdict["temperature_stop"] = temp
+                            if state[i] in ['solid', 'liquid']:
+                                cdict["state"] = state[i]
+                            else:
+                                raise ValueError('state has to be either solid or liquid')
+                            cdict["temperature_stop"] = temperature[-1]
                             cdict["nelements"] = options["nelements"]
                             cdict["element"] = options["element"]
                             cdict["lattice_constant"] = lattice_constant[i]
                             cdict["iso"] = iso[i]
                             cdict["fix_lattice"] = fix_lattice[i]
                             cdict = prepare_optional_keys(calc, cdict)
-                            options["calculations"].append(cdict)
+                            options["calculations"].append(cdict)                      
+                        else:
+                            for temp in temperature:
+                                cdict = {}
+                                cdict["mode"] = calc["mode"]
+                                cdict["temperature"] = temp
+                                cdict["pressure"] = press
+                                cdict["lattice"] = lat
+                                if state[i] in ['solid', 'liquid']:
+                                    cdict["state"] = state[i]
+                                else:
+                                    raise ValueError('state has to be either solid or liquid')
 
-                            if mode == "alchemy":
-                                #if alchemy mode is selected: make sure that hybrid pair styles
-                                if not len(options["md"]["pair_style"]) == 2:
-                                    raise ValueError("Two pair styles need to be provided")
+                                cdict["temperature_stop"] = temp
+                                cdict["nelements"] = options["nelements"]
+                                cdict["element"] = options["element"]
+                                cdict["lattice_constant"] = lattice_constant[i]
+                                cdict["iso"] = iso[i]
+                                cdict["fix_lattice"] = fix_lattice[i]
+                                cdict = prepare_optional_keys(calc, cdict)
+                                options["calculations"].append(cdict)
+
+                                if mode == "alchemy":
+                                    #if alchemy mode is selected: make sure that hybrid pair styles
+                                    if not len(options["md"]["pair_style"]) == 2:
+                                        raise ValueError("Two pair styles need to be provided")
     return options
 
 def create_identifier(calc):
@@ -256,15 +311,22 @@ def create_identifier(calc):
         unique identification string
     """
     #lattice processed
-    ts = int(calc["temperature"])
-    ps = int(calc["pressure"])
-
-    l = calc["lattice"]
-    l = l.split('/')
-    l = l[-1]
-
-    #print(calc.keys())
     prefix = calc["mode"]
+
+    if prefix == 'melting_temperature':
+        ts = int(0)
+        ps = int(0)
+
+        l = 'tm'
+
+    else:
+        ts = int(calc["temperature"])
+        ps = int(calc["pressure"])
+
+        l = calc["lattice"]
+        l = l.split('/')
+        l = l[-1]
+
 
     identistring = "-".join([prefix, l, str(ts), str(ps)])
     return identistring

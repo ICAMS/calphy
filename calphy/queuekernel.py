@@ -34,12 +34,13 @@ import argparse as ap
 import subprocess
 import yaml
 import time
+import datetime
 
 from calphy.input import read_yamlfile, create_identifier
 from calphy.liquid import Liquid
 from calphy.solid import Solid
 from calphy.alchemy import Alchemy
-
+from calphy.routines import MeltingTemp
 
 def routine_fe(job):
     """
@@ -113,7 +114,7 @@ def routine_alchemy(job):
 
     job.thermodynamic_integration()
     job.submit_report()
-    return job    
+    return job 
 
 def create_folders(calc):
     """
@@ -133,8 +134,14 @@ def create_folders(calc):
     simfolder = os.path.join(os.getcwd(), identistring)
 
     #if folder exists, delete it -> then create
-    if os.path.exists(simfolder):
-        shutil.rmtree(simfolder)
+    try:
+        if os.path.exists(simfolder):
+            shutil.rmtree(simfolder)
+    except OSError:
+        newstr = '-'.join(str(datetime.datetime.now()).split())
+        newstr = '-'.join([simfolder, newstr])
+        shutil.move(simfolder, newstr)
+
     os.mkdir(simfolder)
     return simfolder
 
@@ -156,12 +163,16 @@ def setup_calculation(options, kernel):
         job class
     """
     calc = options["calculations"][kernel]
-    simfolder = create_folders(calc)
     
     #now we need to modify the routines
-    if calc["mode"] == "alchemy":
+    if calc["mode"] == "melting_temperature":
+        simfolder = None
+        job = MeltingTemp(options=options, kernel=kernel, simfolder=simfolder)
+    elif calc["mode"] == "alchemy":
+        simfolder = create_folders(calc)
         job = Alchemy(options=options, kernel=kernel, simfolder=simfolder)
     else:
+        simfolder = create_folders(calc)
         if calc["state"] == "liquid":
             job = Liquid(options=options, kernel=kernel, simfolder=simfolder)
         else:
@@ -189,8 +200,10 @@ def run_calculation(job):
         job = routine_only_ts(job)
     elif job.calc["mode"] == "alchemy":
         job = routine_alchemy(job)
+    elif job.calc["mode"] == "melting_temperature":
+        job.calculate_tm()
     else:
-        raise ValueError("Mode should be either fe/ts/mts/alchemy")
+        raise ValueError("Mode should be either fe/ts/mts/alchemy/melting_temperature")
     return job
 
 def main():
@@ -223,16 +236,19 @@ def main():
     os.mkdir(simfolder)
 
     #now we need to modify the routines
-    if calc["mode"] == "alchemy":
+    if calc["mode"] == "melting_temperature":
+        os.rmdir(simfolder)
+        simfolder = None
+        job = MeltingTemp(options=options, kernel=kernel, simfolder=simfolder)
+    elif calc["mode"] == "alchemy":
         job = Alchemy(options=options, kernel=kernel, simfolder=simfolder)
+        os.chdir(simfolder)
     else:
         if calc["state"] == "liquid":
             job = Liquid(options=options, kernel=kernel, simfolder=simfolder)
         else:
             job = Solid(options=options, kernel=kernel, simfolder=simfolder)
-
-    #integration routine
-    os.chdir(simfolder)
+        os.chdir(simfolder)
 
     if calc["mode"] == "fe":
         _ = routine_fe(job)
@@ -242,5 +258,7 @@ def main():
         _ = routine_only_ts(job)
     elif calc["mode"] == "alchemy":
         _ = routine_alchemy(job)
+    elif job.calc["mode"] == "melting_temperature":
+        _ = job.calculate_tm()
     else:
-        raise ValueError("Mode should be either fe/ts/mts/alchemy")
+        raise ValueError("Mode should be either fe/ts/mts/alchemy/melting_temperature")

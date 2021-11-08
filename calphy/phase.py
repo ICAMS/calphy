@@ -35,6 +35,7 @@ import pyscal.traj_process as ptp
 from calphy.integrators import *
 import calphy.lattice as pl
 import calphy.helpers as ph
+from calphy.errors import *
 
 class Phase:
     """
@@ -236,7 +237,7 @@ class Phase:
 
         #now we have to write out the results
         self.logger.info("Please cite the following publications:")
-        self.logger.info("- http://arxiv.org/abs/2107.08980")
+        self.logger.info("- 10.1103/PhysRevMaterials.5.103801")
 
         if self.calc["mode"] == "fe":
             if self.calc["state"] == "solid":
@@ -250,7 +251,7 @@ class Phase:
             self.logger.info("- 10.1063/1.1420486") 
 
 
-    def reversible_scaling(self, iteration=1, solid=False):
+    def reversible_scaling(self, iteration=1):
         """
         Perform reversible scaling calculation in NPT
 
@@ -263,6 +264,10 @@ class Phase:
         -------
         None
         """
+        solid = False
+        if self.calc['state'] == 'solid':
+            solid = True
+
         t0 = self.t
         tf = self.tend
         li = 1
@@ -359,12 +364,20 @@ class Phase:
         lmp.command("unfix             f1")
 
 
+        #check melting or freezing
+        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+        lmp.command("run               0")
+        lmp.command("undump            2")
+        
+        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
         if solid:
-            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
             if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
                 lmp.close()
-                raise RuntimeError("System melted, increase size or reduce scaling!")
-
+                raise MeltedError("System melted, increase size or reduce scaling!")
+        else:
+            if (solids/lmp.natoms > self.options["conv"]["liquid_frac"]):
+                lmp.close()
+                raise SolidifiedError('System solidified, increase temperature')
 
 
         #reverse scaling
