@@ -48,7 +48,19 @@ def check_and_convert_to_list(data):
     else:
         return data
 
-
+def fix_paths(potlist): 
+    """
+    Fix paths for potential files to complete ones
+    """
+    fixedpots = []
+    for pot in potlist:
+        pcraw = pot.split()
+        filename = pcraw[2]
+        filename = os.path.abspath(filename)
+        pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
+        fixedpots.append(pcnew)
+    return fixedpots
+    
 def prepare_optional_keys(calc, cdict):
 
     #optional keys
@@ -162,7 +174,7 @@ def read_yamlfile(file):
     options["element"] = check_and_convert_to_list(indata["element"])
     options["mass"] = check_and_convert_to_list(indata["mass"])
     options["md"]["pair_style"] = check_and_convert_to_list(indata["md"]["pair_style"])
-    options["md"]["pair_coeff"] = check_and_convert_to_list(indata["md"]["pair_coeff"])
+    options["md"]["pair_coeff"] = fix_paths(check_and_convert_to_list(indata["md"]["pair_coeff"]))
 
     if not len(options["element"]) == len(options["mass"]):
         raise ValueError("length of elements and mass should be same!")

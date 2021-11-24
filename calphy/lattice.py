@@ -142,6 +142,7 @@ def prepare_lattice(calc):
         conc = [1,]
 
     elif os.path.exists(calc["lattice"]):
+        calc["lattice"] = os.path.abspath(calc["lattice"])
         natoms, conc = check_data_file(calc["lattice"]) 
         #its a file - do something
         l = "file"
