@@ -18,11 +18,11 @@ import glob
 sys.path.insert(0, os.path.abspath('../../calphy/'))
 
 #copy necessary figures
-cdir = os.getcwd()
-figs = glob.glob("../../examples/*/*.png")
+#cdir = os.getcwd()
+#figs = glob.glob("../../examples/*/*.png")
 
-for fig in figs:
-    shutil.copy(fig, "../_static/")
+#for fig in figs:
+#    shutil.copy(fig, "../_static/")
 
 def skip(app, what, name, obj, would_skip, options):
     if name in ( '__init__',):
@@ -30,6 +30,14 @@ def skip(app, what, name, obj, would_skip, options):
     return would_skip
 def setup(app):
     app.connect('autodoc-skip-member', skip)
+
+#copy examples
+#---------------------------------
+#copy ipynb here
+if os.path.exists("examples"):
+    shutil.rmtree("examples")
+shutil.copytree("../../examples", "examples")
+
 
 # -- Project information -----------------------------------------------------
 
@@ -52,6 +60,7 @@ extensions = [
     'sphinx.ext.napoleon',
     'm2r2',
     'sphinx_markdown_tables',
+    'nbsphinx',
 ]
 
 #html_theme = 'sphinx_rtd_theme'
