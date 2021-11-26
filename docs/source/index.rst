@@ -54,7 +54,7 @@ Examples
 .. toctree::
    :maxdepth: 2
 
-   example_link
+   examples
 
 API reference
 ~~~~~~~~~~~~~
