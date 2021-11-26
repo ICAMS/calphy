@@ -11,7 +11,7 @@ calculations:
 
 md:
   pair_style: eam/alloy
-  pair_coeff: "* * ../../potentials/Cu01.eam.alloy Cu"
+  pair_coeff: "* * ../potentials/Cu01.eam.alloy Cu"
   timestep: 0.001
   nsmall: 10000
   tdamp: 0.1

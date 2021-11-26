@@ -59,6 +59,7 @@ def fix_paths(potlist):
         filename = os.path.abspath(filename)
         pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
         fixedpots.append(pcnew)
+        print(pcnew)
     return fixedpots
     
 def prepare_optional_keys(calc, cdict):

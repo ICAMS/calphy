@@ -12,7 +12,7 @@ calculations:
 
 md:
   pair_style: eam
-  pair_coeff: "* * ../../potentials/Fe.eam"
+  pair_coeff: "* * ../potentials/Fe.eam"
   timestep: 0.001
   nsmall: 10000
   tdamp: 0.1
