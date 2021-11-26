@@ -171,6 +171,7 @@ class MeltingTemp:
         
         self.logger.info("Free energy of %s and %s phases will be calculated"%(self.soljob.calc['lattice'], self.lqdjob.calc['lattice']))
         self.logger.info("Temperature range of %f-%f"%(self.tmin, self.tmax))
+        self.logger.info("STATE: Temperature range of %f-%f K"%(self.tmin, self.tmax))
         self.logger.info('Starting solid fe calculation')
         
         try:
@@ -272,6 +273,7 @@ class MeltingTemp:
             raise ValueError('failed to extrapolate melting temperature')
         
         self.logger.info("Predicted melting temperature from extrapolation: %f"%tpred)
+        self.logger.info("STATE: Predicted Tm from extrapolation: %f K"%tpred)
         return tpred    
                 
         
@@ -293,6 +295,7 @@ class MeltingTemp:
         
             if ((arg==0) or (arg==len(self.solres[1])-1)):
                 self.logger.info('From calculation, melting temperature is not within the selected range.')
+                self.logger.info('STATE: From calculation, Tm is not within range.')
                 if arg==len(self.solres[1])-1:
                     arg = 999
                 #the above is just a trick to extrapolate
@@ -304,6 +307,7 @@ class MeltingTemp:
                     self.tmin = 0
                 self.tmax = tpred + self.dtemp
                 self.logger.info('Restarting calculation with predicted melting temperature +/- %f'%self.dtemp)
+                #self.logger.info('STATE: Restarting calculation with predicted melting temperature +/- %f'%self.dtemp)
                 self.start_calculation()
                 
             else:
@@ -328,4 +332,5 @@ class MeltingTemp:
         tm, tmerr = self.find_tm()
         self.logger.info('Found melting temperature = %.2f +/- %.2f K '%(tm, tmerr))
         self.logger.info('Experimental melting temperature = %.2f K '%(self.org_tm))
+        self.logger.info('STATE: Tm = %.2f K +/- %.2f K, Exp. Tm = %.2f K'%(tm, tmerr, self.org_tm))
         
