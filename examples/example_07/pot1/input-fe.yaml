@@ -11,7 +11,7 @@ calculations:
   
 md:
   pair_style: [eam/fs]
-  pair_coeff: ["* * ../potentials/Cu1.eam.fs Cu"]
+  pair_coeff: ["* * ../../potentials/Cu1.eam.fs Cu"]
   timestep: 0.001
   tdamp: 0.1
   pdamp: 0.1

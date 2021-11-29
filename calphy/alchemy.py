@@ -258,7 +258,7 @@ class Alchemy(cph.Phase):
             lmp.command("fix             f1 all nvt temp %f %f %f"%(self.t, self.t, 
                 self.options["md"]["tdamp"]))
 
-        lmp.command("thermo_style    custom step v_dU1 v_dU2")
+        lmp.command("thermo_style    custom step pe")
         lmp.command("thermo          1000")
         lmp.command("run             %d"%self.options["md"]["te"])
         #equilibration run is over
@@ -268,24 +268,28 @@ class Alchemy(cph.Phase):
         #---------------------------------------------------------------
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
-        lmp.command("variable         one equal 1.0")
     
         #lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.options["md"]["pair_style"])
                     
         # Compute pair definitions
         if self.pair_style[0] == self.pair_style[1]:
-            pc =  self.options["md"]["pair_coeff"][0]
+            pc =  self.pair_coeff[0]
             pcraw = pc.split()
-            pc1 = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"][0],], "1", *pcraw[2:]])
-            pc =  self.options["md"]["pair_coeff"][1]
+            pc1 = " ".join([*pcraw[:2], *[self.pair_style[0],], "1", *pcraw[2:]])
+            pc =  self.pair_coeff[1]
             pcraw = pc.split()
-            pc2 = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"][1],], "2", *pcraw[2:]])
+            pc2 = " ".join([*pcraw[:2], *[self.pair_style[1],], "2", *pcraw[2:]])
         else:
-            pc1 = self.options["md"]["pair_style"][0]
-            pc2 = self.options["md"]["pair_style"][1]
+            pc =  self.pair_coeff[0]
+            pcraw = pc.split()
+            pc1 = " ".join([*pcraw[:2], *[self.pair_style[0],], *pcraw[2:]])
+            pc =  self.pair_coeff[1]
+            pcraw = pc.split()
+            pc2 = " ".join([*pcraw[:2], *[self.pair_style[1],], *pcraw[2:]])
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.options["md"]["pair_style"][0], 
-            self.options["md"]["pair_style"][1]))
+
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.pair_style[0], 
+            self.pair_style[1]))
         lmp.command("pair_coeff       %s"%pc1)
         lmp.command("pair_coeff       %s"%pc2)
 
@@ -310,7 +314,7 @@ class Alchemy(cph.Phase):
 
 
         #save the necessary items to a file: first step
-        lmp.command("fix             f2 all print 1 \"${dU1} ${dU2} ${li}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("fix             f2 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file forward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
 
@@ -324,7 +328,7 @@ class Alchemy(cph.Phase):
         lmp.command("pair_coeff      %s"%self.pair_coeff[1])
 
         # Thermo output.
-        lmp.command("thermo_style    custom step")
+        lmp.command("thermo_style    custom step pe")
         lmp.command("thermo          1000")
 
         #run eqbrm run
@@ -336,8 +340,8 @@ class Alchemy(cph.Phase):
         lmp.command("variable         blambda equal ramp(${li},${lf})")
         
         
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.options["md"]["pair_style"][0], 
-            self.options["md"]["pair_style"][1]))
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.pair_style[0], 
+            self.pair_style[1]))
         lmp.command("pair_coeff       %s"%pc1)
         lmp.command("pair_coeff       %s"%pc2)
 
@@ -362,7 +366,7 @@ class Alchemy(cph.Phase):
 
 
         #save the necessary items to a file: first step
-        lmp.command("fix             f2 all print 1 \"${dU1} ${dU2} ${li}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("fix             f2 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
 

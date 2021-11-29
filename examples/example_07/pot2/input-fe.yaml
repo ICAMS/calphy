@@ -1,7 +1,7 @@
 element: ['Cu']
 mass: [63.546]
 calculations:
-- mode: alchemy 
+- mode: fe
   temperature: [600]
   pressure: [0]
   lattice: [FCC]
@@ -11,7 +11,7 @@ calculations:
   
 md:
   pair_style: [eam/alloy]
-  pair_coeff: ["* * ../potentials/Cu01.eam.alloy Cu"]
+  pair_coeff: ["* * ../../potentials/Cu01.eam.alloy Cu"]
   timestep: 0.001
   tdamp: 0.1
   pdamp: 0.1
