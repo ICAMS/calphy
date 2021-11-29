@@ -243,7 +243,9 @@ class Alchemy(cph.Phase):
         lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
 
         #set up hybrid potential
-        lmp = ph.set_double_hybrid_potential(lmp, self.options, self.pair_style, self.pair_coeff)
+        #here we only need to set one potential
+        lmp = ph.set_potential(lmp, self.options)
+        #lmp = ph.set_double_hybrid_potential(lmp, self.options, self.pair_style, self.pair_coeff)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -256,13 +258,50 @@ class Alchemy(cph.Phase):
             lmp.command("fix             f1 all nvt temp %f %f %f"%(self.t, self.t, 
                 self.options["md"]["tdamp"]))
 
+        lmp.command("thermo_style    custom step pe")
+        lmp.command("thermo          1000")
+        lmp.command("run             %d"%self.options["md"]["te"])
+        #equilibration run is over
+        
+        #---------------------------------------------------------------
+        # FWD cycle
+        #---------------------------------------------------------------
+        lmp.command("variable         flambda equal ramp(${li},${lf})")
+        lmp.command("variable         blambda equal ramp(${lf},${li})")
+    
+        #lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.options["md"]["pair_style"])
+                    
         # Compute pair definitions
+        if self.pair_style[0] == self.pair_style[1]:
+            pc =  self.pair_coeff[0]
+            pcraw = pc.split()
+            pc1 = " ".join([*pcraw[:2], *[self.pair_style[0],], "1", *pcraw[2:]])
+            pc =  self.pair_coeff[1]
+            pcraw = pc.split()
+            pc2 = " ".join([*pcraw[:2], *[self.pair_style[1],], "2", *pcraw[2:]])
+        else:
+            pc =  self.pair_coeff[0]
+            pcraw = pc.split()
+            pc1 = " ".join([*pcraw[:2], *[self.pair_style[0],], *pcraw[2:]])
+            pc =  self.pair_coeff[1]
+            pcraw = pc.split()
+            pc2 = " ".join([*pcraw[:2], *[self.pair_style[1],], *pcraw[2:]])
+
+
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.pair_style[0], 
+            self.pair_style[1]))
+        lmp.command("pair_coeff       %s"%pc1)
+        lmp.command("pair_coeff       %s"%pc2)
+
+
+        #apply pair force commands
         if self.pair_style[0] == self.pair_style[1]:
             lmp.command("compute         c1 all pair %s 1"%self.pair_style[0])
             lmp.command("compute         c2 all pair %s 2"%self.pair_style[1])
         else:
             lmp.command("compute         c1 all pair %s"%self.pair_style[0])
             lmp.command("compute         c2 all pair %s"%self.pair_style[1])
+
 
         # Output variables.
         lmp.command("variable        step equal step")
@@ -274,82 +313,70 @@ class Alchemy(cph.Phase):
         lmp.command("thermo          1000")
 
 
-        # Turn one second potential
-        lmp.command("variable        zero equal 0")
+        #save the necessary items to a file: first step
+        lmp.command("fix             f2 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("run             %d"%self.options["md"]["ts"])
 
-        if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("fix             f0 all adapt 0 pair %s:2 scale * * v_zero"%self.pair_style[1])
-        else:
-            lmp.command("fix             f0 all adapt 0 pair %s scale * * v_zero"%self.pair_style[1])
-        
-        #do a short run and unfix
-        lmp.command("run             0")
-        lmp.command("unfix           f0")
 
-        # Equilibriate the stucture
+        #now equilibrate at the second potential
+        lmp.command("unfix           f2")
+        lmp.command("uncompute       c1")
+        lmp.command("uncompute       c2")
+
+
+        lmp.command("pair_style      %s"%self.pair_style[1])
+        lmp.command("pair_coeff      %s"%self.pair_coeff[1])
+
+        # Thermo output.
+        lmp.command("thermo_style    custom step pe")
+        lmp.command("thermo          1000")
+
+        #run eqbrm run
         lmp.command("run             %d"%self.options["md"]["te"])
+        
+        
+        #reverse switching
+        lmp.command("variable         flambda equal ramp(${lf},${li})")
+        lmp.command("variable         blambda equal ramp(${li},${lf})")
+        
+        
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.pair_style[0], 
+            self.pair_style[1]))
+        lmp.command("pair_coeff       %s"%pc1)
+        lmp.command("pair_coeff       %s"%pc2)
+
+
+        #apply pair force commands
+        if self.pair_style[0] == self.pair_style[1]:
+            lmp.command("compute         c1 all pair %s 1"%self.pair_style[0])
+            lmp.command("compute         c2 all pair %s 2"%self.pair_style[1])
+        else:
+            lmp.command("compute         c1 all pair %s"%self.pair_style[0])
+            lmp.command("compute         c2 all pair %s"%self.pair_style[1])
+
+
+        # Output variables.
+        lmp.command("variable        step equal step")
+        lmp.command("variable        dU1 equal c_c1/atoms")             # Driving-force obtained from NEHI procedure.
+        lmp.command("variable        dU2 equal c_c2/atoms")
+
+        # Thermo output.
+        lmp.command("thermo_style    custom step v_dU1 v_dU2")
+        lmp.command("thermo          1000")
+
 
         #save the necessary items to a file: first step
-        lmp.command("print           \"${dU1} ${dU2} ${li}\" file forward_%d.dat"%iteration)
-        
-        #Forward switching : i to f
-        lmp.command("variable        lambda_p1 equal ramp(${li},${lf})")
-        lmp.command("variable        lambda_p2 equal ramp(${lf},${li})")
-
-        #first potential
-        if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("fix             f3 all adapt 1 pair %s:1 scale * * v_lambda_p1"%self.pair_style[0])
-        else:
-            lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_p1"%self.pair_style[0])        
-
-        #second potential
-        if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("fix             f4 all adapt 1 pair %s:2 scale * * v_lambda_p2"%self.pair_style[1])
-        else:
-            lmp.command("fix             f4 all adapt 1 pair %s scale * * v_lambda_p2"%self.pair_style[1])
-        
-        #now run forward switching
-        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_p1}\" screen no append forward_%d.dat"%iteration)
+        lmp.command("fix             f2 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run             %d"%self.options["md"]["ts"])
 
-        #unfix everything
-        lmp.command("unfix           f3")
-        lmp.command("unfix           f4")
-        lmp.command("unfix           f5")
 
-        # Equilibriate at the second
-        lmp.command("run             %d"%self.options["md"]["te"])
+        #now equilibrate at the second potential
+        lmp.command("unfix           f2")
+        lmp.command("uncompute       c1")
+        lmp.command("uncompute       c2")
 
-        #print initial header
-        lmp.command("print           \"${dU1} ${dU2} ${lf}\" file backward_%d.dat"%iteration)
-        
-        #start ramp
-        lmp.command("variable        lambda_p1 equal ramp(${lf},${li})")
-        lmp.command("variable        lambda_p2 equal ramp(${li},${lf})")
-
-        #set up first potential
-        if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("fix             f3 all adapt 1 pair %s:1 scale * * v_lambda_p1"%self.pair_style[0])
-        else:
-            lmp.command("fix             f3 all adapt 1 pair %s scale * * v_lambda_p1"%self.pair_style[0])        
-        
-        #second potential
-        if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("fix             f4 all adapt 1 pair %s:2 scale * * v_lambda_p2"%self.pair_style[1])
-        else:
-            lmp.command("fix             f4 all adapt 1 pair %s scale * * v_lambda_p2"%self.pair_style[1])
-        
-        #perform switching calculations
-        lmp.command("fix             f5 all print 1 \"${dU1} ${dU2} ${lambda_p1}\" screen no append backward_%d.dat"%iteration)
-        lmp.command("run             %d"%self.options["md"]["ts"])
-
-        #unfix
-        lmp.command("unfix           f3")
-        lmp.command("unfix           f4")
-        lmp.command("unfix           f5")
-        
-        #close LAMMPS object
         lmp.close()
+
 
 
     def thermodynamic_integration(self):

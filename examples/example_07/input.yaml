@@ -1,0 +1,25 @@
+element: ['Cu']
+mass: [63.546]
+calculations:
+- mode: alchemy 
+  temperature: [600]
+  pressure: [0]
+  lattice: [FCC]
+  repeat: [5, 5, 5]
+  state: [solid]
+  nsims: 1
+  
+md:
+  pair_style: [eam/fs, eam/alloy]
+  pair_coeff: ["* * ../potentials/Cu1.eam.fs Cu", "* * ../potentials/Cu01.eam.alloy Cu"]
+  timestep: 0.001
+  tdamp: 0.1
+  pdamp: 0.1
+  te: 10000
+  ts: 15000
+
+queue:
+  scheduler: local
+  cores: 4
+  commands:
+    - conda activate calphy
