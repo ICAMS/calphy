@@ -1,0 +1,63 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: >-
+  Automated free-energy calculation from atomistic
+  simulations
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Sarath
+    family-names: Menon
+    email: sarath.menon@rub.de
+    affiliation: >-
+      Interdisciplinary Centre for Advanced Materials
+      Simulation, Ruhr-Universität Bochum, 44801
+      Bochum, Germany
+    orcid: 'https://orcid.org/0000-0002-6776-1213'
+  - given-names: Yury
+    family-names: Lysogorskiy
+    affiliation: >-
+      Interdisciplinary Centre for Advanced Materials
+      Simulation, Ruhr-Universität Bochum, 44801
+      Bochum, Germany
+    orcid: 'https://orcid.org/0000-0003-4617-3188'
+  - given-names: Jutta
+    family-names: Rogal
+    affiliation: >-
+      Fachbereich Physik, Freie Universität Berlin,
+      14195 Berlin, Germany
+    orcid: 'https://orcid.org/0000-0002-6268-380X'
+  - given-names: Ralf
+    family-names: Drautz
+    email: ralf.drautz@rub.de
+    affiliation: >-
+      Interdisciplinary Centre for Advanced Materials
+      Simulation, Ruhr-Universität Bochum, 44801
+      Bochum, Germany
+    orcid: 'https://orcid.org/0000-0001-7101-8804'
+identifiers:
+  - type: doi
+    value: 10.1103/PhysRevMaterials.5.103801
+    description: Physical Review Materials 5(10) 2021
+repository-code: 'https://github.com/ICAMS/calphy'
+url: 'https://calphy.org'
+abstract: >-
+  We devise automated workflows for the calculation
+  of Helmholtz and Gibbs free energies and their
+  temperature and pressure dependence and provide the
+  corresponding computational tools. We employ
+  nonequilibrium thermodynamics for evaluating the
+  free energy of solid and liquid phases at a given
+  temperature and reversible scaling for computing
+  free energies over a wide range of temperatures,
+  including the direct integration of P−T coexistence
+  lines. By changing the chemistry and the
+  interatomic potential, alchemical and upscaling
+  free energy calculations are possible. Several
+  examples illustrate the accuracy and efficiency of
+  our implementation.
+license: GPL-2.0
