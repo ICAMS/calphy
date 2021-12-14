@@ -1,20 +1,24 @@
-element: Cu
-mass: 63.546
+element: Fe
+mass: 55.845
 calculations:
-- mode: melting_temperature 
+- mode: fe 
+  temperature: [100]
   pressure: [0]
+  lattice: [BCC]
   repeat: [5, 5, 5]
+  state: [solid]
   nsims: 1
+  lattice_constant: 2.8842
 
 md:
-  pair_style: eam/alloy
-  pair_coeff: "* * ../potentials/Cu01.eam.alloy Cu"
+  pair_style: eam
+  pair_coeff: "* * ../potentials/Fe.eam"
   timestep: 0.001
   nsmall: 10000
   tdamp: 0.1
   pdamp: 0.1
   te: 10000
-  ts: 15000
+  ts: 25000
   
 queue:
   scheduler: local
