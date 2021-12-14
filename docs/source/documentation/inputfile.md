@@ -16,7 +16,7 @@ The inputfile is `yaml` formatted. In this section the possible keys in the inpu
 | :-: | :-: | :-: | :-: | :-: |
 | [pair_style](#pair_style) | [pair_coeff](#pair_coeff) | [timestep](#timestep) | [nsmall](#nsmall) | [nevery](#nevery) |
 | [nrepeat](#nrepeat) | [ncycles](#ncycles) | [tdamp](#tdamp) | [pdamp](#pdamp) | [te](#te) |
-| [ts](#ts) |
+| [ts](#ts) | [tguess](#tguess) | [dtemp](#dtemp) | [maxattempts](#maxattempts) | 
 
 | `queue` block  | | | | |
 | :-: | :-: | :-: | :-: | :-: |
@@ -291,6 +291,36 @@ ts: 10000
 ```
 
 The number of time steps for switching between the system of interest and reference system.
+
+#### <a name="tguess"></a>`tguess`
+
+_type_: int         
+_example_:
+```
+tguess: 1300
+```
+
+An initial starting guess for melting temperature. Only used if mode is `melting_temperature`.
+
+#### <a name="dtemp"></a>`dtemp`
+
+_type_: int         
+_example_:
+```
+dtemp: 200
+```
+
+Temperature interval for search of melting temperature. Only used if mode is `melting_temperature`.
+
+#### <a name="maxattempts"></a>`maxattempts`
+
+_type_: int         
+_example_:
+```
+maxattempts: 5
+```
+
+The number of maximum attempts to try find the melting temperature in a automated manner. Only used if mode is `melting_temperature`.
 
 #### <a name="nsmall"></a>`nsmall`
 

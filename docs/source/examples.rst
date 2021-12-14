@@ -8,3 +8,5 @@ Examples
     examples/example_03/analysis
     examples/example_04/analysis
     examples/example_05/analysis
+    examples/example_06/analysis
+    examples/example_07/analysis
