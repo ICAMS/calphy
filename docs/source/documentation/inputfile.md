@@ -69,14 +69,14 @@ The various keys are-
 
 #### <a name="mode"></a>`mode`  
 
-_type_: string, `fe` or `ts`  
+_type_: string, `fe` or `ts` or `mts` or `alchemy` or `melting_temperature` 
 _example_:
 ```
 mode: fe
 mode: ts
 ```
 
-Calculation mode. The modes can be chosen from `fe`, `ts`, `mts` or `alchemy`. `fe` performs a direct free energy calculation, while `ts` performs a direct free energy calculation followed by reversible scaling to find temperature dependence. `mts` performs only reversible scaling part and can be used for dynamic Clausius-Clapeyron integration. Mode `alchemy` is used for switching between two different interatomic potentials, or for integration over concentration.  
+Calculation mode. The modes can be chosen from `fe`, `ts`, `mts`, `alchemy` or `melting_temperature`. `fe` performs a direct free energy calculation, while `ts` performs a direct free energy calculation followed by reversible scaling to find temperature dependence. `mts` performs only reversible scaling part and can be used for dynamic Clausius-Clapeyron integration. Mode `alchemy` is used for switching between two different interatomic potentials, or for integration over concentration.  
    
 #### <a name="temperature"></a>`temperature`  
 
