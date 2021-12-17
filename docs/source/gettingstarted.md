@@ -79,9 +79,22 @@ calphy uses LAMMPS as the driver for molecular dynamics simulations. For calphy 
 conda install -c conda-forge lammps
 ```
 
-Alternatively, when interatomic potentials with special compilation needs are to be used, LAMMPS (Stable release 29 Sept 2021 and above) can be compiled manually using the following set of instructions:
+Alternatively, when interatomic potentials with special compilation needs are to be used, LAMMPS (Stable release 29 Sept 2021 and above) can be compiled manually using the following set of instructions.
 
-First step is to obtain the stable version from [here](https://github.com/lammps/lammps/archive/refs/tags/stable_29Sep2021.tar.gz) and extract the archive. From the extracted archive, the following steps, used in the [conda-forge recipe](https://github.com/conda-forge/lammps-feedstock/blob/master/recipe/build.sh) can be run:
+1. In order to help with installing all the prerequisites, an environment file which does not include the LAMMPS distribution is also provided. **If you do not want to use a conda environment, skip to step 2.** This environment can be installed using:
+
+```
+cd calphy
+conda env create -f environment-nolammps.yml
+```
+
+    Activate the environment using:
+
+```
+conda activate calphy2
+```
+
+2. Obtain the stable version from [here](https://github.com/lammps/lammps/archive/refs/tags/stable_29Sep2021.tar.gz) and extract the archive. From the extracted archive, the following steps, used in the [conda-forge recipe](https://github.com/conda-forge/lammps-feedstock/blob/master/recipe/build.sh) can be run:
 
 ```
 mkdir build_lib
@@ -97,20 +110,20 @@ cp liblammps${SHLIB_EXT}* "${PREFIX}"/lib/
 cd ..
 ```
 
-The above commands only builds the [MANYBODY](https://docs.lammps.org/Packages_details.html#pkg-manybody) package. To use some of the other potentials, the following commands could be added to the `cmake` call.
+3. (**Optional**) The above commands only builds the [MANYBODY](https://docs.lammps.org/Packages_details.html#pkg-manybody) package. To use some of the other potentials, the following commands could be added to the `cmake` call.
 
 - `-D PKG_ML-PACE` for performant [Atomic Cluster Expansion](https://docs.lammps.org/Packages_details.html#pkg-ml-pace) potential.
 - `-D PKG_ML-SNAP=ON`for [SNAP potential](https://docs.lammps.org/Packages_details.html#pkg-ml-snap).
 - `-D PKG_MEAM=ON` for [MEAM potential](https://docs.lammps.org/Packages_details.html#meam-package).
 - `-D PKG_KIM=ON` for [KIM support](https://docs.lammps.org/Packages_details.html#pkg-kim).
 
-Now the python wrapper can be installed:
+3. Install the python wrapper:
 
 ```
 cd ../src
 make install-python
 ```
-In the case of a conda environment, the following commands can be used to copy the compiled libraries to an accessible path:
+4. **In the case of a conda environment**, the following commands can be used to copy the compiled libraries to an accessible path:
 
 ```
 mkdir -p $CONDA_PREFIX/include/lammps
@@ -118,20 +131,18 @@ cp library.h $CONDA_PREFIX/include/lammps
 cp liblammps${SHLIB_EXT}* $CONDA_PREFIX/lib/
 ```
 
-The combined libraries **should be available** on the system or the environment paths. Please see here for more details.
-
-Once LAMMPS is compiled and the libraries are available in an accessible location, the following commands can be used within python to test the installation:
+5. Once LAMMPS is compiled and the libraries are available in an accessible location, the following commands can be used within python to test the installation:
 
 ```
 from lammps import lammps
 lmp = lammps()
 ```
-Now, we install pylammpsmpi using,
+6. Now, we install pylammpsmpi using,
 
 ```
 pip install pylammpsmpi
 ```
-and finally calphy:
+7. And finally calphy:
 
 ```
 cd calphy
