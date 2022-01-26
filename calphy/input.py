@@ -131,6 +131,7 @@ def read_yamlfile(file):
         "tguess": None,
         "dtemp": 200,
         "maxattempts": 5,
+        "traj_interval": 0,
     }
 
     #queue properties

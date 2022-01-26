@@ -346,12 +346,19 @@ class Phase:
             pf, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${flambda}\" screen no file forward_%d.dat"%iteration)
+
+        if self.options["md"]["traj_interval"] > 0:
+            lmp.command("dump              d1 all custom %d traj.forward_%d.dat id type mass x y z vx vy vz"%(self.options["md"]["traj_interval"],
+                iteration))
+
         lmp.command("run               %d"%self.options["md"]["ts"])
 
         #unfix
         lmp.command("unfix             f3")
         lmp.command("unfix             f1")
 
+        if self.options["md"]["traj_interval"] > 0:
+            lmp.command("undump           d1")
 
         #switch potential
         lmp = ph.set_potential(lmp, self.options)
@@ -396,10 +403,18 @@ class Phase:
             pi, self.options["md"]["pdamp"]))
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${blambda}\" screen no file backward_%d.dat"%iteration)
+
+        if self.options["md"]["traj_interval"] > 0:
+            lmp.command("dump              d1 all custom %d traj.backward_%d.dat id type mass x y z vx vy vz"%(self.options["md"]["traj_interval"],
+                iteration))
+
         lmp.command("run               %d"%self.options["md"]["ts"])
         
         lmp.command("unfix             f3")
         lmp.command("unfix             f1")
+
+        if self.options["md"]["traj_interval"] > 0:
+            lmp.command("undump           d1")
         
         #close the object
         lmp.close()
