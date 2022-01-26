@@ -16,7 +16,7 @@ The inputfile is `yaml` formatted. In this section the possible keys in the inpu
 | :-: | :-: | :-: | :-: | :-: |
 | [pair_style](#pair_style) | [pair_coeff](#pair_coeff) | [timestep](#timestep) | [nsmall](#nsmall) | [nevery](#nevery) |
 | [nrepeat](#nrepeat) | [ncycles](#ncycles) | [tdamp](#tdamp) | [pdamp](#pdamp) | [te](#te) |
-| [ts](#ts) | [tguess](#tguess) | [dtemp](#dtemp) | [maxattempts](#maxattempts) | 
+| [ts](#ts) | [tguess](#tguess) | [dtemp](#dtemp) | [maxattempts](#maxattempts) | [traj_interval](#traj_interval) |  
 
 | `queue` block  | | | | |
 | :-: | :-: | :-: | :-: | :-: |
@@ -361,6 +361,17 @@ ncycles: 100
 ```
 
 Number of cycles to try converging the pressure of the system. If the pressure is not converged after `ncycles`, an error will be raised. In each `ncycle`, `nsmall` MD steps will be run.
+
+#### <a name="traj_interval"></a>`traj_interval`        
+
+_type_: int         
+_example_:
+```
+traj_interval: 100
+```
+
+Record MD trajectory during temperature sweep runs in the given interval of time steps. Default 0, trajectories are never recorded.
+
 
 ## `queue` block
 
