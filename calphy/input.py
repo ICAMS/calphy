@@ -121,6 +121,8 @@ def read_yamlfile(file):
         #eqbr and switching time
         "te": 25000,
         "ts": 50000,
+        #enable separate switching time for rs
+        "ts_rs": 50000,
         "tguess": None,
         "dtemp": 200,
         "maxattempts": 5,
@@ -170,6 +172,15 @@ def read_yamlfile(file):
     options["mass"] = check_and_convert_to_list(indata["mass"])
     options["md"]["pair_style"] = check_and_convert_to_list(indata["md"]["pair_style"])
     options["md"]["pair_coeff"] = fix_paths(check_and_convert_to_list(indata["md"]["pair_coeff"]))
+
+    #now modify ts;
+    if isinstance(options["md"]["ts"], list):
+        ts1 = options["md"]["ts"][0]
+        ts2 = options["md"]["ts"][1]
+        options["md"]["ts"] = ts1
+        options["md"]["ts_rs"] = ts2
+    else:
+        options["md"]["ts_rs"] = options["md"]["ts"]
 
     if not len(options["element"]) == len(options["mass"]):
         raise ValueError("length of elements and mass should be same!")

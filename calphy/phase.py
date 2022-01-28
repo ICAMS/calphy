@@ -344,7 +344,7 @@ class Phase:
             lmp.command("dump              d1 all custom %d traj.forward_%d.dat id type mass x y z vx vy vz"%(self.options["md"]["traj_interval"],
                 iteration))
 
-        lmp.command("run               %d"%self.options["md"]["ts"])
+        lmp.command("run               %d"%self.options["md"]["ts_rs"])
 
         #unfix
         lmp.command("unfix             f3")
@@ -401,7 +401,7 @@ class Phase:
             lmp.command("dump              d1 all custom %d traj.backward_%d.dat id type mass x y z vx vy vz"%(self.options["md"]["traj_interval"],
                 iteration))
 
-        lmp.command("run               %d"%self.options["md"]["ts"])
+        lmp.command("run               %d"%self.options["md"]["ts_rs"])
         
         lmp.command("unfix             f3")
         lmp.command("unfix             f1")
