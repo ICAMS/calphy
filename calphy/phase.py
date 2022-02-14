@@ -213,7 +213,7 @@ class Phase:
 
         #average quantities
         report["average"] = {}
-        report["average"]["vol/atom"] = float(self.volatom)
+        report["average"]["vol_atom"] = float(self.volatom)
         
         if self.k is not None:
             report["average"]["spring_constant"] = " ".join(np.array(self.k).astype(str))
