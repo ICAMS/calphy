@@ -170,9 +170,6 @@ class SGE:
         """
         Create class
         """
-        jobout = ".".join([outfile, "out"])
-        joberr = ".".join([outfile, "err"])
-
         self.queueoptions = {"scheduler": "sge",
                              "jobname": "tis",
                              "walltime": "23:59:00",
