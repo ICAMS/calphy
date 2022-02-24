@@ -55,10 +55,13 @@ def fix_paths(potlist):
     fixedpots = []
     for pot in potlist:
         pcraw = pot.split()
-        filename = pcraw[2]
-        filename = os.path.abspath(filename)
-        pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
-        fixedpots.append(pcnew)
+        if len(pcraw) >= 3:
+            filename = pcraw[2]
+            filename = os.path.abspath(filename)
+            pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
+            fixedpots.append(pcnew)
+        else:
+            fixedpots.append(pcraw)
         #print(pcnew)
     return fixedpots
     
