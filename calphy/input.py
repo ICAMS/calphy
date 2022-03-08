@@ -289,7 +289,21 @@ def read_yamlfile(file):
                                 cdict["mode"] = calc["mode"]
                                 if not len(pressure)==2:
                                     raise ValueError("At least two pressure values are needed for pscale")
-                                            
+                                cdict["pressure"] = pressure[0]
+                                cdict["pressure_stop"] = pressure[-1]
+                                cdict["temperature"] = temp
+                                cdict["lattice"] = lat
+                                if state[i] in ['solid', 'liquid']:
+                                    cdict["state"] = state[i]
+                                else:
+                                    raise ValueError('state has to be either solid or liquid')
+                                cdict["nelements"] = options["nelements"]
+                                cdict["element"] = options["element"]
+                                cdict["lattice_constant"] = lattice_constant[i]
+                                cdict["iso"] = iso[i]
+                                cdict["fix_lattice"] = fix_lattice[i]
+                                cdict = prepare_optional_keys(calc, cdict)
+                                options["calculations"].append(cdict)                                            
                         else:
                             for press in pressure:
                                 for temp in temperature:
