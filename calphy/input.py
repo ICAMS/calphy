@@ -292,6 +292,7 @@ def read_yamlfile(file):
                             cdict["pressure"] = pressure[0]
                             cdict["pressure_stop"] = pressure[-1]
                             cdict["temperature"] = temp
+                            cdict["temperature_stop"] = temp
                             cdict["lattice"] = lat
                             if state[i] in ['solid', 'liquid']:
                                 cdict["state"] = state[i]
