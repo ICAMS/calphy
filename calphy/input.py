@@ -261,13 +261,13 @@ def read_yamlfile(file):
 
 
                 for i, lat in enumerate(lattice):
-                    for press in pressure:
-                        if (mode == "ts") or (mode == "mts"):
+                    if (mode == "ts") or (mode == "mts") or (mode == "tscale"):
+                        for press in pressure:
                             cdict = {}
                             cdict["mode"] = calc["mode"]
                             #we need to check for temperature length here
                             if not len(temperature)==2:
-                                raise ValueError("At least two temperature values are needed for ts")
+                                raise ValueError("At least two temperature values are needed for ts/tscale")
                             cdict["temperature"] = temperature[0]
                             cdict["pressure"] = press
                             cdict["lattice"] = lat
@@ -282,8 +282,31 @@ def read_yamlfile(file):
                             cdict["iso"] = iso[i]
                             cdict["fix_lattice"] = fix_lattice[i]
                             cdict = prepare_optional_keys(calc, cdict)
-                            options["calculations"].append(cdict)                      
-                        else:
+                            options["calculations"].append(cdict)
+                    elif mode == "pscale":
+                        for temp in temperature:
+                            cdict = {}
+                            cdict["mode"] = calc["mode"]
+                            if not len(pressure)==2:
+                                raise ValueError("At least two pressure values are needed for pscale")
+                            cdict["pressure"] = pressure[0]
+                            cdict["pressure_stop"] = pressure[-1]
+                            cdict["temperature"] = temp
+                            cdict["temperature_stop"] = temp
+                            cdict["lattice"] = lat
+                            if state[i] in ['solid', 'liquid']:
+                                cdict["state"] = state[i]
+                            else:
+                                raise ValueError('state has to be either solid or liquid')
+                            cdict["nelements"] = options["nelements"]
+                            cdict["element"] = options["element"]
+                            cdict["lattice_constant"] = lattice_constant[i]
+                            cdict["iso"] = iso[i]
+                            cdict["fix_lattice"] = fix_lattice[i]
+                            cdict = prepare_optional_keys(calc, cdict)
+                            options["calculations"].append(cdict)                                            
+                    else:
+                        for press in pressure:
                             for temp in temperature:
                                 cdict = {}
                                 cdict["mode"] = calc["mode"]

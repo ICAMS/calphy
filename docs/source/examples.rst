@@ -10,3 +10,5 @@ Examples
     examples/example_05/analysis
     examples/example_06/analysis
     examples/example_07/analysis
+    examples/example_08/analysis
+    examples/example_09/analysis

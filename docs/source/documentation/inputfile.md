@@ -69,14 +69,14 @@ The various keys are-
 
 #### <a name="mode"></a>`mode`  
 
-_type_: string, `fe` or `ts` or `mts` or `alchemy` or `melting_temperature` 
+_type_: string, `fe` or `ts` or `mts` or `alchemy` or `melting_temperature` or `tscale` or `pscale`
 _example_:
 ```
 mode: fe
 mode: ts
 ```
 
-Calculation mode. The modes can be chosen from `fe`, `ts`, `mts`, `alchemy` or `melting_temperature`. `fe` performs a direct free energy calculation, while `ts` performs a direct free energy calculation followed by reversible scaling to find temperature dependence. `mts` performs only reversible scaling part and can be used for dynamic Clausius-Clapeyron integration. Mode `alchemy` is used for switching between two different interatomic potentials, or for integration over concentration.  
+Calculation mode. The modes can be chosen from `fe`, `ts`, `mts`, `alchemy`, `melting_temperature`, `tscale` or `pscale`. `fe` performs a direct free energy calculation, while `ts` performs a direct free energy calculation followed by reversible scaling to find temperature dependence. `mts` performs only reversible scaling part and can be used for dynamic Clausius-Clapeyron integration. Mode `alchemy` is used for switching between two different interatomic potentials, or for integration over concentration.  `melting_temperature` can be used for automated calculation of melting temperature. `tscale` is used for similar purpose as `ts`, but scales the temperature directly. `pscale` calculates the free energy as a function of the pressure.
    
 #### <a name="temperature"></a>`temperature`  
 
@@ -97,7 +97,7 @@ _example_:
 pressure: [0, 10000]
 ```
 
-Pressure for the simulation in bars. Calculations are performed at each pressure specified. For each pressure specified in the list, one calculation will be started. For example, in the following combination-
+Pressure for the simulation in bars. Calculations are performed at each pressure specified for all modes except `pscale`. For each pressure specified in the list, one calculation will be started. For example, in the following combination-
 
 ```
 mode: fe
@@ -105,7 +105,7 @@ temperature: [1000, 1200]
 pressure: [0, 10000]
 ```  
 
-A total of 2 temperatures * 2 pressures, 4 calculations will be started. If the mode is `ts` for the same configuration above, 2 calculations will be started.
+A total of 2 temperatures * 2 pressures, 4 calculations will be started. If the mode is `ts` for the same configuration above, 2 calculations will be started. However if mode is `pscale`, 2 temperatures*1 pressure range, total of two calculations will be started.
 
 #### <a name="lattice"></a>`lattice`
 
