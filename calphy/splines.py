@@ -2,29 +2,23 @@
 calphy: a Python library and command line interface for automated free
 energy calculations.
 
-Copyright 2021  (c) Sarath Menon^1, Yury Lysogorskiy^1, Ralf Drautz^1
-^1: Ruhr-University Bochum, Bochum, Germany
+Copyright 2021  (c) Sarath Menon^1, Yury Lysogorskiy^2, Ralf Drautz^2
+^1: Max Planck Institut für Eisenforschung, Dusseldorf, Germany 
+^2: Ruhr-University Bochum, Bochum, Germany
+
+calphy is published and distributed under the Academic Software License v1.0 (ASL). 
+calphy is distributed in the hope that it will be useful for non-commercial academic research, 
+but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+See the ASL for more details. 
 
 More information about the program can be found in:
-Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz. 
-“Automated Free Energy Calculation from Atomistic Simulations.” 
-ArXiv:2107.08980 [Cond-Mat], July 19, 2021. 
-http://arxiv.org/abs/2107.08980.
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-See the LICENSE file.
+Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz.
+“Automated Free Energy Calculation from Atomistic Simulations.” Physical Review Materials 5(10), 2021
+DOI: 10.1103/PhysRevMaterials.5.103801
 
 For more information contact:
-sarath.menon@ruhr-uni-bochum.de
+sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
+
 
 The splines are from:
 
