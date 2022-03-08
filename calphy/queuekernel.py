@@ -295,5 +295,9 @@ def main():
         _ = routine_alchemy(job)
     elif job.calc["mode"] == "melting_temperature":
         _ = job.calculate_tm()
+    elif calc["mode"] == "tscale":
+        _ = routine_tscale(job)
+    elif calc["mode"] == "pscale":
+        _ = routine_pscale(job)
     else:
-        raise ValueError("Mode should be either fe/ts/mts/alchemy/melting_temperature")
+        raise ValueError("Mode should be either fe/ts/mts/alchemy/melting_temperature/tscale/pscale")
