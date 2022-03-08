@@ -95,6 +95,37 @@ def routine_only_ts(job):
         job.logger.info("TS integration cycle %d finished in %f s"%(i+1, te))
     return job
 
+def routine_tscale(job):
+    """
+    Perform tscale routine
+    """
+    routine_fe(job)
+
+    #now do rev scale steps
+    for i in range(job.nsims):
+        ts = time.time()
+        job.temperature_scaling(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("Temperature scaling cycle %d finished in %f s"%(i+1, te))
+    
+    job.integrate_reversible_scaling(scale_energy=False)
+    return job
+
+def routine_pscale(job):
+    """
+    Perform pscale routine
+    """
+    routine_fe(job)
+
+    #now do rev scale steps
+    for i in range(job.nsims):
+        ts = time.time()
+        job.pressure_scaling(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("Pressure scaling cycle %d finished in %f s"%(i+1, te))
+    
+    job.integrate_pressure_scaling()
+    return job
 
 def routine_alchemy(job):
     """
@@ -202,8 +233,12 @@ def run_calculation(job):
         job = routine_alchemy(job)
     elif job.calc["mode"] == "melting_temperature":
         job.calculate_tm()
+    elif calc["mode"] == "tscale":
+        job = routine_tscale(job)
+    elif calc["mode"] == "pscale":
+        job = routine_pscale(job)
     else:
-        raise ValueError("Mode should be either fe/ts/mts/alchemy/melting_temperature")
+        raise ValueError("Mode should be either fe/ts/mts/alchemy/melting_temperature/tscale/pscale")
     return job
 
 def main():
