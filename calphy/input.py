@@ -245,7 +245,7 @@ def read_yamlfile(file):
                 if "iso" in calc.keys():
                     iso = check_and_convert_to_list(calc["iso"])
                 else:
-                    iso = [True for x in range(len(lattice))]
+                    iso = [False for x in range(len(lattice))]
 
                 if "fix_lattice" in calc.keys():
                     fix_lattice = check_and_convert_to_list(calc["fix_lattice"])
