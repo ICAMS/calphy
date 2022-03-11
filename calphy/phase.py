@@ -599,7 +599,7 @@ class Phase:
         res : list of lists of shape 1x3
             Only returned if `return_values` is True.
         """
-        res = integrate_ps(self.simfolder, self.fe, self.natoms,
+        res = integrate_ps(self.simfolder, self.fe, self.natoms, self.p, self.pend,
             nsims=self.nsims, return_values=return_values)
 
         if return_values:

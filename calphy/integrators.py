@@ -596,7 +596,7 @@ def integrate_rs(simfolder, f0, t, natoms, p=0, nsims=5,
         return (temp, f, werr)
 
 
-def integrate_ps(simfolder, f0, natoms, nsims=1, 
+def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1, 
     return_values=False):
     """
     Carry out the reversible scaling integration
@@ -632,18 +632,15 @@ def integrate_ps(simfolder, f0, natoms, nsims=1,
         fp = fp/(10000*160.21766208)
         bp = bp/(10000*160.21766208)
 
-        fdx = fp*fvol
-        bdx = bp*bvol
+        wf = cumtrapz(fvol, fp, initial=0)
+        wb = cumtrapz(bvol[::-1], bp[::-1], initial=0)
 
-        wf = cumtrapz(fdx, flambda,initial=0)
-        wb = cumtrapz(bdx[::-1], blambda[::-1], initial=0)
-
-        w = (wf + wb)/(flambda)
+        w = (wf + wb)/2
         ws.append(w)
 
     wmean = np.mean(ws, axis=0)
     werr = np.std(ws, axis=0)
-    press = flambda
+    press = np.linspace(pi, pf, len(wmean))
 
     f = f0 + wmean
 
