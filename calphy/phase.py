@@ -242,10 +242,6 @@ class Phase:
             else:
                 self.logger.info("- 10.1016/j.commatsci.2018.12.029")
                 self.logger.info("- 10.1063/1.4967775")
-        elif self.calc["mode"] == "ts":
-            self.logger.info("- 10.1103/PhysRevLett.83.3973")
-        elif self.calc["mode"] == "mts":
-            self.logger.info("- 10.1063/1.1420486") 
 
 
     def reversible_scaling(self, iteration=1):
@@ -416,6 +412,12 @@ class Phase:
         #close the object
         lmp.close()
 
+        self.logger.info("Please cite the following publications:")
+        if self.calc["mode"] == "mts":
+            self.logger.info("- 10.1063/1.1420486")
+        else:
+            self.logger.info("- 10.1103/PhysRevLett.83.3973")
+
     def integrate_reversible_scaling(self, scale_energy=False, return_values=False):
         """
         Perform integration after reversible scaling
@@ -435,7 +437,7 @@ class Phase:
         """
         res = integrate_rs(self.simfolder, self.fe, self.t, self.natoms, p=self.p,
             nsims=self.nsims, scale_energy=scale_energy, return_values=return_values)
-
+        
         if return_values:
             return res
 
@@ -510,6 +512,7 @@ class Phase:
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run               %d"%self.options["md"]["ts"])
 
+        lmp.close()
 
     def pressure_scaling(self, iteration=1):
         """
@@ -585,7 +588,11 @@ class Phase:
         lmp.command("fix               f3 all print 1 \"${dU} ${pp} $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run               %d"%self.options["md"]["ts"])
 
-    
+        lmp.close()
+
+        self.logger.info("Please cite the following publications:")
+        self.logger.info("- 10.1016/j.commatsci.2022.111275")
+
     
     def integrate_pressure_scaling(self, return_values=False):
         """
