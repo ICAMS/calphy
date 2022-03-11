@@ -536,6 +536,8 @@ class Phase:
         lmp.command("echo              log")
         lmp.command("variable          li equal %f"%li)
         lmp.command("variable          lf equal %f"%lf)
+        lmp.command("variable          pi equal %f"%p0)
+        lmp.command("variable          pf equal %f"%pf)
 
         #read in conf
         conf = os.path.join(self.simfolder, "conf.dump")
@@ -558,10 +560,11 @@ class Phase:
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU      equal pe/atoms")
         lmp.command("variable          lambda equal ramp(${li},${lf})")
+        lmp.command("variable          pp equal ramp(${pi},${pf})")
 
         lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.options["md"]["tdamp"],
                                         self.iso, p0, pf, self.options["md"]["pdamp"]))
-        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("fix               f3 all print 1 \"${dU} ${pp} $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
         lmp.command("run               %d"%self.options["md"]["ts"])
 
         lmp.command("unfix             f2")
@@ -575,10 +578,11 @@ class Phase:
 
         #start reverse loop
         lmp.command("variable          lambda equal ramp(${lf},${li})")
+        lmp.command("variable          pp equal ramp(${pf},${pi})")
 
         lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.options["md"]["tdamp"],
                                         self.iso, pf, p0, self.options["md"]["pdamp"]))
-        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("fix               f3 all print 1 \"${dU} ${pp} $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run               %d"%self.options["md"]["ts"])
 
     

@@ -623,8 +623,8 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1,
     ws = []
 
     for i in range(1, nsims+1):
-        fdx, fp, fvol, flambda = np.loadtxt(os.path.join(simfolder, "forward_%d.dat"%i), unpack=True, comments="#")
-        bdx, bp, bvol, blambda = np.loadtxt(os.path.join(simfolder, "backward_%d.dat"%i), unpack=True, comments="#")
+        _, fp, fvol, _ = np.loadtxt(os.path.join(simfolder, "forward_%d.dat"%i), unpack=True, comments="#")
+        _, bp, bvol, _ = np.loadtxt(os.path.join(simfolder, "backward_%d.dat"%i), unpack=True, comments="#")
         
         fvol = fvol/natoms
         bvol = bvol/natoms
@@ -640,7 +640,7 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1,
 
     wmean = np.mean(ws, axis=0)
     werr = np.std(ws, axis=0)
-    press = np.linspace(pi, pf, len(wmean))
+    press = fp*(10000*160.21766208)
 
     f = f0 + wmean
 

@@ -1,11 +1,11 @@
 element: Cu
 mass: 63.546
 calculations:
-- mode: pscale
+- mode: fe
   temperature: 1200
-  pressure: [0, 10000]
+  pressure: [15000, 20000]
   lattice: [FCC]
-  repeat: [7, 7, 7]
+  repeat: [5, 5, 5]
   state: [solid]
   nsims: 1
   lattice_constant: 3.697

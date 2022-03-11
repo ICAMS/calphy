@@ -3,12 +3,11 @@ mass: 63.546
 calculations:
 - mode: pscale
   temperature: 1200
-  pressure: [0, 10000]
+  pressure: [10000, 20000]
   lattice: [FCC]
   repeat: [7, 7, 7]
   state: [solid]
   nsims: 1
-  lattice_constant: 3.697
 
 md:
   pair_style: eam/alloy
