@@ -2,22 +2,29 @@
 calphy: a Python library and command line interface for automated free
 energy calculations.
 
-Copyright 2021  (c) Sarath Menon^1, Yury Lysogorskiy^2, Ralf Drautz^2
-^1: Max Planck Institut für Eisenforschung, Dusseldorf, Germany 
-^2: Ruhr-University Bochum, Bochum, Germany
-
-calphy is published and distributed under the Academic Software License v1.0 (ASL). 
-calphy is distributed in the hope that it will be useful for non-commercial academic research, 
-but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
-See the ASL for more details. 
+Copyright 2021  (c) Sarath Menon^1, Yury Lysogorskiy^1, Ralf Drautz^1
+^1: Ruhr-University Bochum, Bochum, Germany
 
 More information about the program can be found in:
-Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz.
-“Automated Free Energy Calculation from Atomistic Simulations.” Physical Review Materials 5(10), 2021
-DOI: 10.1103/PhysRevMaterials.5.103801
+Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz. 
+“Automated Free Energy Calculation from Atomistic Simulations.” 
+ArXiv:2107.08980 [Cond-Mat], July 19, 2021. 
+http://arxiv.org/abs/2107.08980.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+See the LICENSE file.
 
 For more information contact:
-sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
+sarath.menon@ruhr-uni-bochum.de
 """
 
 import numpy as np
@@ -63,10 +70,6 @@ class Phase:
         self.tend = self.calc["temperature_stop"]
         self.thigh = self.calc["thigh"] 
         self.p = self.calc["pressure"]
-        if "pressure_stop" in self.calc.keys():
-            self.pend = self.calc["pressure_stop"]
-        else:
-            self.pend = self.p
         self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %f bar"%(self.t, self.tend, self.p))
 
         if self.calc["iso"]:
@@ -242,7 +245,10 @@ class Phase:
             else:
                 self.logger.info("- 10.1016/j.commatsci.2018.12.029")
                 self.logger.info("- 10.1063/1.4967775")
-
+        elif self.calc["mode"] == "ts":
+            self.logger.info("- 10.1103/PhysRevLett.83.3973")
+        elif self.calc["mode"] == "mts":
+            self.logger.info("- 10.1063/1.1420486") 
 
     def reversible_scaling(self, iteration=1):
         """
@@ -286,24 +292,29 @@ class Phase:
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         #set thermostat and run equilibrium
-        lmp.command("fix               f1 all nph %s %f %f %f"%(self.iso, self.p, self.p, self.options["md"]["pdamp"]))
-        lmp.command("fix               f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], np.random.randint(0, 10000)))
+        if self.calc["npt"]:
+            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
+                self.iso, self.p, self.p, self.options["md"]["pdamp"]))
+        else:
+            lmp.command("fix               f1 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
+
         lmp.command("run               %d"%self.options["md"]["te"])
         lmp.command("unfix             f1")
-        lmp.command("unfix             f2")
 
         #now fix com
         lmp.command("variable         xcm equal xcm(all,x)")
         lmp.command("variable         ycm equal xcm(all,y)")
         lmp.command("variable         zcm equal xcm(all,z)")
-        
-        lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, self.p, self.p, self.options["md"]["pdamp"]))
-        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(t0, t0, self.options["md"]["tdamp"], np.random.randint(0, 10000)))
-        
+
+        if self.calc["npt"]:
+            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.t, self.t, self.options["md"]["tdamp"], 
+                self.iso, self.p, self.p, self.options["md"]["pdamp"]))
+        else:
+            lmp.command("fix               f1 all nvt temp %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.t, self.t, self.options["md"]["tdamp"]))
+
         #compute com and modify fix
         lmp.command("compute           tcm all temp/com")
         lmp.command("fix_modify        f1 temp tcm")
-        lmp.command("fix_modify        f2 temp tcm")
 
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU      equal c_thermo_pe/atoms")        
@@ -314,10 +325,6 @@ class Phase:
         lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(t0, np.random.randint(0, 10000)))   
         lmp.command("run               %d"%self.options["md"]["te"])
         
-        #unfix nph
-        lmp.command("unfix             f1")
-
-
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
         lmp.command("variable         fscale equal v_flambda-1.0")
@@ -334,21 +341,17 @@ class Phase:
         lmp.command("pair_coeff       %s"%pcnew1)
         lmp.command("pair_coeff       %s"%pcnew2)
 
-        #start scaling over switching time
-        lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, pi, 
-            pf, self.options["md"]["pdamp"]))
-        lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${flambda}\" screen no file forward_%d.dat"%iteration)
 
         if self.options["md"]["traj_interval"] > 0:
             lmp.command("dump              d1 all custom %d traj.forward_%d.dat id type mass x y z vx vy vz"%(self.options["md"]["traj_interval"],
                 iteration))
 
-        lmp.command("run               %d"%self.options["md"]["ts_rs"])
+        lmp.command("run               %d"%self.options["md"]["ts"])
 
         #unfix
         lmp.command("unfix             f3")
-        lmp.command("unfix             f1")
+        #lmp.command("unfix             f1")
 
         if self.options["md"]["traj_interval"] > 0:
             lmp.command("undump           d1")
@@ -356,13 +359,7 @@ class Phase:
         #switch potential
         lmp = ph.set_potential(lmp, self.options)
 
-        #equilibriate scaled hamiltonian
-        lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, pf, 
-            pf, self.options["md"]["pdamp"]))
-        lmp.command("fix_modify        f1 temp tcm")        
         lmp.command("run               %d"%self.options["md"]["te"])
-        lmp.command("unfix             f1")
-
 
         #check melting or freezing
         lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
@@ -392,31 +389,21 @@ class Phase:
         lmp.command("pair_coeff       %s"%pcnew2)
 
         #apply fix and perform switching        
-        lmp.command("fix              f1 all nph %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.iso, pf, 
-            pi, self.options["md"]["pdamp"]))
-        lmp.command("fix_modify        f1 temp tcm")
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${blambda}\" screen no file backward_%d.dat"%iteration)
 
         if self.options["md"]["traj_interval"] > 0:
             lmp.command("dump              d1 all custom %d traj.backward_%d.dat id type mass x y z vx vy vz"%(self.options["md"]["traj_interval"],
                 iteration))
 
-        lmp.command("run               %d"%self.options["md"]["ts_rs"])
+        lmp.command("run               %d"%self.options["md"]["ts"])
         
         lmp.command("unfix             f3")
-        lmp.command("unfix             f1")
 
         if self.options["md"]["traj_interval"] > 0:
             lmp.command("undump           d1")
         
         #close the object
         lmp.close()
-
-        self.logger.info("Please cite the following publications:")
-        if self.calc["mode"] == "mts":
-            self.logger.info("- 10.1063/1.1420486")
-        else:
-            self.logger.info("- 10.1103/PhysRevLett.83.3973")
 
     def integrate_reversible_scaling(self, scale_energy=False, return_values=False):
         """
@@ -437,181 +424,6 @@ class Phase:
         """
         res = integrate_rs(self.simfolder, self.fe, self.t, self.natoms, p=self.p,
             nsims=self.nsims, scale_energy=scale_energy, return_values=return_values)
-        
-        if return_values:
-            return res
-
-    def temperature_scaling(self, iteration=1):
-        """
-        Perform temperature scaling calculation in NPT
-        
-        Parameters
-        ----------
-        iteration : int, optional
-            iteration of the calculation. Default 1
-        
-        Returns
-        -------
-        None
-        """
-        t0 = self.t
-        tf = self.tend
-        li = 1
-        lf = t0/tf
-        p0 = self.p
-        pf = lf*p0
-
-        #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
-
-        lmp.command("echo              log")
-        lmp.command("variable          li equal %f"%li)
-        lmp.command("variable          lf equal %f"%lf)
-
-        #read in conf
-        conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
-
-        #set up potential
-        lmp = ph.set_potential(lmp, self.options)
-
-        #remap the box to get the correct pressure
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
-
-
-        #equilibrate first
-        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.options["md"]["tdamp"],
-                                        self.iso, p0, p0, self.options["md"]["pdamp"]))
-        lmp.command("run               %d"%self.options["md"]["te"])
-        lmp.command("unfix             1")
-
-
-        #now scale system to final temp, thereby recording enerfy at every step
-        lmp.command("variable          step    equal step")
-        lmp.command("variable          dU      equal pe/atoms")
-        lmp.command("variable          lambda equal ramp(${li},${lf})")
-
-        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, tf, self.options["md"]["tdamp"],
-                                        self.iso, p0, pf, self.options["md"]["pdamp"]))
-        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
-        lmp.command("run               %d"%self.options["md"]["ts"])
-
-        lmp.command("unfix             f2")
-        lmp.command("unfix             f3")
-
-        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(tf, tf, self.options["md"]["tdamp"],
-                                        self.iso, pf, pf, self.options["md"]["pdamp"]))
-        lmp.command("run               %d"%self.options["md"]["te"])
-        lmp.command("unfix             1")
-
-        #start reverse loop
-        lmp.command("variable          lambda equal ramp(${lf},${li})")
-
-        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(tf, t0, self.options["md"]["tdamp"],
-                                        self.iso, pf, p0, self.options["md"]["pdamp"]))
-        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
-        lmp.command("run               %d"%self.options["md"]["ts"])
-
-        lmp.close()
-
-    def pressure_scaling(self, iteration=1):
-        """
-        Perform pressure scaling calculation in NPT
-        
-        Parameters
-        ----------
-        iteration : int, optional
-            iteration of the calculation. Default 1
-        
-        Returns
-        -------
-        None
-        """
-        t0 = self.t
-        li = 1
-        lf = self.pend
-        p0 = self.p
-        pf = self.pend
-
-        #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
-
-        lmp.command("echo              log")
-        lmp.command("variable          li equal %f"%li)
-        lmp.command("variable          lf equal %f"%lf)
-        lmp.command("variable          pi equal %f"%p0)
-        lmp.command("variable          pf equal %f"%pf)
-
-        #read in conf
-        conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
-
-        #set up potential
-        lmp = ph.set_potential(lmp, self.options)
-
-        #remap the box to get the correct pressure
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
-
-        #equilibrate first
-        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.options["md"]["tdamp"],
-                                        self.iso, p0, p0, self.options["md"]["pdamp"]))
-        lmp.command("run               %d"%self.options["md"]["te"])
-        lmp.command("unfix             1")
-
-
-        #now scale system to final temp, thereby recording enerfy at every step
-        lmp.command("variable          step    equal step")
-        lmp.command("variable          dU      equal pe/atoms")
-        lmp.command("variable          lambda equal ramp(${li},${lf})")
-        lmp.command("variable          pp equal ramp(${pi},${pf})")
-
-        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.options["md"]["tdamp"],
-                                        self.iso, p0, pf, self.options["md"]["pdamp"]))
-        lmp.command("fix               f3 all print 1 \"${dU} ${pp} $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
-        lmp.command("run               %d"%self.options["md"]["ts"])
-
-        lmp.command("unfix             f2")
-        lmp.command("unfix             f3")
-
-
-        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.options["md"]["tdamp"],
-                                        self.iso, pf, pf, self.options["md"]["pdamp"]))
-        lmp.command("run               %d"%self.options["md"]["te"])
-        lmp.command("unfix             1")
-
-        #start reverse loop
-        lmp.command("variable          lambda equal ramp(${lf},${li})")
-        lmp.command("variable          pp equal ramp(${pf},${pi})")
-
-        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.options["md"]["tdamp"],
-                                        self.iso, pf, p0, self.options["md"]["pdamp"]))
-        lmp.command("fix               f3 all print 1 \"${dU} ${pp} $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
-        lmp.command("run               %d"%self.options["md"]["ts"])
-
-        lmp.close()
-
-        self.logger.info("Please cite the following publications:")
-        self.logger.info("- 10.1016/j.commatsci.2022.111275")
-
-    
-    def integrate_pressure_scaling(self, return_values=False):
-        """
-        Perform integration after reversible scaling
-        
-        Parameters
-        ----------
-        scale_energy : bool, optional
-            If True, scale the energy during reversible scaling. 
-        return_values : bool, optional
-            If True, return integrated values
-        
-        Returns
-        -------
-        res : list of lists of shape 1x3
-            Only returned if `return_values` is True.
-        """
-        res = integrate_ps(self.simfolder, self.fe, self.natoms, self.p, self.pend,
-            nsims=self.nsims, return_values=return_values)
 
         if return_values:
             return res
