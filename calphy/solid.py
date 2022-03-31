@@ -344,7 +344,7 @@ class Solid(cph.Phase):
 
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU1      equal pe/atoms")
-        for i in range(self.options["nelements"]):
+        for i in range(self.calc.n_elements):
             lmp.command("variable          dU%d      equal f_ff%d/v_count%d"%(i+2, i+1, i+1))
         
         lmp.command("variable          lambda  equal f_ff1[1]")
@@ -423,7 +423,7 @@ class Solid(cph.Phase):
             self.vol, self.k, self.concentration)
         w, q, qerr = find_w(self.simfolder, 
             nelements=self.calc.n_elements, 
-            concentration=self.concentration, nsims=self.n_iterations, 
+            concentration=self.concentration, nsims=self.calc.n_iterations, 
             full=True, solid=True)
         
         self.fref = f1
