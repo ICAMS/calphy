@@ -101,27 +101,20 @@ class Phase:
         self.ly = None
         self.lz = None
 
-        #backup pair styles
-        self.pair_style = self.options["md"]["pair_style"]
-        self.pair_coeff = self.options["md"]["pair_coeff"]
-
         #now manually tune pair styles
-        self.options["md"]["pair_style"] = self.options["md"]["pair_style"][0]
-        self.options["md"]["pair_coeff"] = self.options["md"]["pair_coeff"][0]
-        self.logger.info("pair_style: %s"%self.options["md"]["pair_style"])
-        self.logger.info("pair_coeff: %s"%self.options["md"]["pair_coeff"])
+        self.logger.info("pair_style: %s"%self.calc.pair_style[0])
+        self.logger.info("pair_coeff: %s"%self.calc.pair_coeff[0])
 
         #log second pair style
-        if len(self.pair_style)>1:
-            self.logger.info("second pair_style: %s"%self.pair_style[1])
-            self.logger.info("second pair_coeff: %s"%self.pair_coeff[1])
+        if len(self.calc.pair_style)>1:
+            self.logger.info("second pair_style: %s"%self.calc.pair_style[1])
+            self.logger.info("second pair_coeff: %s"%self.calc.pair_coeff[1])
 
     def __repr__(self):
         """
         String of the class
         """
-        data = "%s system with T=%f, P=%f in %s lattice for mode %s"%(self.calc["state"],
-            self.t, self.p, self.l, self.calc["mode"]) 
+        data = self.calc.__repr__()
         return data
 
     def prepare_lattice(self):
@@ -196,7 +189,7 @@ class Phase:
         report["input"]["temperature"] = int(self.t)
         report["input"]["pressure"] = float(self.p)
         report["input"]["lattice"] = str(self.l)
-        report["input"]["element"] = " ".join(np.array(self.options["element"]).astype(str))
+        report["input"]["element"] = " ".join(np.array(self.calc.element).astype(str))
         report["input"]["concentration"] = " ".join(np.array(self.concentration).astype(str))
 
         #average quantities
@@ -252,18 +245,18 @@ class Phase:
         None
         """
         solid = False
-        if self.calc['state'] == 'solid':
+        if self.calc.reference_phase == 'solid':
             solid = True
 
-        t0 = self.t
-        tf = self.tend
+        t0 = self.calc._temperature
+        tf = self.calc._temperature_stop
         li = 1
         lf = t0/tf
-        pi = self.p
+        pi = self.calc._pressure
         pf = lf*pi
 
         #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f"%li)
@@ -271,7 +264,7 @@ class Phase:
 
         #read in conf file
         conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
+        lmp = ph.read_dump(lmp, conf, species=self.calc.nelements)
 
         #set up potential
         lmp = ph.set_potential(lmp, self.options)
@@ -280,13 +273,13 @@ class Phase:
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         #set thermostat and run equilibrium
-        if self.calc["npt"]:
-            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                self.iso, self.p, self.p, self.options["md"]["pdamp"]))
+        if self.calc._npt:
+            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping, 
+                self.iso, pi, pi, self.calc.md.barostat_damping))
         else:
-            lmp.command("fix               f1 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
+            lmp.command("fix               f1 all nvt temp %f %f %f"%(t0, t0, self.calc.md.thermostat_damping))
 
-        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
         lmp.command("unfix             f1")
 
         #now fix com
@@ -295,10 +288,10 @@ class Phase:
         lmp.command("variable         zcm equal xcm(all,z)")
 
         if self.calc["npt"]:
-            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.t, self.t, self.options["md"]["tdamp"], 
-                self.iso, self.p, self.p, self.options["md"]["pdamp"]))
+            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(t0, t0, self.calc.md.thermostat_damping, 
+                self.iso, pi, pi, self.calc.md.barostat_damping))
         else:
-            lmp.command("fix               f1 all nvt temp %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.t, self.t, self.options["md"]["tdamp"]))
+            lmp.command("fix               f1 all nvt temp %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(t0, t0, self.calc.md.thermostat_damping))
 
         #compute com and modify fix
         lmp.command("compute           tcm all temp/com")
@@ -311,7 +304,7 @@ class Phase:
 
         #create velocity and equilibriate
         lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(t0, np.random.randint(0, 10000)))   
-        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
         
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
@@ -320,34 +313,34 @@ class Phase:
         lmp.command("variable         one equal 1.0")
 
         #set up potential
-        pc =  self.options["md"]["pair_coeff"]
+        pc =  self.calc.pair_coeff[0]
         pcraw = pc.split()
-        pcnew1 = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"],], "1", *pcraw[2:]])
-        pcnew2 = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"],], "2", *pcraw[2:]])
+        pcnew1 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], "1", *pcraw[2:]])
+        pcnew2 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], "2", *pcraw[2:]])
 
-        lmp.command("pair_style       hybrid/scaled v_one %s v_fscale %s"%(self.options["md"]["pair_style"], self.options["md"]["pair_style"]))
+        lmp.command("pair_style       hybrid/scaled v_one %s v_fscale %s"%(self.calc.pair_style[0], self.calc.pair_style[0]))
         lmp.command("pair_coeff       %s"%pcnew1)
         lmp.command("pair_coeff       %s"%pcnew2)
 
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${flambda}\" screen no file forward_%d.dat"%iteration)
 
-        if self.options["md"]["traj_interval"] > 0:
-            lmp.command("dump              d1 all custom %d traj.forward_%d.dat id type mass x y z vx vy vz"%(self.options["md"]["traj_interval"],
+        if self.calc.n_print_steps > 0:
+            lmp.command("dump              d1 all custom %d traj.forward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 
-        lmp.command("run               %d"%self.options["md"]["ts"])
+        lmp.command("run               %d"%self.calc._n_sweep_steps)
 
         #unfix
         lmp.command("unfix             f3")
         #lmp.command("unfix             f1")
 
-        if self.options["md"]["traj_interval"] > 0:
+        if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
 
         #switch potential
-        lmp = ph.set_potential(lmp, self.options)
+        lmp = ph.set_potential(lmp, self.calc)
 
-        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
 
         #check melting or freezing
         lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
@@ -356,11 +349,11 @@ class Phase:
         
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
         if solid:
-            if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
+            if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
                 lmp.close()
                 raise MeltedError("System melted, increase size or reduce scaling!")
         else:
-            if (solids/lmp.natoms > self.options["conv"]["liquid_frac"]):
+            if (solids/lmp.natoms > self.calc.tolerance.liquid_fraction):
                 lmp.close()
                 raise SolidifiedError('System solidified, increase temperature')
 
@@ -372,7 +365,7 @@ class Phase:
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
 
-        lmp.command("pair_style       hybrid/scaled v_one %s v_bscale %s"%(self.options["md"]["pair_style"], self.options["md"]["pair_style"]))
+        lmp.command("pair_style       hybrid/scaled v_one %s v_bscale %s"%(self.calc.pair_style[0], self.calc.pair_style[0]))
         lmp.command("pair_coeff       %s"%pcnew1)
         lmp.command("pair_coeff       %s"%pcnew2)
 
@@ -380,14 +373,14 @@ class Phase:
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${blambda}\" screen no file backward_%d.dat"%iteration)
 
         if self.options["md"]["traj_interval"] > 0:
-            lmp.command("dump              d1 all custom %d traj.backward_%d.dat id type mass x y z vx vy vz"%(self.options["md"]["traj_interval"],
+            lmp.command("dump              d1 all custom %d traj.backward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 
-        lmp.command("run               %d"%self.options["md"]["ts"])
+        lmp.command("run               %d"%self.calc._n_sweep_steps)
         
         lmp.command("unfix             f3")
 
-        if self.options["md"]["traj_interval"] > 0:
+        if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
         
         #close the object
@@ -410,8 +403,8 @@ class Phase:
         res : list of lists of shape 1x3
             Only returned if `return_values` is True.
         """
-        res = integrate_rs(self.simfolder, self.fe, self.t, self.natoms, p=self.p,
-            nsims=self.nsims, scale_energy=scale_energy, return_values=return_values)
+        res = integrate_rs(self.simfolder, self.fe, self.calc._temperature, self.natoms, p=self.calc._pressure,
+            nsims=self.calc.n_iterations, scale_energy=scale_energy, return_values=return_values)
 
         if return_values:
             return res

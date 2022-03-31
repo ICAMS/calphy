@@ -75,12 +75,12 @@ def create_structure(lmp, calc):
     l, alat, apc, conc = pl.prepare_lattice(calc)
 
     if l == "file":
-        lmp.command("read_data      %s"%calc["lattice"])
+        lmp.command("read_data      %s"%calc.lattice)
     else:
         lmp.lattice(l, alat)
-        lmp.region("box block", 0, calc["repeat"][0], 
-            0, calc["repeat"][1], 
-            0, calc["repeat"][2])
+        lmp.region("box block", 0, calc.repeat[0], 
+            0, calc.repeat[1], 
+            0, calc.repeat[2])
         lmp.create_box("1 box")
         lmp.create_atoms("1 box")
     return lmp
@@ -100,11 +100,11 @@ def set_potential(lmp, options):
     -------
     lmp : LammpsLibrary object
     """
-    lmp.pair_style(options["md"]["pair_style"])
-    lmp.pair_coeff(options["md"]["pair_coeff"])
+    lmp.pair_style(options.pair_style[0])
+    lmp.pair_coeff(options.pair_coeff[0])
 
-    for i in range(options["nelements"]):
-        lmp.mass(i+1, options["mass"][i])
+    for i in range(options.n_elements):
+        lmp.mass(i+1, options.mass[i])
     return lmp
 
 
@@ -118,16 +118,16 @@ def read_dump(lmp, file, species=1):
 
 
 def set_hybrid_potential(lmp, options, eps):
-    pc =  options["md"]["pair_coeff"]
+    pc =  options.pair_coeff[0]
     pcraw = pc.split()
-    pcnew = " ".join([*pcraw[:2], *[options["md"]["pair_style"],], *pcraw[2:]])
+    pcnew = " ".join([*pcraw[:2], *[options.pair_style[0],], *pcraw[2:]])
     
-    lmp.command("pair_style       hybrid/overlay %s ufm 7.5"%options["md"]["pair_style"])
+    lmp.command("pair_style       hybrid/overlay %s ufm 7.5"%options.pair_style[0])
     lmp.command("pair_coeff       %s"%pcnew)
     lmp.command("pair_coeff       * * ufm %f 1.5"%eps) 
 
-    for i in range(options["nelements"]):
-        lmp.mass(i+1, options["mass"][i])
+    for i in range(options.n_elements):
+        lmp.mass(i+1, options.mass[i])
     return lmp
 
 def set_double_hybrid_potential(lmp, options, pair_style, pair_coeff):
@@ -150,8 +150,8 @@ def set_double_hybrid_potential(lmp, options, pair_style, pair_coeff):
     lmp.command("pair_coeff       %s"%pcnew1)
     lmp.command("pair_coeff       %s"%pcnew2) 
 
-    for i in range(options["nelements"]):
-        lmp.mass(i+1, options["mass"][i])
+    for i in range(options.n_elements):
+        lmp.mass(i+1, options.mass[i])
     return lmp
 
 def remap_box(lmp, x, y, z):
@@ -161,10 +161,10 @@ def remap_box(lmp, x, y, z):
 
 
 def compute_msd(lmp, options):
-    elements = options["element"]
-    str1 = "fix  4 all ave/time %d %d %d "%(int(options["md"]["nevery"]),
-                                           int(options["md"]["nrepeat"]), 
-              int(options["md"]["nevery"]*options["md"]["nrepeat"]))
+    elements = options.element
+    str1 = "fix  4 all ave/time %d %d %d "%(int(options.md.n_every_steps),
+                                           int(options.md.n_repeat_steps), 
+              int(options.md.n_every_steps*options.md.n_repeat_steps))
 
     #set groups
     for i in range(len(elements)):
