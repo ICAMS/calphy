@@ -118,25 +118,25 @@ def check_data_file(infile):
 
 def prepare_lattice(calc):
     #process lattice
-    lattice = calc["lattice"].upper()
+    lattice = calc.lattice.upper()
     
     if lattice in ["BCC", "FCC", "HCP", "DIA", "SC", "LQD"]:
         #process lattice
         #throw error for multicomponent
-        if calc["nelements"] > 1:
+        if calc.n_elements > 1:
             raise ValueError("Only files supported for multicomponent")
 
-        alat, apc, l = get_lattice(calc["element"][0], calc["lattice"])
+        alat, apc, l = get_lattice(calc.element[0], calc.lattice)
 
         #replace lattice constant
-        if calc["lattice_constant"] != 0:
-            alat = calc["lattice_constant"]
+        if calc.lattice_constant != 0:
+            alat = calc.lattice_constant
         
         conc = [1,]
 
-    elif os.path.exists(calc["lattice"]):
-        calc["lattice"] = os.path.abspath(calc["lattice"])
-        natoms, conc = check_data_file(calc["lattice"]) 
+    elif os.path.exists(calc.lattice):
+        calc.lattice = os.path.abspath(calc.lattice)
+        natoms, conc = check_data_file(calc.lattice) 
         #its a file - do something
         l = "file"
         alat = 1.00
