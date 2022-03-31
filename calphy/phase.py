@@ -75,13 +75,13 @@ class Phase:
 
         #other properties
         self.cores = self.calc.queue.cores
-        self.ncells = np.prod(self.calc["repeat"])
+        self.ncells = np.prod(self.calc.repeat)
         self.natoms = self.ncells*self.apc        
         self.logger.info("%d atoms in %d cells on %d cores"%(self.natoms, self.ncells, self.cores))
 
         #reference system props; may not be always used
         #TODO : Add option to customize UFM parameters
-        self.eps = self.t*50.0*kb
+        self.eps = self.calc._temperature*50.0*kb
 
         #properties that will be calculated later
         self.volatom = None

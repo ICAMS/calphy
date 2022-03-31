@@ -25,8 +25,8 @@ import copy
 import numpy as np
 import os
 
-from calphy.input import read_inputfile, create_identifier
-import calphy.queuekernel as cq
+from calphy.input import read_inputfile
+#import calphy.queuekernel as cq
 from calphy.errors import *
 import calphy.helpers as ph
 
@@ -158,8 +158,10 @@ class MeltingTemp:
 
         self.prepare_calcs()
 
-        self.soljob = cq.setup_calculation(self.calculations[0])
-        self.lqdjob = cq.setup_calculation(self.calculations[1])
+        self.soljob = Solid(calculation=self.calculations[0], 
+            simfolder=self.calculations[0].create_folders())
+        self.lqdjob = Liquid(calculation=self.calculations[1], 
+            simfolder=self.calculations[1].create_folders())
         
         self.logger.info("Free energy of %s and %s phases will be calculated"%(self.soljob.calc.lattice, self.lqdjob.calc.lattice))
         self.logger.info("Temperature range of %f-%f"%(self.tmin, self.tmax))
@@ -167,7 +169,7 @@ class MeltingTemp:
         self.logger.info('Starting solid fe calculation')
         
         try:
-            self.soljob = cq.routine_fe(self.soljob)
+            self.soljob = routine_fe(self.soljob)
         except MeltedError:
             self.logger.info('Solid phase melted')
             return 2
@@ -185,7 +187,7 @@ class MeltingTemp:
         
         self.logger.info('Starting liquid fe calculation')
         try:
-            self.lqdjob = cq.routine_fe(self.lqdjob)
+            self.lqdjob = routine_fe(self.lqdjob)
         except SolidifiedError:
             self.logger.info('Liquid froze')
             return 3
@@ -325,4 +327,108 @@ class MeltingTemp:
         self.logger.info('Found melting temperature = %.2f +/- %.2f K '%(tm, tmerr))
         self.logger.info('Experimental melting temperature = %.2f K '%(self.org_tm))
         self.logger.info('STATE: Tm = %.2f K +/- %.2f K, Exp. Tm = %.2f K'%(tm, tmerr, self.org_tm))
-        
+
+def routine_fe(job):
+    """
+    Perform an FE calculation routine
+    """
+    ts = time.time()
+    job.run_averaging()
+    te = (time.time() - ts)
+    job.logger.info("Averaging routine finished in %f s"%te)
+
+    #now run integration loops
+    for i in range(job.nsims):
+        ts = time.time()
+        job.run_integration(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("Integration cycle %d finished in %f s"%(i+1, te))
+
+    job.thermodynamic_integration()
+    job.submit_report()
+    return job
+
+def routine_ts(job):
+    """
+    Perform ts routine
+    """
+    routine_fe(job)
+
+    #now do rev scale steps
+    for i in range(job.nsims):
+        ts = time.time()
+        job.reversible_scaling(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("TS integration cycle %d finished in %f s"%(i+1, te))
+    
+    job.integrate_reversible_scaling(scale_energy=True)
+    return job
+
+
+def routine_only_ts(job):
+    """
+    Perform sweep without free energy calculation
+    """
+    ts = time.time()
+    job.run_averaging()
+    te = (time.time() - ts)
+    job.logger.info("Averaging routine finished in %f s"%te)
+
+    for i in range(job.nsims):
+        ts = time.time()
+        job.reversible_scaling(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("TS integration cycle %d finished in %f s"%(i+1, te))
+    return job
+
+def routine_tscale(job):
+    """
+    Perform tscale routine
+    """
+    routine_fe(job)
+
+    #now do rev scale steps
+    for i in range(job.nsims):
+        ts = time.time()
+        job.temperature_scaling(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("Temperature scaling cycle %d finished in %f s"%(i+1, te))
+    
+    job.integrate_reversible_scaling(scale_energy=False)
+    return job
+
+def routine_pscale(job):
+    """
+    Perform pscale routine
+    """
+    routine_fe(job)
+
+    #now do rev scale steps
+    for i in range(job.nsims):
+        ts = time.time()
+        job.pressure_scaling(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("Pressure scaling cycle %d finished in %f s"%(i+1, te))
+    
+    job.integrate_pressure_scaling()
+    return job
+
+def routine_alchemy(job):
+    """
+    Perform an FE calculation routine
+    """
+    ts = time.time()
+    job.run_averaging()
+    te = (time.time() - ts)
+    job.logger.info("Averaging routine finished in %f s"%te)
+
+    #now run integration loops
+    for i in range(job.nsims):
+        ts = time.time()
+        job.run_integration(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("Alchemy integration cycle %d finished in %f s"%(i+1, te))
+
+    job.thermodynamic_integration()
+    job.submit_report()
+    return job 

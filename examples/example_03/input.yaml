@@ -20,4 +20,4 @@ queue:
   scheduler: local
   cores: 4
   commands:
-    - conda activate calphy
+    - conda activate calphy-dev

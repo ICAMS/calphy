@@ -26,6 +26,7 @@ import warnings
 import copy
 import yaml
 import itertools
+import shutil
 
 class InputTemplate:
     def __init__(self):
@@ -370,15 +371,15 @@ class Calculation(InputTemplate):
             ps = int(0)
             l = 'tm'
         else:
-            ts = int(self._calc.temperature)
-            ps = int(self._calc.pressure)
+            ts = int(self._temperature)
+            ps = int(self._pressure)
             l = self.lattice
             l = l.split('/')
             l = l[-1]
         identistring = "-".join([prefix, l, str(ts), str(ps)])
         return identistring
 
-    def create_folders(prefix=None):
+    def create_folders(self, prefix=None):
         """
         Create the necessary folder for calculation
 
