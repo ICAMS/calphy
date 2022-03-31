@@ -128,7 +128,7 @@ class Calculation(InputTemplate):
     @element.setter
     def element(self, val):
         val = self.check_and_convert_to_list(val)
-        self._nelements = len(val)
+        self._n_elements = len(val)
         self._element = val
     
     @property
@@ -227,6 +227,7 @@ class Calculation(InputTemplate):
     @pair_style.setter
     def pair_style(self, val):
         val = self.check_and_convert_to_list(val)
+        #val = self.fix_paths(val)
         self._pair_style = val
 
     @property
@@ -236,6 +237,7 @@ class Calculation(InputTemplate):
     @pair_coeff.setter
     def pair_coeff(self, val):
         val = self.check_and_convert_to_list(val)
+        val = self.fix_paths(val)
         self._pair_coeff = val
 
     @property
