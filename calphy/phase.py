@@ -264,7 +264,7 @@ class Phase:
 
         #read in conf file
         conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.calc.nelements)
+        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
 
         #set up potential
         lmp = ph.set_potential(lmp, self.calc)
@@ -287,7 +287,7 @@ class Phase:
         lmp.command("variable         ycm equal xcm(all,y)")
         lmp.command("variable         zcm equal xcm(all,z)")
 
-        if self.calc["npt"]:
+        if self.calc._npt:
             lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(t0, t0, self.calc.md.thermostat_damping, 
                 self.iso, pi, pi, self.calc.md.barostat_damping))
         else:
@@ -386,7 +386,7 @@ class Phase:
         #close the object
         lmp.close()
 
-    def integrate_reversible_scaling(self, scale_energy=False, return_values=False):
+    def integrate_reversible_scaling(self, scale_energy=True, return_values=False):
         """
         Perform integration after reversible scaling
 
