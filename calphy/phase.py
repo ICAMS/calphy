@@ -74,7 +74,7 @@ class Phase:
         self.prepare_lattice()
 
         #other properties
-        self.cores = self.options["queue"]["cores"]
+        self.cores = self.calc.queue.cores
         self.ncells = np.prod(self.calc["repeat"])
         self.natoms = self.ncells*self.apc        
         self.logger.info("%d atoms in %d cells on %d cores"%(self.natoms, self.ncells, self.cores))
@@ -267,7 +267,7 @@ class Phase:
         lmp = ph.read_dump(lmp, conf, species=self.calc.nelements)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.options)
+        lmp = ph.set_potential(lmp, self.calc)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -372,7 +372,7 @@ class Phase:
         #apply fix and perform switching        
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${blambda}\" screen no file backward_%d.dat"%iteration)
 
-        if self.options["md"]["traj_interval"] > 0:
+        if self.calc.n_print_steps > 0:
             lmp.command("dump              d1 all custom %d traj.backward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 

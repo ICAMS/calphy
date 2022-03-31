@@ -47,11 +47,11 @@ class Solid(cph.Phase):
         base folder for running calculations
 
     """
-    def __init__(self, options=None, kernel=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None):
 
         #call base class
-        super().__init__(options=options,
-        kernel=kernel, simfolder=simfolder)
+        super().__init__(calculation=calculation,
+        simfolder=simfolder)
 
 
     def run_averaging(self):
@@ -76,13 +76,13 @@ class Solid(cph.Phase):
         is calculated.
         At the end of the run, the averaged box dimensions are calculated. 
         """
-        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
 
         #set up structure
         lmp = ph.create_structure(lmp, self.calc)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.options)
+        lmp = ph.set_potential(lmp, self.calc)
 
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -91,50 +91,51 @@ class Solid(cph.Phase):
         lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press")
 
-        if not self.calc["fix_lattice"]:
-            if self.p == 0:
+        if not self.calc._fix_lattice:
+            if self.calc._pressure == 0:
                 #This routine should be followed for zero pressure
-                lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                    self.iso, self.p, self.p, self.options["md"]["pdamp"]))
+                lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
+                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, 
+                    self.calc._temperature, self.calc.md.thermostat_damping, 
+                    self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping))
                 lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
                 lmp.command("thermo           10")
-                lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
 
             else:
                 #Now this routine is for non-zero pressure
                 #one has to equilibriate at a low temperature, but high pressure and then increase temp gradually
                 #start at 0.25 temp, and increase to 0.50, while keeping high pressure
-                lmp.command("velocity         all create %f %d"%(0.25*self.t, np.random.randint(0, 10000)))
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.25*self.t, 0.5*self.t, self.options["md"]["tdamp"], 
-                                                    self.iso, self.p, self.p, self.options["md"]["pdamp"]))
+                lmp.command("velocity         all create %f %d"%(0.25*self.calc._temperature, np.random.randint(0, 10000)))
+                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.25*self.calc._temperature, 0.5*self.calc._temperature, self.calc.md.thermostat_damping, 
+                                                    self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping))
                 lmp.command("thermo_style     custom step pe press vol etotal temp")
                 lmp.command("thermo           10")
-                lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
                 lmp.command("unfix            1")
 
                 #now heat again
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.5*self.t, self.t, self.options["md"]["tdamp"], 
-                                                    self.iso, self.p, self.p,  self.options["md"]["pdamp"]))
-                lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.5*self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
+                                                    self.iso, self.calc._pressure, self.calc._pressure,  self.calc.md.barostat_damping))
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
                 lmp.command("unfix            1")
 
                 #now run normal cycle
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                    self.iso, self.p, self.p,  self.options["md"]["pdamp"]))
-                lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
+                                                    self.iso, self.calc._pressure, self.calc._pressure,  self.calc.md.barostat_damping))
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
 
 
             #this is when the averaging routine starts
-            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
-                int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
+            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
+                int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
             
             laststd = 0.00
             converged = False
 
-            for i in range(int(self.options["md"]["ncycles"])):
-                lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
-                ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
+            for i in range(int(self.calc.md.n_cycles)):
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+                ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
                 #now we can check if it converted
                 file = os.path.join(self.simfolder, "avg.dat")
                 lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
@@ -145,7 +146,7 @@ class Solid(cph.Phase):
                 volatom = np.mean((lx*ly*lz)/self.natoms)
                 self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
                 
-                if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
+                if (np.abs(mean - self.calc._pressure)) < self.calc.tolerance.pressure:
 
                     #process other means
                     self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
@@ -175,34 +176,34 @@ class Solid(cph.Phase):
             
             #check for solid atoms
             solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
-            if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
+            if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
                 lmp.close()
                 raise MeltedError("System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting conv:\n solid_frac: 0")
         else:
             #routine in which lattice constant will not varied, but is set to a given fixed value
-            lmp.command("fix              1 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
-            lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
+            lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping))
+            lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
             lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
             lmp.command("thermo           10")
             
             #this is when the averaging routine starts
-            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
-                int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
+            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
+                int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
 
             lastmean = 100000000
             converged = False
-            for i in range(int(self.options["md"]["ncycles"])):
-                lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
-                ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
+            for i in range(int(self.calc.md.n_cycles)):
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+                ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
                 #now we can check if it converted
                 file = os.path.join(self.simfolder, "avg.dat")
                 lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
                 
                 lxpc = ipress
                 mean = np.mean(lxpc)
-                if (np.abs(mean - lastmean)) < self.options["conv"]["p_tol"]:
+                if (np.abs(mean - lastmean)) < self.calc.tolerance.pressure:
                     #here we actually have to set the pressure
-                    self.p = mean
+                    self.calc._pressure = mean
                     std = np.std(lxpc)
                     volatom = np.mean((lx*ly*lz)/self.natoms)
                     self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
@@ -222,33 +223,33 @@ class Solid(cph.Phase):
 
         if not converged:
             lmp.close()
-            raise ValueError("spring constant did not converge")
+            raise ValueError("pressure did not converge")
 
         #start MSD calculation routine
-        lmp.command("fix              3 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
+        lmp.command("fix              3 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping))
         
         #apply fix
-        lmp = ph.compute_msd(lmp, self.options)
+        lmp = ph.compute_msd(lmp, self.calc)
         
         #similar averaging routine
         laststd = 0.00
-        for i in range(self.options["md"]["ncycles"]):
-            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
-            ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
+        for i in range(self.calc.md.n_cycles):
+            lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
             #now we can check if it converted
             file = os.path.join(self.simfolder, "msd.dat")
             quant = np.loadtxt(file, usecols=(1,), unpack=True)[-ncount+1:]
-            quant = 3*kb*self.t/quant
+            quant = 3*kb*self.calc._temperature/quant
             #self.logger.info(quant)
             mean = np.mean(quant)
             std = np.std(quant)
             self.logger.info("At count %d mean k is %f std is %f"%(i+1, mean, std))
-            if (np.abs(laststd - std) < self.options["conv"]["k_tol"]):
+            if (np.abs(laststd - std) < self.calc.tolerance.spring_constant):
                 #now reevaluate spring constants
                 k = []
-                for i in range(self.options["nelements"]):
+                for i in range(self.calc.n_elements):
                     quant = np.loadtxt(file, usecols=(i+1, ), unpack=True)[-ncount+1:]
-                    quant = 3*kb*self.t/quant
+                    quant = 3*kb*self.calc._temperature/quant
                     k.append(np.round(np.mean(quant), decimals=2))
 
                 self.k = k
@@ -257,7 +258,7 @@ class Solid(cph.Phase):
                 args = np.argsort(self.concentration)[::-1]
                 safek = self.k[args[0]]
 
-                for i in range(self.options["nelements"]):
+                for i in range(self.calc.n_elements):
                     if self.concentration[i]*self.natoms < 2:
                         self.logger.info("resetting spring constant of species %d from %f to %f to preserve sanity"%(i, self.k[i], safek))
                         self.k[i] = safek
@@ -274,7 +275,7 @@ class Solid(cph.Phase):
         
         #check for solid atoms
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
-        if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
+        if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
             lmp.close()
             raise MeltedError("System melted, increase size or reduce temp!")
 
@@ -302,24 +303,24 @@ class Solid(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
-        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
 
         #read in the conf file
         conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
+        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.options)
+        lmp = ph.set_potential(lmp, self.calc)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         #create groups - each species belong to one group
-        for i in range(self.options["nelements"]):
+        for i in range(self.calc.n_elements):
             lmp.command("group  g%d type %d"%(i+1, i+1))
 
         #get counts of each group
-        for i in range(self.options["nelements"]):
+        for i in range(self.calc.n_elements):
             lmp.command("variable   count%d equal count(g%d)"%(i+1, i+1))
 
         #initialise everything
@@ -330,11 +331,11 @@ class Solid(cph.Phase):
         
         #apply fix for each spring
         #TODO: Add option to select function
-        for i in range(self.options["nelements"]):
+        for i in range(self.calc.n_elements):
             lmp.command("fix               ff%d g%d ti/spring 10.0 100 100 function 2"%(i+1, i+1))
         
         #apply temp fix
-        lmp.command("fix               f3 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], 
+        lmp.command("fix               f3 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
                                         np.random.randint(0, 10000)))
 
         #compute com and apply to fix
@@ -353,20 +354,20 @@ class Solid(cph.Phase):
         lmp.command("thermo            10000")
 
         #Create velocity
-        lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(self.t, np.random.randint(0, 10000)))
+        lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(self.calc._temperature, np.random.randint(0, 10000)))
 
         #reapply 
-        for i in range(self.options["nelements"]):
+        for i in range(self.calc.n_elements):
             lmp.command("fix               ff%d g%d ti/spring %f %d %d function 2"%(i+1, i+1, self.k[i], 
-                self.options["md"]["ts"], self.options["md"]["te"]))
+                self.calc._n_switching_steps, self.calc.n_equilibration_steps))
 
         #Equilibriate structure
-        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
         
         #write out energy
         str1 = "fix f4 all print 1 \"${dU1} "
         str2 = []
-        for i in range(self.options["nelements"]):
+        for i in range(self.calc.n_elements):
             str2.append("${dU%d}"%(i+2))
         str2.append("${lambda}\"")
         str2 = " ".join(str2)
@@ -375,16 +376,16 @@ class Solid(cph.Phase):
         lmp.command(command)
 
         #Forward switching over ts steps
-        lmp.command("run               %d"%self.options["md"]["ts"])
+        lmp.command("run               %d"%self.calc._n_switching_steps)
         lmp.command("unfix             f4")
 
         #Equilibriate
-        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
 
         #write out energy
         str1 = "fix f4 all print 1 \"${dU1} "
         str2 = []
-        for i in range(self.options["nelements"]):
+        for i in range(self.calc.n_elements):
             str2.append("${dU%d}"%(i+2))
         str2.append("${lambda}\"")
         str2 = " ".join(str2)
@@ -393,7 +394,7 @@ class Solid(cph.Phase):
         lmp.command(command)
 
         #Reverse switching over ts steps
-        lmp.command("run               %d"%self.options["md"]["ts"])
+        lmp.command("run               %d"%self.calc._n_switching_steps)
         lmp.command("unfix             f4")
 
         #close object
@@ -417,12 +418,12 @@ class Solid(cph.Phase):
         Calculates the final work, energy dissipation and free energy by
         matching with Einstein crystal
         """
-        f1 = get_einstein_crystal_fe(self.t, 
-            self.natoms, self.options["mass"], 
+        f1 = get_einstein_crystal_fe(self.calc._temperature, 
+            self.natoms, self.calc.mass, 
             self.vol, self.k, self.concentration)
         w, q, qerr = find_w(self.simfolder, 
-            nelements=self.options["nelements"], 
-            concentration=self.concentration, nsims=self.nsims, 
+            nelements=self.calc.n_elements, 
+            concentration=self.concentration, nsims=self.n_iterations, 
             full=True, solid=True)
         
         self.fref = f1
@@ -430,8 +431,8 @@ class Solid(cph.Phase):
         self.ferr = qerr
 
         #add pressure contribution if required
-        if self.p != 0:
-            p = self.p/(10000*160.21766208)
+        if self.calc._pressure != 0:
+            p = self.calc._pressure/(10000*160.21766208)
             v = self.vol/self.natoms
             self.pv = p*v
         else:
