@@ -43,36 +43,24 @@ class Phase:
 
     Parameters
     ----------
-    options : dict
-        dict of input options
+    input : Calculation class
+        input options
     
-    kernel : int
-        the index of the calculation that should be run from
-        the list of calculations in the input file
-
     simfolder : string
         base folder for running calculations
 
     """
-    def __init__(self, options=None, kernel=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None):
 
-        self.options = copy.deepcopy(options)
+        self.calc = calculation
         self.simfolder = simfolder
-        self.kernel = kernel
         
         logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile)
 
-        self.calc = copy.deepcopy(options["calculations"][kernel])
-        self.nsims = self.calc["nsims"]
+        self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %f bar"%(self.calc._temperature, self.calc._temperature_stop, self.calc._pressure))
 
-        self.t = self.calc["temperature"]
-        self.tend = self.calc["temperature_stop"]
-        self.thigh = self.calc["thigh"] 
-        self.p = self.calc["pressure"]
-        self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %f bar"%(self.t, self.tend, self.p))
-
-        if self.calc["iso"]:
+        if self.calc._iso:
             self.iso = "iso"
         else:
             self.iso = "aniso"
