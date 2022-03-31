@@ -23,377 +23,486 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 import os
 import yaml
 import warnings
+import copy
+import yaml
+import itertools
 
-def check_and_convert_to_list(data):
-    """
-    Check if the given item is a list, if not convert to a single item list
+class InputTemplate:
+    def __init__(self):
+        pass
+    
+    def from_dict(self, indict, keys=None):
+        if keys is None:
+            for key, val in indict.items():
+                setattr(self, key, val) 
+        elif isinstance(keys, list):
+            for key, val in indict.items():
+                if key in keys:
+                    setattr(self, key, val)
+                    
+class Calculation(InputTemplate):
+    def __init__(self):
+        super(InputTemplate, self).__init__()
+        self._element = None
+        self._n_elements = 0
+        self._mass = 1.0
+        self._mode = None
+        self._lattice = None
+        self._pressure = 0
+        self._pressure_stop = 0
+        self._pressure_input = None
+        self._temperature = None
+        self._temperature_stop = None
+        self._temperature_high = None
+        self._temperature_input = None
+        self._iso = False
+        self._fix_lattice = False
+        self._pair_style = None
+        self._pair_coeff = None
+        self._reference_phase = None
+        self._lattice_constant = 0
+        self._repeat = [1, 1, 1]
+        self._npt = True
+        self._n_equilibration_steps = 25000
+        self._n_switching_steps = 50000
+        self._n_sweep_steps = 50000
+        self._n_print_steps = 0
+        self._n_iterations = 1
+        
+        self.md = InputTemplate()
+        self.md.timestep = 0.001
+        self.md.n_small_steps = 10000
+        self.md.n_every_steps = 10
+        self.md.n_repeat_steps = 10
+        self.md.n_cycles = 100
+        self.md.thermostat_damping = 0.1
+        self.md.barostat_damping = 0.1
 
-    Parameters
-    ----------
-    data : single value or list
-
-    Returns
-    -------
-    data : list
-    """
-    if not isinstance(data, list):
-        return [data]
-    else:
+        self.queue = InputTemplate()
+        self.queue.scheduler = "local"
+        self.queue.cores = 1
+        self.queue.jobname = "calphy"
+        self.queue.walltime = None
+        self.queue.queuename = None
+        self.queue.memory = "3GB"
+        self.queue.commands = None
+        self.queue.options = None
+        self.queue.modules = None
+        
+        self.tolerance = InputTemplate()
+        self.tolerance.lattice_constant = 0.0002
+        self.tolerance.spring_constant = 0.01
+        self.tolerance.solid_fraction = 0.7
+        self.tolerance.liquid_fraction = 0.05
+        self.tolerance.pressure = 0.5
+        
+        #specific input options
+        self.melting_temperature = InputTemplate()
+        self.melting_temperature.guess = None
+        self.melting_temperature.step = 200
+        self.melting_temperature.attempts = 5
+    
+    def __repr__(self):
+        """
+        String of the class
+        """
+        data = "%s system with T=%d, P=%d in %s lattice for mode %s"%(self.reference_phase,
+            int(self._temperature), int(self._pressure), self.lattice, self.mode) 
         return data
-
-def fix_paths(potlist): 
-    """
-    Fix paths for potential files to complete ones
-    """
-    fixedpots = []
-    for pot in potlist:
-        pcraw = pot.split()
-        if len(pcraw) >= 3:
-            filename = pcraw[2]
-            filename = os.path.abspath(filename)
-            pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
-            fixedpots.append(pcnew)
-        else:
-            fixedpots.append(pcraw)
-        #print(pcnew)
-    return fixedpots
     
-def prepare_optional_keys(calc, cdict):
-
-    #optional keys
-    keydict = {
-        "repeat": [1, 1, 1],
-        "nsims": 1,
-        "thigh": 2.0*cdict["temperature_stop"],
-        "npt": True,
-        "tguess": None,
-        "dtemp": 200,
-        "maxattempts": 5,
-    }
-
-    for key, val in keydict.items():
-        if key in calc.keys():
-            cdict[key] = calc[key]
-        else:
-            cdict[key] = val
-
-    if not (cdict["repeat"][0] == cdict["repeat"][1] == cdict["repeat"][2]):
-        raise ValueError("For LAMMPS structure creation, use nx=ny=nz")
-
-    return cdict
-
-def read_yamlfile(file):
-    """
-    Read a yaml input file
-    Parameters
-    ----------
-    inputfile: string
-        name of inout yaml file
-    Returns
-    -------
-    dict: dict
-        the read input dict options
-    """
-    #there are three blocks - main, md and queue
-    #main block has subblocks of calculations
-
-    #we need to set up def options
-    options = {}
-    
-    #main dictionary
-    options["element"]: None
-    options["mass"]: 1.00
-
-    #create a list for calculations
-    options["calculations"] = []
-
-    #options for md
-    options["md"] = {
-        #pair elements
-        "pair_style": None,
-        "pair_coeff": None,
-        #time related properties
-        "timestep": 0.001,
-        "nsmall": 10000,
-        "nevery": 10,
-        "nrepeat": 10,
-        "ncycles": 100,
-        #ensemble properties
-        "tdamp": 0.1,
-        "pdamp": 0.1,
-        #eqbr and switching time
-        "te": 25000,
-        "ts": 50000,
-        #enable separate switching time for rs
-        "ts_rs": 50000,
-        "tguess": None,
-        "dtemp": 200,
-        "maxattempts": 5,
-        "traj_interval": 0,
-    }
-
-    #queue properties
-    options["queue"] = {
-        "scheduler": "local",
-        "cores": 1,
-        "jobname": "ti",
-        "walltime": "23:50:00",
-        "queuename": None,
-        "memory": "3GB",
-        "commands": None,
-        "modules": None,
-        "options": None
-    }
-
-    #convergence factors that can be set if required
-    options["conv"] = {
-        "alat_tol": 0.0002,
-        "k_tol": 0.01,
-        "solid_frac": 0.7,
-        "liquid_frac": 0.05,
-        "p_tol": 0.5,
-    }
-
-    #keys that need to be read in directly
-    directkeys = ["md", "queue", "conv"]
-
-    #now read the file
-    if os.path.exists(file):
-        with open(file) as file:
-            indata = yaml.load(file, Loader=yaml.FullLoader)
-    else:
-        raise FileNotFoundError('%s input file not found'% file)
-
-
-    #now read keys
-    for okey in directkeys:
-        if okey in indata.keys():
-            for key, val in indata[okey].items():
-                options[okey][key] = indata[okey][key] 
-
-    options["element"] = check_and_convert_to_list(indata["element"])
-    options["mass"] = check_and_convert_to_list(indata["mass"])
-    options["md"]["pair_style"] = check_and_convert_to_list(indata["md"]["pair_style"])
-    options["md"]["pair_coeff"] = fix_paths(check_and_convert_to_list(indata["md"]["pair_coeff"]))
-
-    #now modify ts;
-    if isinstance(options["md"]["ts"], list):
-        ts1 = options["md"]["ts"][0]
-        ts2 = options["md"]["ts"][1]
-        options["md"]["ts"] = ts1
-        options["md"]["ts_rs"] = ts2
-    else:
-        options["md"]["ts_rs"] = options["md"]["ts"]
-
-    if not len(options["element"]) == len(options["mass"]):
-        raise ValueError("length of elements and mass should be same!")
-    options["nelements"] = len(options["element"])
-
-    #now we need to process calculation keys
-    #loop over calculations
-    if "calculations" in indata.keys():
-        #if the key is present
-        #Loop 0: over each calc block
-        #Loop 1: over lattice
-        #Loop 2: over pressure
-        #Loop 3: over temperature if needed - depends on mode
-        for calc in indata["calculations"]:
-            #check and convert items to lists if needed
-            mode = calc["mode"]
+    def apply_check(self, key1, key2):
+        key2 = self.check_and_convert_to_list(key2)
+        for key in key2:
+            val_ref = getattr(self, key1)
+            val_tar = getattr(self, key)
+            if val_ref is not None:
+                if val_tar is not None:
+                    if not len(val_ref) == len(val_tar):
+                        raise ValueError("Length of %s and %s should be same"%(val_ref, val_tar))
             
-            #now start looping
-            #First handle the complex protocols, otherwise go to other simple protocols
-            if 'lattice' in calc.keys():
-                lattice = check_and_convert_to_list(calc["lattice"])
+    @property
+    def element(self):
+        return self._element
+
+    @element.setter
+    def element(self, val):
+        val = self.check_and_convert_to_list(val)
+        self._nelements = len(val)
+        self._element = val
+    
+    @property
+    def n_elements(self):
+        return self._n_elements
+    
+    @property
+    def mass(self):
+        return self._mass
+    
+    @mass.setter
+    def mass(self, val):
+        val = self.check_and_convert_to_list(val)
+        if self.element is not None:
+            if not len(self.element) == len(val):
+                raise ValueError("Elements and mass must have same length")
+        self._mass = val
+
+    @property
+    def mode(self):
+        return self._mode
+
+    @mode.setter
+    def mode(self, val):
+        #add check
+        self._mode = val
+        if val == "melting_temperature":
+            self.temperature = 0
+            self.pressure = 0
+
+    @property
+    def lattice(self):
+        return self._lattice
+
+    @lattice.setter
+    def lattice(self, val):
+        self._lattice = val
+
+    @property
+    def pressure(self):
+        return self._pressure_input
+
+    @pressure.setter
+    def pressure(self, val):
+        self._pressure_input = val
+        if val is None:
+            self._fix_lattice = True
+        elif isinstance(val, list):
+            if len(val) == 3:
+                if (val[0]==val[1]==val[2]):
+                    self._pressure = val[0]
+                    self._iso = False
+                else:
+                    raise NotImplementedError()
+            elif len(value) == 2:
+                self._pressure = val[0]
+                self._pressure_stop = val[1]
             else:
-                lattice = []
-            if 'pressure' in calc.keys():
-                pressure = check_and_convert_to_list(calc["pressure"])
+                raise NotImplementedError()
+        else:
+            self._pressure = val
+            self._iso = True
+            self._fix_lattice = False
+
+    @property
+    def temperature(self):
+        return self._temperature_input
+
+    @temperature.setter
+    def temperature(self, val):
+        self._temperature_input = val
+        if isinstance(val, list):
+            if len(val) == 2:
+                self._temperature = val[0]
+                self._temperature_stop = val[1]
+                self._temperature_high = 2*val[1]
             else:
-                pressure = []
+                raise ValueError("Temperature cannot have len>2")
+        else:
+            self._temperature = val
+            self._temperature_stop = val
+            self._temperature_high = 2*val
 
+    @property
+    def temperature_high(self):
+        return self._temperature_high
 
-            if (mode=='melting_temperature'):
-                cdict = {}
-                cdict["mode"] = calc["mode"]
-                cdict["temperature"] = 0
-                cdict["temperature_stop"] = 0
+    @temperature_high.setter
+    def temperature_high(self, val):
+        self._temperature_high = val
+    
+    @property
+    def pair_style(self):
+        return self._pair_style
+    
+    @pair_style.setter
+    def pair_style(self, val):
+        val = self.check_and_convert_to_list(val)
+        self._pair_style = val
 
-                #now if lattice is provided-> use that; but length should be one
-                if len(lattice) == 1:
-                    cdict["lattice"] = lattice[0]
-                elif len(lattice)>1:
-                    raise ValueError('For melting_temperature mode, please provide only one lattice')
-                else:
-                    cdict["lattice"] = None
+    @property
+    def pair_coeff(self):
+        return self._pair_coeff
+    
+    @pair_coeff.setter
+    def pair_coeff(self, val):
+        val = self.check_and_convert_to_list(val)
+        self._pair_coeff = val
 
-                if len(pressure) == 1:
-                    cdict["pressure"] = pressure[0]
-                elif len(pressure)>1:
-                    raise ValueError('For melting_temperature mode, please provide only one pressure')
-                else:
-                    cdict["pressure"] = 0
+    @property
+    def reference_phase(self):
+        return self._reference_phase
+    
+    @reference_phase.setter
+    def reference_phase(self, val):
+        self._reference_phase = val
 
-                #pressure is zero                
-                cdict["state"] = None
-                cdict["nelements"] = options["nelements"]
-                cdict["element"] = options["element"]
-                cdict["lattice_constant"] = 0
-                cdict["iso"] = False
-                cdict["fix_lattice"] = False
-                cdict = prepare_optional_keys(calc, cdict)
-                options["calculations"].append(cdict)                      
+    @property
+    def lattice_constant(self):
+        return self._lattice_constant
+    
+    @lattice_constant.setter
+    def lattice_constant(self, val):
+        self._lattice_constant = val
 
+    @property
+    def repeat(self):
+        return self._repeat
+    
+    @repeat.setter
+    def repeat(self, val):
+        if isinstance(val, list):
+            if not len(val) == 3:
+                raise ValueError("repeat should be three")
+        else:
+            val = [val, val, val]
+        self._repeat = val
+    
+    @property
+    def npt(self):
+        return self._npt
+    
+    @npt.setter
+    def npt(self, val):
+        self._npt = val
+    
+    @property
+    def n_equilibration_steps(self):
+        return self._n_equilibration_steps
+    
+    @n_equilibration_steps.setter
+    def n_equilibration_steps(self, val):
+        self._n_equilibration_steps = val
 
-            #now handle other normal modes
-            else:   
-                state = check_and_convert_to_list(calc["state"])
-                temperature = check_and_convert_to_list(calc["temperature"])
+    @property
+    def n_switching_steps(self):
+        return self._n_switching_steps
+    
+    @n_switching_steps.setter
+    def n_switching_steps(self, val):
+        if isinstance(val, list):
+            if len(val) == 2:
+                self._n_switching_steps = val[0]
+                self._n_sweep_steps = val[1]
+            else:
+                raise TypeError("n_switching_steps should be len 1 or 2")
+        else:
+            self._n_switching_steps = val
+            self._n_sweep_steps = val
 
-                #prepare lattice constant values
-                if "lattice_constant" in calc.keys():
-                    lattice_constant = check_and_convert_to_list(calc["lattice_constant"])
-                else:
-                    lattice_constant = [0 for x in range(len(lattice))]
-                #prepare lattice constant values
-                if "iso" in calc.keys():
-                    iso = check_and_convert_to_list(calc["iso"])
-                else:
-                    iso = [False for x in range(len(lattice))]
+    @property
+    def n_print_steps(self):
+        return self._n_print_steps
+    
+    @n_print_steps.setter
+    def n_print_steps(self, val):
+        self._n_print_steps = val
 
-                if "fix_lattice" in calc.keys():
-                    fix_lattice = check_and_convert_to_list(calc["fix_lattice"])
-                else:
-                    fix_lattice = [False for x in range(len(lattice))]
+    @property
+    def n_iterations(self):
+        return self._n_iterations
+    
+    @n_iterations.setter
+    def n_iterations(self, val):
+        self._n_iterations = val
+    
+    def check_and_convert_to_list(self, data):
+        """
+        Check if the given item is a list, if not convert to a single item list
+        """
+        if not isinstance(data, list):
+            return [data]
+        else:
+            return data
+    
+    @staticmethod
+    def convert_to_list(data):
+        """
+        Check if the given item is a list, if not convert to a single item list
+        """
+        if not isinstance(data, list):
+            return [data]
+        else:
+            return data
 
+    def fix_paths(self, potlist): 
+        """
+        Fix paths for potential files to complete ones
+        """
+        fixedpots = []
+        for pot in potlist:
+            pcraw = pot.split()
+            if len(pcraw) >= 3:
+                filename = pcraw[2]
+                filename = os.path.abspath(filename)
+                pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
+                fixedpots.append(pcnew)
+            else:
+                fixedpots.append(pcraw)
+        return fixedpots
+    
+    def create_identifier(self):
+        """
+        Generate an identifier
 
-                for i, lat in enumerate(lattice):
-                    if (mode == "ts") or (mode == "mts") or (mode == "tscale"):
-                        for press in pressure:
-                            cdict = {}
-                            cdict["mode"] = calc["mode"]
-                            #we need to check for temperature length here
-                            if not len(temperature)==2:
-                                raise ValueError("At least two temperature values are needed for ts/tscale")
-                            cdict["temperature"] = temperature[0]
-                            cdict["pressure"] = press
-                            cdict["lattice"] = lat
-                            if state[i] in ['solid', 'liquid']:
-                                cdict["state"] = state[i]
-                            else:
-                                raise ValueError('state has to be either solid or liquid')
-                            cdict["temperature_stop"] = temperature[-1]
-                            cdict["nelements"] = options["nelements"]
-                            cdict["element"] = options["element"]
-                            cdict["lattice_constant"] = lattice_constant[i]
-                            cdict["iso"] = iso[i]
-                            cdict["fix_lattice"] = fix_lattice[i]
-                            cdict = prepare_optional_keys(calc, cdict)
-                            options["calculations"].append(cdict)
-                    elif mode == "pscale":
-                        for temp in temperature:
-                            cdict = {}
-                            cdict["mode"] = calc["mode"]
-                            if not len(pressure)==2:
-                                raise ValueError("At least two pressure values are needed for pscale")
-                            cdict["pressure"] = pressure[0]
-                            cdict["pressure_stop"] = pressure[-1]
-                            cdict["temperature"] = temp
-                            cdict["temperature_stop"] = temp
-                            cdict["lattice"] = lat
-                            if state[i] in ['solid', 'liquid']:
-                                cdict["state"] = state[i]
-                            else:
-                                raise ValueError('state has to be either solid or liquid')
-                            cdict["nelements"] = options["nelements"]
-                            cdict["element"] = options["element"]
-                            cdict["lattice_constant"] = lattice_constant[i]
-                            cdict["iso"] = iso[i]
-                            cdict["fix_lattice"] = fix_lattice[i]
-                            cdict = prepare_optional_keys(calc, cdict)
-                            options["calculations"].append(cdict)                                            
-                    else:
-                        for press in pressure:
-                            for temp in temperature:
-                                cdict = {}
-                                cdict["mode"] = calc["mode"]
-                                cdict["temperature"] = temp
-                                cdict["pressure"] = press
-                                cdict["lattice"] = lat
-                                if state[i] in ['solid', 'liquid']:
-                                    cdict["state"] = state[i]
-                                else:
-                                    raise ValueError('state has to be either solid or liquid')
+        Parameters
+        ----------
+        calc: dict
+            a calculation dict
 
-                                cdict["temperature_stop"] = temp
-                                cdict["nelements"] = options["nelements"]
-                                cdict["element"] = options["element"]
-                                cdict["lattice_constant"] = lattice_constant[i]
-                                cdict["iso"] = iso[i]
-                                cdict["fix_lattice"] = fix_lattice[i]
-                                cdict = prepare_optional_keys(calc, cdict)
-                                options["calculations"].append(cdict)
+        Returns
+        -------
+        identistring: string
+            unique identification string
+        """
+        #lattice processed
+        prefix = self.mode
+        if prefix == 'melting_temperature':
+            ts = int(0)
+            ps = int(0)
+            l = 'tm'
+        else:
+            ts = int(self._calc.temperature)
+            ps = int(self._calc.pressure)
+            l = self.lattice
+            l = l.split('/')
+            l = l[-1]
+        identistring = "-".join([prefix, l, str(ts), str(ps)])
+        return identistring
 
-                                if mode == "alchemy":
-                                    #if alchemy mode is selected: make sure that hybrid pair styles
-                                    if not len(options["md"]["pair_style"]) == 2:
-                                        raise ValueError("Two pair styles need to be provided")
-    return options
+    def create_folders(prefix=None):
+        """
+        Create the necessary folder for calculation
 
-def create_identifier(calc):
-    """
-    Generate an identifier
+        Parameters
+        ----------
+        calc : dict
+            calculation block
 
-    Parameters
-    ----------
-    calc: dict
-        a calculation dict
+        Returns
+        -------
+        folder : string
+            create folder
+        """
+        identistring = self.create_identifier()
+        if prefix is None:
+            simfolder = os.path.join(os.getcwd(), identistring)
+        else:
+            simfolder = os.path.join(prefix, identistring)
 
-    Returns
-    -------
-    identistring: string
-        unique identification string
-    """
-    #lattice processed
-    prefix = calc["mode"]
-
-    if prefix == 'melting_temperature':
-        ts = int(0)
-        ps = int(0)
-
-        l = 'tm'
-
-    else:
-        ts = int(calc["temperature"])
-        ps = int(calc["pressure"])
-
-        l = calc["lattice"]
-        l = l.split('/')
-        l = l[-1]
-
-
-    identistring = "-".join([prefix, l, str(ts), str(ps)])
-    return identistring
-
+        #if folder exists, delete it -> then create
+        try:
+            if os.path.exists(simfolder):
+                shutil.rmtree(simfolder)
+        except OSError:
+            newstr = '-'.join(str(datetime.datetime.now()).split())
+            newstr = '-'.join([simfolder, newstr])
+            shutil.move(simfolder, newstr)
+        
+        os.mkdir(simfolder)
+        return simfolder
+    
+    @classmethod
+    def generate(cls, indata):
+        if not isinstance(indata, dict):
+            if os.path.exists(indata):
+                with open(indata) as file:
+                    indata = yaml.load(file, Loader=yaml.FullLoader)            
+        if isinstance(indata, dict):
+            calc = cls()
+            calc.element = indata["element"]
+            calc.mass = indata["mass"]
+            if "md" in indata.keys():
+                calc.md.from_dict(indata["md"])
+            if "queue" in indata.keys():
+                calc.queue.from_dict(indata["queue"])
+            if "tolerance" in indata.keys():
+                calc.tolerance.from_dict(indata["tolerance"])
+            if "melting_temperature" in indata.keys():
+                calc.melting_temperature.from_dict(indata["melting_temperature"])
+            return calc
+        else:
+            raise FileNotFoundError('%s input file not found'% indata)
+    
+    @staticmethod
+    def read_file(file):
+        if os.path.exists(file):
+            with open(file) as file:
+                indata = yaml.load(file, Loader=yaml.FullLoader)
+        else:
+            raise FileNotFoundError('%s input file not found'% file)
+        return indata
+    
 def read_inputfile(file):
     """
     Read calphy inputfile
-
+    
     Parameters
     ----------
     file : string
         input file
-
+    
     Returns
     -------
     options : dict
         dictionary containing input options
-
     """
-    options = read_yamlfile(file)
-
-    for i in range(len(options["calculations"])):
-        identistring = create_identifier(options["calculations"][i])
-        options["calculations"][i]["directory"] = identistring
-
-    return options
+    indata = Calculation.read_file(file)
+    calculations = []
+    for ci in indata["calculations"]:
+        #get main variables
+        mode = ci["mode"]
+        if mode == "melting_temperature":
+            calc = Calculation.generate(indata)
+            calc.from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
+                                "n_switching_steps", "n_print_steps", "n_iterations"])
+            calc.pressure = Calculation.convert_to_list(ci["pressure"]) if "pressure" in ci.keys() else []
+            calc.temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else []
+            calc.lattice = Calculation.convert_to_list(ci["lattice"]) if "lattice" in ci.keys() else None
+            calc.reference_phase = Calculation.convert_to_list(ci["reference_phase"]) if "reference_phase" in ci.keys() else None
+            calc.lattice_constant = Calculation.convert_to_list(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else 0 
+            calculations.append(calc)
+        else:
+            pressure = Calculation.convert_to_list(ci["pressure"]) if "pressure" in ci.keys() else []
+            temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else []
+            lattice = Calculation.convert_to_list(ci["lattice"])
+            reference_phase = Calculation.convert_to_list(ci["reference_phase"])
+            if "lattice_constant" in ci.keys():
+                lattice_constant = Calculation.convert_to_list(ci["lattice_constant"])
+            else:
+                lattice_constant = [0 for x in range(len(lattice))]
+            if not len(lattice_constant)==len(reference_phase)==len(lattice):
+                raise ValueError("lattice constant, reference phase and lattice should have same length")
+            lat_props = [{"lattice": lattice[x], "lattice_constant":lattice_constant[x], "reference_phase":reference_phase[x]} for x in range(len(lattice))]
+            if (mode == "fe") or (mode == "alchemy"):
+                combos = itertools.product(lat_props, pressure, temperature)
+            elif mode == "ts" or mode == "tscale":
+                if not len(temperature) == 2:
+                    raise ValueError("ts/tscale mode needs 2 temperature values")
+                temperature = [temperature for x in range(len(lattice))]
+                combos = itertools.product(lat_props, pressure, temperature)
+            elif mode == "pscale":
+                if not len(pressure) == 2:
+                    raise ValueError("pscale mode needs 2 pressure values")
+                pressure = [pressure for x in range(len(lattice))]
+                combos = itertools.product(lat_props, pressure, temperature)
+            #create calculations
+            for combo in combos:
+                calc = Calculation.generate(indata)
+                calc.from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
+                                "n_switching_steps", "n_print_steps", "n_iterations"])
+                calc.lattice = combo[0]["lattice"]
+                calc.lattice_constant = combo[0]["lattice_constant"]
+                calc.reference_phase = combo[0]["reference_phase"]
+                calc.pressure = combo[1]
+                calc.temperature = combo[2]
+                calculations.append(calc)
+    return calculations
