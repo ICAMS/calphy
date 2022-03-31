@@ -47,18 +47,17 @@ class MeltingTemp:
     simfolder : string
         base folder for running calculations
     """
-    def __init__(self, options=None, kernel=None, simfolder=None):
-        self.options = options
-        self.kernel = kernel
+    def __init__(self, calculation=None, simfolder=None):
+        self.calc = calculation
         self.simfolder = simfolder
         self.org_tm = 0
-        self.calc = self.options['calculations'][kernel]
-        self.dtemp = self.calc['dtemp']
-        self.maxattempts = self.calc['maxattempts']
+        self.dtemp = self.calc.melting_temperature.step
+        self.maxattempts = self.calc.melting_temperature.attempts
         self.attempts = 0
-        self.exp_tm = self.calc['tguess']
+        self.exp_tm = self.calc._temperature
+        self.calculations = []
 
-        self.get_props(self.calc['element'][0])
+        self.get_props(self.calc.element[0])
         self.get_trange()
         self.arg = None
         
@@ -78,25 +77,25 @@ class MeltingTemp:
         -------
         None 
         """
-        self.calc['temperature'] = int(self.tmin)
+        self.calc.temperature = [int(self.tmin), int(self.tmax)]
         self.calc['temperature_stop'] = int(self.tmax)
         csol = copy.deepcopy(self.calc)
         clqd = copy.deepcopy(self.calc)
         
-        csol['lattice'] = self.lattice.upper()
-        clqd['lattice'] = 'LQD'
-        csol['state'] = 'solid'
-        clqd['state'] = 'liquid'
-        csol['lattice_constant'] = self.lattice_constant
-        clqd['lattice_constant'] = self.lattice_constant
-        csol['thigh'] = self.tmin
-        clqd['thigh'] = 1.5*self.tmax
-        csol['mode'] = 'ts'
-        clqd['mode'] = 'ts'
+        csol.lattice = self.lattice.upper()
+        clqd.lattice = 'LQD'
+        csol.reference_phase = 'solid'
+        clqd.reference_phase = 'liquid'
+        csol.lattice_constant = self.lattice_constant
+        clqd.lattice_constant = self.lattice_constant
+        csol._temperature_high = self.tmin
+        clqd._temperature_high = 1.5*self.tmax
+        csol.mode = 'ts'
+        clqd.mode = 'ts'
         
-        csol['directory'] = create_identifier(csol)
-        clqd['directory'] = create_identifier(clqd)
-        self.options['calculations'] = [csol, clqd]
+        #csol['directory'] = create_identifier(csol)
+        #clqd['directory'] = create_identifier(clqd)
+        self.calculations = [csol, clqd]
         
         
     def get_props(self, elem):
@@ -159,10 +158,10 @@ class MeltingTemp:
 
         self.prepare_calcs()
 
-        self.soljob = cq.setup_calculation(self.options, 0)
-        self.lqdjob = cq.setup_calculation(self.options, 1)
+        self.soljob = cq.setup_calculation(self.calculations[0])
+        self.lqdjob = cq.setup_calculation(self.calculations[1])
         
-        self.logger.info("Free energy of %s and %s phases will be calculated"%(self.soljob.calc['lattice'], self.lqdjob.calc['lattice']))
+        self.logger.info("Free energy of %s and %s phases will be calculated"%(self.soljob.calc.lattice, self.lqdjob.calc.lattice))
         self.logger.info("Temperature range of %f-%f"%(self.tmin, self.tmax))
         self.logger.info("STATE: Temperature range of %f-%f K"%(self.tmin, self.tmax))
         self.logger.info('Starting solid fe calculation')
@@ -174,7 +173,7 @@ class MeltingTemp:
             return 2
         
         self.logger.info('Starting solid reversible scaling run')
-        for i in range(self.soljob.nsims):
+        for i in range(self.soljob.calc.n_iterations):
             try:
                 self.soljob.reversible_scaling(iteration=(i+1))
             except MeltedError:
@@ -192,7 +191,7 @@ class MeltingTemp:
             return 3
 
         self.logger.info('Starting liquid reversible scaling calculation')
-        for i in range(self.lqdjob.nsims):
+        for i in range(self.lqdjob.calc.n_iterations):
             try:
                 self.lqdjob.reversible_scaling(iteration=(i+1))
             except SolidifiedError:
@@ -232,7 +231,7 @@ class MeltingTemp:
                 return True
             
             self.attempts += 1
-            if (self.attempts>self.maxattempts):
+            if (self.attempts > self.maxattempts):
                 raise ValueError('Maximum number of tries reached')
 
 
