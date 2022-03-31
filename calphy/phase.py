@@ -186,8 +186,8 @@ class Phase:
 
         #input quantities
         report["input"] = {}
-        report["input"]["temperature"] = int(self.t)
-        report["input"]["pressure"] = float(self.p)
+        report["input"]["temperature"] = int(self.calc._temperature)
+        report["input"]["pressure"] = float(self.calc._pressure)
         report["input"]["lattice"] = str(self.l)
         report["input"]["element"] = " ".join(np.array(self.calc.element).astype(str))
         report["input"]["concentration"] = " ".join(np.array(self.concentration).astype(str))
@@ -220,15 +220,15 @@ class Phase:
         self.logger.info("Please cite the following publications:")
         self.logger.info("- 10.1103/PhysRevMaterials.5.103801")
 
-        if self.calc["mode"] == "fe":
-            if self.calc["state"] == "solid":
+        if self.calc.mode == "fe":
+            if self.calc.reference_phase == "solid":
                 self.logger.info("- 10.1016/j.commatsci.2015.10.050")
             else:
                 self.logger.info("- 10.1016/j.commatsci.2018.12.029")
                 self.logger.info("- 10.1063/1.4967775")
-        elif self.calc["mode"] == "ts":
+        elif self.calc.mode == "ts":
             self.logger.info("- 10.1103/PhysRevLett.83.3973")
-        elif self.calc["mode"] == "mts":
+        elif self.calc.mode == "mts":
             self.logger.info("- 10.1063/1.1420486") 
 
     def reversible_scaling(self, iteration=1):
