@@ -89,7 +89,7 @@ class Liquid(cph.Phase):
         lmp = ph.set_potential(lmp, self.calc)
 
         #Melt regime for the liquid
-        lmp.velocity("all create", self.thigh, np.random.randint(0, 10000))
+        lmp.velocity("all create", self.calc._temperature_high, np.random.randint(0, 10000))
         
         #add some computes
         lmp.command("variable         mvol equal vol")
