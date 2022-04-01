@@ -173,6 +173,8 @@ class Calculation(InputTemplate):
 
     @pressure.setter
     def pressure(self, val):
+        print("im here")
+        print(val)
         self._pressure_input = val
         if val is None:
             self._fix_lattice = True
@@ -183,7 +185,7 @@ class Calculation(InputTemplate):
                     self._iso = False
                 else:
                     raise NotImplementedError()
-            elif len(value) == 2:
+            elif len(val) == 2:
                 self._pressure = val[0]
                 self._pressure_stop = val[1]
             else:
@@ -467,8 +469,8 @@ def read_inputfile(file):
             calc = Calculation.generate(indata)
             calc.from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
                                 "n_switching_steps", "n_print_steps", "n_iterations"])
-            calc.pressure = Calculation.convert_to_list(ci["pressure"]) if "pressure" in ci.keys() else []
-            calc.temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else []
+            calc.pressure = Calculation.convert_to_list(ci["pressure"]) if "pressure" in ci.keys() else 0
+            calc.temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else None
             calc.lattice = Calculation.convert_to_list(ci["lattice"]) if "lattice" in ci.keys() else None
             calc.reference_phase = Calculation.convert_to_list(ci["reference_phase"]) if "reference_phase" in ci.keys() else None
             calc.lattice_constant = Calculation.convert_to_list(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else 0 
