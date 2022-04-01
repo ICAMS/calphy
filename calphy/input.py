@@ -487,15 +487,15 @@ def read_inputfile(file):
             lat_props = [{"lattice": lattice[x], "lattice_constant":lattice_constant[x], "reference_phase":reference_phase[x]} for x in range(len(lattice))]
             if (mode == "fe") or (mode == "alchemy"):
                 combos = itertools.product(lat_props, pressure, temperature)
-            elif mode == "ts" or mode == "tscale":
+            elif mode == "ts" or mode == "tscale" or mode == "mts":
                 if not len(temperature) == 2:
                     raise ValueError("ts/tscale mode needs 2 temperature values")
-                temperature = [temperature for x in range(len(lattice))]
+                temperature = [temperature]
                 combos = itertools.product(lat_props, pressure, temperature)
             elif mode == "pscale":
                 if not len(pressure) == 2:
                     raise ValueError("pscale mode needs 2 pressure values")
-                pressure = [pressure for x in range(len(lattice))]
+                pressure = [pressure]
                 combos = itertools.product(lat_props, pressure, temperature)
             #create calculations
             for combo in combos:
