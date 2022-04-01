@@ -24,6 +24,7 @@ from mendeleev import element
 import copy
 import numpy as np
 import os
+import time
 
 from calphy.input import read_inputfile
 #import calphy.queuekernel as cq
@@ -338,7 +339,7 @@ def routine_fe(job):
     job.logger.info("Averaging routine finished in %f s"%te)
 
     #now run integration loops
-    for i in range(job.nsims):
+    for i in range(job.calc.n_iterations):
         ts = time.time()
         job.run_integration(iteration=(i+1))
         te = (time.time() - ts)
@@ -355,7 +356,7 @@ def routine_ts(job):
     routine_fe(job)
 
     #now do rev scale steps
-    for i in range(job.nsims):
+    for i in range(job.calc.n_iterations):
         ts = time.time()
         job.reversible_scaling(iteration=(i+1))
         te = (time.time() - ts)
@@ -374,7 +375,7 @@ def routine_only_ts(job):
     te = (time.time() - ts)
     job.logger.info("Averaging routine finished in %f s"%te)
 
-    for i in range(job.nsims):
+    for i in range(job.calc.n_iterations):
         ts = time.time()
         job.reversible_scaling(iteration=(i+1))
         te = (time.time() - ts)
@@ -388,7 +389,7 @@ def routine_tscale(job):
     routine_fe(job)
 
     #now do rev scale steps
-    for i in range(job.nsims):
+    for i in range(job.calc.n_iterations):
         ts = time.time()
         job.temperature_scaling(iteration=(i+1))
         te = (time.time() - ts)
@@ -404,7 +405,7 @@ def routine_pscale(job):
     routine_fe(job)
 
     #now do rev scale steps
-    for i in range(job.nsims):
+    for i in range(job.calc.n_iterations):
         ts = time.time()
         job.pressure_scaling(iteration=(i+1))
         te = (time.time() - ts)
@@ -423,7 +424,7 @@ def routine_alchemy(job):
     job.logger.info("Averaging routine finished in %f s"%te)
 
     #now run integration loops
-    for i in range(job.nsims):
+    for i in range(job.calc.n_iterations):
         ts = time.time()
         job.run_integration(iteration=(i+1))
         te = (time.time() - ts)
