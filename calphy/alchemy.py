@@ -89,7 +89,7 @@ class Alchemy(cph.Phase):
         lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press")
 
-        if not self.calc["fix_lattice"]:
+        if not self.calc._fix_lattice:
             if self.calc._pressure == 0:
                 #This routine should be followed for zero pressure
                 lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
@@ -201,7 +201,7 @@ class Alchemy(cph.Phase):
 
         #close object and process traj
         lmp.close()
-        self.calc.process_traj()
+        self.process_traj()
 
     
 
@@ -233,7 +233,7 @@ class Alchemy(cph.Phase):
         
         #read dump file
         conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.calc.element)
+        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
 
         #set up hybrid potential
         #here we only need to set one potential
@@ -244,7 +244,7 @@ class Alchemy(cph.Phase):
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         # Integrator & thermostat.
-        if self.calc["npt"]:
+        if self.calc._npt:
             lmp.command("fix             f1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, 
                 self.calc.md.thermostat_damping, self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping))        
         else:
@@ -390,7 +390,7 @@ class Alchemy(cph.Phase):
         the calculated free energy is the same as the work.
         """
         w, q, qerr = find_w(self.simfolder, nelements=self.calc.n_elements, 
-            concentration=self.concentration, nsims=self.n_iterations, 
+            concentration=self.concentration, nsims=self.calc.n_iterations, 
             full=True, solid=False, alchemy=True)
         
         self.w = w
