@@ -27,6 +27,7 @@ import copy
 import yaml
 import itertools
 import shutil
+import numpy as np
 
 class InputTemplate:
     def __init__(self):
@@ -173,27 +174,94 @@ class Calculation(InputTemplate):
 
     @pressure.setter
     def pressure(self, val):
+        """
+        Pressure input can be of many diff types:
+        Input                      iso           fix_lattice  Mode  add. constraints
+        1. None                    True          True         any   No
+        2. scalar                  True          False        any   No
+        3. list of scalar len 1    True          False        any   No
+        4. list of scalar len 2    True          False        ps    No
+        5. list of scalar len 3    False         False        any   All terms equal
+        6. list of list   len 1x3  False         False        any   Each inner term equal
+        7. list of list   len 2x3  False         False        ps    Each inner term equal
+        """
+        def _check_equal(val):
+            if not (val[0]==val[1]==val[2]):
+                return False
+            return True
+
         self._pressure_input = val
+
+        error_message = "Available pressure types are of shape: None, 1, 3, (1x1), (2x1), (3x1), (2x3)"
+        # Case: 1
         if val is None:
+            self._iso = True
             self._fix_lattice = True
+            self._pressure = None
+            self._pressure_stop = None
+
+        # Cases: 3,4,5,6,7
         elif isinstance(val, list):
-            if len(val) == 1:
-                self._pressure = val[0]
-                self._iso = True
-                self._fix_lattice = False
-            elif len(val) == 3:
-                if (val[0]==val[1]==val[2]):
+            shape = np.shape(val)
+            indx = shape[0]
+            indy = shape[1] if len(shape)==2 else None
+
+            if indx == 1:
+                if indy is None:
+                    # Case: 3
+                    self._iso = True
+                    self._fix_lattice = False
                     self._pressure = val[0]
-                    self._iso = False
+                    self._pressure_stop = val[0]
+                elif indy == 3:
+                    # Case: 6
+                    if _check_equal(val[0]):
+                        self._iso = False
+                        self._fix_lattice = False
+                        self._pressure = val[0][0]
+                        self._pressure_stop = val[0][0]
+                    else:
+                        raise NotImplementedError("Pressure should have px=py=pz")
                 else:
-                    raise NotImplementedError()
-            elif len(val) == 2:
-                self._pressure = val[0]
-                self._pressure_stop = val[1]
+                    raise NotImplementedError(error_message)
+            elif indx == 2:
+                if indy is None:
+                    # Case: 4
+                    self._iso = True
+                    self._fix_lattice = False
+                    self._pressure = val[0]
+                    self._pressure_stop = val[1]
+                elif indy == 3:
+                    # Case: 7
+                    self._iso = False
+                    self._fix_lattice = False                    
+                    if _check_equal(val[0]) and _check_equal(val[1]):
+                        self._pressure = val[0][0]
+                        self._pressure_stop = val[1][0]
+                    else:
+                        raise NotImplementedError("Pressure should have px=py=pz")
+                else:
+                    raise NotImplementedError(error_message)
+
+            elif indx == 3:
+                if indy is None:
+                    # Case: 5
+                    if _check_equal(val):
+                        self._iso = False
+                        self._fix_lattice = False                    
+                        self._pressure = val[0]
+                        self._pressure_stop = val[0]                                
+                    else:
+                        raise NotImplementedError("Pressure should have px=py=pz")
+                else:
+                    raise NotImplementedError(error_message)
             else:
                 raise NotImplementedError()
+        
+        # Case: 2
         else:
             self._pressure = val
+            self._pressure_stop = val
             self._iso = True
             self._fix_lattice = False
 
