@@ -31,6 +31,8 @@ from calphy.input import read_inputfile
 from calphy.errors import *
 import calphy.helpers as ph
 
+from calphy.liquid import Liquid
+from calphy.solid import Solid
 
 class MeltingTemp:
     """
@@ -79,7 +81,7 @@ class MeltingTemp:
         None 
         """
         self.calc.temperature = [int(self.tmin), int(self.tmax)]
-        self.calc['temperature_stop'] = int(self.tmax)
+        self.calc._temperature_stop = int(self.tmax)
         csol = copy.deepcopy(self.calc)
         clqd = copy.deepcopy(self.calc)
         

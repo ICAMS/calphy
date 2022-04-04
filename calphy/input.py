@@ -173,13 +173,15 @@ class Calculation(InputTemplate):
 
     @pressure.setter
     def pressure(self, val):
-        print("im here")
-        print(val)
         self._pressure_input = val
         if val is None:
             self._fix_lattice = True
         elif isinstance(val, list):
-            if len(val) == 3:
+            if len(val) == 1:
+                self._pressure = val[0]
+                self._iso = True
+                self._fix_lattice = False
+            elif len(val) == 3:
                 if (val[0]==val[1]==val[2]):
                     self._pressure = val[0]
                     self._iso = False
@@ -202,7 +204,11 @@ class Calculation(InputTemplate):
     @temperature.setter
     def temperature(self, val):
         self._temperature_input = val
-        if isinstance(val, list):
+        if val is None:
+                self._temperature = val
+                self._temperature_stop = val
+                self._temperature_high = val
+        elif isinstance(val, list):
             if len(val) == 2:
                 self._temperature = val[0]
                 self._temperature_stop = val[1]
