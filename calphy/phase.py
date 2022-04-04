@@ -220,8 +220,8 @@ class Phase:
         self.logger.info("Please cite the following publications:")
         self.logger.info("- 10.1103/PhysRevMaterials.5.103801")
 
-        if self.calc["mode"] == "fe":
-            if self.calc["state"] == "solid":
+        if self.calc.mode == "fe":
+            if self.calc.reference_phase == "solid":
                 self.logger.info("- 10.1016/j.commatsci.2015.10.050")
             else:
                 self.logger.info("- 10.1016/j.commatsci.2018.12.029")
@@ -383,7 +383,7 @@ class Phase:
         lmp.close()
 
         self.logger.info("Please cite the following publications:")
-        if self.calc["mode"] == "mts":
+        if self.calc.mode == "mts":
             self.logger.info("- 10.1063/1.1420486")
         else:
             self.logger.info("- 10.1103/PhysRevLett.83.3973")
@@ -432,8 +432,8 @@ class Phase:
         tf = self.calc._temperature_stop
         li = 1
         lf = t0/tf
-        pi = self.calc._pressure
-        pf = lf*pi
+        p0 = self.calc._pressure
+        pf = lf*p0
 
         #create lammps object
         lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
@@ -478,6 +478,12 @@ class Phase:
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
         lmp.command("unfix             1")
 
+        #check melting or freezing
+        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+        lmp.command("run               0")
+        lmp.command("undump            2")
+        
+        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
         if solid:
             if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
                 lmp.close()
@@ -514,7 +520,7 @@ class Phase:
         t0 = self.calc._temperature
         li = 1
         lf = self.calc._pressure_stop
-        pi = self.calc._pressure
+        p0 = self.calc._pressure
         pf = self.calc._pressure_stop
 
         #create lammps object
@@ -535,7 +541,7 @@ class Phase:
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         #equilibrate first
-        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping
+        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping,
                                         self.iso, p0, p0, self.calc.md.barostat_damping))
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
         lmp.command("unfix             1")
