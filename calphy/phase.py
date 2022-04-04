@@ -597,6 +597,7 @@ class Phase:
             Only returned if `return_values` is True.
         """
         res = integrate_ps(self.simfolder, self.fe, self.natoms,
+            self.calc._pressure, self.calc._pressure_stop,
             nsims=self.calc.n_iterations, return_values=return_values)
 
         if return_values:
