@@ -11,7 +11,7 @@ The inputfile is `yaml` formatted. In this section the possible keys in the inpu
 | :-: | :-: | :-: | :-: | :-: |
 | [mode](#mode) | [lattice](#lattice) | [reference_phase](#reference_phase) | [temperature](#temperature) | [pressure](#pressure) |
 | [temperature_high](#temperature_high) | [lattice_constant](#lattice_constant) | [repeat](#repeat) | [n_iterations](#n_iterations) | [n_switching_steps](#n_switching_steps) | 
-| [n_equilibration_steps](#n_equilibration_steps) | [pair_style](#pair_style) | [pair_coeff](#pair_coeff) | [n_print_steps](#n_print_steps) | 
+| [n_equilibration_steps](#n_equilibration_steps) | [pair_style](#pair_style) | [pair_coeff](#pair_coeff) | [n_print_steps](#n_print_steps) | [potential_file](#potential_file) | 
 
 | `md` block  | | | | |
 | :-: | :-: | :-: | :-: | :-: |
@@ -276,6 +276,19 @@ pair_coeff: "* * CuZr_EAM/CuZr.eam.fs Cu Zr"
 ```
 
 The [pair coeff](https://lammps.sandia.gov/doc/pair_coeff.html) command for LAMMPS. It should be the same length as `pair_style`. Except for mode `alchemy`, only the first value in the list will be used. For mode `alchemy`, there should be two pair styles specified, and the alchemical transformation is carried out between the two.
+
+---
+
+#### <a name="potential_file"></a>`potential_file`
+
+_type_: string      
+_default_: None  
+_example_:
+```
+pair_coeff: "/home/calc/potential.inp"
+```
+
+If specified, the `pair_style` and `pair_coeff` commands are not used, but rather the potential is read in from the provided input file using `include` command in LAMMPS. This allows the use of more complex or multiple potential files. Due to the `hybrid/scaled` styles employed in calphy, **this option only works with mode `fe` and `reference_phase` solid.**
 
 ---
 

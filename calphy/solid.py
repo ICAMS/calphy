@@ -82,7 +82,10 @@ class Solid(cph.Phase):
         lmp = ph.create_structure(lmp, self.calc)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.calc)
+        if self.calc.potential_file is None:
+            lmp = ph.set_potential(lmp, self.calc)
+        else:
+            lmp.command("include %s"%self.calc.potential_file)
 
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -310,7 +313,10 @@ class Solid(cph.Phase):
         lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.calc)
+        if self.calc.potential_file is None:
+            lmp = ph.set_potential(lmp, self.calc)
+        else:
+            lmp.command("include %s"%self.calc.potential_file)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)

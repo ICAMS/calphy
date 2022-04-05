@@ -61,6 +61,7 @@ class Calculation(InputTemplate):
         self._fix_lattice = False
         self._pair_style = None
         self._pair_coeff = None
+        self._potential_file = None
         self._reference_phase = None
         self._lattice_constant = 0
         self._repeat = [1, 1, 1]
@@ -315,6 +316,17 @@ class Calculation(InputTemplate):
         val = self.check_and_convert_to_list(val)
         val = self.fix_paths(val)
         self._pair_coeff = val
+
+    @property
+    def potential_file(self):
+        return self._potential_file
+
+    @potential_file.setter
+    def potential_file(self, val):
+        if os.path.exists(val):
+            self._potential_file = val
+        else:
+            raise FileNotFoundError("File %s not found"%val)
 
     @property
     def reference_phase(self):
@@ -577,7 +589,7 @@ def read_inputfile(file):
             for combo in combos:
                 calc = Calculation.generate(indata)
                 calc.from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
-                                "n_switching_steps", "n_print_steps", "n_iterations"])
+                                "n_switching_steps", "n_print_steps", "n_iterations", "potential_file"])
                 calc.lattice = combo[0]["lattice"]
                 calc.lattice_constant = combo[0]["lattice_constant"]
                 calc.reference_phase = combo[0]["reference_phase"]
