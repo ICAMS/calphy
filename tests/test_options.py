@@ -1,6 +1,6 @@
 import pytest
-from calphy.input import read_yamlfile
+from calphy.input import read_inputfile
 
 def test_options():
-	options = read_yamlfile("examples/Cu_EAM/input.yaml")
-	assert options["calculations"][0]["temperature"] == 1300
+	options = read_inputfile("examples/Cu_EAM/input.yaml")
+	assert options[0]._temperature == 1300
