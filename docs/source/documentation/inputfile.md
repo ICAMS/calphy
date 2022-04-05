@@ -7,41 +7,52 @@ The inputfile is `yaml` formatted. In this section the possible keys in the inpu
 | :-: | :-: |
 | [element](#element) | [mass](#mass) | 
 
-| `calculations` block  | | | | |
+| `calculations` block | | | | |
 | :-: | :-: | :-: | :-: | :-: |
-| [mode](#mode) | [lattice](#lattice) | [state](#state) | [temperature](#temperature) | [pressure](#pressure) |
-| [lattice_constant](#lattice_constant) | [iso](#iso) | [fix_lattice](#fix_lattice) | [repeat](#repeat) | [nsims](#nsims) | 
+| [mode](#mode) | [lattice](#lattice) | [reference_phase](#reference_phase) | [temperature](#temperature) | [pressure](#pressure) |
+| [temperature_high](#temperature_high) | [lattice_constant](#lattice_constant) | [repeat](#repeat) | [n_iterations](#n_iterations) | [n_switching_steps](#n_switching_steps) | 
+| [n_equilibration_steps](#n_equilibration_steps) | [pair_style](#pair_style) | [pair_coeff](#pair_coeff) | 
 
 | `md` block  | | | | |
 | :-: | :-: | :-: | :-: | :-: |
-| [pair_style](#pair_style) | [pair_coeff](#pair_coeff) | [timestep](#timestep) | [nsmall](#nsmall) | [nevery](#nevery) |
-| [nrepeat](#nrepeat) | [ncycles](#ncycles) | [tdamp](#tdamp) | [pdamp](#pdamp) | [te](#te) |
-| [ts](#ts) | [tguess](#tguess) | [dtemp](#dtemp) | [maxattempts](#maxattempts) | [traj_interval](#traj_interval) |  
+| [timestep](#timestep) | [n_small_steps](#n_small_steps) | [n_every_steps](#n_every_steps) | [n_repeat_steps](#n_repeat_steps) | [n_cycles](#n_cycles) |
+| [thermostat_damping](#thermostat_damping) | [barostat_damping](#barostat_damping) | [te](#te) |
+| [ts](#ts)  [traj_interval](#traj_interval) |  
 
 | `queue` block  | | | | |
 | :-: | :-: | :-: | :-: | :-: |
 | [scheduler](#scheduler) | [cores](#cores) | [jobname](#jobname) | [walltime](#walltime) | [queuename](#queuename) |
 | [memory](#memory) | [commands](#commands) | [modules](#modules) | [options](#options) |
 
-| `conv` block  | | | | |
+| `tolerance` block | | | | |
 | :-: | :-: | :-: | :-: | :-: |
-| [alat_tol](#alat_tol) | [k_tol](#k_tol) | [solid_frac](#solid_frac) | [liquid_frac](#liquid_frac) | [p_tol](#p_tol) |
+| [lattice_constant](#tol_lattice_constant) | [spring_constant](#tol_spring_constant) | [solid_fraction](#tol_solid_frac) | [liquid_fraction](#tol_liquid_frac) | [pressure](#tol_pressure) |
+
+| `melting_temperature` block | | | | |
+| :-: | :-: | :-: | :-: | :-: |
+| [guess](#guess) | [step](#step) | [attempts](#attempts) |
 
 ## main keys
+
+---
 
 #### <a name="element"></a>`element`
 
 _type_: string/list of strings  
+_default_: None  
 _example_:
 ```
 element: 'Cu'
 element: ['Cu', 'Zr']
 ```
 Chemical symbol(s) of the element(s) in the simulation.   
-   
+
+---
+
 #### <a name="mass"></a>`mass`
 
-_type_: float/list of floats    
+_type_: float/list of floats
+_default_: 1.0
 _example_:
 ```
 mass: 63.546
@@ -49,6 +60,8 @@ mass: [63.546, 91.224]
 ```
 
 Mass of the element(s) in the simulation. It should follow the same order as that of `element`, and should be of the same length.
+
+---
 
 ## `calculations` block
 
@@ -61,23 +74,35 @@ calculations:
   pressure: [0]
   lattice: [FCC]
   repeat: [2, 2, 2]
-  state: solid
-  nsims: 1
+  reference_phase: solid
+  n_iterations: 1
 ```
 
 The various keys are-
 
+---
+
 #### <a name="mode"></a>`mode`  
 
-_type_: string, `fe` or `ts` or `mts` or `alchemy` or `melting_temperature` or `tscale` or `pscale`
+_type_: string, `fe` or `ts` or `mts` or `alchemy` or `melting_temperature` or `tscale` or `pscale`  
+_default_: None  
 _example_:
 ```
 mode: fe
 mode: ts
 ```
 
-Calculation mode. The modes can be chosen from `fe`, `ts`, `mts`, `alchemy`, `melting_temperature`, `tscale` or `pscale`. `fe` performs a direct free energy calculation, while `ts` performs a direct free energy calculation followed by reversible scaling to find temperature dependence. `mts` performs only reversible scaling part and can be used for dynamic Clausius-Clapeyron integration. Mode `alchemy` is used for switching between two different interatomic potentials, or for integration over concentration.  `melting_temperature` can be used for automated calculation of melting temperature. `tscale` is used for similar purpose as `ts`, but scales the temperature directly. `pscale` calculates the free energy as a function of the pressure.
-   
+Calculation mode. A small description of the different modes are given below.   
+- `fe` performs a direct free energy calculation
+- `ts` performs a direct free energy calculation followed by reversible scaling to find temperature dependence.
+- `mts` performs only reversible scaling part and can be used for dynamic Clausius-Clapeyron integration.
+- `alchemy` is used for switching between two different interatomic potentials, or for integration over concentration. 
+- `melting_temperature` can be used for automated calculation of melting temperature. 
+- `tscale` is used for similar purpose as `ts`, but scales the temperature directly.
+- `pscale` calculates the free energy as a function of the pressure.
+
+---
+
 #### <a name="temperature"></a>`temperature`  
 
 _type_: float or list of floats   
