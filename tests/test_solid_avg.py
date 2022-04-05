@@ -1,13 +1,13 @@
 import pytest
-from calphy.input import read_yamlfile
+from calphy.input import read_inputfile
 import calphy.lattice as pl
 from calphy.solid import Solid
 import os
 import numpy as np
 
 def test_solid_averaging():
-    options = read_yamlfile(os.path.join(os.getcwd(), "tests/input.yaml"))
-    sol = Solid(options=options, kernel=0, simfolder=os.getcwd())
+    calculations = read_inputfile(os.path.join(os.getcwd(), "tests/input.yaml"))
+    sol = Solid(calculation=calculations[0], simfolder=os.getcwd())
     sol.run_averaging()
     assert os.path.exists("msd.dat") == True
 
