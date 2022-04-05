@@ -102,14 +102,19 @@ class Phase:
         self.lz = None
 
         #now manually tune pair styles
-        self.logger.info("pair_style: %s"%self.calc.pair_style[0])
-        self.logger.info("pair_coeff: %s"%self.calc.pair_coeff[0])
+        if self.calc.pair_style is not None:
+            self.logger.info("pair_style: %s"%self.calc.pair_style[0])
+            self.logger.info("pair_coeff: %s"%self.calc.pair_coeff[0])
 
-        #log second pair style
-        if len(self.calc.pair_style)>1:
-            self.logger.info("second pair_style: %s"%self.calc.pair_style[1])
-            self.logger.info("second pair_coeff: %s"%self.calc.pair_coeff[1])
-
+            #log second pair style
+            if len(self.calc.pair_style)>1:
+                self.logger.info("second pair_style: %s"%self.calc.pair_style[1])
+                self.logger.info("second pair_coeff: %s"%self.calc.pair_coeff[1])
+        else:
+            self.logger.info("pair_style or pair_coeff not provided")
+            if self.calc.potential_file is not None:
+                self.logger.info("potential is being loaded from file instead")
+ 
     def __repr__(self):
         """
         String of the class
