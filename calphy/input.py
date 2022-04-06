@@ -33,7 +33,7 @@ class InputTemplate:
     def __init__(self):
         pass
     
-    def from_dict(self, indict, keys=None):
+    def add_from_dict(self, indict, keys=None):
         if keys is None:
             for key, val in indict.items():
                 setattr(self, key, val) 
@@ -41,6 +41,14 @@ class InputTemplate:
             for key, val in indict.items():
                 if key in keys:
                     setattr(self, key, val)
+
+    def from_dict(self, indict):
+        for key, val in indict.items():
+            if isinstance(val, dict):
+                setattr(self, key, InputTemplate())
+                getattr(self, key).from_dict(val)
+            else:
+                setattr(self, key, val)
 
     def to_dict(self):
         tdict = self.__dict__
@@ -515,13 +523,13 @@ class Calculation(InputTemplate):
             calc.element = indata["element"]
             calc.mass = indata["mass"]
             if "md" in indata.keys():
-                calc.md.from_dict(indata["md"])
+                calc.md.add_from_dict(indata["md"])
             if "queue" in indata.keys():
-                calc.queue.from_dict(indata["queue"])
+                calc.queue.add_from_dict(indata["queue"])
             if "tolerance" in indata.keys():
-                calc.tolerance.from_dict(indata["tolerance"])
+                calc.tolerance.add_from_dict(indata["tolerance"])
             if "melting_temperature" in indata.keys():
-                calc.melting_temperature.from_dict(indata["melting_temperature"])
+                calc.melting_temperature.add_from_dict(indata["melting_temperature"])
             return calc
         else:
             raise FileNotFoundError('%s input file not found'% indata)
@@ -556,7 +564,7 @@ def read_inputfile(file):
         mode = ci["mode"]
         if mode == "melting_temperature":
             calc = Calculation.generate(indata)
-            calc.from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
+            calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
                                 "n_switching_steps", "n_print_steps", "n_iterations"])
             calc.pressure = Calculation.convert_to_list(ci["pressure"]) if "pressure" in ci.keys() else 0
             calc.temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else None
@@ -591,7 +599,7 @@ def read_inputfile(file):
             #create calculations
             for combo in combos:
                 calc = Calculation.generate(indata)
-                calc.from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
+                calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
                                 "n_switching_steps", "n_print_steps", "n_iterations", "potential_file"])
                 calc.lattice = combo[0]["lattice"]
                 calc.lattice_constant = combo[0]["lattice_constant"]
