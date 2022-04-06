@@ -41,6 +41,13 @@ class InputTemplate:
             for key, val in indict.items():
                 if key in keys:
                     setattr(self, key, val)
+
+    def to_dict(self):
+        tdict = self.__dict__
+        for key, val in tdict.items():
+            if isinstance(val, InputTemplate):
+                tdict[key] = val.to_dict()
+        return tdict
                     
 class Calculation(InputTemplate):
     def __init__(self):
@@ -109,19 +116,15 @@ class Calculation(InputTemplate):
         """
         String of the class
         """
-        data = "%s system with T=%d, P=%d in %s lattice for mode %s"%(self.reference_phase,
-            int(self._temperature), int(self._pressure), self.lattice, self.mode) 
+        data = "%s system with T=%s, P=%s in %s lattice for mode %s"%(self.to_string(self.reference_phase),
+            self.to_string(self._temperature), self.to_string(self._pressure), self.to_string(self.lattice), self.to_string(self.mode)) 
         return data
     
-    def apply_check(self, key1, key2):
-        key2 = self.check_and_convert_to_list(key2)
-        for key in key2:
-            val_ref = getattr(self, key1)
-            val_tar = getattr(self, key)
-            if val_ref is not None:
-                if val_tar is not None:
-                    if not len(val_ref) == len(val_tar):
-                        raise ValueError("Length of %s and %s should be same"%(val_ref, val_tar))
+    def to_string(self, val):
+        if val is None:
+            return "None"
+        else:
+            return str(val)
             
     @property
     def element(self):
