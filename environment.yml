@@ -9,7 +9,7 @@ dependencies:
   - openmpi 
   - mpi4py
   - lammps =2021.09.29=*openmpi*_2
-  - pylammpsmpi
+  - pylammpsmpi =0.0.8
   - pyscal
   - matplotlib
   - tqdm
