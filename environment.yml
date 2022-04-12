@@ -8,8 +8,8 @@ dependencies:
   - mendeleev
   - openmpi 
   - mpi4py
-  - lammps
-  - pylammpsmpi
+  - lammps =2021.09.29=*openmpi*_2
+  - pylammpsmpi =0.0.8
   - pyscal
   - matplotlib
   - tqdm

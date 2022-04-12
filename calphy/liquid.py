@@ -47,13 +47,12 @@ class Liquid(cph.Phase):
         base folder for running calculations
 
     """
-    def __init__(self, options=None, kernel=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None):
         """
         Set up class
         """
         #call base class
-        super().__init__(options=options,
-        kernel=kernel, simfolder=simfolder)
+        super().__init__(calculation=calculation, simfolder=simfolder)
 
 
 
@@ -81,16 +80,16 @@ class Liquid(cph.Phase):
         At the end of the run, the averaged box dimensions are calculated. 
         """
         #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
 
         #set up structure
         lmp = ph.create_structure(lmp, self.calc)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.options)
+        lmp = ph.set_potential(lmp, self.calc)
 
         #Melt regime for the liquid
-        lmp.velocity("all create", self.thigh, np.random.randint(0, 10000))
+        lmp.velocity("all create", self.calc._temperature_high, np.random.randint(0, 10000))
         
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -112,10 +111,11 @@ class Liquid(cph.Phase):
             if os.path.exists(trajfile):
                 os.remove(trajfile)
 
-            self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.thigh, thmult))
-            lmp.fix("1 all npt temp", self.thigh*thmult, self.thigh*thmult, self.options["md"]["tdamp"], 
-                                          "iso", self.p, self.p, self.options["md"]["pdamp"])
-            lmp.run(int(self.options["md"]["nsmall"]))
+            self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.calc._temperature_high, thmult))
+            lmp.fix("1 all npt temp", self.calc._temperature_high*thmult, self.calc._temperature_high*thmult, 
+                self.calc.md.thermostat_damping, 
+                "iso", self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping)
+            lmp.run(int(self.calc.md.n_small_steps))
             lmp.unfix(1)
             lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
             lmp.run(0)
@@ -124,7 +124,7 @@ class Liquid(cph.Phase):
             #we have to check if the structure melted
             solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.melt"))
             self.logger.info("fraction of solids found: %f", solids/self.natoms)
-            if (solids/self.natoms < self.options["conv"]["liquid_frac"]):
+            if (solids/self.natoms < self.calc.tolerance.liquid_fraction):
                 melted = True
                 break
         
@@ -134,22 +134,22 @@ class Liquid(cph.Phase):
             raise SolidifiedError("Liquid system did not melt, maybe try a higher thigh temperature.")
 
         #now assign correct temperature and equilibrate
-        lmp.velocity("all create", self.t, np.random.randint(0, 10000))
-        lmp.fix("1 all npt temp", self.t, self.t, self.options["md"]["tdamp"], 
-                                      "iso", self.p, self.p, self.options["md"]["pdamp"])
-        lmp.run(int(self.options["md"]["nsmall"])) 
+        lmp.velocity("all create", self.calc._temperature, np.random.randint(0, 10000))
+        lmp.fix("1 all npt temp", self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
+                                      "iso", self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping)
+        lmp.run(int(self.calc.md.n_small_steps)) 
         
         #start recording average values
-        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
-            int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
+        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
+            int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
 
         #monitor the average values until calculation is converged
         laststd = 0.00
         converged = False
 
-        for i in range(self.options["md"]["ncycles"]):
-            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
-            ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
+        for i in range(self.calc.md.n_cycles):
+            lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
             #now we can check if it converted
             file = os.path.join(self.simfolder, "avg.dat")
             lx, ly, lz, ipress = np.loadtxt(file, usecols=(1,2,3,4), unpack=True)
@@ -165,13 +165,13 @@ class Liquid(cph.Phase):
             lmp.command("undump            2")
             solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
             self.logger.info("fraction of solids found: %f", solids/self.natoms)
-            if (solids/self.natoms > self.options["conv"]["liquid_frac"]):
+            if (solids/self.natoms > self.calc.tolerance.liquid_fraction):
                 lmp.close()
                 raise SolidifiedError('System solidified, increase temperature')
 
 
             #check melting;
-            if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
+            if (np.abs(mean - self.calc._pressure)) < self.calc.tolerance.pressure:
                 #process other means
                 self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
                 self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
@@ -222,7 +222,7 @@ class Liquid(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
-        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
 
         # Adiabatic switching parameters.
         lmp.command("variable        li       equal   1.0")
@@ -230,20 +230,20 @@ class Liquid(cph.Phase):
 
         #read in the conf file
         conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
+        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
 
         #set hybrid ufm and normal potential
         #lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
-        lmp = ph.set_potential(lmp, self.options)
+        lmp = ph.set_potential(lmp, self.calc)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         
         lmp.command("fix              f1 all nve")
-        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], 
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
                                         np.random.randint(0, 10000)))
-        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
 
         lmp.command("unfix            f1")
         lmp.command("unfix            f2")
@@ -255,16 +255,16 @@ class Liquid(cph.Phase):
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.options["md"]["pair_style"])
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.calc.pair_style[0])
 
-        pc =  self.options["md"]["pair_coeff"]
+        pc =  self.calc.pair_coeff[0]
         pcraw = pc.split()
-        pcnew = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"],], *pcraw[2:]])
+        pcnew = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], *pcraw[2:]])
 
         lmp.command("pair_coeff       %s"%pcnew)
         lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps)
 
-        lmp.command("compute          c1 all pair %s"%self.options["md"]["pair_style"])
+        lmp.command("compute          c1 all pair %s"%self.calc.pair_style[0])
         lmp.command("compute          c2 all pair ufm")
 
         lmp.command("variable         step equal step")
@@ -275,16 +275,16 @@ class Liquid(cph.Phase):
         lmp.command("thermo           1000")
 
 
-        lmp.command("velocity         all create %f %d mom yes rot yes dist gaussian"%(self.t, np.random.randint(0, 10000)))
+        lmp.command("velocity         all create %f %d mom yes rot yes dist gaussian"%(self.calc._temperature, np.random.randint(0, 10000)))
 
         lmp.command("fix              f1 all nve")
-        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], 
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
                                         np.random.randint(0, 10000)))
         lmp.command("compute          Tcm all temp/com")
         lmp.command("fix_modify       f2 temp Tcm")
 
         lmp.command("fix              f3 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file forward_%d.dat"%iteration)
-        lmp.command("run               %d"%self.options["md"]["ts"])
+        lmp.command("run               %d"%self.calc._n_switching_steps)
 
         lmp.command("unfix            f1")
         lmp.command("unfix            f2")
@@ -303,11 +303,11 @@ class Liquid(cph.Phase):
         lmp.command("thermo           1000")
 
         lmp.command("fix              f1 all nve")
-        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], 
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
                                         np.random.randint(0, 10000)))
         lmp.command("fix_modify       f2 temp Tcm")
 
-        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
 
         lmp.command("unfix            f1")
         lmp.command("unfix            f2")
@@ -319,12 +319,12 @@ class Liquid(cph.Phase):
         lmp.command("variable         flambda equal ramp(${lf},${li})")
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.options["md"]["pair_style"])
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.calc.pair_style[0])
 
         lmp.command("pair_coeff       %s"%pcnew)
         lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps)
 
-        lmp.command("compute          c1 all pair %s"%self.options["md"]["pair_style"])
+        lmp.command("compute          c1 all pair %s"%self.calc.pair_style[0])
         lmp.command("compute          c2 all pair ufm")
 
         lmp.command("variable         step equal step")
@@ -335,12 +335,12 @@ class Liquid(cph.Phase):
         lmp.command("thermo           1000")
 
         lmp.command("fix              f1 all nve")
-        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.t, self.t, self.options["md"]["tdamp"], 
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
                                         np.random.randint(0, 10000)))
         lmp.command("fix_modify       f2 temp Tcm")
 
         lmp.command("fix              f3 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file backward_%d.dat"%iteration)
-        lmp.command("run               %d"%self.options["md"]["ts"])
+        lmp.command("run               %d"%self.calc._n_switching_steps)
 
         lmp.command("unfix            f1")
         lmp.command("unfix            f2")
@@ -368,16 +368,16 @@ class Liquid(cph.Phase):
         Calculates the final work, energy dissipation and free energy by
         matching with UFM model
         """
-        w, q, qerr = find_w(self.simfolder, nsims=self.nsims, 
+        w, q, qerr = find_w(self.simfolder, nsims=self.calc.n_iterations, 
             full=True, solid=False)  
         
         #TODO: Hardcoded UFM parameters - enable option to change          
-        f1 = get_uhlenbeck_ford_fe(self.t, 
+        f1 = get_uhlenbeck_ford_fe(self.calc._temperature, 
             self.rho, 50, 1.5)
 
         #Get ideal gas fe
-        f2 = get_ideal_gas_fe(self.t, self.rho, 
-            self.natoms, self.options["mass"], self.concentration)
+        f2 = get_ideal_gas_fe(self.calc._temperature, self.rho, 
+            self.natoms, self.calc.mass, self.concentration)
         
         self.ferr = qerr
         self.fref = f1
@@ -385,8 +385,8 @@ class Liquid(cph.Phase):
         self.w = w
 
         #add pressure contribution if required
-        if self.p != 0:
-            p = self.p/(10000*160.21766208)
+        if self.calc._pressure != 0:
+            p = self.calc._pressure/(10000*160.21766208)
             v = self.vol/self.natoms
             self.pv = p*v
         else:

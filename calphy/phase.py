@@ -43,36 +43,24 @@ class Phase:
 
     Parameters
     ----------
-    options : dict
-        dict of input options
+    input : Calculation class
+        input options
     
-    kernel : int
-        the index of the calculation that should be run from
-        the list of calculations in the input file
-
     simfolder : string
         base folder for running calculations
 
     """
-    def __init__(self, options=None, kernel=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None):
 
-        self.options = copy.deepcopy(options)
+        self.calc = calculation
         self.simfolder = simfolder
-        self.kernel = kernel
         
         logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile)
 
-        self.calc = copy.deepcopy(options["calculations"][kernel])
-        self.nsims = self.calc["nsims"]
+        self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %f bar"%(self.calc._temperature, self.calc._temperature_stop, self.calc._pressure))
 
-        self.t = self.calc["temperature"]
-        self.tend = self.calc["temperature_stop"]
-        self.thigh = self.calc["thigh"] 
-        self.p = self.calc["pressure"]
-        self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %f bar"%(self.t, self.tend, self.p))
-
-        if self.calc["iso"]:
+        if self.calc._iso:
             self.iso = "iso"
         else:
             self.iso = "aniso"
@@ -86,14 +74,14 @@ class Phase:
         self.prepare_lattice()
 
         #other properties
-        self.cores = self.options["queue"]["cores"]
-        self.ncells = np.prod(self.calc["repeat"])
+        self.cores = self.calc.queue.cores
+        self.ncells = np.prod(self.calc.repeat)
         self.natoms = self.ncells*self.apc        
         self.logger.info("%d atoms in %d cells on %d cores"%(self.natoms, self.ncells, self.cores))
 
         #reference system props; may not be always used
         #TODO : Add option to customize UFM parameters
-        self.eps = self.t*50.0*kb
+        self.eps = self.calc._temperature*50.0*kb
 
         #properties that will be calculated later
         self.volatom = None
@@ -113,27 +101,25 @@ class Phase:
         self.ly = None
         self.lz = None
 
-        #backup pair styles
-        self.pair_style = self.options["md"]["pair_style"]
-        self.pair_coeff = self.options["md"]["pair_coeff"]
-
         #now manually tune pair styles
-        self.options["md"]["pair_style"] = self.options["md"]["pair_style"][0]
-        self.options["md"]["pair_coeff"] = self.options["md"]["pair_coeff"][0]
-        self.logger.info("pair_style: %s"%self.options["md"]["pair_style"])
-        self.logger.info("pair_coeff: %s"%self.options["md"]["pair_coeff"])
+        if self.calc.pair_style is not None:
+            self.logger.info("pair_style: %s"%self.calc.pair_style[0])
+            self.logger.info("pair_coeff: %s"%self.calc.pair_coeff[0])
 
-        #log second pair style
-        if len(self.pair_style)>1:
-            self.logger.info("second pair_style: %s"%self.pair_style[1])
-            self.logger.info("second pair_coeff: %s"%self.pair_coeff[1])
-
+            #log second pair style
+            if len(self.calc.pair_style)>1:
+                self.logger.info("second pair_style: %s"%self.calc.pair_style[1])
+                self.logger.info("second pair_coeff: %s"%self.calc.pair_coeff[1])
+        else:
+            self.logger.info("pair_style or pair_coeff not provided")
+            if self.calc.potential_file is not None:
+                self.logger.info("potential is being loaded from file instead")
+ 
     def __repr__(self):
         """
         String of the class
         """
-        data = "%s system with T=%f, P=%f in %s lattice for mode %s"%(self.calc["state"],
-            self.t, self.p, self.l, self.calc["mode"]) 
+        data = self.calc.__repr__()
         return data
 
     def prepare_lattice(self):
@@ -205,10 +191,10 @@ class Phase:
 
         #input quantities
         report["input"] = {}
-        report["input"]["temperature"] = int(self.t)
-        report["input"]["pressure"] = float(self.p)
+        report["input"]["temperature"] = int(self.calc._temperature)
+        report["input"]["pressure"] = float(self.calc._pressure)
         report["input"]["lattice"] = str(self.l)
-        report["input"]["element"] = " ".join(np.array(self.options["element"]).astype(str))
+        report["input"]["element"] = " ".join(np.array(self.calc.element).astype(str))
         report["input"]["concentration"] = " ".join(np.array(self.concentration).astype(str))
 
         #average quantities
@@ -239,16 +225,12 @@ class Phase:
         self.logger.info("Please cite the following publications:")
         self.logger.info("- 10.1103/PhysRevMaterials.5.103801")
 
-        if self.calc["mode"] == "fe":
-            if self.calc["state"] == "solid":
+        if self.calc.mode == "fe":
+            if self.calc.reference_phase == "solid":
                 self.logger.info("- 10.1016/j.commatsci.2015.10.050")
             else:
                 self.logger.info("- 10.1016/j.commatsci.2018.12.029")
                 self.logger.info("- 10.1063/1.4967775")
-        elif self.calc["mode"] == "ts":
-            self.logger.info("- 10.1103/PhysRevLett.83.3973")
-        elif self.calc["mode"] == "mts":
-            self.logger.info("- 10.1063/1.1420486") 
 
     def reversible_scaling(self, iteration=1):
         """
@@ -264,18 +246,18 @@ class Phase:
         None
         """
         solid = False
-        if self.calc['state'] == 'solid':
+        if self.calc.reference_phase == 'solid':
             solid = True
 
-        t0 = self.t
-        tf = self.tend
+        t0 = self.calc._temperature
+        tf = self.calc._temperature_stop
         li = 1
         lf = t0/tf
-        pi = self.p
+        pi = self.calc._pressure
         pf = lf*pi
 
         #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f"%li)
@@ -283,22 +265,22 @@ class Phase:
 
         #read in conf file
         conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
+        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.options)
+        lmp = ph.set_potential(lmp, self.calc)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         #set thermostat and run equilibrium
-        if self.calc["npt"]:
-            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                self.iso, self.p, self.p, self.options["md"]["pdamp"]))
+        if self.calc._npt:
+            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping, 
+                self.iso, pi, pi, self.calc.md.barostat_damping))
         else:
-            lmp.command("fix               f1 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
+            lmp.command("fix               f1 all nvt temp %f %f %f"%(t0, t0, self.calc.md.thermostat_damping))
 
-        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
         lmp.command("unfix             f1")
 
         #now fix com
@@ -306,11 +288,11 @@ class Phase:
         lmp.command("variable         ycm equal xcm(all,y)")
         lmp.command("variable         zcm equal xcm(all,z)")
 
-        if self.calc["npt"]:
-            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.t, self.t, self.options["md"]["tdamp"], 
-                self.iso, self.p, self.p, self.options["md"]["pdamp"]))
+        if self.calc._npt:
+            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(t0, t0, self.calc.md.thermostat_damping, 
+                self.iso, pi, pi, self.calc.md.barostat_damping))
         else:
-            lmp.command("fix               f1 all nvt temp %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(self.t, self.t, self.options["md"]["tdamp"]))
+            lmp.command("fix               f1 all nvt temp %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(t0, t0, self.calc.md.thermostat_damping))
 
         #compute com and modify fix
         lmp.command("compute           tcm all temp/com")
@@ -323,7 +305,7 @@ class Phase:
 
         #create velocity and equilibriate
         lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(t0, np.random.randint(0, 10000)))   
-        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
         
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
@@ -332,34 +314,34 @@ class Phase:
         lmp.command("variable         one equal 1.0")
 
         #set up potential
-        pc =  self.options["md"]["pair_coeff"]
+        pc =  self.calc.pair_coeff[0]
         pcraw = pc.split()
-        pcnew1 = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"],], "1", *pcraw[2:]])
-        pcnew2 = " ".join([*pcraw[:2], *[self.options["md"]["pair_style"],], "2", *pcraw[2:]])
+        pcnew1 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], "1", *pcraw[2:]])
+        pcnew2 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], "2", *pcraw[2:]])
 
-        lmp.command("pair_style       hybrid/scaled v_one %s v_fscale %s"%(self.options["md"]["pair_style"], self.options["md"]["pair_style"]))
+        lmp.command("pair_style       hybrid/scaled v_one %s v_fscale %s"%(self.calc.pair_style[0], self.calc.pair_style[0]))
         lmp.command("pair_coeff       %s"%pcnew1)
         lmp.command("pair_coeff       %s"%pcnew2)
 
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${flambda}\" screen no file forward_%d.dat"%iteration)
 
-        if self.options["md"]["traj_interval"] > 0:
-            lmp.command("dump              d1 all custom %d traj.forward_%d.dat id type mass x y z vx vy vz"%(self.options["md"]["traj_interval"],
+        if self.calc.n_print_steps > 0:
+            lmp.command("dump              d1 all custom %d traj.forward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 
-        lmp.command("run               %d"%self.options["md"]["ts"])
+        lmp.command("run               %d"%self.calc._n_sweep_steps)
 
         #unfix
         lmp.command("unfix             f3")
         #lmp.command("unfix             f1")
 
-        if self.options["md"]["traj_interval"] > 0:
+        if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
 
         #switch potential
-        lmp = ph.set_potential(lmp, self.options)
+        lmp = ph.set_potential(lmp, self.calc)
 
-        lmp.command("run               %d"%self.options["md"]["te"])
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
 
         #check melting or freezing
         lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
@@ -368,11 +350,11 @@ class Phase:
         
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
         if solid:
-            if (solids/lmp.natoms < self.options["conv"]["solid_frac"]):
+            if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
                 lmp.close()
                 raise MeltedError("System melted, increase size or reduce scaling!")
         else:
-            if (solids/lmp.natoms > self.options["conv"]["liquid_frac"]):
+            if (solids/lmp.natoms > self.calc.tolerance.liquid_fraction):
                 lmp.close()
                 raise SolidifiedError('System solidified, increase temperature')
 
@@ -384,28 +366,34 @@ class Phase:
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
 
-        lmp.command("pair_style       hybrid/scaled v_one %s v_bscale %s"%(self.options["md"]["pair_style"], self.options["md"]["pair_style"]))
+        lmp.command("pair_style       hybrid/scaled v_one %s v_bscale %s"%(self.calc.pair_style[0], self.calc.pair_style[0]))
         lmp.command("pair_coeff       %s"%pcnew1)
         lmp.command("pair_coeff       %s"%pcnew2)
 
         #apply fix and perform switching        
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${blambda}\" screen no file backward_%d.dat"%iteration)
 
-        if self.options["md"]["traj_interval"] > 0:
-            lmp.command("dump              d1 all custom %d traj.backward_%d.dat id type mass x y z vx vy vz"%(self.options["md"]["traj_interval"],
+        if self.calc.n_print_steps > 0:
+            lmp.command("dump              d1 all custom %d traj.backward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 
-        lmp.command("run               %d"%self.options["md"]["ts"])
+        lmp.command("run               %d"%self.calc._n_sweep_steps)
         
         lmp.command("unfix             f3")
 
-        if self.options["md"]["traj_interval"] > 0:
+        if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
         
         #close the object
         lmp.close()
 
-    def integrate_reversible_scaling(self, scale_energy=False, return_values=False):
+        self.logger.info("Please cite the following publications:")
+        if self.calc.mode == "mts":
+            self.logger.info("- 10.1063/1.1420486")
+        else:
+            self.logger.info("- 10.1103/PhysRevLett.83.3973")
+
+    def integrate_reversible_scaling(self, scale_energy=True, return_values=False):
         """
         Perform integration after reversible scaling
 
@@ -422,8 +410,200 @@ class Phase:
         res : list of lists of shape 1x3
             Only returned if `return_values` is True.
         """
-        res = integrate_rs(self.simfolder, self.fe, self.t, self.natoms, p=self.p,
-            nsims=self.nsims, scale_energy=scale_energy, return_values=return_values)
+        res = integrate_rs(self.simfolder, self.fe, self.calc._temperature, self.natoms, p=self.calc._pressure,
+            nsims=self.calc.n_iterations, scale_energy=scale_energy, return_values=return_values)
+
+        if return_values:
+            return res
+
+    def temperature_scaling(self, iteration=1):
+        """
+        Perform temperature scaling calculation in NPT
+        
+        Parameters
+        ----------
+        iteration : int, optional
+            iteration of the calculation. Default 1
+        
+        Returns
+        -------
+        None
+        """
+        solid = False
+        if self.calc.reference_phase == 'solid':
+            solid = True
+
+        t0 = self.calc._temperature
+        tf = self.calc._temperature_stop
+        li = 1
+        lf = t0/tf
+        p0 = self.calc._pressure
+        pf = lf*p0
+
+        #create lammps object
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
+
+        lmp.command("echo              log")
+        lmp.command("variable          li equal %f"%li)
+        lmp.command("variable          lf equal %f"%lf)
+
+        #read in conf
+        conf = os.path.join(self.simfolder, "conf.dump")
+        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
+
+        #set up potential
+        lmp = ph.set_potential(lmp, self.calc)
+
+        #remap the box to get the correct pressure
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+
+
+        #equilibrate first
+        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping,
+                                        self.iso, p0, p0, self.calc.md.barostat_damping))
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
+        lmp.command("unfix             1")
+
+
+        #now scale system to final temp, thereby recording enerfy at every step
+        lmp.command("variable          step    equal step")
+        lmp.command("variable          dU      equal pe/atoms")
+        lmp.command("variable          lambda equal ramp(${li},${lf})")
+
+        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, tf, self.calc.md.thermostat_damping,
+                                        self.iso, p0, pf, self.calc.md.barostat_damping))
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("run               %d"%self.calc._n_sweep_steps)
+
+        lmp.command("unfix             f2")
+        lmp.command("unfix             f3")
+
+        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(tf, tf, self.calc.md.thermostat_damping,
+                                        self.iso, pf, pf, self.calc.md.barostat_damping))
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
+        lmp.command("unfix             1")
+
+        #check melting or freezing
+        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+        lmp.command("run               0")
+        lmp.command("undump            2")
+        
+        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
+        if solid:
+            if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
+                lmp.close()
+                raise MeltedError("System melted, increase size or reduce scaling!")
+        else:
+            if (solids/lmp.natoms > self.calc.tolerance.liquid_fraction):
+                lmp.close()
+                raise SolidifiedError('System solidified, increase temperature')
+
+        #start reverse loop
+        lmp.command("variable          lambda equal ramp(${lf},${li})")
+
+        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(tf, t0, self.calc.md.thermostat_damping,
+                                        self.iso, pf, p0, self.calc.md.barostat_damping))
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("run               %d"%self.calc._n_sweep_steps)
+
+        lmp.close()
+
+
+    def pressure_scaling(self, iteration=1):
+        """
+        Perform pressure scaling calculation in NPT
+        
+        Parameters
+        ----------
+        iteration : int, optional
+            iteration of the calculation. Default 1
+        
+        Returns
+        -------
+        None
+        """
+        t0 = self.calc._temperature
+        li = 1
+        lf = self.calc._pressure_stop
+        p0 = self.calc._pressure
+        pf = self.calc._pressure_stop
+
+        #create lammps object
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
+
+        lmp.command("echo              log")
+        lmp.command("variable          li equal %f"%li)
+        lmp.command("variable          lf equal %f"%lf)
+
+        #read in conf
+        conf = os.path.join(self.simfolder, "conf.dump")
+        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
+
+        #set up potential
+        lmp = ph.set_potential(lmp, self.calc)
+
+        #remap the box to get the correct pressure
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+
+        #equilibrate first
+        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping,
+                                        self.iso, p0, p0, self.calc.md.barostat_damping))
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
+        lmp.command("unfix             1")
+
+
+        #now scale system to final temp, thereby recording enerfy at every step
+        lmp.command("variable          step    equal step")
+        lmp.command("variable          dU      equal pe/atoms")
+        lmp.command("variable          lambda equal ramp(${li},${lf})")
+
+        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping,
+                                        self.iso, p0, pf, self.calc.md.barostat_damping))
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("run               %d"%self.calc._n_sweep_steps)
+
+        lmp.command("unfix             f2")
+        lmp.command("unfix             f3")
+
+
+        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping,
+                                        self.iso, pf, pf, self.calc.md.barostat_damping))
+        lmp.command("run               %d"%self.calc.n_equilibration_steps)
+        lmp.command("unfix             1")
+
+        #start reverse loop
+        lmp.command("variable          lambda equal ramp(${lf},${li})")
+
+        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping,
+                                        self.iso, pf, p0, self.calc.md.barostat_damping))
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("run               %d"%self.calc._n_sweep_steps)
+
+        lmp.close()
+
+        self.logger.info("Please cite the following publications:")
+        self.logger.info("- 10.1016/j.commatsci.2022.111275")
+    
+    
+    def integrate_pressure_scaling(self, return_values=False):
+        """
+        Perform integration after reversible scaling
+        
+        Parameters
+        ----------
+        scale_energy : bool, optional
+            If True, scale the energy during reversible scaling. 
+        return_values : bool, optional
+            If True, return integrated values
+        
+        Returns
+        -------
+        res : list of lists of shape 1x3
+            Only returned if `return_values` is True.
+        """
+        res = integrate_ps(self.simfolder, self.fe, self.natoms,
+            self.calc._pressure, self.calc._pressure_stop,
+            nsims=self.calc.n_iterations, return_values=return_values)
 
         if return_values:
             return res

@@ -26,7 +26,7 @@ import time
 import yaml
 import warnings
 
-from calphy.input import read_yamlfile, create_identifier
+from calphy.input import read_inputfile #, create_identifier
 import calphy.scheduler as pq
 import argparse as ap
 
@@ -51,24 +51,24 @@ def run_jobs(inputfile):
     #Step 3 - Submit job
     
     #read the input file
-    options = read_yamlfile(inputfile)
-    print("Total number of %d calculations found" % len(options["calculations"]))
+    calculations = read_inputfile(inputfile)
+    print("Total number of %d calculations found" % len(calculations))
 
-    for count, calc in enumerate(options["calculations"]):
+    for count, calc in enumerate(calculations):
 
-        identistring = create_identifier(calc)
+        identistring = calc.create_identifier()
         scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
         errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
 
         #the below part assigns the schedulers
         #now we have to write the submission scripts for the job
         #parse Queue and import module
-        if options["queue"]["scheduler"] == "local":
-            scheduler = pq.Local(options["queue"], cores=options["queue"]["cores"])
-        elif options["queue"]["scheduler"] == "slurm":
-            scheduler = pq.SLURM(options["queue"], cores=options["queue"]["cores"])
-        elif options["queue"]["scheduler"] == "sge":
-            scheduler = pq.SGE(options["queue"], cores=options["queue"]["cores"])
+        if calc.queue.scheduler == "local":
+            scheduler = pq.Local(calc.queue.__dict__, cores=calc.queue.cores)
+        elif calc.queue.scheduler == "slurm":
+            scheduler = pq.SLURM(calc.queue.__dict__, cores=calc.queue.cores)
+        elif calc.queue.scheduler == "sge":
+            scheduler = pq.SGE(calc.queue.__dict__, cores=calc.queue.cores)
         else:
             raise ValueError("Unknown scheduler")
 

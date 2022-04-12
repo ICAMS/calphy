@@ -23,8 +23,8 @@ calculations:
   pressure: [0]
   lattice: [FCC, LQD]
   repeat: [5, 5, 5]
-  state: [solid, liquid]
-  nsims: 1
+  reference_phase: [solid, liquid]
+  n_iterations: 1
 ```
 
 Specify `-k 0` will run a calculation block equivalent to:
@@ -35,8 +35,8 @@ Specify `-k 0` will run a calculation block equivalent to:
   pressure: [0]
   lattice: [FCC]
   repeat: [5, 5, 5]
-  state: [solid]
-  nsims: 1
+  reference_phase: [solid]
+  n_iterations: 1
 ```
 and `-k 1` will run:
 
@@ -46,6 +46,6 @@ and `-k 1` will run:
   pressure: [0]
   lattice: [LQD]
   repeat: [5, 5, 5]
-  state: [liquid]
-  nsims: 1
+  reference_phase: [liquid]
+  n_iterations: 1
 ```

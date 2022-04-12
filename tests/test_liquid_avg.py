@@ -1,13 +1,13 @@
 import pytest
-from calphy.input import read_yamlfile
+from calphy.input import read_inputfile
 import calphy.lattice as pl
 from calphy.liquid import Liquid
 import os
 import numpy as np
 
 def test_liquid_averaging():
-    options = read_yamlfile(os.path.join(os.getcwd(), "tests/input.yaml"))
-    lqd = Liquid(options=options, kernel=0, simfolder=os.getcwd())
+    calculations = read_inputfile(os.path.join(os.getcwd(), "tests/input.yaml"))
+    lqd = Liquid(calculation=calculations[0], simfolder=os.getcwd())
     lqd.run_averaging()
     assert os.path.exists("traj.melt") == True
 

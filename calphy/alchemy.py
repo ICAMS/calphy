@@ -46,11 +46,11 @@ class Alchemy(cph.Phase):
         base folder for running calculations
 
     """
-    def __init__(self, options=None, kernel=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None):
 
         #call base class
-        super().__init__(options=options,
-        kernel=kernel, simfolder=simfolder)
+        super().__init__(calculation=calculation,
+        simfolder=simfolder)
 
 
     def run_averaging(self):
@@ -74,13 +74,13 @@ class Alchemy(cph.Phase):
         Fix lattice option is not implemented at present.
         At the end of the run, the averaged box dimensions are calculated. 
         """
-        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
 
         #set up structure
         lmp = ph.create_structure(lmp, self.calc)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.options)
+        lmp = ph.set_potential(lmp, self.calc)
 
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -89,50 +89,50 @@ class Alchemy(cph.Phase):
         lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press")
 
-        if not self.calc["fix_lattice"]:
-            if self.p == 0:
+        if not self.calc._fix_lattice:
+            if self.calc._pressure == 0:
                 #This routine should be followed for zero pressure
-                lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                    self.iso, self.p, self.p, self.options["md"]["pdamp"]))
+                lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
+                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
+                                                    self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping))
                 lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
                 lmp.command("thermo           10")
-                lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
 
             else:
                 #Now this routine is for non-zero pressure
                 #one has to equilibriate at a low temperature, but high pressure and then increase temp gradually
                 #start at 0.25 temp, and increase to 0.50, while keeping high pressure
-                lmp.command("velocity         all create %f %d"%(0.25*self.t, np.random.randint(0, 10000)))
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.25*self.t, 0.5*self.t, self.options["md"]["tdamp"], 
-                                                    self.iso, self.p, self.p, self.options["md"]["pdamp"]))
+                lmp.command("velocity         all create %f %d"%(0.25*self.calc._temperature, np.random.randint(0, 10000)))
+                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.25*self.calc._temperature, 0.5*self.calc._temperature, self.calc.md.thermostat_damping, 
+                                                    self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping))
                 lmp.command("thermo_style     custom step pe press vol etotal temp")
                 lmp.command("thermo           10")
-                lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
                 lmp.command("unfix            1")
 
                 #now heat again
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.5*self.t, self.t, self.options["md"]["tdamp"], 
-                                                    self.iso, self.p, self.p,  self.options["md"]["pdamp"]))
-                lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.5*self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
+                                                    self.iso, self.calc._pressure, self.calc._pressure,  self.calc.md.barostat_damping))
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
                 lmp.command("unfix            1")
 
                 #now run normal cycle
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"], 
-                                                    self.iso, self.p, self.p,  self.options["md"]["pdamp"]))
-                lmp.command("run              %d"%int(self.options["md"]["nsmall"])) 
+                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
+                                                    self.iso, self.calc._pressure, self.calc._pressure,  self.calc.md.barostat_damping))
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
 
 
             #this is when the averaging routine starts
-            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
-                int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
+            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
+                int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
             
             laststd = 0.00
             converged = False
 
-            for i in range(int(self.options["md"]["ncycles"])):
-                lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
-                ncount = int(self.options["md"]["nsmall"])//int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])
+            for i in range(int(self.calc.md.n_cycles)):
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+                ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
                 #now we can check if it converted
                 file = os.path.join(self.simfolder, "avg.dat")
                 lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
@@ -143,7 +143,7 @@ class Alchemy(cph.Phase):
                 volatom = np.mean((lx*ly*lz)/self.natoms)
                 self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
                 
-                if (np.abs(mean - self.p)) < self.options["conv"]["p_tol"]:
+                if (np.abs(mean - self.calc._pressure)) < self.calc.tolerance.pressure:
 
                     #process other means
                     self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
@@ -167,21 +167,21 @@ class Alchemy(cph.Phase):
 
         else:
             #we should do a small run to eqbrte atom positions
-            lmp.command("fix              1 all nvt temp %f %f %f"%(self.t, self.t, self.options["md"]["tdamp"]))
-            lmp.command("velocity         all create %f %d"%(self.t, np.random.randint(0, 10000)))
+            lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping))
+            lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
             lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
             lmp.command("thermo           10")            
-            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.options["md"]["nevery"]),
-                int(self.options["md"]["nrepeat"]), int(self.options["md"]["nevery"]*self.options["md"]["nrepeat"])))
+            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
+                int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
             
-            lmp.command("run              %d"%int(self.options["md"]["nsmall"]))
+            lmp.command("run              %d"%int(self.calc.md.n_small_steps))
             lmp.command("unfix            1")
             lmp.command("unfix            2")
 
             file = os.path.join(self.simfolder, "avg.dat")
             lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
             mean = np.mean(ipress)
-            self.p = mean
+            self.calc._pressure = mean
             volatom = np.mean((lx*ly*lz)/self.natoms)
             self.logger.info("At count 0 mean pressure is %f with %f vol/atom"%(mean, volatom))
             self.lx = np.round(np.mean(lx), decimals=3)
@@ -225,7 +225,7 @@ class Alchemy(cph.Phase):
         """
 
         #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.options["md"]["timestep"])
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
         
         # Adiabatic switching parameters.
         lmp.command("variable        li       equal   1.0")
@@ -233,27 +233,27 @@ class Alchemy(cph.Phase):
         
         #read dump file
         conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.options["nelements"])
+        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
 
         #set up hybrid potential
         #here we only need to set one potential
-        lmp = ph.set_potential(lmp, self.options)
-        #lmp = ph.set_double_hybrid_potential(lmp, self.options, self.pair_style, self.pair_coeff)
+        lmp = ph.set_potential(lmp, self.calc)
+        #lmp = ph.set_double_hybrid_potential(lmp, self.options, self.calc._pressureair_style, self.calc._pressureair_coeff)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         # Integrator & thermostat.
-        if self.calc["npt"]:
-            lmp.command("fix             f1 all npt temp %f %f %f %s %f %f %f"%(self.t, self.t, 
-                self.options["md"]["tdamp"], self.iso, self.p, self.p, self.options["md"]["pdamp"]))        
+        if self.calc._npt:
+            lmp.command("fix             f1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, 
+                self.calc.md.thermostat_damping, self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping))        
         else:
-            lmp.command("fix             f1 all nvt temp %f %f %f"%(self.t, self.t, 
-                self.options["md"]["tdamp"]))
+            lmp.command("fix             f1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, 
+                self.calc.md.thermostat_damping))
 
         lmp.command("thermo_style    custom step pe")
         lmp.command("thermo          1000")
-        lmp.command("run             %d"%self.options["md"]["te"])
+        lmp.command("run             %d"%self.calc.n_equilibration_steps)
         #equilibration run is over
         
         #---------------------------------------------------------------
@@ -265,35 +265,35 @@ class Alchemy(cph.Phase):
         #lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.options["md"]["pair_style"])
                     
         # Compute pair definitions
-        if self.pair_style[0] == self.pair_style[1]:
-            pc =  self.pair_coeff[0]
+        if self.calc.pair_style[0] == self.calc.pair_style[1]:
+            pc =  self.calc.pair_coeff[0]
             pcraw = pc.split()
-            pc1 = " ".join([*pcraw[:2], *[self.pair_style[0],], "1", *pcraw[2:]])
-            pc =  self.pair_coeff[1]
+            pc1 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], "1", *pcraw[2:]])
+            pc =  self.calc.pair_coeff[1]
             pcraw = pc.split()
-            pc2 = " ".join([*pcraw[:2], *[self.pair_style[1],], "2", *pcraw[2:]])
+            pc2 = " ".join([*pcraw[:2], *[self.calc.pair_style[1],], "2", *pcraw[2:]])
         else:
-            pc =  self.pair_coeff[0]
+            pc =  self.calc.pair_coeff[0]
             pcraw = pc.split()
-            pc1 = " ".join([*pcraw[:2], *[self.pair_style[0],], *pcraw[2:]])
-            pc =  self.pair_coeff[1]
+            pc1 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], *pcraw[2:]])
+            pc =  self.calc.pair_coeff[1]
             pcraw = pc.split()
-            pc2 = " ".join([*pcraw[:2], *[self.pair_style[1],], *pcraw[2:]])
+            pc2 = " ".join([*pcraw[:2], *[self.calc.pair_style[1],], *pcraw[2:]])
 
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.pair_style[0], 
-            self.pair_style[1]))
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.calc.pair_style[0], 
+            self.calc.pair_style[1]))
         lmp.command("pair_coeff       %s"%pc1)
         lmp.command("pair_coeff       %s"%pc2)
 
 
         #apply pair force commands
-        if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("compute         c1 all pair %s 1"%self.pair_style[0])
-            lmp.command("compute         c2 all pair %s 2"%self.pair_style[1])
+        if self.calc.pair_style[0] == self.calc.pair_style[1]:
+            lmp.command("compute         c1 all pair %s 1"%self.calc.pair_style[0])
+            lmp.command("compute         c2 all pair %s 2"%self.calc.pair_style[1])
         else:
-            lmp.command("compute         c1 all pair %s"%self.pair_style[0])
-            lmp.command("compute         c2 all pair %s"%self.pair_style[1])
+            lmp.command("compute         c1 all pair %s"%self.calc.pair_style[0])
+            lmp.command("compute         c2 all pair %s"%self.calc.pair_style[1])
 
 
         # Output variables.
@@ -308,7 +308,7 @@ class Alchemy(cph.Phase):
 
         #save the necessary items to a file: first step
         lmp.command("fix             f2 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file forward_%d.dat"%iteration)
-        lmp.command("run             %d"%self.options["md"]["ts"])
+        lmp.command("run             %d"%self.calc._n_switching_steps)
 
 
         #now equilibrate at the second potential
@@ -317,15 +317,15 @@ class Alchemy(cph.Phase):
         lmp.command("uncompute       c2")
 
 
-        lmp.command("pair_style      %s"%self.pair_style[1])
-        lmp.command("pair_coeff      %s"%self.pair_coeff[1])
+        lmp.command("pair_style      %s"%self.calc.pair_style[1])
+        lmp.command("pair_coeff      %s"%self.calc.pair_coeff[1])
 
         # Thermo output.
         lmp.command("thermo_style    custom step pe")
         lmp.command("thermo          1000")
 
         #run eqbrm run
-        lmp.command("run             %d"%self.options["md"]["te"])
+        lmp.command("run             %d"%self.calc.n_equilibration_steps)
         
         
         #reverse switching
@@ -333,19 +333,19 @@ class Alchemy(cph.Phase):
         lmp.command("variable         blambda equal ramp(${li},${lf})")
         
         
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.pair_style[0], 
-            self.pair_style[1]))
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.calc.pair_style[0], 
+            self.calc.pair_style[1]))
         lmp.command("pair_coeff       %s"%pc1)
         lmp.command("pair_coeff       %s"%pc2)
 
 
         #apply pair force commands
-        if self.pair_style[0] == self.pair_style[1]:
-            lmp.command("compute         c1 all pair %s 1"%self.pair_style[0])
-            lmp.command("compute         c2 all pair %s 2"%self.pair_style[1])
+        if self.calc.pair_style[0] == self.calc.pair_style[1]:
+            lmp.command("compute         c1 all pair %s 1"%self.calc.pair_style[0])
+            lmp.command("compute         c2 all pair %s 2"%self.calc.pair_style[1])
         else:
-            lmp.command("compute         c1 all pair %s"%self.pair_style[0])
-            lmp.command("compute         c2 all pair %s"%self.pair_style[1])
+            lmp.command("compute         c1 all pair %s"%self.calc.pair_style[0])
+            lmp.command("compute         c2 all pair %s"%self.calc.pair_style[1])
 
 
         # Output variables.
@@ -360,7 +360,7 @@ class Alchemy(cph.Phase):
 
         #save the necessary items to a file: first step
         lmp.command("fix             f2 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file backward_%d.dat"%iteration)
-        lmp.command("run             %d"%self.options["md"]["ts"])
+        lmp.command("run             %d"%self.calc._n_switching_steps)
 
 
         #now equilibrate at the second potential
@@ -389,8 +389,8 @@ class Alchemy(cph.Phase):
         Calculates the final work, energy dissipation; In alchemical mode, there is reference system,
         the calculated free energy is the same as the work.
         """
-        w, q, qerr = find_w(self.simfolder, nelements=self.options["nelements"], 
-            concentration=self.concentration, nsims=self.nsims, 
+        w, q, qerr = find_w(self.simfolder, nelements=self.calc.n_elements, 
+            concentration=self.concentration, nsims=self.calc.n_iterations, 
             full=True, solid=False, alchemy=True)
         
         self.w = w

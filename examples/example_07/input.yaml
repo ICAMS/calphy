@@ -6,18 +6,13 @@ calculations:
   pressure: [0]
   lattice: [FCC]
   repeat: [5, 5, 5]
-  state: [solid]
-  nsims: 1
-  
-md:
+  reference_phase: [solid]
+  n_iterations: 1
   pair_style: [eam/fs, eam/alloy]
   pair_coeff: ["* * ../potentials/Cu1.eam.fs Cu", "* * ../potentials/Cu01.eam.alloy Cu"]
-  timestep: 0.001
-  tdamp: 0.1
-  pdamp: 0.1
-  te: 10000
-  ts: 15000
-
+  n_equilibration_steps: 10000
+  n_switching_steps: 25000
+  
 queue:
   scheduler: local
   cores: 4

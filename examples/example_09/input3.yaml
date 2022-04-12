@@ -6,18 +6,12 @@ calculations:
   pressure: [10000, 20000]
   lattice: [FCC]
   repeat: [7, 7, 7]
-  state: [solid]
-  nsims: 1
-
-md:
+  reference_phase: [solid]
+  n_iterations: 1
   pair_style: eam/alloy
   pair_coeff: "* * ../potentials/Cu01.eam.alloy Cu"
-  timestep: 0.001
-  nsmall: 10000
-  tdamp: 0.1
-  pdamp: 0.1
-  te: 10000
-  ts: 25000
+  n_equilibration_steps: 10000
+  n_switching_steps: 25000
   
 queue:
   scheduler: local

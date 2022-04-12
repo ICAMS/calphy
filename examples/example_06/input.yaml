@@ -6,19 +6,13 @@ calculations:
   pressure: [0]
   lattice: [BCC]
   repeat: [5, 5, 5]
-  state: [solid]
-  nsims: 1
+  reference_phase: [solid]
+  n_iterations: 1
   lattice_constant: 2.8842
-
-md:
   pair_style: eam
   pair_coeff: "* * ../potentials/Fe.eam"
-  timestep: 0.001
-  nsmall: 10000
-  tdamp: 0.1
-  pdamp: 0.1
-  te: 10000
-  ts: 25000
+  n_equilibration_steps: 10000
+  n_switching_steps: 25000
   
 queue:
   scheduler: local
