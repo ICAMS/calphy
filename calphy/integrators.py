@@ -640,7 +640,8 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1,
 
     wmean = np.mean(ws, axis=0)
     werr = np.std(ws, axis=0)
-    press = fp*(10000*160.21766208)
+    
+    press = np.linspace(pi, pf, len(wmean))
 
     f = f0 + wmean
 
