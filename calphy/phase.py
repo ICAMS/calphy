@@ -534,6 +534,8 @@ class Phase:
         lmp.command("echo              log")
         lmp.command("variable          li equal %f"%li)
         lmp.command("variable          lf equal %f"%lf)
+        lmp.command("variable          p0 equal %f"%p0)
+        lmp.command("variable          pf equal %f"%pf)
 
         #read in conf
         conf = os.path.join(self.simfolder, "conf.dump")
