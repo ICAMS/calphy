@@ -9,7 +9,8 @@ Copyright 2021  (c) Sarath Menon^1, Yury Lysogorskiy^2, Ralf Drautz^2
 calphy is published and distributed under the Academic Software License v1.0 (ASL). 
 calphy is distributed in the hope that it will be useful for non-commercial academic research, 
 but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
-See the ASL for more details. 
+calphy API is published and distributed under the BSD 3-Clause "New" or "Revised" License
+See the LICENSE FILE for more details. 
 
 More information about the program can be found in:
 Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz.
