@@ -78,6 +78,7 @@ class Calculation(InputTemplate):
         self._pair_style = None
         self._pair_coeff = None
         self._potential_file = None
+        self._fix_potential_path = True
         self._reference_phase = None
         self._lattice_constant = 0
         self._repeat = [1, 1, 1]
@@ -326,7 +327,8 @@ class Calculation(InputTemplate):
     @pair_coeff.setter
     def pair_coeff(self, val):
         val = self.check_and_convert_to_list(val)
-        val = self.fix_paths(val)
+        if self._fix_potential_path:
+            val = self.fix_paths(val)
         self._pair_coeff = val
 
     @property
