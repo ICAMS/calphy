@@ -161,10 +161,10 @@ class Liquid(cph.Phase):
             volatom = np.mean((lx*ly*lz)/self.natoms)            
             self.logger.info("At count %d mean pressure is %f with vol/atom %f"%(i+1, mean, volatom))
 
-            lmp.command("dump              2 all custom 1 traj.dat id type mass x y z")
+            lmp.command("dump              2 all custom 1 traj.equilibration_cycle.dat id type mass x y z")
             lmp.command("run               0")
             lmp.command("undump            2")
-            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
+            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.equilibration_cycle.dat"))
             self.logger.info("fraction of solids found: %f", solids/self.natoms)
             if (solids/self.natoms > self.calc.tolerance.liquid_fraction):
                 lmp.close()

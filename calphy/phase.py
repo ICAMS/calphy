@@ -148,7 +148,7 @@ class Phase:
         self.logger.info(self.concentration)
 
 
-    def process_traj(self):
+    def process_traj(self, filename, outfilename):
         """
         Process the out trajectory after averaging cycle and 
         extract a configuration to run integration
@@ -162,9 +162,9 @@ class Phase:
         None
         
         """
-        trajfile = os.path.join(self.simfolder, "traj.dat")
+        trajfile = os.path.join(self.simfolder, filename)
         files = ptp.split_trajectory(trajfile)
-        conf = os.path.join(self.simfolder, "conf.dump")
+        conf = os.path.join(self.simfolder, outfilename)
 
         ph.reset_timestep(files[-1], conf)
 
