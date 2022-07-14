@@ -161,10 +161,10 @@ class Liquid(cph.Phase):
             volatom = np.mean((lx*ly*lz)/self.natoms)            
             self.logger.info("At count %d mean pressure is %f with vol/atom %f"%(i+1, mean, volatom))
 
-            lmp.command("dump              2 all custom 1 traj.equilibration_cycle.dat id type mass x y z")
+            lmp.command("dump              2 all custom 1 traj.equilibration_stage1.dat id type mass x y z")
             lmp.command("run               0")
             lmp.command("undump            2")
-            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.equilibration_cycle.dat"))
+            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.equilibration_stage1.dat"))
             self.logger.info("fraction of solids found: %f", solids/self.natoms)
             if (solids/self.natoms > self.calc.tolerance.liquid_fraction):
                 lmp.close()
@@ -192,7 +192,7 @@ class Liquid(cph.Phase):
             lmp.close()
             raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
 
-        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+        lmp.command("dump              2 all custom 1 traj.equilibration_stage2.dat id type mass x y z vx vy vz")
         lmp.command("run               0")
         lmp.command("undump            2")
 
@@ -200,7 +200,7 @@ class Liquid(cph.Phase):
         lmp.close()
 
         #process the trajectory
-        self.process_traj()
+        self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.dump")
 
 
 
@@ -230,7 +230,7 @@ class Liquid(cph.Phase):
         lmp.command("variable        lf       equal   0.0")
 
         #read in the conf file
-        conf = os.path.join(self.simfolder, "conf.dump")
+        conf = os.path.join(self.simfolder, "conf.equilibration.dump")
         lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
 
         #set hybrid ufm and normal potential
