@@ -56,7 +56,12 @@ class Phase:
         logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile)
 
-        self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %f bar"%(self.calc._temperature, self.calc._temperature_stop, self.calc._pressure))
+        if self.calc._pressure is None:
+            pressure_string = "None"
+        else:
+            pressure_string = "%f"%self.calc._pressure
+
+        self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %s bar"%(self.calc._temperature, self.calc._temperature_stop, pressure_string))
 
         if self.calc._iso:
             self.iso = "iso"
