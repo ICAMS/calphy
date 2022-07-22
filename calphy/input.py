@@ -88,6 +88,9 @@ class Calculation(InputTemplate):
         self._n_sweep_steps = 50000
         self._n_print_steps = 0
         self._n_iterations = 1
+
+        #add second level options; for example spring constants
+        self._spring_constants = None
         
         self.md = InputTemplate()
         self.md.timestep = 0.001
@@ -418,6 +421,14 @@ class Calculation(InputTemplate):
     @n_iterations.setter
     def n_iterations(self, val):
         self._n_iterations = val
+
+    @property
+    def spring_constants(self):
+        return self._spring_constants
+
+    @spring_constants.setter
+    def spring_constants(self, val):
+        self._spring_constants = val
     
     def check_and_convert_to_list(self, data):
         """
@@ -568,7 +579,7 @@ def read_inputfile(file):
         if mode == "melting_temperature":
             calc = Calculation.generate(indata)
             calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
-                                "n_switching_steps", "n_print_steps", "n_iterations"])
+                                "n_switching_steps", "n_print_steps", "n_iterations", "spring_constants"])
             calc.pressure = Calculation.convert_to_list(ci["pressure"]) if "pressure" in ci.keys() else 0
             calc.temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else None
             calc.lattice = Calculation.convert_to_list(ci["lattice"]) if "lattice" in ci.keys() else None
@@ -603,7 +614,7 @@ def read_inputfile(file):
             for combo in combos:
                 calc = Calculation.generate(indata)
                 calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
-                                "n_switching_steps", "n_print_steps", "n_iterations", "potential_file"])
+                                "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants"])
                 calc.lattice = combo[0]["lattice"]
                 calc.lattice_constant = combo[0]["lattice_constant"]
                 calc.reference_phase = combo[0]["reference_phase"]
