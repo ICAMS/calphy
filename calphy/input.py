@@ -441,15 +441,18 @@ class Calculation(InputTemplate):
             return data
     
     @staticmethod
-    def convert_to_list(data):
+    def convert_to_list(data, check_none=False):
         """
         Check if the given item is a list, if not convert to a single item list
         """
         if not isinstance(data, list):
-            return [data]
-        else:
-            return data
+            data = [data]
 
+        if check_none:
+            data = [None if x=="None" else x for x in data]
+
+        return data
+        
     def fix_paths(self, potlist): 
         """
         Fix paths for potential files to complete ones
@@ -488,7 +491,11 @@ class Calculation(InputTemplate):
             l = 'tm'
         else:
             ts = int(self._temperature)
-            ps = "None" if self._pressure is None else "%d"%(int(self._pressure))
+            print(self._pressure)
+            if self._pressure is None:
+                ps = "None"
+            else:
+                ps = "%d"%(int(self._pressure))
             l = self.lattice
             l = l.split('/')
             l = l[-1]
