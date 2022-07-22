@@ -275,8 +275,8 @@ class Solid(cph.Phase):
                     break
                 laststd = std
         else:
-            if not len(self.calc.spring_constants) != self.calc.n_elements:
-                raise ValueError("Spring constant input length should be same as number of elements")
+            if not (len(self.calc.spring_constants) == self.calc.n_elements):
+                raise ValueError("Spring constant input length should be same as number of elements, spring constant length %d, # elements %d"%(len(self.calc.spring_constants), self.calc.n_elements))
 
             #still run a small NVT cycle
             lmp.command("run              %d"%int(self.calc.md.n_small_steps))
