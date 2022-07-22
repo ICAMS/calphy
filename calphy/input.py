@@ -431,14 +431,17 @@ class Calculation(InputTemplate):
         val = self.check_and_convert_to_list(val)
         self._spring_constants = val
     
-    def check_and_convert_to_list(self, data):
+    def check_and_convert_to_list(self, data, check_none=False):
         """
         Check if the given item is a list, if not convert to a single item list
         """
         if not isinstance(data, list):
-            return [data]
-        else:
-            return data
+            data = [data]
+
+        if check_none:
+            data = [None if x=="None" else x for x in data]
+
+        return data
     
     @staticmethod
     def convert_to_list(data, check_none=False):
@@ -452,7 +455,7 @@ class Calculation(InputTemplate):
             data = [None if x=="None" else x for x in data]
 
         return data
-        
+
     def fix_paths(self, potlist): 
         """
         Fix paths for potential files to complete ones
@@ -491,7 +494,6 @@ class Calculation(InputTemplate):
             l = 'tm'
         else:
             ts = int(self._temperature)
-            print(self._pressure)
             if self._pressure is None:
                 ps = "None"
             else:
@@ -588,14 +590,14 @@ def read_inputfile(file):
             calc = Calculation.generate(indata)
             calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
                                 "n_switching_steps", "n_print_steps", "n_iterations", "spring_constants"])
-            calc.pressure = Calculation.convert_to_list(ci["pressure"]) if "pressure" in ci.keys() else 0
+            calc.pressure = Calculation.convert_to_list(ci["pressure"], check_none=True) if "pressure" in ci.keys() else 0
             calc.temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else None
             calc.lattice = Calculation.convert_to_list(ci["lattice"]) if "lattice" in ci.keys() else None
             calc.reference_phase = Calculation.convert_to_list(ci["reference_phase"]) if "reference_phase" in ci.keys() else None
             calc.lattice_constant = Calculation.convert_to_list(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else 0 
             calculations.append(calc)
         else:
-            pressure = Calculation.convert_to_list(ci["pressure"]) if "pressure" in ci.keys() else []
+            pressure = Calculation.convert_to_list(ci["pressure"], check_none=True) if "pressure" in ci.keys() else []
             temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else []
             lattice = Calculation.convert_to_list(ci["lattice"])
             reference_phase = Calculation.convert_to_list(ci["reference_phase"])
