@@ -11,7 +11,8 @@ The inputfile is `yaml` formatted. In this section the possible keys in the inpu
 | :-: | :-: | :-: | :-: | :-: |
 | [mode](#mode) | [lattice](#lattice) | [reference_phase](#reference_phase) | [temperature](#temperature) | [pressure](#pressure) |
 | [temperature_high](#temperature_high) | [lattice_constant](#lattice_constant) | [repeat](#repeat) | [n_iterations](#n_iterations) | [n_switching_steps](#n_switching_steps) | 
-| [n_equilibration_steps](#n_equilibration_steps) | [pair_style](#pair_style) | [pair_coeff](#pair_coeff) | [n_print_steps](#n_print_steps) | [potential_file](#potential_file) | 
+| [n_equilibration_steps](#n_equilibration_steps) | [pair_style](#pair_style) | [pair_coeff](#pair_coeff) | [n_print_steps](#n_print_steps) | [potential_file](#potential_file) |  
+| [spring_constants](#spring_constants) | | | | |   
 
 | `md` block  | | | | |
 | :-: | :-: | :-: | :-: | :-: |
@@ -329,6 +330,22 @@ n_print_steps: 100
 ```
 
 Record MD trajectory during temperature sweep runs in the given interval of time steps. Default 0, trajectories are never recorded.
+
+
+---
+
+#### <a name="spring_constants"></a>`spring_constants`        
+
+_type_: list of floats  
+_default_: None   
+_example_:
+```
+spring_constants: 1.2
+spring_constants: [1.2, 1.3]
+```
+
+Spring constants for Einstein crystal. If specified, the automatic calculation is not performed. Should be equal to the number of species in the system.
+
 
 ---
 ---

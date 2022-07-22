@@ -230,47 +230,59 @@ class Solid(cph.Phase):
             raise ValueError("pressure did not converge")
 
         #start MSD calculation routine
+        #there two possibilities here - if spring constants are provided, use it. If not, calculate it
+
         lmp.command("fix              3 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping))
         
         #apply fix
         lmp = ph.compute_msd(lmp, self.calc)
         
-        #similar averaging routine
-        laststd = 0.00
-        for i in range(self.calc.md.n_cycles):
+        if self.calc.spring_constants is None:
+            #similar averaging routine
+            laststd = 0.00
+            for i in range(self.calc.md.n_cycles):
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+                ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+                #now we can check if it converted
+                file = os.path.join(self.simfolder, "msd.dat")
+                quant = np.loadtxt(file, usecols=(1,), unpack=True)[-ncount+1:]
+                quant = 3*kb*self.calc._temperature/quant
+                #self.logger.info(quant)
+                mean = np.mean(quant)
+                std = np.std(quant)
+                self.logger.info("At count %d mean k is %f std is %f"%(i+1, mean, std))
+                if (np.abs(laststd - std) < self.calc.tolerance.spring_constant):
+                    #now reevaluate spring constants
+                    k = []
+                    for i in range(self.calc.n_elements):
+                        quant = np.loadtxt(file, usecols=(i+1, ), unpack=True)[-ncount+1:]
+                        quant = 3*kb*self.calc._temperature/quant
+                        k.append(np.round(np.mean(quant), decimals=2))
+
+                    self.k = k
+                    
+                    #check if one spring constant is okay
+                    args = np.argsort(self.concentration)[::-1]
+                    safek = self.k[args[0]]
+
+                    for i in range(self.calc.n_elements):
+                        if self.concentration[i]*self.natoms < 2:
+                            self.logger.info("resetting spring constant of species %d from %f to %f to preserve sanity"%(i, self.k[i], safek))
+                            self.k[i] = safek
+                    
+                    self.logger.info("finalized sprint constants")
+                    self.logger.info(self.k)
+                    break
+                laststd = std
+        else:
+            if not len(self.calc.spring_constants) != self.calc.n_elements:
+                raise ValueError("Spring constant input length should be same as number of elements")
+
+            #still run a small NVT cycle
             lmp.command("run              %d"%int(self.calc.md.n_small_steps))
-            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
-            #now we can check if it converted
-            file = os.path.join(self.simfolder, "msd.dat")
-            quant = np.loadtxt(file, usecols=(1,), unpack=True)[-ncount+1:]
-            quant = 3*kb*self.calc._temperature/quant
-            #self.logger.info(quant)
-            mean = np.mean(quant)
-            std = np.std(quant)
-            self.logger.info("At count %d mean k is %f std is %f"%(i+1, mean, std))
-            if (np.abs(laststd - std) < self.calc.tolerance.spring_constant):
-                #now reevaluate spring constants
-                k = []
-                for i in range(self.calc.n_elements):
-                    quant = np.loadtxt(file, usecols=(i+1, ), unpack=True)[-ncount+1:]
-                    quant = 3*kb*self.calc._temperature/quant
-                    k.append(np.round(np.mean(quant), decimals=2))
-
-                self.k = k
-                
-                #check if one spring constant is okay
-                args = np.argsort(self.concentration)[::-1]
-                safek = self.k[args[0]]
-
-                for i in range(self.calc.n_elements):
-                    if self.concentration[i]*self.natoms < 2:
-                        self.logger.info("resetting spring constant of species %d from %f to %f to preserve sanity"%(i, self.k[i], safek))
-                        self.k[i] = safek
-                
-                self.logger.info("finalized sprint constants")
-                self.logger.info(self.k)
-                break
-            laststd = std
+            self.k = self.calc.spring_constants
+            self.logger.info("Used user input sprint constants")
+            self.logger.info(self.k)
 
         #check for melting
         lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
