@@ -488,11 +488,11 @@ class Calculation(InputTemplate):
             l = 'tm'
         else:
             ts = int(self._temperature)
-            ps = int(self._pressure)
+            ps = "None" if self._pressure is None else "%d"%(int(self._pressure))
             l = self.lattice
             l = l.split('/')
             l = l[-1]
-        identistring = "-".join([prefix, l, str(ts), str(ps)])
+        identistring = "-".join([prefix, l, str(ts), ps])
         return identistring
 
     def create_folders(self, prefix=None):
