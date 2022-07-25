@@ -174,12 +174,12 @@ class Solid(cph.Phase):
 
             #check for melting
             #check for melting
-            lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+            lmp.command("dump              2 all custom 1 traj.equilibration_stage1.dat id type mass x y z vx vy vz")
             lmp.command("run               0")
             lmp.command("undump            2")
             
             #check for solid atoms
-            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
+            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.equilibration_stage1.dat"))
             if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
                 lmp.close()
                 raise MeltedError("System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting conv:\n solid_frac: 0")
@@ -285,19 +285,19 @@ class Solid(cph.Phase):
             self.logger.info(self.k)
 
         #check for melting
-        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+        lmp.command("dump              2 all custom 1 traj.equilibration_stage2.dat id type mass x y z vx vy vz")
         lmp.command("run               0")
         lmp.command("undump            2")
         
         #check for solid atoms
-        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
+        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.equilibration_stage2.dat"))
         if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
             lmp.close()
             raise MeltedError("System melted, increase size or reduce temp!")
 
         #close object and process traj
         lmp.close()
-        self.process_traj()
+        self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.dump")
 
 
 
@@ -322,7 +322,7 @@ class Solid(cph.Phase):
         lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
 
         #read in the conf file
-        conf = os.path.join(self.simfolder, "conf.dump")
+        conf = os.path.join(self.simfolder, "conf.equilibration.dump")
         lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
 
         #set up potential

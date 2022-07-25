@@ -153,7 +153,7 @@ class Phase:
         self.logger.info(self.concentration)
 
 
-    def process_traj(self):
+    def process_traj(self, filename, outfilename):
         """
         Process the out trajectory after averaging cycle and 
         extract a configuration to run integration
@@ -167,9 +167,9 @@ class Phase:
         None
         
         """
-        trajfile = os.path.join(self.simfolder, "traj.dat")
+        trajfile = os.path.join(self.simfolder, filename)
         files = ptp.split_trajectory(trajfile)
-        conf = os.path.join(self.simfolder, "conf.dump")
+        conf = os.path.join(self.simfolder, outfilename)
 
         ph.reset_timestep(files[-1], conf)
 
@@ -267,7 +267,7 @@ class Phase:
         lmp.command("variable          lf equal %f"%lf)
 
         #read in conf file
-        conf = os.path.join(self.simfolder, "conf.dump")
+        conf = os.path.join(self.simfolder, "conf.equilibration.dump")
         lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
 
         #set up potential
@@ -329,7 +329,7 @@ class Phase:
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${flambda}\" screen no file forward_%d.dat"%iteration)
 
         if self.calc.n_print_steps > 0:
-            lmp.command("dump              d1 all custom %d traj.forward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
+            lmp.command("dump              d1 all custom %d traj.rs.forward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 
         lmp.command("run               %d"%self.calc._n_sweep_steps)
@@ -347,11 +347,11 @@ class Phase:
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
 
         #check melting or freezing
-        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+        lmp.command("dump              2 all custom 1 traj.temp.dat id type mass x y z vx vy vz")
         lmp.command("run               0")
         lmp.command("undump            2")
         
-        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
+        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.temp.dat"))
         if solid:
             if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
                 lmp.close()
@@ -377,7 +377,7 @@ class Phase:
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${blambda}\" screen no file backward_%d.dat"%iteration)
 
         if self.calc.n_print_steps > 0:
-            lmp.command("dump              d1 all custom %d traj.backward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
+            lmp.command("dump              d1 all custom %d traj.rs.backward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 
         lmp.command("run               %d"%self.calc._n_sweep_steps)
@@ -451,7 +451,7 @@ class Phase:
         lmp.command("variable          lf equal %f"%lf)
 
         #read in conf
-        conf = os.path.join(self.simfolder, "conf.dump")
+        conf = os.path.join(self.simfolder, "conf.equilibration.dump")
         lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
 
         #set up potential
@@ -487,11 +487,11 @@ class Phase:
         lmp.command("unfix             1")
 
         #check melting or freezing
-        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
+        lmp.command("dump              2 all custom 1 traj.temp.dat id type mass x y z vx vy vz")
         lmp.command("run               0")
         lmp.command("undump            2")
         
-        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.dat"))
+        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.temp.dat"))
         if solid:
             if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
                 lmp.close()
