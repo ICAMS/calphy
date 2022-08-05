@@ -4,16 +4,19 @@ import numpy as np
 
 def test_nones():
 	a = [None, 1, 2]
-	assert ch.check_if_none(a) == False
+	assert ch.check_if_any_is_none(a) == True
 
 	b = [None, None, None]
-	assert ch.check_if_none(b) == True
+	assert ch.check_if_any_is_none(b) == True
 
 	c = None
-	assert ch.check_if_none(c) == True
+	assert ch.check_if_any_is_none(c) == True
 
 	d = 1
-	assert ch.check_if_none(d) == False
+	assert ch.check_if_any_is_none(d) == False
+
+	d = [1, 2, 3]
+	assert ch.check_if_any_is_none(d) == False
 
 def test_replace_nones():
 	a = [None, 1, 2]

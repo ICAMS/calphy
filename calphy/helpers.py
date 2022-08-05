@@ -214,20 +214,18 @@ def prepare_log(file):
     logger.propagate = False
     return logger
 
-def check_if_none(data):
+def check_if_any_is_none(data):
     """
-    Check if any all elements of a list is None, if so return True
+    Check if any elements of a list is None, if so return True
     """
     if not isinstance(data, list):
         data = [data]
-
-    all_nones = True
     
     for d in data:
-        if d is not None:
-            all_nones = False
+        if d is None:
+            return True
 
-    return all_nones
+    return False
 
 def replace_nones(data, replace_data, logger=None):
     """

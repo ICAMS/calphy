@@ -237,7 +237,7 @@ class Solid(cph.Phase):
         #apply fix
         lmp = ph.compute_msd(lmp, self.calc)
         
-        if not ph.check_if_none(self.calc.spring_constants):
+        if ph.check_if_any_is_none(self.calc.spring_constants):
             #similar averaging routine
             laststd = 0.00
             for i in range(self.calc.md.n_cycles):
