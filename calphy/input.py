@@ -57,7 +57,31 @@ class InputTemplate:
             if isinstance(val, InputTemplate):
                 tdict[key] = val.to_dict()
         return tdict
-                    
+
+class MdOptions(InputTemplate):
+    def __init__(self):
+        super(InputTemplate, self).__init__()
+        self.timestep = 0.001
+        self.n_small_steps = 10000
+        self.n_every_steps = 10
+        self.n_repeat_steps = 10
+        self.n_cycles = 100
+        self.thermostat_damping = 0.1
+        self.barostat_damping = 0.1
+        self._equilibration_control = "berendsen"
+        self.equilibration_thermostat_damping = 100.0
+        self.equilibration_barostat_damping = 100.0
+
+    @property
+    def equilibration_control(self):
+        return self._equilibration_control
+
+    @equilibrium_control.setter
+    def equilibration_control(self, val):
+        if val not in ["berendsen", "nose-hoover"]:
+            raise ValueError("Equilibration control should be either berendsen or nose-hoover")
+        self._equilibration_control = val
+
 class Calculation(InputTemplate):
     def __init__(self):
         super(InputTemplate, self).__init__()
@@ -92,14 +116,7 @@ class Calculation(InputTemplate):
         #add second level options; for example spring constants
         self._spring_constants = None
         
-        self.md = InputTemplate()
-        self.md.timestep = 0.001
-        self.md.n_small_steps = 10000
-        self.md.n_every_steps = 10
-        self.md.n_repeat_steps = 10
-        self.md.n_cycles = 100
-        self.md.thermostat_damping = 0.1
-        self.md.barostat_damping = 0.1
+        self.md = MdOptions()
 
         self.queue = InputTemplate()
         self.queue.scheduler = "local"

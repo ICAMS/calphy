@@ -99,10 +99,16 @@ class Solid(cph.Phase):
         if not self.calc._fix_lattice:
             if self.calc._pressure == 0:
                 #This routine should be followed for zero pressure
+                #this is the old NPT routines
                 lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, 
-                    self.calc._temperature, self.calc.md.thermostat_damping, 
-                    self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping))
+                if self.calc.md.equilibration_control == "nose-hoover":
+                    lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, 
+                        self.calc._temperature, self.calc.md.equilibration_thermostat_damping, 
+                        self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.equilibration_barostat_damping))
+                else:
+                    lmp.command("fix              1a all nve")
+                    lmp.command("fix              1b all temp/berendsen %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.equilibration_thermostat_damping))
+                    lmp.command("fix              1c all press/berendsen %s %f %f %f"%(self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.equilibration_barostat_damping))
                 lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
                 lmp.command("thermo           10")
                 lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
@@ -111,24 +117,31 @@ class Solid(cph.Phase):
                 #Now this routine is for non-zero pressure
                 #one has to equilibriate at a low temperature, but high pressure and then increase temp gradually
                 #start at 0.25 temp, and increase to 0.50, while keeping high pressure
-                lmp.command("velocity         all create %f %d"%(0.25*self.calc._temperature, np.random.randint(0, 10000)))
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.25*self.calc._temperature, 0.5*self.calc._temperature, self.calc.md.thermostat_damping, 
-                                                    self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping))
-                lmp.command("thermo_style     custom step pe press vol etotal temp")
-                lmp.command("thermo           10")
-                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
-                lmp.command("unfix            1")
+                if self.calc.md.equilibration_control == "nose-hoover":
+                    lmp.command("velocity         all create %f %d"%(0.25*self.calc._temperature, np.random.randint(0, 10000)))
+                    lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.25*self.calc._temperature, 0.5*self.calc._temperature, self.calc.md.equilibration_thermostat_damping, 
+                                                        self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.equilibration_barostat_damping))
+                    lmp.command("thermo_style     custom step pe press vol etotal temp")
+                    lmp.command("thermo           10")
+                    lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
+                    lmp.command("unfix            1")
 
-                #now heat again
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.5*self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
-                                                    self.iso, self.calc._pressure, self.calc._pressure,  self.calc.md.barostat_damping))
-                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
-                lmp.command("unfix            1")
+                    #now heat again
+                    lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.5*self.calc._temperature, self.calc._temperature, self.calc.md.equilibration_thermostat_damping, 
+                                                        self.iso, self.calc._pressure, self.calc._pressure,  self.calc.md.equilibration_barostat_damping))
+                    lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
+                    lmp.command("unfix            1")
 
-                #now run normal cycle
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
-                                                    self.iso, self.calc._pressure, self.calc._pressure,  self.calc.md.barostat_damping))
-                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
+                    #now run normal cycle
+                    lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.equilibration_thermostat_damping, 
+                                                        self.iso, self.calc._pressure, self.calc._pressure,  self.calc.md.equilibration_barostat_damping))
+                    lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
+                else:
+                    lmp.command("fix              1a all nve")
+                    lmp.command("fix              1b all temp/berendsen %f %f %f"%(0.25*self.calc._temperature, self.calc._temperature, self.calc.md.equilibration_thermostat_damping))
+                    lmp.command("fix              1c all press/berendsen %s %f %f %f"%(self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.equilibration_barostat_damping))
+                    lmp.command("run              %d"%int(self.calc.md.n_small_steps))                    
+
 
 
             #this is when the averaging routine starts
@@ -169,8 +182,14 @@ class Solid(cph.Phase):
                 lmp.close()
                 raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
 
+
             #now run for msd
-            lmp.command("unfix            1")
+            if self.calc.md.equilibration_control == "nose-hoover":
+                lmp.command("unfix            1")
+            else:
+                lmp.command("unfix            1a")
+                lmp.command("unfix            1b")
+                lmp.command("unfix            1c")
             lmp.command("unfix            2")
 
             #check for melting

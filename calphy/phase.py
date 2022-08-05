@@ -69,6 +69,19 @@ class Phase:
             self.iso = "aniso"
         self.logger.info("Pressure adjusted in %s"%self.iso)
 
+        #now adjust the equlbrm routine
+        self.logger.info("Equilibration stage is done using %s barostat/thermostat"%self.calc.md.equilibration_control)
+        if self.calc.md.equilibration_control == "nose-hoover":
+            if self.calc.md.equilibration_thermostat_damping > 10.0:
+                self.logger.warning("Equil. Nose-Hoover thermostat damping is high!")
+            if self.calc.md.equilibration_barostat_damping > 10.0:
+                self.logger.warning("Equil. Nose-Hoover barostat damping is high!")
+        else:
+            if self.calc.md.equilibration_thermostat_damping < 1.0:
+                self.logger.warning("Equil. Berendsen thermostat damping is low!")
+            if self.calc.md.equilibration_barostat_damping < 1.0:
+                self.logger.warning("Equil. Berendsen barostat damping is high!")
+
         self.l = None
         self.alat = None
         self.apc = None
