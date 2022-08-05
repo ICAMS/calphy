@@ -141,19 +141,15 @@ class Solid(cph.Phase):
                     lmp.command("velocity         all create %f %d"%(0.25*self.calc._temperature, np.random.randint(0, 10000)))
                     lmp.command("fix              1a all nve")
                     lmp.command("fix              1b all temp/berendsen %f %f %f"%(0.25*self.calc._temperature, 0.5*self.calc._temperature, self.calc.md.equilibration_thermostat_damping))
-                    lmp.command("fix              1c all press/berendsen %s %f %f %f"%(self.iso, 0.25*self.calc._pressure, 0.5*self.calc._pressure, self.calc.md.equilibration_barostat_damping))
+                    lmp.command("fix              1c all press/berendsen %s %f %f %f"%(self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.equilibration_barostat_damping))
                     lmp.command("run              %d"%int(self.calc.md.n_small_steps))                    
                     lmp.command("unfix            1b")
-                    lmp.command("unfix            1c")
 
                     lmp.command("fix              1b all temp/berendsen %f %f %f"%(0.5*self.calc._temperature, self.calc._temperature, self.calc.md.equilibration_thermostat_damping))
-                    lmp.command("fix              1c all press/berendsen %s %f %f %f"%(self.iso, 0.5*self.calc._pressure, self.calc._pressure, self.calc.md.equilibration_barostat_damping))
                     lmp.command("run              %d"%int(self.calc.md.n_small_steps))                    
                     lmp.command("unfix            1b")
-                    lmp.command("unfix            1c")
 
                     lmp.command("fix              1b all temp/berendsen %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.equilibration_thermostat_damping))
-                    lmp.command("fix              1c all press/berendsen %s %f %f %f"%(self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.equilibration_barostat_damping))
                     lmp.command("run              %d"%int(self.calc.md.n_small_steps))                    
 
 
