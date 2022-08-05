@@ -12,3 +12,9 @@ traj.*
 *.sub*
 *.dat
 *log*
+ts-*
+fe-*
+tscale-*
+pscale-*
+alchemy-*
+*.npy
