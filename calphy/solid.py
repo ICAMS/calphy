@@ -237,7 +237,7 @@ class Solid(cph.Phase):
         #apply fix
         lmp = ph.compute_msd(lmp, self.calc)
         
-        if self.calc.spring_constants is None:
+        if not ph.check_if_none(self.calc.spring_constants):
             #similar averaging routine
             laststd = 0.00
             for i in range(self.calc.md.n_cycles):
@@ -262,18 +262,19 @@ class Solid(cph.Phase):
                     self.k = k
                     
                     #check if one spring constant is okay
-                    args = np.argsort(self.concentration)[::-1]
-                    safek = self.k[args[0]]
+                    #args = np.argsort(self.concentration)[::-1]
+                    #safek = self.k[args[0]]
 
-                    for i in range(self.calc.n_elements):
-                        if self.concentration[i]*self.natoms < 2:
-                            self.logger.info("resetting spring constant of species %d from %f to %f to preserve sanity"%(i, self.k[i], safek))
-                            self.k[i] = safek
+                    #for i in range(self.calc.n_elements):
+                    #    if self.concentration[i]*self.natoms < 2:
+                    #        self.logger.info("resetting spring constant of species %d from %f to %f to preserve sanity"%(i, self.k[i], safek))
+                    #        self.k[i] = safek
                     
                     self.logger.info("finalized sprint constants")
                     self.logger.info(self.k)
                     break
                 laststd = std
+
         else:
             if not (len(self.calc.spring_constants) == self.calc.n_elements):
                 raise ValueError("Spring constant input length should be same as number of elements, spring constant length %d, # elements %d"%(len(self.calc.spring_constants), self.calc.n_elements))
