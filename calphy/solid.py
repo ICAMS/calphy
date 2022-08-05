@@ -261,8 +261,9 @@ class Solid(cph.Phase):
                         k.append(np.round(np.mean(quant), decimals=2))
 
                     #first replace any provided values with user values
-                    spring_constants = copy.copy(self.calc.spring_constants)
-                    k = ph.replace_nones(spring_constants, k, logger=self.logger)
+                    if ph.check_if_any_is_not_none(self.calc.spring_constants):
+                        spring_constants = copy.copy(self.calc.spring_constants)
+                        k = ph.replace_nones(spring_constants, k, logger=self.logger)
                     
                     #add sanity checks
                     k = ph.validate_spring_constants(k, logger=self.logger)
