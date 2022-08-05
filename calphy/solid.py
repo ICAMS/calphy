@@ -23,6 +23,7 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 
 import numpy as np
 import yaml
+import copy
 
 import pyscal.traj_process as ptp
 from calphy.integrators import *
@@ -259,17 +260,16 @@ class Solid(cph.Phase):
                         quant = 3*kb*self.calc._temperature/quant
                         k.append(np.round(np.mean(quant), decimals=2))
 
+                    #first replace any provided values with user values
+                    spring_constants = copy(self.calc.spring_constants)
+                    k = ph.replace_nones(spring_constants, k, logger=self.logger)
+                    
+                    #add sanity checks
+                    k = ph.validate_spring_constants(k, logger=self.logger)
+                    
+                    #now save
                     self.k = k
-                    
-                    #check if one spring constant is okay
-                    #args = np.argsort(self.concentration)[::-1]
-                    #safek = self.k[args[0]]
 
-                    #for i in range(self.calc.n_elements):
-                    #    if self.concentration[i]*self.natoms < 2:
-                    #        self.logger.info("resetting spring constant of species %d from %f to %f to preserve sanity"%(i, self.k[i], safek))
-                    #        self.k[i] = safek
-                    
                     self.logger.info("finalized sprint constants")
                     self.logger.info(self.k)
                     break
