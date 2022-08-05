@@ -213,3 +213,71 @@ def prepare_log(file):
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
     return logger
+
+def check_if_any_is_none(data):
+    """
+    Check if any elements of a list is None, if so return True
+    """
+    if not isinstance(data, list):
+        data = [data]
+    
+    for d in data:
+        if d is None:
+            return True
+
+    return False
+
+def check_if_any_is_not_none(data):
+    """
+    Check if any element is not None
+    """
+    if not isinstance(data, list):
+        data = [data]
+    
+    for d in data:
+        if d is not None:
+            return True
+
+    return False
+
+
+def replace_nones(data, replace_data, logger=None):
+    """
+    Replace Nones in the given array
+    """
+    if not len(data) == len(replace_data):
+        raise ValueError("both arrays must have same length")
+
+    for count, d in enumerate(data):
+        if d is None:
+            data[count] = replace_data[count]
+            if logger is not None:
+                logger.info("Replacing input spring constant None with %f"%replace_data[count])
+
+    return data
+
+def validate_spring_constants(data, klo=0.0001, khi=1000.0, logger=None):
+    """
+    Validate spring constants and replace them if needed
+    """
+    #first find a sane value
+    sane_k = 0.1
+    found = False
+
+    for d in data:
+        if (klo <= d <= khi):
+            sane_k = d
+            found = True
+            break
+
+    if not found:
+        raise ValueError("No spring constant values are between %f and %f"%(klo, khi))
+
+    for count, d in enumerate(data):
+        if not (klo <= d <= khi):
+            data[count] = sane_k
+            if logger is not None:
+                logger.info("Replace insane k %s for element %d with %f"%(str(d), count, sane_k))
+
+    return data
+

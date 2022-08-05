@@ -428,7 +428,7 @@ class Calculation(InputTemplate):
 
     @spring_constants.setter
     def spring_constants(self, val):
-        val = self.check_and_convert_to_list(val)
+        val = self.check_and_convert_to_list(val, check_none=True)
         self._spring_constants = val
     
     def check_and_convert_to_list(self, data, check_none=False):
