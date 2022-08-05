@@ -213,3 +213,31 @@ def prepare_log(file):
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
     return logger
+
+def check_if_none(data):
+    """
+    Check if any all elements of a list is None, if so return True
+    """
+    if not isinstance(data, list):
+        data = [data]
+
+    all_nones = True
+    
+    for d in data:
+        if d is not None:
+            all_nones = False
+
+    return all_nones
+
+def replace_nones(data, replace_data):
+    """
+    Replace Nones in the given array
+    """
+    if not len(data) == len(replace_data):
+        raise ValueError("both arrays must have same length")
+
+    for count, d in enumerate(data):
+        if d is None:
+            data[count] = replace_data[count]
+
+    return replace_data
