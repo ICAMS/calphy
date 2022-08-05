@@ -254,7 +254,7 @@ def replace_nones(data, replace_data, logger=None):
             if logger is not None:
                 logger.info("Replacing input spring constant None with %f"%replace_data[count])
 
-    return replace_data
+    return data
 
 def validate_spring_constants(data, klo=0.0001, khi=1000.0, logger=None):
     """
