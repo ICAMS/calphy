@@ -76,7 +76,7 @@ class MdOptions(InputTemplate):
     def equilibration_control(self):
         return self._equilibration_control
 
-    @equilibrium_control.setter
+    @equilibration_control.setter
     def equilibration_control(self, val):
         if val not in ["berendsen", "nose-hoover"]:
             raise ValueError("Equilibration control should be either berendsen or nose-hoover")
