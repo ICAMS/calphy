@@ -5,18 +5,23 @@ import numpy as np
 def test_nones():
 	a = [None, 1, 2]
 	assert ch.check_if_any_is_none(a) == True
+	assert ch.check_if_any_is_not_none(a) == True
 
 	b = [None, None, None]
 	assert ch.check_if_any_is_none(b) == True
+	assert ch.check_if_any_is_not_none(b) == False
 
 	c = None
 	assert ch.check_if_any_is_none(c) == True
+	assert ch.check_if_any_is_not_none(c) == False
 
 	d = 1
 	assert ch.check_if_any_is_none(d) == False
+	assert ch.check_if_any_is_not_none(d) == True
 
 	d = [1, 2, 3]
 	assert ch.check_if_any_is_none(d) == False
+	assert ch.check_if_any_is_not_none(d) == True
 
 def test_replace_nones():
 	a = [None, 1, 2]

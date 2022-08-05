@@ -227,6 +227,20 @@ def check_if_any_is_none(data):
 
     return False
 
+def check_if_any_is_not_none(data):
+    """
+    Check if any element is not None
+    """
+    if not isinstance(data, list):
+        data = [data]
+    
+    for d in data:
+        if d is not None:
+            return True
+
+    return False
+
+
 def replace_nones(data, replace_data, logger=None):
     """
     Replace Nones in the given array
