@@ -55,10 +55,25 @@ class Solid(cph.Phase):
         super().__init__(calculation=calculation,
         simfolder=simfolder)
 
-
-    def run_averaging(self):
+    def dump_current_snapshot(self, lmp, filename):
         """
-        Run averaging routine
+        """
+        lmp.command("dump              2 all custom 1 %s id type mass x y z vx vy vz"%(filename))
+        lmp.command("run               0")
+        lmp.command("undump            2")
+
+    def check_if_melted(self, lmp, filename):
+        """
+        """
+        solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
+        if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
+            lmp.close()
+            raise MeltedError("System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting conv:\n solid_frac: 0")
+
+
+    def fix_nose_hoover(self, lmp, temp_start_factor=1.0, temp_end_factor=1.0, press_start_factor=1.0, press_end_factor=1.0):
+        """
+        Fix Nose-Hoover thermostat and barostat
 
         Parameters
         ----------
@@ -67,200 +82,278 @@ class Solid(cph.Phase):
         Returns
         -------
         None
+        """
+        lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(temp_start_factor*self.calc._temperature, 
+                        temp_end_factor*self.calc._temperature, self.calc.md.equilibration_thermostat_damping, 
+                        self.iso, press_start_factor*self.calc._pressure, press_end_factor*self.calc._pressure, self.calc.md.equilibration_barostat_damping))
+
+    def fix_berendsen(self, lmp, temp_start_factor=1.0, temp_end_factor=1.0, press_start_factor=1.0, press_end_factor=1.0):
+        """
+        Fix Nose-Hoover thermostat and barostat
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        lmp.command("fix              1a all nve")
+        lmp.command("fix              1b all temp/berendsen %f %f %f"%(temp_start_factor*self.calc._temperature, temp_end_factor*self.calc._temperature, self.calc.md.equilibration_thermostat_damping))
+        lmp.command("fix              1c all press/berendsen %s %f %f %f"%(self.iso, press_start_factor*self.calc._pressure, press_end_factor*self.calc._pressure, self.calc.md.equilibration_barostat_damping))
+
+    def unfix_nose_hoover(self, lmp):
+        """
+        Fix Nose-Hoover thermostat and barostat
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        lmp.command("unfix            1")
+
+    def unfix_berendsen(self, lmp):
+        """
+        Fix Nose-Hoover thermostat and barostat
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        lmp.command("unfix            1a")
+        lmp.command("unfix            1b")
+        lmp.command("unfix            1c")        
+
+
+    def run_zero_pressure_equilibration(self, lmp):
+        """
+        Run a zero pressure equilibration
+
+        Parameters
+        ----------
+        lmp: LAMMPS object
+
+        Returns
+        -------
+        None
 
         Notes
         -----
-        Run averaging routine using LAMMPS. Starting from the initial lattice two different routines can
-        be followed:
-        If pressure is specified, MD simulations are run until the pressure converges within the given
-        threshold value.
-        If `fix_lattice` option is True, then the input structure is used as it is and the corresponding pressure
-        is calculated.
-        At the end of the run, the averaged box dimensions are calculated. 
+        Each method should close all the fixes. Run a small eqbr routine to achieve zero pressure        
         """
-        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
-
-        #set up structure
-        lmp = ph.create_structure(lmp, self.calc)
-
-        #set up potential
-        if self.calc.potential_file is None:
-            lmp = ph.set_potential(lmp, self.calc)
+        #set velocity
+        lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
+        
+        #apply fixes depending on thermostat/barostat
+        if self.calc.md.equilibration_control == "nose-hoover":
+            self.fix_nose_hoover(lmp)
         else:
-            lmp.command("include %s"%self.calc.potential_file)
-
-        #add some computes
-        lmp.command("variable         mvol equal vol")
-        lmp.command("variable         mlx equal lx")
-        lmp.command("variable         mly equal ly")
-        lmp.command("variable         mlz equal lz")
-        lmp.command("variable         mpress equal press")
-
-        if not self.calc._fix_lattice:
-            if self.calc._pressure == 0:
-                #This routine should be followed for zero pressure
-                #this is the old NPT routines
-                lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
-                if self.calc.md.equilibration_control == "nose-hoover":
-                    lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, 
-                        self.calc._temperature, self.calc.md.equilibration_thermostat_damping, 
-                        self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.equilibration_barostat_damping))
-                else:
-                    lmp.command("fix              1a all nve")
-                    lmp.command("fix              1b all temp/berendsen %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.equilibration_thermostat_damping))
-                    lmp.command("fix              1c all press/berendsen %s %f %f %f"%(self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.equilibration_barostat_damping))
-                lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
-                lmp.command("thermo           10")
-                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
-
-            else:
-                #Now this routine is for non-zero pressure
-                #one has to equilibriate at a low temperature, but high pressure and then increase temp gradually
-                #start at 0.25 temp, and increase to 0.50, while keeping high pressure
-                if self.calc.md.equilibration_control == "nose-hoover":
-
-                    lmp.command("velocity         all create %f %d"%(0.25*self.calc._temperature, np.random.randint(0, 10000)))
-                    lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.25*self.calc._temperature, 0.5*self.calc._temperature, self.calc.md.equilibration_thermostat_damping, 
-                                                        self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.equilibration_barostat_damping))
-                    lmp.command("thermo_style     custom step pe press vol etotal temp")
-                    lmp.command("thermo           10")
-                    lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
-                    lmp.command("unfix            1")
-
-                    #now heat again
-                    lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.5*self.calc._temperature, self.calc._temperature, self.calc.md.equilibration_thermostat_damping, 
-                                                        self.iso, self.calc._pressure, self.calc._pressure,  self.calc.md.equilibration_barostat_damping))
-                    lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
-                    lmp.command("unfix            1")
-
-                    #now run normal cycle
-                    lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.equilibration_thermostat_damping, 
-                                                        self.iso, self.calc._pressure, self.calc._pressure,  self.calc.md.equilibration_barostat_damping))
-                    lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
-                else:
-                    lmp.command("velocity         all create %f %d"%(0.25*self.calc._temperature, np.random.randint(0, 10000)))
-                    lmp.command("fix              1a all nve")
-                    lmp.command("fix              1b all temp/berendsen %f %f %f"%(0.25*self.calc._temperature, 0.5*self.calc._temperature, self.calc.md.equilibration_thermostat_damping))
-                    lmp.command("fix              1c all press/berendsen %s %f %f %f"%(self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.equilibration_barostat_damping))
-                    lmp.command("run              %d"%int(self.calc.md.n_small_steps))                    
-                    lmp.command("unfix            1b")
-
-                    lmp.command("fix              1b all temp/berendsen %f %f %f"%(0.5*self.calc._temperature, self.calc._temperature, self.calc.md.equilibration_thermostat_damping))
-                    lmp.command("run              %d"%int(self.calc.md.n_small_steps))                    
-                    lmp.command("unfix            1b")
-
-                    lmp.command("fix              1b all temp/berendsen %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.equilibration_thermostat_damping))
-                    lmp.command("run              %d"%int(self.calc.md.n_small_steps))                    
+            self.fix_berendsen(lmp)
+        #start thermo logging
+        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
+        lmp.command("thermo           10")
+        
+        #run MD
+        lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
+        
+        #remove fixes
+        if self.calc.md.equilibration_control == "nose-hoover":
+            self.unfix_nose_hoover(lmp)
+        else:
+            self.unfix_berendsen(lmp)
 
 
-            #this is when the averaging routine starts
-            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
-                int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
+
+    def run_finite_pressure_equilibration(self, lmp):
+        """
+        Run a finite pressure equilibration
+
+        Parameters
+        ----------
+        lmp: LAMMPS object
+
+        Returns
+        -------
+        None
+        
+        Notes
+        -----
+        Each method should close all the fixes. Run a equilibration routine to reach the given finite pressure.
+        The pressure is implemented in one fix, while temperature is gradually ramped. 
+        The thermostat can work faster than barostat, which means that the structure will melt before the pressure is scaled, this ramping
+        can prevent the issue.         
+        """
+        #create velocity
+        lmp.command("velocity         all create %f %d"%(0.25*self.calc._temperature, np.random.randint(0, 10000)))
+
+        #for Nose-Hoover thermo/baro combination
+        if self.calc.md.equilibration_control == "nose-hoover":
+            #Cycle 1: 0.25-0.5 temperature, full pressure
+            self.fix_nose_hoover(lmp, temp_start_factor=0.25, temp_end_factor=0.5)
+            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo           10")
+            lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
+            self.unfix_nose_hoover(lmp)
+
+            #Cycle 2: 0.5-1.0 temperature, full pressure
+            self.fix_nose_hoover(lmp, temp_start_factor=0.5, temp_end_factor=1.0)
+            lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
+            self.unfix_nose_hoover(lmp)
+
+            #Cycle 3: full temperature, full pressure
+            self.fix_nose_hoover(lmp)
+            lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+            self.unfix_nose_hoover(lmp)
+        
+        else:
+            #Cycle 1: 0.25-0.5 temperature, full pressure
+            self.fix_berendsen(lmp, temp_start_factor=0.25, temp_end_factor=0.5)
+            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo           10")
+            lmp.command("run              %d"%int(self.calc.md.n_small_steps))                    
+            self.unfix_berendsen(lmp)
+
+            #Cycle 2: 0.5-1.0 temperature, full pressure
+            self.fix_berendsen(lmp, temp_start_factor=0.5, temp_end_factor=1.0)
+            lmp.command("run              %d"%int(self.calc.md.n_small_steps))                    
+            self.unfix_berendsen(lmp)
+
+            #Cycle 3: full temperature, full pressure
+            self.fix_berendsen(lmp)
+            lmp.command("run              %d"%int(self.calc.md.n_small_steps))                    
+            self.unfix_berendsen(lmp)
+
+    def run_pressure_convergence(self, lmp):
+        """
+        Run a pressure convergence routine
+
+        Parameters
+        ----------
+        lmp: LAMMPS object
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Take the equilibrated structure and rigorously check for pressure convergence.
+        The cycle is stopped when the average pressure is within the given cutoff of the target pressure.
+        """
+
+        #apply fixes
+        if self.calc.md.equilibration_control == "nose-hoover":
+            self.fix_nose_hoover(lmp)
+        else:
+            self.fix_berendsen(lmp)
+
+
+        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
+            int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
+        
+        laststd = 0.00
+        converged = False
+
+        for i in range(int(self.calc.md.n_cycles)):
+            lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+            #now we can check if it converted
+            file = os.path.join(self.simfolder, "avg.dat")
+            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
             
-            laststd = 0.00
-            converged = False
+            lxpc = ipress
+            mean = np.mean(lxpc)
+            std = np.std(lxpc)
+            volatom = np.mean((lx*ly*lz)/self.natoms)
+            self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
+            
+            if (np.abs(mean - self.calc._pressure)) < self.calc.tolerance.pressure:
 
-            for i in range(int(self.calc.md.n_cycles)):
-                lmp.command("run              %d"%int(self.calc.md.n_small_steps))
-                ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
-                #now we can check if it converted
-                file = os.path.join(self.simfolder, "avg.dat")
-                lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
-                
-                lxpc = ipress
-                mean = np.mean(lxpc)
+                #process other means
+                self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
+                self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
+                self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
+                self.volatom = volatom
+                self.vol = self.lx*self.ly*self.lz
+                self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
+                self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
+                converged = True
+                break
+            laststd = std
+        
+        if not converged:
+            lmp.close()
+            raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
+
+        #unfix thermostat and barostat
+        if self.calc.md.equilibration_control == "nose-hoover":
+            self.unfix_nose_hoover(lmp)
+        else:
+            self.unfix_berendsen(lmp)
+
+        lmp.command("unfix            2")
+
+
+    def run_constrained_pressure_convergence(self, lmp):
+        """
+        """
+        lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping))
+        lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
+        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
+        lmp.command("thermo           10")
+        
+        #this is when the averaging routine starts
+        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
+            int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
+
+        lastmean = 100000000
+        converged = False
+        for i in range(int(self.calc.md.n_cycles)):
+            lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+            #now we can check if it converted
+            file = os.path.join(self.simfolder, "avg.dat")
+            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
+            
+            lxpc = ipress
+            mean = np.mean(lxpc)
+            if (np.abs(mean - lastmean)) < self.calc.tolerance.pressure:
+                #here we actually have to set the pressure
+                self.calc._pressure = mean
                 std = np.std(lxpc)
                 volatom = np.mean((lx*ly*lz)/self.natoms)
                 self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
-                
-                if (np.abs(mean - self.calc._pressure)) < self.calc.tolerance.pressure:
-
-                    #process other means
-                    self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
-                    self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
-                    self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
-                    self.volatom = volatom
-                    self.vol = self.lx*self.ly*self.lz
-                    self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
-                    self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
-                    converged = True
-                    break
-                laststd = std
-            
-            if not converged:
-                lmp.close()
-                raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
-
-
-            #now run for msd
-            if self.calc.md.equilibration_control == "nose-hoover":
-                lmp.command("unfix            1")
-            else:
-                lmp.command("unfix            1a")
-                lmp.command("unfix            1b")
-                lmp.command("unfix            1c")
-            lmp.command("unfix            2")
-
-            #check for melting
-            #check for melting
-            lmp.command("dump              2 all custom 1 traj.equilibration_stage1.dat id type mass x y z vx vy vz")
-            lmp.command("run               0")
-            lmp.command("undump            2")
-            
-            #check for solid atoms
-            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.equilibration_stage1.dat"))
-            if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
-                lmp.close()
-                raise MeltedError("System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting conv:\n solid_frac: 0")
-        else:
-            #routine in which lattice constant will not varied, but is set to a given fixed value
-            lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping))
-            lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
-            lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
-            lmp.command("thermo           10")
-            
-            #this is when the averaging routine starts
-            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
-                int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
-
-            lastmean = 100000000
-            converged = False
-            for i in range(int(self.calc.md.n_cycles)):
-                lmp.command("run              %d"%int(self.calc.md.n_small_steps))
-                ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
-                #now we can check if it converted
-                file = os.path.join(self.simfolder, "avg.dat")
-                lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
-                
-                lxpc = ipress
-                mean = np.mean(lxpc)
-                if (np.abs(mean - lastmean)) < self.calc.tolerance.pressure:
-                    #here we actually have to set the pressure
-                    self.calc._pressure = mean
-                    std = np.std(lxpc)
-                    volatom = np.mean((lx*ly*lz)/self.natoms)
-                    self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
-                    self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
-                    self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
-                    self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
-                    self.volatom = volatom
-                    self.vol = self.lx*self.ly*self.lz
-                    self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
-                    self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
-                    #now run for msd
-                    converged = True
-                    break
-                lastmean = mean
-            lmp.command("unfix            1")
-            lmp.command("unfix            2")
+                self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
+                self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
+                self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
+                self.volatom = volatom
+                self.vol = self.lx*self.ly*self.lz
+                self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
+                self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
+                #now run for msd
+                converged = True
+                break
+            lastmean = mean
+        lmp.command("unfix            1")
+        lmp.command("unfix            2")
 
         if not converged:
             lmp.close()
             raise ValueError("pressure did not converge")
 
-        #start MSD calculation routine
-        #there two possibilities here - if spring constants are provided, use it. If not, calculate it
 
+    def run_spring_constant_convergence(self, lmp):
+        """
+        """
         lmp.command("fix              3 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping))
         
         #apply fix
@@ -314,16 +407,75 @@ class Solid(cph.Phase):
             self.logger.info("Used user input sprint constants")
             self.logger.info(self.k)
 
-        #check for melting
-        lmp.command("dump              2 all custom 1 traj.equilibration_stage2.dat id type mass x y z vx vy vz")
-        lmp.command("run               0")
-        lmp.command("undump            2")
+        lmp.command("unfix         3")
+
+    def run_averaging(self):
+        """
+        Run averaging routine
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Run averaging routine using LAMMPS. Starting from the initial lattice two different routines can
+        be followed:
+        If pressure is specified, MD simulations are run until the pressure converges within the given
+        threshold value.
+        If `fix_lattice` option is True, then the input structure is used as it is and the corresponding pressure
+        is calculated.
+        At the end of the run, the averaged box dimensions are calculated. 
+        """
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
+
+        #set up structure
+        lmp = ph.create_structure(lmp, self.calc)
+
+        #set up potential
+        if self.calc.potential_file is None:
+            lmp = ph.set_potential(lmp, self.calc)
+        else:
+            lmp.command("include %s"%self.calc.potential_file)
+
+        #add some computes
+        lmp.command("variable         mvol equal vol")
+        lmp.command("variable         mlx equal lx")
+        lmp.command("variable         mly equal ly")
+        lmp.command("variable         mlz equal lz")
+        lmp.command("variable         mpress equal press")
+
+        #Run if a constrained lattice is not needed
+        if not self.calc._fix_lattice:
+            if self.calc._pressure == 0:
+                self.run_zero_pressure_equilibration(lmp)
+            else:
+                self.run_finite_pressure_equilibration(lmp)
+
+
+            #this is when the averaging routine starts
+            self.run_pressure_convergence(lmp)
+
+            #dump snapshot and check if melted
+            self.dump_current_snapshot(lmp, "traj.equilibration_stage1.dat")
+            self.check_if_melted(lmp, "traj.equilibration_stage1.dat")
         
-        #check for solid atoms
-        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.equilibration_stage2.dat"))
-        if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
-            lmp.close()
-            raise MeltedError("System melted, increase size or reduce temp!")
+        #run if a constrained lattice is used
+        else:
+            #routine in which lattice constant will not varied, but is set to a given fixed value
+            self.run_constrained_pressure_convergence(lmp)
+
+        #start MSD calculation routine
+        #there two possibilities here - if spring constants are provided, use it. If not, calculate it
+        self.run_spring_constant_convergence(lmp)
+
+        #check for melting
+        self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
+        self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
 
         #close object and process traj
         lmp.close()
