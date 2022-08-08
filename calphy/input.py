@@ -58,6 +58,32 @@ class InputTemplate:
                 tdict[key] = val.to_dict()
         return tdict
 
+    def check_and_convert_to_list(self, data, check_none=False):
+        """
+        Check if the given item is a list, if not convert to a single item list
+        """
+        if not isinstance(data, list):
+            data = [data]
+
+        if check_none:
+            data = [None if x=="None" else x for x in data]
+
+        return data
+    
+    @staticmethod
+    def convert_to_list(data, check_none=False):
+        """
+        Check if the given item is a list, if not convert to a single item list
+        """
+        if not isinstance(data, list):
+            data = [data]
+
+        if check_none:
+            data = [None if x=="None" else x for x in data]
+
+        return data
+
+
 class MdOptions(InputTemplate):
     def __init__(self):
         super(InputTemplate, self).__init__()
@@ -66,11 +92,9 @@ class MdOptions(InputTemplate):
         self.n_every_steps = 10
         self.n_repeat_steps = 10
         self.n_cycles = 100
-        self.thermostat_damping = 0.1
-        self.barostat_damping = 0.1
+        self._thermostat_damping = [100.0, 0.1]
+        self._barostat_damping = [100.0, 0.1]
         self._equilibration_control = "berendsen"
-        self.equilibration_thermostat_damping = 100.0
-        self.equilibration_barostat_damping = 100.0
 
     @property
     def equilibration_control(self):
@@ -81,6 +105,37 @@ class MdOptions(InputTemplate):
         if val not in ["berendsen", "nose-hoover"]:
             raise ValueError("Equilibration control should be either berendsen or nose-hoover")
         self._equilibration_control = val
+
+    @property
+    def thermostat_damping(self):
+        return self._thermostat_damping
+
+    @thermostat_damping.setter
+    def thermostat_damping(self, val):
+        val = self.check_and_convert_to_list(val)
+        if len(val)==1:
+            self._thermostat_damping[0] = val[0]
+        elif len(val)==2:
+            self._thermostat_damping[0] = val[0]
+            self._thermostat_damping[1] = val[1]
+        else:
+            raise ValueError("Thermostat damping should be of length 1 or 2 or scalar")
+
+    @property
+    def barostat_damping(self):
+        return self._barostat_damping
+
+    @barostat_damping.setter
+    def barostat_damping(self, val):
+        val = self.check_and_convert_to_list(val)
+        if len(val)==1:
+            self._barostat_damping[0] = val[0]
+        elif len(val)==2:
+            self._barostat_damping[0] = val[0]
+            self._barostat_damping[1] = val[1]
+        else:
+            raise ValueError("Barostat damping should be of length 1 or 2 or scalar")
+
 
 class Calculation(InputTemplate):
     def __init__(self):
@@ -447,31 +502,6 @@ class Calculation(InputTemplate):
     def spring_constants(self, val):
         val = self.check_and_convert_to_list(val, check_none=True)
         self._spring_constants = val
-    
-    def check_and_convert_to_list(self, data, check_none=False):
-        """
-        Check if the given item is a list, if not convert to a single item list
-        """
-        if not isinstance(data, list):
-            data = [data]
-
-        if check_none:
-            data = [None if x=="None" else x for x in data]
-
-        return data
-    
-    @staticmethod
-    def convert_to_list(data, check_none=False):
-        """
-        Check if the given item is a list, if not convert to a single item list
-        """
-        if not isinstance(data, list):
-            data = [data]
-
-        if check_none:
-            data = [None if x=="None" else x for x in data]
-
-        return data
 
     def fix_paths(self, potlist): 
         """

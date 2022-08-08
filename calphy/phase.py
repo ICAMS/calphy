@@ -71,16 +71,23 @@ class Phase:
 
         #now adjust the equlbrm routine
         self.logger.info("Equilibration stage is done using %s barostat/thermostat"%self.calc.md.equilibration_control)
+        self.logger.info("Thermostat damping is %f"%(self.calc.md.thermostat_damping[0]))
+        self.logger.info("Barostat damping is %f"%(self.calc.md.barostat_damping[0]))
+
         if self.calc.md.equilibration_control == "nose-hoover":
-            if self.calc.md.equilibration_thermostat_damping > 10.0:
+            if self.calc.md.thermostat_damping[0] > 10.0:
                 self.logger.warning("Equil. Nose-Hoover thermostat damping is high!")
-            if self.calc.md.equilibration_barostat_damping > 10.0:
+            if self.calc.md.barostat_damping[0] > 10.0:
                 self.logger.warning("Equil. Nose-Hoover barostat damping is high!")
         else:
-            if self.calc.md.equilibration_thermostat_damping < 1.0:
+            if self.calc.md.thermostat_damping[0] < 1.0:
                 self.logger.warning("Equil. Berendsen thermostat damping is low!")
-            if self.calc.md.equilibration_barostat_damping < 1.0:
+            if self.calc.md.barostat_damping[0] < 1.0:
                 self.logger.warning("Equil. Berendsen barostat damping is high!")
+
+        self.logger.info("Integration stage is done using Nose-Hoover thermostat and barostat when needed")
+        self.logger.info("Thermostat damping is %f"%(self.calc.md.thermostat_damping[1]))
+        self.logger.info("Barostat damping is %f"%(self.calc.md.barostat_damping[1]))
 
         self.l = None
         self.alat = None
@@ -164,6 +171,83 @@ class Phase:
         self.logger.info("%d atoms in the unit cell"%self.apc)
         self.logger.info("concentration:")
         self.logger.info(self.concentration)
+
+    def dump_current_snapshot(self, lmp, filename):
+        """
+        """
+        lmp.command("dump              2 all custom 1 %s id type mass x y z vx vy vz"%(filename))
+        lmp.command("run               0")
+        lmp.command("undump            2")
+
+    def check_if_melted(self, lmp, filename):
+        """
+        """
+        solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
+        if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
+            lmp.close()
+            raise MeltedError("System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting conv:\n solid_frac: 0")
+
+    def fix_nose_hoover(self, lmp, temp_start_factor=1.0, temp_end_factor=1.0, press_start_factor=1.0, press_end_factor=1.0, stage=0):
+        """
+        Fix Nose-Hoover thermostat and barostat
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(temp_start_factor*self.calc._temperature, 
+                        temp_end_factor*self.calc._temperature, self.calc.md.thermostat_damping[stage], 
+                        self.iso, press_start_factor*self.calc._pressure, press_end_factor*self.calc._pressure, self.calc.md.barostat_damping[stage]))
+
+    def fix_berendsen(self, lmp, temp_start_factor=1.0, temp_end_factor=1.0, press_start_factor=1.0, press_end_factor=1.0, stage=0):
+        """
+        Fix Nose-Hoover thermostat and barostat
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        lmp.command("fix              1a all nve")
+        lmp.command("fix              1b all temp/berendsen %f %f %f"%(temp_start_factor*self.calc._temperature, temp_end_factor*self.calc._temperature, self.calc.md.thermostat_damping[stage]))
+        lmp.command("fix              1c all press/berendsen %s %f %f %f"%(self.iso, press_start_factor*self.calc._pressure, press_end_factor*self.calc._pressure, self.calc.md.barostat_damping[stage]))
+
+    def unfix_nose_hoover(self, lmp):
+        """
+        Fix Nose-Hoover thermostat and barostat
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        lmp.command("unfix            1")
+
+    def unfix_berendsen(self, lmp):
+        """
+        Fix Nose-Hoover thermostat and barostat
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        lmp.command("unfix            1a")
+        lmp.command("unfix            1b")
+        lmp.command("unfix            1c")        
 
 
     def process_traj(self, filename, outfilename):
@@ -291,10 +375,10 @@ class Phase:
 
         #set thermostat and run equilibrium
         if self.calc._npt:
-            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping, 
-                self.iso, pi, pi, self.calc.md.barostat_damping))
+            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping[1], 
+                self.iso, pi, pi, self.calc.md.barostat_damping[1]))
         else:
-            lmp.command("fix               f1 all nvt temp %f %f %f"%(t0, t0, self.calc.md.thermostat_damping))
+            lmp.command("fix               f1 all nvt temp %f %f %f"%(t0, t0, self.calc.md.thermostat_damping[1]))
 
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
         lmp.command("unfix             f1")
@@ -305,10 +389,10 @@ class Phase:
         lmp.command("variable         zcm equal xcm(all,z)")
 
         if self.calc._npt:
-            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(t0, t0, self.calc.md.thermostat_damping, 
-                self.iso, pi, pi, self.calc.md.barostat_damping))
+            lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(t0, t0, self.calc.md.thermostat_damping[1], 
+                self.iso, pi, pi, self.calc.md.barostat_damping[1]))
         else:
-            lmp.command("fix               f1 all nvt temp %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(t0, t0, self.calc.md.thermostat_damping))
+            lmp.command("fix               f1 all nvt temp %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(t0, t0, self.calc.md.thermostat_damping[1]))
 
         #compute com and modify fix
         lmp.command("compute           tcm all temp/com")
@@ -475,8 +559,8 @@ class Phase:
 
 
         #equilibrate first
-        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping,
-                                        self.iso, p0, p0, self.calc.md.barostat_damping))
+        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping[1],
+                                        self.iso, p0, p0, self.calc.md.barostat_damping[1]))
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
         lmp.command("unfix             1")
 
@@ -486,16 +570,16 @@ class Phase:
         lmp.command("variable          dU      equal pe/atoms")
         lmp.command("variable          lambda equal ramp(${li},${lf})")
 
-        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, tf, self.calc.md.thermostat_damping,
-                                        self.iso, p0, pf, self.calc.md.barostat_damping))
+        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, tf, self.calc.md.thermostat_damping[1],
+                                        self.iso, p0, pf, self.calc.md.barostat_damping[1]))
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
         lmp.command("run               %d"%self.calc._n_sweep_steps)
 
         lmp.command("unfix             f2")
         lmp.command("unfix             f3")
 
-        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(tf, tf, self.calc.md.thermostat_damping,
-                                        self.iso, pf, pf, self.calc.md.barostat_damping))
+        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(tf, tf, self.calc.md.thermostat_damping[1],
+                                        self.iso, pf, pf, self.calc.md.barostat_damping[1]))
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
         lmp.command("unfix             1")
 
@@ -517,8 +601,8 @@ class Phase:
         #start reverse loop
         lmp.command("variable          lambda equal ramp(${lf},${li})")
 
-        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(tf, t0, self.calc.md.thermostat_damping,
-                                        self.iso, pf, p0, self.calc.md.barostat_damping))
+        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(tf, t0, self.calc.md.thermostat_damping[1],
+                                        self.iso, pf, p0, self.calc.md.barostat_damping[1]))
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run               %d"%self.calc._n_sweep_steps)
 
@@ -564,8 +648,8 @@ class Phase:
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         #equilibrate first
-        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping,
-                                        self.iso, p0, p0, self.calc.md.barostat_damping))
+        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping[1],
+                                        self.iso, p0, p0, self.calc.md.barostat_damping[1]))
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
         lmp.command("unfix             1")
 
@@ -576,8 +660,8 @@ class Phase:
         lmp.command("variable          lambda equal ramp(${li},${lf})")
         lmp.command("variable          pp equal ramp(${p0},${pf})")
 
-        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping,
-                                        self.iso, p0, pf, self.calc.md.barostat_damping))
+        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping[1],
+                                        self.iso, p0, pf, self.calc.md.barostat_damping[1]))
         lmp.command("fix               f3 all print 1 \"${dU} ${pp} $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
         lmp.command("run               %d"%self.calc._n_sweep_steps)
 
@@ -585,8 +669,8 @@ class Phase:
         lmp.command("unfix             f3")
 
 
-        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping,
-                                        self.iso, pf, pf, self.calc.md.barostat_damping))
+        lmp.command("fix               1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping[1],
+                                        self.iso, pf, pf, self.calc.md.barostat_damping[1]))
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
         lmp.command("unfix             1")
 
@@ -594,8 +678,8 @@ class Phase:
         lmp.command("variable          lambda equal ramp(${lf},${li})")
         lmp.command("variable          pp equal ramp(${pf},${p0})")
 
-        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping,
-                                        self.iso, pf, p0, self.calc.md.barostat_damping))
+        lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping[1],
+                                        self.iso, pf, p0, self.calc.md.barostat_damping[1]))
         lmp.command("fix               f3 all print 1 \"${dU} ${pp} $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run               %d"%self.calc._n_sweep_steps)
 

@@ -56,6 +56,41 @@ class Liquid(cph.Phase):
         super().__init__(calculation=calculation, simfolder=simfolder)
 
 
+    def melt_structure(self, lmp):
+        """
+        """        
+        melted = False
+        
+        #this is the multiplier for thigh to try melting routines
+        for thmult in np.arange(1.0, 2.0, 0.1):
+            
+            trajfile = os.path.join(self.simfolder, "traj.melt")
+            if os.path.exists(trajfile):
+                os.remove(trajfile)
+
+            self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.calc._temperature_high, thmult))
+
+            self.fix_nose_hoover(lmp, temp_start_factor=thmult, temp_end_factor=thmult)
+            lmp.fix("1 all npt temp", self.calc._temperature_high*thmult, self.calc._temperature_high*thmult, 
+                self.calc.md.thermostat_damping, 
+                "iso", self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping)
+            lmp.run(int(self.calc.md.n_small_steps))
+            lmp.unfix(1)
+            lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
+            lmp.run(0)
+            lmp.undump(2)
+            
+            #we have to check if the structure melted
+            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.melt"))
+            self.logger.info("fraction of solids found: %f", solids/self.natoms)
+            if (solids/self.natoms < self.calc.tolerance.liquid_fraction):
+                melted = True
+                break
+        
+        #if melting cycle is over and still not melted, raise error
+        if not melted:
+            lmp.close()
+            raise SolidifiedError("Liquid system did not melt, maybe try a higher thigh temperature.")
 
 
     def run_averaging(self):
@@ -99,40 +134,8 @@ class Liquid(cph.Phase):
         lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press") 
 
-        #melting cycle
-        #try with different multiples of thmult until the structure melts.
-        #TODO : Add option to skip melting cycle
-        
-        melted = False
-        
-        #this is the multiplier for thigh to try melting routines
-        for thmult in np.arange(1.0, 2.0, 0.1):
-            
-            trajfile = os.path.join(self.simfolder, "traj.melt")
-            if os.path.exists(trajfile):
-                os.remove(trajfile)
+        #MELT
 
-            self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.calc._temperature_high, thmult))
-            lmp.fix("1 all npt temp", self.calc._temperature_high*thmult, self.calc._temperature_high*thmult, 
-                self.calc.md.thermostat_damping, 
-                "iso", self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping)
-            lmp.run(int(self.calc.md.n_small_steps))
-            lmp.unfix(1)
-            lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
-            lmp.run(0)
-            lmp.undump(2)
-            
-            #we have to check if the structure melted
-            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.melt"))
-            self.logger.info("fraction of solids found: %f", solids/self.natoms)
-            if (solids/self.natoms < self.calc.tolerance.liquid_fraction):
-                melted = True
-                break
-        
-        #if melting cycle is over and still not melted, raise error
-        if not melted:
-            lmp.close()
-            raise SolidifiedError("Liquid system did not melt, maybe try a higher thigh temperature.")
 
         #now assign correct temperature and equilibrate
         lmp.velocity("all create", self.calc._temperature, np.random.randint(0, 10000))
