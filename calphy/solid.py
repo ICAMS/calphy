@@ -24,6 +24,7 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 import numpy as np
 import yaml
 import copy
+import sys
 
 import pyscal.traj_process as ptp
 from calphy.integrators import *

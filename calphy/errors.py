@@ -33,3 +33,4 @@ class MeltedError(CustomError):
 
 class SolidifiedError(CustomError):
     pass
+    
