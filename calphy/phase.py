@@ -187,7 +187,17 @@ class Phase:
             lmp.close()
             raise MeltedError("System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting conv:\n solid_frac: 0")
 
-    def fix_nose_hoover(self, lmp, temp_start_factor=1.0, temp_end_factor=1.0, press_start_factor=1.0, press_end_factor=1.0, stage=0):
+    def check_if_solidfied(self, lmp, filename):
+        """
+        """
+        solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
+        if (solids/lmp.natoms > self.calc.tolerance.liquid_fraction):
+            lmp.close()
+            raise SolidifiedError('System solidified, increase temperature')
+
+    def fix_nose_hoover(self, lmp, temp_start_factor=1.0, temp_end_factor=1.0, 
+        press_start_factor=1.0, press_end_factor=1.0, 
+        stage=0, ensemble="npt"):
         """
         Fix Nose-Hoover thermostat and barostat
 
@@ -199,11 +209,14 @@ class Phase:
         -------
         None
         """
-        lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(temp_start_factor*self.calc._temperature, 
+        lmp.command("fix              nh1 all npt temp %f %f %f %s %f %f %f"%(temp_start_factor*self.calc._temperature, 
                         temp_end_factor*self.calc._temperature, self.calc.md.thermostat_damping[stage], 
                         self.iso, press_start_factor*self.calc._pressure, press_end_factor*self.calc._pressure, self.calc.md.barostat_damping[stage]))
 
-    def fix_berendsen(self, lmp, temp_start_factor=1.0, temp_end_factor=1.0, press_start_factor=1.0, press_end_factor=1.0, stage=0):
+
+    def fix_berendsen(self, lmp, temp_start_factor=1.0, temp_end_factor=1.0, 
+        press_start_factor=1.0, press_end_factor=1.0, 
+        stage=0, ensemble="npt"):
         """
         Fix Nose-Hoover thermostat and barostat
 
@@ -215,9 +228,9 @@ class Phase:
         -------
         None
         """
-        lmp.command("fix              1a all nve")
-        lmp.command("fix              1b all temp/berendsen %f %f %f"%(temp_start_factor*self.calc._temperature, temp_end_factor*self.calc._temperature, self.calc.md.thermostat_damping[stage]))
-        lmp.command("fix              1c all press/berendsen %s %f %f %f"%(self.iso, press_start_factor*self.calc._pressure, press_end_factor*self.calc._pressure, self.calc.md.barostat_damping[stage]))
+        lmp.command("fix              b1a all nve")
+        lmp.command("fix              b1b all temp/berendsen %f %f %f"%(temp_start_factor*self.calc._temperature, temp_end_factor*self.calc._temperature, self.calc.md.thermostat_damping[stage]))
+        lmp.command("fix              b1c all press/berendsen %s %f %f %f"%(self.iso, press_start_factor*self.calc._pressure, press_end_factor*self.calc._pressure, self.calc.md.barostat_damping[stage]))
 
     def unfix_nose_hoover(self, lmp):
         """
@@ -231,7 +244,7 @@ class Phase:
         -------
         None
         """
-        lmp.command("unfix            1")
+        lmp.command("unfix            nh1")
 
     def unfix_berendsen(self, lmp):
         """
@@ -245,9 +258,9 @@ class Phase:
         -------
         None
         """
-        lmp.command("unfix            1a")
-        lmp.command("unfix            1b")
-        lmp.command("unfix            1c")        
+        lmp.command("unfix            b1a")
+        lmp.command("unfix            b1b")
+        lmp.command("unfix            b1c")        
 
 
     def process_traj(self, filename, outfilename):
@@ -444,20 +457,11 @@ class Phase:
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
 
         #check melting or freezing
-        lmp.command("dump              2 all custom 1 traj.temp.dat id type mass x y z vx vy vz")
-        lmp.command("run               0")
-        lmp.command("undump            2")
-        
-        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.temp.dat"))
+        self.dump_current_snapshot(lmp, "traj.temp.dat")
         if solid:
-            if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
-                lmp.close()
-                raise MeltedError("System melted, increase size or reduce scaling!")
+            self.check_if_melted(lmp, "traj.temp.dat")
         else:
-            if (solids/lmp.natoms > self.calc.tolerance.liquid_fraction):
-                lmp.close()
-                raise SolidifiedError('System solidified, increase temperature')
-
+            self.check_if_solidfied(lmp, "traj.temp.dat")
 
         #reverse scaling
         lmp.command("variable         flambda equal ramp(${li},${lf})")
@@ -588,15 +592,11 @@ class Phase:
         lmp.command("run               0")
         lmp.command("undump            2")
         
-        solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.temp.dat"))
+        self.dump_current_snapshot(lmp, "traj.temp.dat")
         if solid:
-            if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
-                lmp.close()
-                raise MeltedError("System melted, increase size or reduce scaling!")
+            self.check_if_melted(lmp, "traj.temp.dat")
         else:
-            if (solids/lmp.natoms > self.calc.tolerance.liquid_fraction):
-                lmp.close()
-                raise SolidifiedError('System solidified, increase temperature')
+            self.check_if_solidfied(lmp, "traj.temp.dat")
 
         #start reverse loop
         lmp.command("variable          lambda equal ramp(${lf},${li})")
