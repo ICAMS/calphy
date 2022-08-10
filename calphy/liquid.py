@@ -71,15 +71,11 @@ class Liquid(cph.Phase):
             self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.calc._temperature_high, thmult))
 
             self.fix_nose_hoover(lmp, temp_start_factor=thmult, temp_end_factor=thmult)
-            lmp.fix("1 all npt temp", self.calc._temperature_high*thmult, self.calc._temperature_high*thmult, 
-                self.calc.md.thermostat_damping, 
-                "iso", self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping)
             lmp.run(int(self.calc.md.n_small_steps))
-            lmp.unfix(1)
-            lmp.dump("2 all custom", 1, trajfile,"id type mass x y z vx vy vz")
-            lmp.run(0)
-            lmp.undump(2)
+            self.unfix_nose_hoover(lmp)
             
+            self.dump_current_snapshot(lmp, "traj.melt")
+
             #we have to check if the structure melted
             solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.melt"))
             self.logger.info("fraction of solids found: %f", solids/self.natoms)
@@ -91,7 +87,6 @@ class Liquid(cph.Phase):
         if not melted:
             lmp.close()
             raise SolidifiedError("Liquid system did not melt, maybe try a higher thigh temperature.")
-
 
     def run_averaging(self):
         """
@@ -135,71 +130,19 @@ class Liquid(cph.Phase):
         lmp.command("variable         mpress equal press") 
 
         #MELT
-
+        self.melt_structure(lmp)
 
         #now assign correct temperature and equilibrate
-        lmp.velocity("all create", self.calc._temperature, np.random.randint(0, 10000))
-        lmp.fix("1 all npt temp", self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
-                                      "iso", self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping)
-        lmp.run(int(self.calc.md.n_small_steps)) 
+        self.run_zero_pressure_equilibration(lmp)
+
+        #converge pressure
+        self.run_pressure_convergence(lmp)
+
+        #check melted error
+        self.dump_current_snapshot(lmp, "traj.equilibration_stage1.dat")
+        self.check_if_solidfied(lmp, "traj.equilibration_stage1.dat")
+        self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
         
-        #start recording average values
-        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
-            int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
-
-        #monitor the average values until calculation is converged
-        laststd = 0.00
-        converged = False
-
-        for i in range(self.calc.md.n_cycles):
-            lmp.command("run              %d"%int(self.calc.md.n_small_steps))
-            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
-            #now we can check if it converted
-            file = os.path.join(self.simfolder, "avg.dat")
-            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1,2,3,4), unpack=True)
-
-            lxpc = ipress
-            mean = np.mean(lxpc)
-            std = np.std(lxpc)
-            volatom = np.mean((lx*ly*lz)/self.natoms)            
-            self.logger.info("At count %d mean pressure is %f with vol/atom %f"%(i+1, mean, volatom))
-
-            lmp.command("dump              2 all custom 1 traj.equilibration_stage1.dat id type mass x y z")
-            lmp.command("run               0")
-            lmp.command("undump            2")
-            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.equilibration_stage1.dat"))
-            self.logger.info("fraction of solids found: %f", solids/self.natoms)
-            if (solids/self.natoms > self.calc.tolerance.liquid_fraction):
-                lmp.close()
-                raise SolidifiedError('System solidified, increase temperature')
-
-
-            #check melting;
-            if (np.abs(mean - self.calc._pressure)) < self.calc.tolerance.pressure:
-                #process other means
-                self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
-                self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
-                self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
-                self.volatom = volatom
-                self.vol = self.lx*self.ly*self.lz
-                self.rho = self.natoms/(self.lx*self.ly*self.lz)
-
-                self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
-                self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
-                converged = True
-                break
-            
-            laststd = std
-
-        if not converged:
-            lmp.close()
-            raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
-
-        lmp.command("dump              2 all custom 1 traj.equilibration_stage2.dat id type mass x y z vx vy vz")
-        lmp.command("run               0")
-        lmp.command("undump            2")
-
-        #finish run and close object
         lmp.close()
 
         #process the trajectory
