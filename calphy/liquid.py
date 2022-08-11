@@ -189,7 +189,7 @@ class Liquid(cph.Phase):
 
         
         lmp.command("fix              f1 all nve")
-        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1], 
                                         np.random.randint(0, 10000)))
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
 
@@ -226,7 +226,7 @@ class Liquid(cph.Phase):
         lmp.command("velocity         all create %f %d mom yes rot yes dist gaussian"%(self.calc._temperature, np.random.randint(0, 10000)))
 
         lmp.command("fix              f1 all nve")
-        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1], 
                                         np.random.randint(0, 10000)))
         lmp.command("compute          Tcm all temp/com")
         lmp.command("fix_modify       f2 temp Tcm")
@@ -251,7 +251,7 @@ class Liquid(cph.Phase):
         lmp.command("thermo           1000")
 
         lmp.command("fix              f1 all nve")
-        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1], 
                                         np.random.randint(0, 10000)))
         lmp.command("fix_modify       f2 temp Tcm")
 
@@ -283,7 +283,7 @@ class Liquid(cph.Phase):
         lmp.command("thermo           1000")
 
         lmp.command("fix              f1 all nve")
-        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
+        lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1], 
                                         np.random.randint(0, 10000)))
         lmp.command("fix_modify       f2 temp Tcm")
 
