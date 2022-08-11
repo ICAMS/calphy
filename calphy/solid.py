@@ -59,7 +59,7 @@ class Solid(cph.Phase):
     def run_spring_constant_convergence(self, lmp):
         """
         """
-        lmp.command("fix              3 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping))
+        lmp.command("fix              3 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1]))
         
         #apply fix
         lmp = ph.compute_msd(lmp, self.calc)
