@@ -12,7 +12,7 @@ The inputfile is `yaml` formatted. In this section the possible keys in the inpu
 | [mode](#mode) | [lattice](#lattice) | [reference_phase](#reference_phase) | [temperature](#temperature) | [pressure](#pressure) |
 | [temperature_high](#temperature_high) | [lattice_constant](#lattice_constant) | [repeat](#repeat) | [n_iterations](#n_iterations) | [n_switching_steps](#n_switching_steps) | 
 | [n_equilibration_steps](#n_equilibration_steps) | [pair_style](#pair_style) | [pair_coeff](#pair_coeff) | [n_print_steps](#n_print_steps) | [potential_file](#potential_file) |  
-| [spring_constants](#spring_constants) | | | | |   
+| [spring_constants](#spring_constants) | [equilibration_control](#equilibration_control) | [melting_cycle](#melting_cycle) | | |   
 
 | `md` block  | | | | |
 | :-: | :-: | :-: | :-: | :-: |
@@ -31,6 +31,15 @@ The inputfile is `yaml` formatted. In this section the possible keys in the inpu
 | `melting_temperature` block | | | | |
 | :-: | :-: | :-: | :-: | :-: |
 | [step](#step) | [attempts](#attempts) |
+
+| `nose_hoover` block | | | | |
+| :-: | :-: | :-: | :-: | :-: |
+| [thermostat_damping](#nose_hoover_thermostat_damping) | [barostat_damping](#nose_hoover_barostat_damping) |
+
+| `berendsen` block | | | | |
+| :-: | :-: | :-: | :-: | :-: |
+| [thermostat_damping](#berendsen_thermostat_damping) | [barostat_damping](#berendsen_barostat_damping) |
+
 
 ---
 ---
@@ -348,6 +357,34 @@ Spring constants for Einstein crystal. If specified, the automatic calculation i
 
 
 ---
+
+#### <a name="equilibration_control"></a>`equilibration_control`        
+
+_type_: str  
+_default_: None   
+_example_:
+```
+equilibration_control: berendsen
+equilibration_control: nose-hoover
+```
+
+The barostat and thermostat combination to be used for the equilibration stage. By default, Berendsen will be used for solid reference and Nose-Hoover will be used for liquid. The damping parameters can be tuned using the [nose_hoover](#nose_hoover) block or the [berendsen](#berendsen) block. Used only for equilibration stage.
+
+---
+
+#### <a name="melting_cycle"></a>`melting_cycle`        
+
+_type_: bool    
+_default_: True     
+_example_:
+```
+melting_cycle: True
+melting_cycle: False
+```
+
+If True, a melting cycle is carried out to melt the given input structure. Only used if the `reference_phase` is `"liquid"`.
+
+---
 ---
 
 ## `md` block
@@ -385,7 +422,7 @@ _example_:
 thermostat_damping: 0.1
 ```
 
-The thermostat damping constant for MD. 
+The thermostat damping constant for MD. For damping during equilibration stage see [`equilibration_control`](#equilibration_control).
 
 ---
 
@@ -398,7 +435,7 @@ _example_:
 barostat_damping: 0.1
 ```
 
-Pressure damping for MD. 
+Pressure damping for MD. For damping during equilibration stage see [`equilibration_control`](#equilibration_control).
 
 ---
 
@@ -692,5 +729,81 @@ attempts: 5
 The number of maximum attempts to try find the melting temperature in a automated manner. Only used if mode is `melting_temperature`.
 
 ---
+---
 
 
+## <a name="nose_hoover"></a>`nose_hoover` block
+
+This block contains keywords that are used only for the equilibration stage if [`equilibration_control`](#equilibration_control) is `nose_hoover`.
+
+```
+nose_hoover:
+   thermostat_damping: 0.1
+   barostat_damping: 0.1
+```
+
+---
+
+#### <a name="nose_hoover_thermostat_damping"></a>`thermostat_damping`
+
+_type_: float   
+_default_: 0.1   
+_example_:
+```
+thermostat_damping: 0.1
+```
+
+The thermostat damping constant for equilibration MD. 
+
+---
+
+#### <a name="nose_hoover_barostat_damping"></a>`barostat_damping`
+
+_type_: float  
+_default_: 0.1  
+_example_:
+```
+barostat_damping: 0.1
+```
+
+Pressure damping for equilibration MD. 
+
+---
+
+## <a name="berendsen"></a>`berendsen` block
+
+This block contains keywords that are used only for the equilibration stage if [`equilibration_control`](#equilibration_control) is `berendsen`.
+
+```
+berendsen:
+   thermostat_damping: 100.0
+   barostat_damping: 100.0
+```
+
+---
+
+#### <a name="berendsen_thermostat_damping"></a>`thermostat_damping`
+
+_type_: float   
+_default_: 100.0     
+_example_:
+```
+thermostat_damping: 100.0 
+```
+
+The thermostat damping constant for equilibration MD. 
+
+---
+
+#### <a name="berendsen_barostat_damping"></a>`barostat_damping`
+
+_type_: float  
+_default_: 100.0  
+_example_:
+```
+barostat_damping: 100.0  
+```
+
+Pressure damping for equilibration MD. 
+
+---

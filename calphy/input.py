@@ -57,7 +57,32 @@ class InputTemplate:
             if isinstance(val, InputTemplate):
                 tdict[key] = val.to_dict()
         return tdict
-                    
+
+    def check_and_convert_to_list(self, data, check_none=False):
+        """
+        Check if the given item is a list, if not convert to a single item list
+        """
+        if not isinstance(data, list):
+            data = [data]
+
+        if check_none:
+            data = [None if x=="None" else x for x in data]
+
+        return data
+    
+    @staticmethod
+    def convert_to_list(data, check_none=False):
+        """
+        Check if the given item is a list, if not convert to a single item list
+        """
+        if not isinstance(data, list):
+            data = [data]
+
+        if check_none:
+            data = [None if x=="None" else x for x in data]
+
+        return data
+
 class Calculation(InputTemplate):
     def __init__(self):
         super(InputTemplate, self).__init__()
@@ -75,6 +100,7 @@ class Calculation(InputTemplate):
         self._temperature_input = None
         self._iso = False
         self._fix_lattice = False
+        self._melting_cycle = True
         self._pair_style = None
         self._pair_coeff = None
         self._potential_file = None
@@ -88,6 +114,7 @@ class Calculation(InputTemplate):
         self._n_sweep_steps = 50000
         self._n_print_steps = 0
         self._n_iterations = 1
+        self._equilibration_control = None
 
         #add second level options; for example spring constants
         self._spring_constants = None
@@ -100,6 +127,14 @@ class Calculation(InputTemplate):
         self.md.n_cycles = 100
         self.md.thermostat_damping = 0.1
         self.md.barostat_damping = 0.1
+
+        self.nose_hoover = InputTemplate()
+        self.nose_hoover.thermostat_damping = 0.1
+        self.nose_hoover.barostat_damping = 0.1
+
+        self.berendsen = InputTemplate()
+        self.berendsen.thermostat_damping = 100.0
+        self.berendsen.barostat_damping = 100.0
 
         self.queue = InputTemplate()
         self.queue.scheduler = "local"
@@ -423,6 +458,27 @@ class Calculation(InputTemplate):
         self._n_iterations = val
 
     @property
+    def equilibration_control(self):
+        return self._equilibration_control
+
+    @equilibration_control.setter
+    def equilibration_control(self, val):
+        if val not in ["berendsen", "nose-hoover"]:
+            raise ValueError("Equilibration control should be either berendsen or nose-hoover")
+        self._equilibration_control = val
+
+    @property
+    def melting_cycle(self):
+        return self._melting_cycle
+    
+    @melting_cycle.setter
+    def melting_cycle(self, val):
+        if isinstance(val, bool):
+            self._melting_cycle = val
+        else:
+            raise TypeError("Melting cycle should be either True/False")
+
+    @property
     def spring_constants(self):
         return self._spring_constants
 
@@ -430,31 +486,6 @@ class Calculation(InputTemplate):
     def spring_constants(self, val):
         val = self.check_and_convert_to_list(val, check_none=True)
         self._spring_constants = val
-    
-    def check_and_convert_to_list(self, data, check_none=False):
-        """
-        Check if the given item is a list, if not convert to a single item list
-        """
-        if not isinstance(data, list):
-            data = [data]
-
-        if check_none:
-            data = [None if x=="None" else x for x in data]
-
-        return data
-    
-    @staticmethod
-    def convert_to_list(data, check_none=False):
-        """
-        Check if the given item is a list, if not convert to a single item list
-        """
-        if not isinstance(data, list):
-            data = [data]
-
-        if check_none:
-            data = [None if x=="None" else x for x in data]
-
-        return data
 
     def fix_paths(self, potlist): 
         """
@@ -554,6 +585,10 @@ class Calculation(InputTemplate):
                 calc.tolerance.add_from_dict(indata["tolerance"])
             if "melting_temperature" in indata.keys():
                 calc.melting_temperature.add_from_dict(indata["melting_temperature"])
+            if "nose_hoover" in indata.keys():
+                calc.nose_hoover.add_from_dict(indata["nose_hoover"])
+            if "berendsen" in indata.keys():
+                calc.berendsen.add_from_dict(indata["berendsen"])
             return calc
         else:
             raise FileNotFoundError('%s input file not found'% indata)
@@ -589,7 +624,7 @@ def read_inputfile(file):
         if mode == "melting_temperature":
             calc = Calculation.generate(indata)
             calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
-                                "n_switching_steps", "n_print_steps", "n_iterations", "spring_constants"])
+                                "n_switching_steps", "n_print_steps", "n_iterations", "spring_constants", "equilibration_control"])
             calc.pressure = Calculation.convert_to_list(ci["pressure"], check_none=True) if "pressure" in ci.keys() else 0
             calc.temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else None
             calc.lattice = Calculation.convert_to_list(ci["lattice"]) if "lattice" in ci.keys() else None
@@ -624,7 +659,8 @@ def read_inputfile(file):
             for combo in combos:
                 calc = Calculation.generate(indata)
                 calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
-                                "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants"])
+                                "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
+                                "melting_cycle", "equilibration_control"])
                 calc.lattice = combo[0]["lattice"]
                 calc.lattice_constant = combo[0]["lattice_constant"]
                 calc.reference_phase = combo[0]["reference_phase"]
