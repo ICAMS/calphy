@@ -13,13 +13,11 @@ def test_solid_averaging_nose_hoover():
 
 def test_solid_averaging_berendsen_finite_pressure(): 
     calculations = read_inputfile(os.path.join(os.getcwd(), "tests/inp2.yaml"))                                     
-    sol = Solid(calculation=calculations[0], simfolder=os.getcwd())                                                  
-    sol.run_averaging()                                                                                              
-    assert os.path.exists("msd.dat") == True
+    sol = Solid(calculation=calculations[0], simfolder=os.getcwd())
+    assert sol.calc.equilibration_control == "berendsen"                                                  
 
 def test_solid_averaging_nose_hoover_finite_pressure(): 
     calculations = read_inputfile(os.path.join(os.getcwd(), "tests/inp3.yaml"))                                     
-    sol = Solid(calculation=calculations[0], simfolder=os.getcwd())                                                  
-    sol.run_averaging()                                                                                              
-    assert os.path.exists("msd.dat") == True 
+    sol = Liquid(calculation=calculations[0], simfolder=os.getcwd())
+    assert sol.calc.equilibration_control == "nose-hoover"                                                  
 
