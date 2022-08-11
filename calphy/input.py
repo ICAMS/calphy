@@ -586,9 +586,9 @@ class Calculation(InputTemplate):
             if "melting_temperature" in indata.keys():
                 calc.melting_temperature.add_from_dict(indata["melting_temperature"])
             if "nose_hoover" in indata.keys():
-                calc.md.add_from_dict(indata["nose_hoover"])
+                calc.nose_hoover.add_from_dict(indata["nose_hoover"])
             if "berendsen" in indata.keys():
-                calc.md.add_from_dict(indata["berendsen"])
+                calc.berendsen.add_from_dict(indata["berendsen"])
             return calc
         else:
             raise FileNotFoundError('%s input file not found'% indata)
