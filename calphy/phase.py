@@ -73,7 +73,7 @@ class Phase:
         self.logger.info("Reference phase is %s"%self.calc.reference_phase)
         if self.calc.reference_phase == 'liquid':
             if self.calc.melting_cycle:
-                self.logger.info("Melting cycle will run")
+                self.logger.info("Melting cycle will run, this can be turned off using the keyword melting_cycle")
             else:
                 self.logger.info("Melting cycle is turned off")
 
