@@ -83,60 +83,6 @@ class InputTemplate:
 
         return data
 
-
-class MdOptions(InputTemplate):
-    def __init__(self):
-        super(InputTemplate, self).__init__()
-        self.timestep = 0.001
-        self.n_small_steps = 10000
-        self.n_every_steps = 10
-        self.n_repeat_steps = 10
-        self.n_cycles = 100
-        self._thermostat_damping = [100.0, 0.1]
-        self._barostat_damping = [100.0, 0.1]
-        self._equilibration_control = "berendsen"
-
-    @property
-    def equilibration_control(self):
-        return self._equilibration_control
-
-    @equilibration_control.setter
-    def equilibration_control(self, val):
-        if val not in ["berendsen", "nose-hoover"]:
-            raise ValueError("Equilibration control should be either berendsen or nose-hoover")
-        self._equilibration_control = val
-
-    @property
-    def thermostat_damping(self):
-        return self._thermostat_damping
-
-    @thermostat_damping.setter
-    def thermostat_damping(self, val):
-        val = self.check_and_convert_to_list(val)
-        if len(val)==1:
-            self._thermostat_damping[0] = val[0]
-        elif len(val)==2:
-            self._thermostat_damping[0] = val[0]
-            self._thermostat_damping[1] = val[1]
-        else:
-            raise ValueError("Thermostat damping should be of length 1 or 2 or scalar")
-
-    @property
-    def barostat_damping(self):
-        return self._barostat_damping
-
-    @barostat_damping.setter
-    def barostat_damping(self, val):
-        val = self.check_and_convert_to_list(val)
-        if len(val)==1:
-            self._barostat_damping[0] = val[0]
-        elif len(val)==2:
-            self._barostat_damping[0] = val[0]
-            self._barostat_damping[1] = val[1]
-        else:
-            raise ValueError("Barostat damping should be of length 1 or 2 or scalar")
-
-
 class Calculation(InputTemplate):
     def __init__(self):
         super(InputTemplate, self).__init__()
@@ -168,11 +114,27 @@ class Calculation(InputTemplate):
         self._n_sweep_steps = 50000
         self._n_print_steps = 0
         self._n_iterations = 1
+        self._equilibration_control = None
 
         #add second level options; for example spring constants
         self._spring_constants = None
         
-        self.md = MdOptions()
+        self.md = InputTemplate()
+        self.md.timestep = 0.001
+        self.md.n_small_steps = 10000
+        self.md.n_every_steps = 10
+        self.md.n_repeat_steps = 10
+        self.md.n_cycles = 100
+        self.md.thermostat_damping = 0.1
+        self.md.barostat_damping = 0.1
+
+        self.nose_hoover = InputTemplate()
+        self.nose_hoover.thermostat_damping = 0.1
+        self.nose_hoover.barostat_damping = 0.1
+
+        self.berendsen = InputTemplate()
+        self.berendsen.thermostat_damping = 100.0
+        self.berendsen.barostat_damping = 100.0
 
         self.queue = InputTemplate()
         self.queue.scheduler = "local"
@@ -496,6 +458,16 @@ class Calculation(InputTemplate):
         self._n_iterations = val
 
     @property
+    def equilibration_control(self):
+        return self._equilibration_control
+
+    @equilibration_control.setter
+    def equilibration_control(self, val):
+        if val not in ["berendsen", "nose-hoover"]:
+            raise ValueError("Equilibration control should be either berendsen or nose-hoover")
+        self._equilibration_control = val
+
+    @property
     def melting_cycle(self):
         return self._melting_cycle
     
@@ -613,6 +585,10 @@ class Calculation(InputTemplate):
                 calc.tolerance.add_from_dict(indata["tolerance"])
             if "melting_temperature" in indata.keys():
                 calc.melting_temperature.add_from_dict(indata["melting_temperature"])
+            if "nose_hoover" in indata.keys():
+                calc.md.add_from_dict(indata["nose_hoover"])
+            if "berendsen" in indata.keys():
+                calc.md.add_from_dict(indata["berendsen"])
             return calc
         else:
             raise FileNotFoundError('%s input file not found'% indata)
@@ -648,7 +624,7 @@ def read_inputfile(file):
         if mode == "melting_temperature":
             calc = Calculation.generate(indata)
             calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
-                                "n_switching_steps", "n_print_steps", "n_iterations", "spring_constants", "melting_cycle"])
+                                "n_switching_steps", "n_print_steps", "n_iterations", "spring_constants", "equilibration_control"])
             calc.pressure = Calculation.convert_to_list(ci["pressure"], check_none=True) if "pressure" in ci.keys() else 0
             calc.temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else None
             calc.lattice = Calculation.convert_to_list(ci["lattice"]) if "lattice" in ci.keys() else None
@@ -683,7 +659,8 @@ def read_inputfile(file):
             for combo in combos:
                 calc = Calculation.generate(indata)
                 calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
-                                "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants"])
+                                "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
+                                "melting_cycle", "equilibration_control"])
                 calc.lattice = combo[0]["lattice"]
                 calc.lattice_constant = combo[0]["lattice_constant"]
                 calc.reference_phase = combo[0]["reference_phase"]

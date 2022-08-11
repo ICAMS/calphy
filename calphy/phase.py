@@ -69,17 +69,49 @@ class Phase:
             self.iso = "aniso"
         self.logger.info("Pressure adjusted in %s"%self.iso)
 
-        #now adjust the equlbrm routine
-        self.logger.info("Equilibration stage is done using %s barostat/thermostat"%self.calc.md.equilibration_control)
-        self.logger.info("Thermostat damping is %f"%(self.calc.md.thermostat_damping[0]))
-        self.logger.info("Barostat damping is %f"%(self.calc.md.barostat_damping[0]))
 
-        if self.calc.md.equilibration_control == "nose-hoover":
+        self.logger.info("Reference phase is %s"%self.calc.reference_phase)
+        if self.calc.reference_phase == 'liquid':
+            if self.calc.melting_cycle:
+                self.logger.info("Melting cycle will run")
+            else:
+                self.logger.info("Melting cycle is turned off")
+
+        #now thermostat and barostat damping process
+        if self.calc.equilibration_control is None:
+            self.logger.info("Thermostat/Barostat combo for equilibration cycle is not explicitely specified")
+            self.logger.info("Thermostat/Barostat combo for equilibration cycle can be specified using keyword equilibration_control")
+            if self.calc.reference_phase == 'liquid':
+                self.logger.info("Reference phase is liquid, setting Nose-Hoover thermostat for equilibration")
+                self.calc.equilibration_control = "nose-hoover"
+            else:
+                self.logger.info("Reference phase is solid, setting Berensden thermostat for equilibration")
+                self.calc.equilibration_control = "berendsen"
+        else:
+            self.logger.info("Equilibration stage is done using %s barostat/thermostat"%self.calc.equilibration_control)
+
+        if self.calc.equilibration_control == "nose-hoover":
+            self.logger.info("Nose-Hoover thermostat damping is %f"%self.calc.nose_hoover.thermostat_damping)
+            self.calc.md.thermostat_damping = [self.calc.nose_hoover.thermostat_damping, self.calc.md.thermostat_damping]
+            self.logger.info("Nose-Hoover barostat damping is %f"%self.calc.nose_hoover.barostat_damping)
+            self.calc.md.barostat_damping = [self.calc.nose_hoover.barostat_damping, self.calc.md.barostat_damping]
+            self.logger.info("These values can be tuned by adding in the input file:")
+            self.logger.info("nose_hoover:")
+            self.logger.info("   thermostat_damping: <float>")
+            self.logger.info("   barostat_damping: <float>")
             if self.calc.md.thermostat_damping[0] > 10.0:
                 self.logger.warning("Equil. Nose-Hoover thermostat damping is high!")
             if self.calc.md.barostat_damping[0] > 10.0:
                 self.logger.warning("Equil. Nose-Hoover barostat damping is high!")
         else:
+            self.logger.info("Berendsen thermostat damping is %f"%self.calc.berendsen.thermostat_damping)
+            self.calc.md.thermostat_damping = [self.calc.berendsen.thermostat_damping, self.calc.md.thermostat_damping]
+            self.logger.info("Berendsen barostat damping is %f"%self.calc.berendsen.barostat_damping)
+            self.calc.md.barostat_damping = [self.calc.berendsen.barostat_damping, self.calc.md.barostat_damping]
+            self.logger.info("These values can be tuned by adding in the input file:")
+            self.logger.info("berendsen:")
+            self.logger.info("   thermostat_damping: <float>")
+            self.logger.info("   barostat_damping: <float>")
             if self.calc.md.thermostat_damping[0] < 1.0:
                 self.logger.warning("Equil. Berendsen thermostat damping is low!")
             if self.calc.md.barostat_damping[0] < 1.0:
@@ -95,14 +127,6 @@ class Phase:
         self.vol = None
         self.concentration = None
         self.prepare_lattice()
-
-        self.logger.info("Reference phase is %s"%self.calc.reference_phase)
-        if self.calc.reference_phase == 'liquid':
-            if self.calc.melting_cycle:
-                self.logger.info("Melting cycle will run")
-            else:
-                self.logger.info("Melting cycle is turned off")
-
 
         #other properties
         self.cores = self.calc.queue.cores
@@ -290,7 +314,7 @@ class Phase:
         lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
         
         #apply fixes depending on thermostat/barostat
-        if self.calc.md.equilibration_control == "nose-hoover":
+        if self.calc.equilibration_control == "nose-hoover":
             self.fix_nose_hoover(lmp)
         else:
             self.fix_berendsen(lmp)
@@ -302,7 +326,7 @@ class Phase:
         lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
         
         #remove fixes
-        if self.calc.md.equilibration_control == "nose-hoover":
+        if self.calc.equilibration_control == "nose-hoover":
             self.unfix_nose_hoover(lmp)
         else:
             self.unfix_berendsen(lmp)
@@ -332,7 +356,7 @@ class Phase:
         lmp.command("velocity         all create %f %d"%(0.25*self.calc._temperature, np.random.randint(0, 10000)))
 
         #for Nose-Hoover thermo/baro combination
-        if self.calc.md.equilibration_control == "nose-hoover":
+        if self.calc.equilibration_control == "nose-hoover":
             #Cycle 1: 0.25-0.5 temperature, full pressure
             self.fix_nose_hoover(lmp, temp_start_factor=0.25, temp_end_factor=0.5)
             lmp.command("thermo_style     custom step pe press vol etotal temp")
@@ -387,7 +411,7 @@ class Phase:
         """
 
         #apply fixes
-        if self.calc.md.equilibration_control == "nose-hoover":
+        if self.calc.equilibration_control == "nose-hoover":
             self.fix_nose_hoover(lmp)
         else:
             self.fix_berendsen(lmp)
@@ -433,7 +457,7 @@ class Phase:
             raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
 
         #unfix thermostat and barostat
-        if self.calc.md.equilibration_control == "nose-hoover":
+        if self.calc.equilibration_control == "nose-hoover":
             self.unfix_nose_hoover(lmp)
         else:
             self.unfix_berendsen(lmp)
