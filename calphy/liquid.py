@@ -130,7 +130,8 @@ class Liquid(cph.Phase):
         lmp.command("variable         mpress equal press") 
 
         #MELT
-        self.melt_structure(lmp)
+        if self.calc.melting_cycle:
+            self.melt_structure(lmp)
 
         #now assign correct temperature and equilibrate
         self.run_zero_pressure_equilibration(lmp)
