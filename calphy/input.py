@@ -154,6 +154,7 @@ class Calculation(InputTemplate):
         self._temperature_input = None
         self._iso = False
         self._fix_lattice = False
+        self._melting_cycle = True
         self._pair_style = None
         self._pair_coeff = None
         self._potential_file = None
@@ -495,6 +496,17 @@ class Calculation(InputTemplate):
         self._n_iterations = val
 
     @property
+    def melting_cycle(self):
+        return self._melting_cycle
+    
+    @melting_cycle.setter
+    def melting_cycle(self, val):
+        if isinstance(val, bool):
+            self._melting_cycle = val
+        else:
+            raise TypeError("Melting cycle should be either True/False")
+
+    @property
     def spring_constants(self):
         return self._spring_constants
 
@@ -636,7 +648,7 @@ def read_inputfile(file):
         if mode == "melting_temperature":
             calc = Calculation.generate(indata)
             calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
-                                "n_switching_steps", "n_print_steps", "n_iterations", "spring_constants"])
+                                "n_switching_steps", "n_print_steps", "n_iterations", "spring_constants", "melting_cycle"])
             calc.pressure = Calculation.convert_to_list(ci["pressure"], check_none=True) if "pressure" in ci.keys() else 0
             calc.temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else None
             calc.lattice = Calculation.convert_to_list(ci["lattice"]) if "lattice" in ci.keys() else None

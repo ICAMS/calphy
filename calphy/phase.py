@@ -96,6 +96,14 @@ class Phase:
         self.concentration = None
         self.prepare_lattice()
 
+        self.logger.info("Reference phase is %s"%self.calc.reference_phase)
+        if self.calc.reference_phase == 'liquid':
+            if calc.melting_cycle:
+                self.logger.info("Melting cycle will run")
+            else:
+                self.logger.info("Melting cycle is turned off")
+
+
         #other properties
         self.cores = self.calc.queue.cores
         self.ncells = np.prod(self.calc.repeat)
