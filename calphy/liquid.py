@@ -69,8 +69,9 @@ class Liquid(cph.Phase):
                 os.remove(trajfile)
 
             self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.calc._temperature_high, thmult))
-
-            self.fix_nose_hoover(lmp, temp_start_factor=thmult, temp_end_factor=thmult)
+            factor = (self.calc._temperature_high/self.calc._temperature)*thmult
+            lmp.velocity("all create", self.calc._temperature*factor, np.random.randint(0, 10000))
+            self.fix_nose_hoover(lmp, temp_start_factor=factor, temp_end_factor=factor)
             lmp.run(int(self.calc.md.n_small_steps))
             self.unfix_nose_hoover(lmp)
             
