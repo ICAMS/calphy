@@ -685,10 +685,10 @@ class Phase:
         lmp.command("pair_coeff       %s"%pcnew1)
         lmp.command("pair_coeff       %s"%pcnew2)
 
-        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${flambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${flambda}\" screen no file ts.forward_%d.dat"%iteration)
 
         if self.calc.n_print_steps > 0:
-            lmp.command("dump              d1 all custom %d traj.rs.forward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
+            lmp.command("dump              d1 all custom %d traj.ts.forward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 
         lmp.command("run               %d"%self.calc._n_sweep_steps)
@@ -724,10 +724,10 @@ class Phase:
         lmp.command("pair_coeff       %s"%pcnew2)
 
         #apply fix and perform switching        
-        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${blambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${blambda}\" screen no file ts.backward_%d.dat"%iteration)
 
         if self.calc.n_print_steps > 0:
-            lmp.command("dump              d1 all custom %d traj.rs.backward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
+            lmp.command("dump              d1 all custom %d traj.ts.backward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 
         lmp.command("run               %d"%self.calc._n_sweep_steps)
@@ -825,7 +825,7 @@ class Phase:
 
         lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, tf, self.calc.md.thermostat_damping[1],
                                         self.iso, p0, pf, self.calc.md.barostat_damping[1]))
-        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file ts.forward_%d.dat"%iteration)
         lmp.command("run               %d"%self.calc._n_sweep_steps)
 
         lmp.command("unfix             f2")
@@ -852,7 +852,7 @@ class Phase:
 
         lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(tf, t0, self.calc.md.thermostat_damping[1],
                                         self.iso, pf, p0, self.calc.md.barostat_damping[1]))
-        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${lambda}\" screen no file ts.backward_%d.dat"%iteration)
         lmp.command("run               %d"%self.calc._n_sweep_steps)
 
         lmp.close()
@@ -911,7 +911,7 @@ class Phase:
 
         lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping[1],
                                         self.iso, p0, pf, self.calc.md.barostat_damping[1]))
-        lmp.command("fix               f3 all print 1 \"${dU} ${pp} $(vol) ${lambda}\" screen no file forward_%d.dat"%iteration)
+        lmp.command("fix               f3 all print 1 \"${dU} ${pp} $(vol) ${lambda}\" screen no file ps.forward_%d.dat"%iteration)
         lmp.command("run               %d"%self.calc._n_sweep_steps)
 
         lmp.command("unfix             f2")
@@ -929,7 +929,7 @@ class Phase:
 
         lmp.command("fix               f2 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping[1],
                                         self.iso, pf, p0, self.calc.md.barostat_damping[1]))
-        lmp.command("fix               f3 all print 1 \"${dU} ${pp} $(vol) ${lambda}\" screen no file backward_%d.dat"%iteration)
+        lmp.command("fix               f3 all print 1 \"${dU} ${pp} $(vol) ${lambda}\" screen no file ps.backward_%d.dat"%iteration)
         lmp.command("run               %d"%self.calc._n_sweep_steps)
 
         lmp.close()
