@@ -29,6 +29,7 @@ from lammps import lammps
 import calphy.lattice as pl
 import pyscal.core as pc
 from ase.io import read, write
+from pyscal.trajectory import Trajectory
 
 
 def create_object(cores, directory, timestep):
@@ -138,6 +139,14 @@ def convert_to_data_file(inputfile, outputfile, ghost_elements=0):
         with open(outputfile, "w") as fout:
             for line in lines:
                 fout.write(line)
+
+def get_structures(file, species, index=None):
+    traj = Trajectory(file)
+    if index is None:
+        aseobjs = traj[:].to_ase(species=species)
+    else:
+        aseobjs = traj[index].to_ase(species=species)
+    return aseobjs
 
 def set_hybrid_potential(lmp, options, eps):
     pc =  options.pair_coeff[0]
