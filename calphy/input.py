@@ -463,8 +463,8 @@ class Calculation(InputTemplate):
 
     @equilibration_control.setter
     def equilibration_control(self, val):
-        if val not in ["berendsen", "nose-hoover"]:
-            raise ValueError("Equilibration control should be either berendsen or nose-hoover")
+        if val not in ["berendsen", "nose-hoover", None]:
+            raise ValueError("Equilibration control should be either berendsen or nose-hoover or None")
         self._equilibration_control = val
 
     @property
