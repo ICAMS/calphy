@@ -118,6 +118,7 @@ class Calculation(InputTemplate):
 
         #add second level options; for example spring constants
         self._spring_constants = None
+        self._ghost_element_count = 0
         
         self.md = InputTemplate()
         self.md.timestep = 0.001

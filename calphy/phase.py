@@ -627,7 +627,7 @@ class Phase:
 
         #read in conf file
         conf = os.path.join(self.simfolder, "conf.equilibration.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
+        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
 
         #set up potential
         lmp = ph.set_potential(lmp, self.calc)
@@ -802,7 +802,7 @@ class Phase:
 
         #read in conf
         conf = os.path.join(self.simfolder, "conf.equilibration.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
+        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
 
         #set up potential
         lmp = ph.set_potential(lmp, self.calc)
@@ -888,7 +888,7 @@ class Phase:
 
         #read in conf
         conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
+        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
 
         #set up potential
         lmp = ph.set_potential(lmp, self.calc)

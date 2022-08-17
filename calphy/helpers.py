@@ -28,6 +28,7 @@ import numpy as np
 from lammps import lammps
 import calphy.lattice as pl
 import pyscal.core as pc
+from ase.io import read, write
 
 
 def create_object(cores, directory, timestep):
@@ -117,6 +118,26 @@ def read_dump(lmp, file, species=1):
     lmp.command("read_dump        %s 0 x y z vx vy vz scaled no box yes add keep"%file)
     return lmp
 
+def convert_to_data_file(inputfile, outputfile, ghost_elements=0):
+    atoms = read(inputfile, format="lammps-dump-text")
+    write(outputfile, atoms, format="lammps-data")
+    
+    if ghost_elements > 0:
+        lines = []
+        with open(outputfile, "r") as fin:
+            for line in fin:
+                raw = line.strip().split()
+                if (len(raw) == 3) and (raw[2] == "types"):
+                    raw[0] = "%d"%ghost_elements
+                    raw.append("\n")
+                    rline = " ".join(raw)
+                    lines.append(rline)
+                else:
+                    lines.append(line)
+
+        with open(outputfile, "w") as fout:
+            for line in lines:
+                fout.write(line)
 
 def set_hybrid_potential(lmp, options, eps):
     pc =  options.pair_coeff[0]
