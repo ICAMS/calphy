@@ -225,10 +225,9 @@ class Phase:
             elif direction == "backward":
                 filename = os.path.join(self.simfolder, "traj.ts.backward_%d.dat"%n_iteration)
 
+        structures = None
         if filename is not None:
             structures = ph.get_structures(filename, species, index=None)
-        else:
-            raise FileNotFoundError("Filename could not be found correctly!")
 
         return structures
 
