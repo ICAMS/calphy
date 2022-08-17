@@ -211,6 +211,27 @@ class Phase:
         lmp.command("run               0")
         lmp.command("undump            2")
 
+    def get_structures(self, stage="fe", direction="forward", n_iteration=1):
+        """
+        """
+        species = self.calc.element
+        filename = None
+
+        if stage == "fe":
+            filename = os.path.join(self.simfolder, "conf.equilibration.dump")
+        elif stage == "ts":
+            if direction == "forward":
+                filename = os.path.join(self.simfolder, "traj.ts.forward_%d.dat"%n_iteration)
+            elif direction == "backward":
+                filename = os.path.join(self.simfolder, "traj.ts.backward_%d.dat"%n_iteration)
+
+        if filename is not None:
+            structures = ph.get_structures(filename, species, index=None)
+        else:
+            raise FileNotFoundError("Filename could not be found correctly!")
+
+        return structures
+
     def check_if_melted(self, lmp, filename):
         """
         """
