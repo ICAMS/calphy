@@ -174,7 +174,22 @@ class Calculation(InputTemplate):
             return "None"
         else:
             return str(val)
-            
+
+    def to_bool(self, val):        
+        if val == "True":
+            val = True
+        elif val == "False":
+            val = False
+        elif val == 1:
+            val = True
+        elif val == 0:
+            val = False
+        elif val == "1":
+            val = True
+        elif val == "0":
+            val = False
+        return val
+
     @property
     def element(self):
         return self._element
@@ -474,6 +489,7 @@ class Calculation(InputTemplate):
     
     @melting_cycle.setter
     def melting_cycle(self, val):
+        val = self.to_bool(val)
         if isinstance(val, bool):
             self._melting_cycle = val
         else:
