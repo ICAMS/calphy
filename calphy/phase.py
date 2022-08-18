@@ -721,8 +721,6 @@ class Phase:
             lmp.command("undump           d1")
 
         #switch potential
-        lmp = ph.set_potential(lmp, self.calc)
-
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
 
         #check melting or freezing
@@ -731,6 +729,8 @@ class Phase:
             self.check_if_melted(lmp, "traj.temp.dat")
         else:
             self.check_if_solidfied(lmp, "traj.temp.dat")
+
+        lmp = ph.set_potential(lmp, self.calc)
 
         #reverse scaling
         lmp.command("variable         flambda equal ramp(${li},${lf})")
