@@ -234,7 +234,7 @@ def find_solid_fraction(file):
     solids = sys.find_solids()
     return solids
 
- def reset_timestep(file, conf, keys=["vx", "vy", "vz", "mass"]):
+def reset_timestep(file, conf, keys=["vx", "vy", "vz", "mass"]):
     sys = pc.System()
     sys.read_inputfile(file, customkeys=keys)
     sys.to_file(conf, customkeys=keys)
