@@ -91,10 +91,10 @@ def check_dump_file(infile):
         sys = pc.System()
         sys.read_inputfile(infile)
         atoms = sys.atoms
+        natoms = len(atoms)
         types = [atom.type for atom in atoms]
         xx, xxcounts = np.unique(types, return_counts=True)
         conc = xxcounts/np.sum(xxcounts)
-        lmp.close()
         return (natoms, conc)
     except:
         return None
@@ -149,10 +149,12 @@ def prepare_lattice(calc):
     elif os.path.exists(calc.lattice):
         calc.lattice = os.path.abspath(calc.lattice)
 
-        res = check_data_file(calc.lattice)
+        res = check_dump_file(calc.lattice)
+        dumpfile = True
+
         if res is None:
-            res = check_dump_file(calc.lattice)
-            dumpfile = True
+            res = check_data_file(calc.lattice)
+            dumpfile = False
 
         if res is not None:
             natoms = res[0]
