@@ -86,7 +86,7 @@ def create_structure(lmp, calc, species=None):
             lmp.command("lattice          fcc 4.0")
             lmp.command("region           box block 0 2 0 2 0 2")
             lmp.command("create_box       %d box"%species)
-            lmp.command("read_dump        %s 0 x y z scaled no box yes add keep"%file)
+            lmp.command("read_dump        %s 0 x y z scaled no box yes add keep"%calc.lattice)
         else:
             lmp.command("read_data      %s"%calc.lattice)
     else:
@@ -234,7 +234,7 @@ def find_solid_fraction(file):
     solids = sys.find_solids()
     return solids
 
-def reset_timestep(file, conf, keys=["vx", "vy", "vz", "mass"]):
+ def reset_timestep(file, conf, keys=["vx", "vy", "vz", "mass"]):
     sys = pc.System()
     sys.read_inputfile(file, customkeys=keys)
     sys.to_file(conf, customkeys=keys)
