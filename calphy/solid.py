@@ -139,7 +139,7 @@ class Solid(cph.Phase):
         lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
 
         #set up structure
-        lmp = ph.create_structure(lmp, self.calc)
+        lmp = ph.create_structure(lmp, self.calcs, pecies=self.calc.n_elements+self.calc._ghost_element_count)
 
         #set up potential
         if self.calc.potential_file is None:
