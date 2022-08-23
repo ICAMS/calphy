@@ -60,7 +60,7 @@ def create_object(cores, directory, timestep):
     lmp.timestep(timestep)
     return lmp
 
-def create_structure(lmp, calc):
+def create_structure(lmp, calc, species=None):
     """
     Create structure using LAMMPS
 
@@ -75,10 +75,20 @@ def create_structure(lmp, calc):
     -------
     lmp : LammpsLibrary object
     """
-    l, alat, apc, conc = pl.prepare_lattice(calc)
+    l, alat, apc, conc, dumpfile = pl.prepare_lattice(calc)
+
+    if species is None:
+        species = len(conc)
 
     if l == "file":
-        lmp.command("read_data      %s"%calc.lattice)
+        if dumpfile:
+            reset_timestep(calc.lattice, calc.lattice, keys=None)
+            lmp.command("lattice          fcc 4.0")
+            lmp.command("region           box block 0 2 0 2 0 2")
+            lmp.command("create_box       %d box"%species)
+            lmp.command("read_dump        %s 0 x y z scaled no box yes add keep"%file)
+        else:
+            lmp.command("read_data      %s"%calc.lattice)
     else:
         lmp.lattice(l, alat)
         lmp.region("box block", 0, calc.repeat[0], 
@@ -224,10 +234,10 @@ def find_solid_fraction(file):
     solids = sys.find_solids()
     return solids
 
-def reset_timestep(file, conf):
+def reset_timestep(file, conf, keys=["vx", "vy", "vz", "mass"]):
     sys = pc.System()
-    sys.read_inputfile(file, customkeys=["vx", "vy", "vz", "mass"])
-    sys.to_file(conf, customkeys=["vx", "vy", "vz", "mass"])
+    sys.read_inputfile(file, customkeys=keys)
+    sys.to_file(conf, customkeys=keys)
 
 
 """
