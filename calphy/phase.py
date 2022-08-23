@@ -194,7 +194,7 @@ class Phase:
         Calculates the lattic, lattice constant, number of atoms per unit cell
         and concentration of the input system.
         """
-        l, alat, apc, conc = pl.prepare_lattice(self.calc)
+        l, alat, apc, conc, datafile = pl.prepare_lattice(self.calc)
         self.l = l
         self.alat = alat
         self.apc = apc
