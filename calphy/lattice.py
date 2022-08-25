@@ -85,42 +85,53 @@ def get_lattice(symbol, lat):
 
     return lattice_constant, atoms_per_cell, lammps_lattice
 
-def check_data_file(infile):
-    if os.path.exists(infile):
-        try:
-            lmp = LammpsLibrary(mode="local", cores=1, 
-                working_directory=os.getcwd())
-            lmp.units("metal")
-            lmp.boundary("p p p")
-            lmp.atom_style("atomic")
-            lmp.timestep(0.001)            
-            lmp.read_data(infile)
-            natoms = lmp.natoms
-            #now we convert to a dump file and read the concentration
-            trajfile = ".".join([infile, "dump"])
-            lmp.command("mass * 1.0")
-            lmp.dump("2 all custom", 1, trajfile,"id type x y z")
-            lmp.run(0)
-            lmp.undump(2)
-            #now use pyscal to read it in,
-            sys = pc.System()
-            sys.read_inputfile(trajfile)
-            atoms = sys.atoms
-            types = [atom.type for atom in atoms]
-            xx, xxcounts = np.unique(types, return_counts=True)
-            conc = xxcounts/np.sum(xxcounts)
-            lmp.close()
-            return natoms, conc
-        except:
-            raise TypeError("LAMMPS could not read in the data file. Please check!")
-    else:
-        raise FileNotFoundError("File not found!")
+def check_dump_file(infile):
+    try:
+        #now use pyscal to read it in,
+        sys = pc.System()
+        sys.read_inputfile(infile)
+        atoms = sys.atoms
+        natoms = len(atoms)
+        types = [atom.type for atom in atoms]
+        xx, xxcounts = np.unique(types, return_counts=True)
+        conc = xxcounts/np.sum(xxcounts)
+        return (natoms, conc)
+    except:
+        return None
 
+def check_data_file(infile):
+    try:
+        lmp = LammpsLibrary(mode="local", cores=1, 
+            working_directory=os.getcwd())
+        lmp.units("metal")
+        lmp.boundary("p p p")
+        lmp.atom_style("atomic")
+        lmp.timestep(0.001)            
+        lmp.read_data(infile)
+        natoms = lmp.natoms
+        #now we convert to a dump file and read the concentration
+        trajfile = ".".join([infile, "dump"])
+        lmp.command("mass * 1.0")
+        lmp.dump("2 all custom", 1, trajfile,"id type x y z")
+        lmp.run(0)
+        lmp.undump(2)
+        #now use pyscal to read it in,
+        sys = pc.System()
+        sys.read_inputfile(trajfile)
+        atoms = sys.atoms
+        types = [atom.type for atom in atoms]
+        xx, xxcounts = np.unique(types, return_counts=True)
+        conc = xxcounts/np.sum(xxcounts)
+        lmp.close()
+        return (natoms, conc)
+    except:
+        return None
 
 def prepare_lattice(calc):
     #process lattice
     lattice = calc.lattice.upper()
-    
+    dumpfile = False
+
     if lattice in ["BCC", "FCC", "HCP", "DIA", "SC", "LQD"]:
         #process lattice
         #throw error for multicomponent
@@ -137,16 +148,28 @@ def prepare_lattice(calc):
 
     elif os.path.exists(calc.lattice):
         calc.lattice = os.path.abspath(calc.lattice)
-        natoms, conc = check_data_file(calc.lattice) 
-        #its a file - do something
-        l = "file"
-        alat = 1.00
-        apc = natoms
+
+        res = check_dump_file(calc.lattice)
+        dumpfile = True
+
+        if res is None:
+            res = check_data_file(calc.lattice)
+            dumpfile = False
+
+        if res is not None:
+            natoms = res[0]
+            conc = res[1]
+            l = "file"
+            alat = 1.00
+            apc = natoms
+        else:
+            raise ValueError("An input file was provided but it was neither data or dump file")
+
     else:
         raise ValueError("Unknown lattice found. Allowed options are BCC, FCC, HCP, DIA, SC or LQD; or an input file.")
     
     if l == "dia":
         l = "diamond"
 
-    return l, alat, apc, conc
+    return l, alat, apc, conc, dumpfile 
 
