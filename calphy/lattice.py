@@ -27,7 +27,6 @@ from pylammpsmpi import LammpsLibrary
 import numpy as np
 import pyscal.core as pc
 
-
 """
 Conversion factors for creating initial lattices
 """

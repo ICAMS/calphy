@@ -23,54 +23,125 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 
 import re
 import numpy as np
+import os
 import pyscal.core as pc
 from mendeleev import element
+from ase.io import read, write
+from ase.atoms import Atoms
 
 class CompositionTransformation:
-    def __init__(self, input_structure, output_chemical_formula):
-        self.structure = input_structure
-        self.input_chemical_formula = input_structure.get_chemical_formula()
-        self.output_chemical_formula = output_chemical_formula
-        self.input_formula_dict = self.chemical_formula_to_dict(self.input_chemical_formula)
-        self.output_formula_dict = self.chemical_formula_to_dict(self.output_chemical_formula)
-        self.check_if_atoms_conserved()
-        self.get_composition_transformation()
-        self.actual_species = len(self.input_formula_dict)
-        self.new_species = len(self.output_formula_dict) - len(self.input_formula_dict)
-        self.maxtype = self.actual_species + self.new_species        
+    """
+    Class for performing composition transformations and 
+    generating necessary pair styles for such transformations.
+
+    Parameters
+    ----------
+    input_structure: ASE object, LAMMPS Data file or LAMMPS dump file
+        input structure which is used for composition transformation
+
+    input_chemical_formula: dict
+        dictionary of input chemical 
+
+    output_chemical_formula: string
+        the required chemical composition string
+    """
+    def __init__(self, input_structure, input_chemical_composition, output_chemical_composition):
+        self.structure = self.prepare_structure(input_structure)
+        self.input_chemical_composition = input_chemical_composition
+        self.output_chemical_composition = output_chemical_composition
+        self.actual_species = None
+        self.new_species = None
+        self.maxtype = None        
         self.atom_mark = None
         self.atom_species = None
         self.mappings = None
         self.unique_mappings = None
         self.prepare_mappings()
     
-    def chemical_formula_to_dict(self, formula):
+    def dict_to_string(self, inputdict):
+        strlst = []
+        for key, val in inputdict.items():
+            strlst.append(str(key))
+            strlst.append(str(val))
+        return "".join(strlst)
+    
+    def is_data_file(self, filename):
+        try:
+            atoms = read(filename, format="lammps-data", style="atomic")
+            return atoms
+        except:
+            return None
+    
+    def is_dump_file(self, filename):
+        try:
+            atoms = read(filename, format="lammps-dump-text")
+            return atoms
+        except:
+            return None
+        
+    def prepare_structure(self, input_structure):
         """
-        Convert a chemical formula to dict
+        Check the format of a given input file and validate it.
         """
-        formula_split = re.findall('(\d+|[A-Za-z]+)', formula)
-        formula_dict = {}
-        for x in range(0, len(formula_split), 2):
-            formula_dict[formula_split[x]] = int(formula_split[x+1])
-        return formula_dict
+        if isinstance(input_structure, Atoms):
+            return input_structure
+        elif os.path.exists(input_structure):
+            atoms = self.is_data_file(input_structure)
+            if atoms is None:
+                atoms = self.is_dump_file(input_structure)
+            return atoms
+    
+    def convert_to_pyscal(self):
+        """
+        Convert a given system to pyscal and give a dict of type mappings
+        """
+        pstruct = pc.System()
+        pstruct.read_inputfile(self.structure, format="ase")
+        
+        #here we have to validate the input composition dict; and map it
+        composition = pstruct.get_concentration()
+        atomsymbols = []
+        atomtypes = []
+        for key, val in self.input_chemical_composition.items():
+            if not val==0:
+                found = False
+                for key1, val1 in composition.items():
+                    if val1==val:
+                        found = True
+                        atomsymbols.append(key)
+                        atomtypes.append(int(key1))
+                        del composition[key1]
+                        break
+                if not found:
+                    raise ValueError("Input structure and composition do not match!")
+        
+        self.pyscal_structure = pstruct
+        self.typedict = dict(zip(atomsymbols, atomtypes))
+        self.reversetypedict = dict(zip(atomtypes, atomsymbols))
+        self.natoms = self.pyscal_structure.natoms
+        
+        self.actual_species = len(self.typedict)
+        self.new_species = len(self.output_chemical_composition) - len(self.typedict)
+        self.maxtype = self.actual_species + 1 #+ self.new_species
+        print(self.typedict)
 
     def check_if_atoms_conserved(self):
         """
         Check if a given transformation is possible by checking if number of atoms are conserved
         """
-        natoms1 = np.sum([val for key, val in self.input_formula_dict.items()])
-        natoms2 = np.sum([val for key, val in self.output_formula_dict.items()])
-        if not (natoms1==natoms2):
-            raise ValueError(f"Input and output number of atoms are not conserved! Input {self.input_chemical_formula}, output {self.output_chemical_formula}")
+        natoms1 = np.sum([val for key, val in self.input_chemical_composition.items()])
+        natoms2 = np.sum([val for key, val in self.output_chemical_composition.items()])
+        if not (natoms1==natoms2==self.natoms):
+            raise ValueError(f"Input and output number of atoms are not conserved! Input {self.dict_to_string(self.input_chemical_composition)}, output {self.dict_to_string(self.output_chemical_composition)}, total atoms in structure {self.natoms}")
 
     def get_composition_transformation(self):
         """
         From the two given composition transformation, find the transformation dict
         """
         fdiff = {}
-        for key, val in self.output_formula_dict.items():
-            if key in self.input_formula_dict.keys():
-                fdiff[key] = val - self.input_formula_dict[key]
+        for key, val in self.output_chemical_composition.items():
+            if key in self.input_chemical_composition.keys():
+                fdiff[key] = val - self.input_chemical_composition[key]
             else:
                 fdiff[key] = val - 0
         to_remove = {}
@@ -85,19 +156,6 @@ class CompositionTransformation:
         self.to_remove = to_remove
         self.to_add = to_add
 
-    def convert_to_pyscal(self):
-        """
-        Convert a given system to pyscal and give a dict of type mappings
-        """
-        pstruct = pc.System()
-        pstruct.read_inputfile(self.structure, format="ase")
-        atomsymbols = np.unique(self.structure.get_chemical_symbols())
-        atomtypes = np.array(range(1, len(atomsymbols)+1))
-        self.pyscal_structure = pstruct
-        self.typedict = dict(zip(atomsymbols, atomtypes))
-        self.reversetypedict = dict(zip(atomtypes, atomsymbols))
-        self.natoms = self.pyscal_structure.natoms
-
     def get_random_index_of_species(self, species):
         """
         Get a random index of a given species
@@ -109,20 +167,24 @@ class CompositionTransformation:
         for i in range(self.natoms):
             self.atom_mark.append(False)
             self.atom_type = [atom.type for atom in self.pyscal_structure.iter_atoms()]
+            self.mappings = [f"{x}-{x}" for x in self.atom_type]
             
     def update_mark_atoms(self):
+        self.marked_atoms = []
         for key, val in self.to_remove.items():
-            print(f"Element {key}, count {val}")
+            #print(f"Element {key}, count {val}")
             for i in range(100000):
                 rint = self.get_random_index_of_species(self.typedict[key])
                 self.atom_mark[rint] = True
+                self.marked_atoms.append(rint)
                 val -= 1
                 if (val <= 0):
                     break 
     
     def get_mappings(self):
+        #in a cycle add things to the typedict
         for key, val in self.to_add.items():
-            print(f"Element {key}, count {val}")
+            #print(f"Element {key}, count {val}")
             if key in self.typedict.keys():
                 newtype = self.typedict[key]
             else:
@@ -130,16 +192,18 @@ class CompositionTransformation:
                 self.typedict[key] = self.maxtype
                 self.reversetypedict[self.maxtype] = key
                 self.maxtype += 1
-        for i in range(100000):
-            for x in range(self.natoms):
-                if self.atom_mark[x]:
-                    self.mappings.append(f"{self.atom_type[x]}-{newtype}")
-                    val -= 1
-                else:
-                    self.mappings.append(f"{self.atom_type[x]}-{self.atom_type[x]}")
-            if (val <= 0):
-                break 
-        self.unique_mappings = np.unique(self.mappings)
+                #print(f"Element {key}, newtype {newtype}")
+        
+        #now we go through
+        for key, val in self.to_add.items():
+            #now get all
+            for x in range(val):
+                index = np.random.randint(0, len(self.marked_atoms))
+                int_to_change = self.marked_atoms[index]
+                del self.marked_atoms[index]
+                self.mappings[int_to_change] = f"{self.atom_type[int_to_change]}-{self.typedict[key]}"
+        
+        self.unique_mappings, self.unique_mapping_counts = np.unique(self.mappings, return_counts=True)
     
     def prepare_pair_lists(self):
         self.pair_list_old = []
@@ -180,18 +244,21 @@ class CompositionTransformation:
         stopped = False
 
         for p in pcsplit:
-            if ((not iselement(p)) and (not started)):
+            if ((not self.iselement(p)) and (not started)):
                 pc_before.append(p)
-            elif (iselement(p) and (not started)):
+            elif (self.iselement(p) and (not started)):
                 started = True
-            elif ((not iselement(p)) and started):
+            elif ((not self.iselement(p)) and started):
                 stopped = True
-            elif ((not iselement(p)) and stopped):
+            elif ((not self.iselement(p)) and stopped):
                 pc_after.append(p)
                 
         pc_old = " ".join([*pc_before, *self.pair_list_old, *pc_after])
         pc_new = " ".join([*pc_before, *self.pair_list_new, *pc_after])
         return pc_old, pc_new
+    
+    def write_structure(self, outfilename):
+        self.pyscal_structure.to_file(outfilename)
         
     def prepare_mappings(self):
         self.atom_mark = []
@@ -200,6 +267,9 @@ class CompositionTransformation:
         self.unique_mappings = []
 
         self.convert_to_pyscal()
+        self.check_if_atoms_conserved()
+        self.get_composition_transformation()
+
         self.mark_atoms()
         self.update_mark_atoms()
         self.get_mappings()
