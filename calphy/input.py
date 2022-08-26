@@ -160,6 +160,12 @@ class Calculation(InputTemplate):
         self.melting_temperature.guess = None
         self.melting_temperature.step = 200
         self.melting_temperature.attempts = 5
+
+        #new mode for composition trf
+        self.composition_scaling = InputTemplate()
+        self.composition_scaling.input_chemical_composition = None
+        self.composition_scaling.output_chemical_composition = None
+        self.composition_scaling.restrictions = None
     
     def __repr__(self):
         """
@@ -606,6 +612,8 @@ class Calculation(InputTemplate):
                 calc.nose_hoover.add_from_dict(indata["nose_hoover"])
             if "berendsen" in indata.keys():
                 calc.berendsen.add_from_dict(indata["berendsen"])
+            if "composition_scaling" in indata.keys():
+                calc.composition_scaling.add_from_dict(indata["composition_scaling"])
             return calc
         else:
             raise FileNotFoundError('%s input file not found'% indata)
@@ -660,7 +668,7 @@ def read_inputfile(file):
             if not len(lattice_constant)==len(reference_phase)==len(lattice):
                 raise ValueError("lattice constant, reference phase and lattice should have same length")
             lat_props = [{"lattice": lattice[x], "lattice_constant":lattice_constant[x], "reference_phase":reference_phase[x]} for x in range(len(lattice))]
-            if (mode == "fe") or (mode == "alchemy"):
+            if (mode == "fe") or (mode == "alchemy") or (mode == "composition_scaling"):
                 combos = itertools.product(lat_props, pressure, temperature)
             elif mode == "ts" or mode == "tscale" or mode == "mts":
                 if not len(temperature) == 2:
