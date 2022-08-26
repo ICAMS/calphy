@@ -84,6 +84,13 @@ class Alchemy(cph.Phase):
         lmp = ph.set_potential(lmp, self.calc)
 
         #add some computes
+        lmp.command("variable         mvol equal vol")
+        lmp.command("variable         mlx equal lx")
+        lmp.command("variable         mly equal ly")
+        lmp.command("variable         mlz equal lz")
+        lmp.command("variable         mpress equal press")
+
+        #add some computes
         if not self.calc._fix_lattice:
             if self.calc._pressure == 0:
                 self.run_zero_pressure_equilibration(lmp)
@@ -151,10 +158,10 @@ class Alchemy(cph.Phase):
         # Integrator & thermostat.
         if self.calc._npt:
             lmp.command("fix             f1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, 
-                self.calc.md.thermostat_damping, self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping))        
+                self.calc.md.thermostat_damping[1], self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping[1]))        
         else:
             lmp.command("fix             f1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, 
-                self.calc.md.thermostat_damping))
+                self.calc.md.thermostat_damping[1]))
 
         lmp.command("thermo_style    custom step pe")
         lmp.command("thermo          1000")
