@@ -172,7 +172,7 @@ def get_einstein_crystal_fe(temp, natoms, mass, vol, k, concentration, cm_correc
     return F_harm
 
 def integrate_path(fwdfilename, bkdfilename, nelements=1, concentration=[1,], usecols=(0, 1, 2), solid=True,
-    alchemy=False):
+    alchemy=False, composition_integration=False):
     """
     Get a filename with columns du and dlambda and integrate
 
@@ -216,13 +216,17 @@ def integrate_path(fwdfilename, bkdfilename, nelements=1, concentration=[1,], us
     fdu = fdui - fdur
     bdu = bdui - bdur
     
-    fw = np.trapz(fdu, flambda)
-    bw = np.trapz(bdu, blambda)
+    if composition_integration:
+        fw = cumtrapz(fdu, flambda, initial=0)
+        bw = cumtrapz(bdu, blambda, initial=0)
+    else:
+        fw = np.trapz(fdu, flambda)
+        bw = np.trapz(bdu, blambda)
 
     w = 0.5*(fw - bw)
     q = 0.5*(fw + bw)
 
-    return w, q
+    return w, q, flambda
 
 
 def calculate_entropy_mix(conc):
@@ -311,7 +315,7 @@ def calculate_fe_mix(temp, fepure, feimpure, concs, natoms=4000):
     return fes
 
 def find_w(mainfolder, nelements=1, concentration=[1,], nsims=5, full=False, usecols=(0,1,2), solid=True,
-    alchemy=False):
+    alchemy=False, composition_integration=False):
     """
     Integrate the irreversible work and dissipation for independent simulations
 
@@ -348,15 +352,25 @@ def find_w(mainfolder, nelements=1, concentration=[1,], nsims=5, full=False, use
         fwdfilename = os.path.join(mainfolder,fwdfilestring)
         bkdfilestring = 'backward_%d.dat' % (i+1)
         bkdfilename = os.path.join(mainfolder,bkdfilestring)
-        w, q = integrate_path(fwdfilename, bkdfilename, nelements=nelements, concentration=concentration, usecols=usecols, solid=solid,
-            alchemy=alchemy)
+        w, q, flambda = integrate_path(fwdfilename, bkdfilename, nelements=nelements, concentration=concentration, usecols=usecols, solid=solid,
+            alchemy=alchemy, composition_integration=composition_integration)
         ws.append(w)
         qs.append(q)
-        
+    
+    if composition_integration:
+        wsmean = np.mean(ws, axis=0)
+        qsmean = np.mean(qs, axis=0)
+        qsstd = np.mean(qs, axis=0)
+        return wsmean, qsmean, qsstd, flambda
+
+    wsmean = np.mean(ws)
+    qsmean = np.mean(qs)
+    qsstd = np.mean(qs)
+
     if full:
-        return np.mean(ws), np.mean(qs), np.std(qs)
+        return wsmean, qsmean, qsstd
     else:
-        return np.mean(ws)
+        return wsmean
 
 
 def integrate_mts(folder1, folder2, natoms1, natoms2, 
@@ -651,3 +665,13 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1,
         np.savetxt(outfile, np.column_stack((press, f, werr)))
     else:
         return (press, f, werr)
+
+
+def integrate_mass(flambda, ref_mass, target_masses, target_counts,
+    temperature, natoms):
+    
+    mcorarr = np.zeros(len(flambda))
+    for i in range(len(target_masses)):
+        mcorarr += 1.5*kb*temperature*(flambda*(target_counts[i]/natoms)*np.log(ref_mass/target_masses[i]))
+    
+    return mcorarr

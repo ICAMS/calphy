@@ -90,119 +90,30 @@ class Alchemy(cph.Phase):
         lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press")
 
+        #add some computes
         if not self.calc._fix_lattice:
             if self.calc._pressure == 0:
-                #This routine should be followed for zero pressure
-                lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
-                                                    self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping))
-                lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
-                lmp.command("thermo           10")
-                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
-
+                self.run_zero_pressure_equilibration(lmp)
             else:
-                #Now this routine is for non-zero pressure
-                #one has to equilibriate at a low temperature, but high pressure and then increase temp gradually
-                #start at 0.25 temp, and increase to 0.50, while keeping high pressure
-                lmp.command("velocity         all create %f %d"%(0.25*self.calc._temperature, np.random.randint(0, 10000)))
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.25*self.calc._temperature, 0.5*self.calc._temperature, self.calc.md.thermostat_damping, 
-                                                    self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping))
-                lmp.command("thermo_style     custom step pe press vol etotal temp")
-                lmp.command("thermo           10")
-                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
-                lmp.command("unfix            1")
-
-                #now heat again
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(0.5*self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
-                                                    self.iso, self.calc._pressure, self.calc._pressure,  self.calc.md.barostat_damping))
-                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
-                lmp.command("unfix            1")
-
-                #now run normal cycle
-                lmp.command("fix              1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping, 
-                                                    self.iso, self.calc._pressure, self.calc._pressure,  self.calc.md.barostat_damping))
-                lmp.command("run              %d"%int(self.calc.md.n_small_steps)) 
+                self.run_finite_pressure_equilibration(lmp)
 
 
             #this is when the averaging routine starts
-            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
-                int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
-            
-            laststd = 0.00
-            converged = False
-
-            for i in range(int(self.calc.md.n_cycles)):
-                lmp.command("run              %d"%int(self.calc.md.n_small_steps))
-                ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
-                #now we can check if it converted
-                file = os.path.join(self.simfolder, "avg.dat")
-                lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
-                
-                lxpc = ipress
-                mean = np.mean(lxpc)
-                std = np.std(lxpc)
-                volatom = np.mean((lx*ly*lz)/self.natoms)
-                self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
-                
-                if (np.abs(mean - self.calc._pressure)) < self.calc.tolerance.pressure:
-
-                    #process other means
-                    self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
-                    self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
-                    self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
-                    self.volatom = volatom
-                    self.vol = self.lx*self.ly*self.lz
-                    self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
-                    self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
-                    converged = True
-                    break
-                laststd = std
-
-            if not converged:
-                lmp.close()
-                raise ValueError("Pressure did not converge after MD runs, maybe change lattice_constant and try?")
-                
-            #now run for msd
-            lmp.command("unfix            1")
-            lmp.command("unfix            2")
-
+            self.run_pressure_convergence(lmp)
+        
+        #run if a constrained lattice is used
         else:
-            #we should do a small run to eqbrte atom positions
-            lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping))
-            lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
-            lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
-            lmp.command("thermo           10")            
-            lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
-                int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
-            
-            lmp.command("run              %d"%int(self.calc.md.n_small_steps))
-            lmp.command("unfix            1")
-            lmp.command("unfix            2")
+            #routine in which lattice constant will not varied, but is set to a given fixed value
+            self.run_constrained_pressure_convergence(lmp)    
 
-            file = os.path.join(self.simfolder, "avg.dat")
-            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
-            mean = np.mean(ipress)
-            self.calc._pressure = mean
-            volatom = np.mean((lx*ly*lz)/self.natoms)
-            self.logger.info("At count 0 mean pressure is %f with %f vol/atom"%(mean, volatom))
-            self.lx = np.round(np.mean(lx), decimals=3)
-            self.ly = np.round(np.mean(ly), decimals=3)
-            self.lz = np.round(np.mean(lz), decimals=3)
-            self.volatom = volatom
-            self.vol = self.lx*self.ly*self.lz
-            self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
-            self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
-
-
-        #dump is common for both
-        lmp.command("dump              2 all custom 1 traj.dat id type mass x y z vx vy vz")
-        lmp.command("run               0")
-        lmp.command("undump            2")
-
+        #check for melting
+        self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
+        self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
 
         #close object and process traj
         lmp.close()
-        self.process_traj()
+        self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.dump")
+
 
     
 
@@ -233,8 +144,8 @@ class Alchemy(cph.Phase):
         lmp.command("variable        lf       equal   0.0")
         
         #read dump file
-        conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements)
+        conf = os.path.join(self.simfolder, "conf.equilibration.dump")
+        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
 
         #set up hybrid potential
         #here we only need to set one potential
@@ -247,10 +158,10 @@ class Alchemy(cph.Phase):
         # Integrator & thermostat.
         if self.calc._npt:
             lmp.command("fix             f1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, 
-                self.calc.md.thermostat_damping, self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping))        
+                self.calc.md.thermostat_damping[1], self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping[1]))        
         else:
             lmp.command("fix             f1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, 
-                self.calc.md.thermostat_damping))
+                self.calc.md.thermostat_damping[1]))
 
         lmp.command("thermo_style    custom step pe")
         lmp.command("thermo          1000")
@@ -393,9 +304,25 @@ class Alchemy(cph.Phase):
         w, q, qerr = find_w(self.simfolder, nelements=self.calc.n_elements, 
             concentration=self.concentration, nsims=self.calc.n_iterations, 
             full=True, solid=False, alchemy=True)
-        
+
         self.w = w
         self.ferr = qerr
         self.fe = self.w
+        
+        if self.calc.mode == "composition_scaling":
+            w_arr, q_arr, qerr_arr, flambda_arr = find_w(self.simfolder, nelements=self.calc.n_elements, 
+                concentration=self.concentration, nsims=self.calc.n_iterations, 
+                full=True, solid=False, alchemy=True, composition_integration=True)
+
+            #now we need to process the comp scaling
+            return flambda_arr, w_arr, q_arr, qerr_arr
+
+
+
+
+    def mass_integration(self, flambda, ref_mass, target_masses, target_counts):
+        mcorarr = integrate_mass(flambda, ref_mass, target_masses, target_counts,
+    self.calc._temperature, self.natoms)
+        return mcorarr      
 
 

@@ -34,6 +34,7 @@ import calphy.helpers as ph
 
 from calphy.liquid import Liquid
 from calphy.solid import Solid
+from calphy.composition_transformation import CompositionTransformation
 
 class MeltingTemp:
     """
@@ -436,3 +437,86 @@ def routine_alchemy(job):
     job.thermodynamic_integration()
     job.submit_report()
     return job 
+
+
+def routine_composition_scaling(job):
+    """
+    Perform a compositional scaling routine
+    """
+    #we set up comp scaling first
+    job.logger.info("Calculating composition scaling")
+    comp = CompositionTransformation(job.calc.lattice, 
+        job.calc.composition_scaling.input_chemical_composition, 
+        job.calc.composition_scaling.output_chemical_composition, 
+        restrictions=job.calc.composition_scaling.restrictions)
+
+    #update pair styles
+    res = comp.update_pair_coeff(job.calc.pair_coeff[0])
+    job.calc.pair_style.append(job.calc.pair_style[0])
+    job.calc.pair_coeff[0] = res[0]
+    job.calc.pair_coeff.append(res[1])
+    job.logger.info("Update pair coefficients")
+    job.logger.info(f"pair coeff 1: {job.calc.pair_coeff[0]}")
+    job.logger.info(f"pair coeff 2: {job.calc.pair_coeff[1]}")
+    backup_element = job.calc.element.copy()
+    job.calc.element = comp.pair_list_old
+    #job.calc._ghost_element_count = len(comp.new_atomtype) - len()
+
+    #write new file out and update lattice
+    outfilename = ".".join([job.calc.lattice, "comp", "dump"])
+    comp.write_structure(outfilename)
+    job.calc.lattice = outfilename
+    job.logger.info(f"Modified lattice written to {outfilename}")
+
+    #prepare mass change methods
+    #update and backup mass
+    job.logger.info(f"Original mass: {job.calc.mass}")
+    backup_mass = job.calc.mass.copy()
+    mass_dict = {key:val for (key, val) in zip(backup_element, backup_mass)}
+
+    target_masses = []
+    target_counts = []
+
+    ref_mass_list = []
+
+    for mdict in comp.transformation_list:
+        ref_mass_list.append(mass_dict[mdict["primary_element"]])
+        target_masses.append(mass_dict[mdict["secondary_element"]])
+        target_counts.append(mdict["count"])
+
+    if len(backup_mass) > 2:
+        job.logger.warning("Composition scaling is untested for more than 2 elements!")
+
+    if len(np.unique(ref_mass_list)) > 1:
+        job.logger.warning("More than one kind of transformation found! Stopping")
+        raise RuntimeError("More than one kind of transformation found! Stopping")
+
+    ref_mass = ref_mass_list[0] 
+    
+    #now replace mass    
+    job.calc.mass = [ref_mass for x in range(len(job.calc.element))] 
+    job.logger.info(f"Temporarily replacing mass: {job.calc.mass}")
+
+
+    #now start cycle
+    ts = time.time()
+    job.run_averaging()
+    te = (time.time() - ts)
+    job.logger.info("Averaging routine finished in %f s"%te)
+
+    #now run integration loops
+    for i in range(job.calc.n_iterations):
+        ts = time.time()
+        job.run_integration(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("Alchemy integration cycle %d finished in %f s"%(i+1, te))
+
+    flambda_arr, w_arr, q_arr, qerr_arr = job.thermodynamic_integration()
+
+    #read the file
+    mcorrarr = job.mass_integration(flambda_arr, ref_mass, target_masses, target_counts)
+    netfe = w_arr - mcorrarr
+
+    outfile = os.path.join(job.simfolder, "composition_sweep.dat")
+    np.savetxt(outfile, np.column_stack((flambda_arr, netfe, w_arr, mcorrarr)))
+    return job

@@ -83,6 +83,48 @@ class InputTemplate:
 
         return data
 
+    def merge_dicts(self, dicts):
+        """
+        Merge dicts from a given list
+        """
+        merged_dict = {}
+        for d in dicts:
+            for key, val in d.items():
+                merged_dict[key] = val
+        return merged_dict
+
+
+class CompositionScaling(InputTemplate):
+    def __init__(self):
+        self._input_chemical_composition = None
+        self._output_chemical_composition = None
+        self._restrictions = None
+
+    @property
+    def input_chemical_composition(self):
+        return self._input_chemical_composition        
+
+    @input_chemical_composition.setter
+    def input_chemical_composition(self, val):
+        self._input_chemical_composition = self.merge_dicts(val)        
+
+    @property
+    def output_chemical_composition(self):
+        return self._output_chemical_composition
+
+    @output_chemical_composition.setter
+    def output_chemical_composition(self, val):
+        self._output_chemical_composition = self.merge_dicts(val)
+
+    @property
+    def restrictions(self):
+        return self._restrictions
+
+    @restrictions.setter
+    def restrictions(self, val):
+        self._restrictions = check_and_convert_to_list(val)       
+
+
 class Calculation(InputTemplate):
     def __init__(self):
         super(InputTemplate, self).__init__()
@@ -160,6 +202,9 @@ class Calculation(InputTemplate):
         self.melting_temperature.guess = None
         self.melting_temperature.step = 200
         self.melting_temperature.attempts = 5
+
+        #new mode for composition trf
+        self.composition_scaling = CompositionScaling()
     
     def __repr__(self):
         """
@@ -606,6 +651,8 @@ class Calculation(InputTemplate):
                 calc.nose_hoover.add_from_dict(indata["nose_hoover"])
             if "berendsen" in indata.keys():
                 calc.berendsen.add_from_dict(indata["berendsen"])
+            if "composition_scaling" in indata.keys():
+                calc.composition_scaling.add_from_dict(indata["composition_scaling"])
             return calc
         else:
             raise FileNotFoundError('%s input file not found'% indata)
@@ -660,7 +707,7 @@ def read_inputfile(file):
             if not len(lattice_constant)==len(reference_phase)==len(lattice):
                 raise ValueError("lattice constant, reference phase and lattice should have same length")
             lat_props = [{"lattice": lattice[x], "lattice_constant":lattice_constant[x], "reference_phase":reference_phase[x]} for x in range(len(lattice))]
-            if (mode == "fe") or (mode == "alchemy"):
+            if (mode == "fe") or (mode == "alchemy") or (mode == "composition_scaling"):
                 combos = itertools.product(lat_props, pressure, temperature)
             elif mode == "ts" or mode == "tscale" or mode == "mts":
                 if not len(temperature) == 2:
