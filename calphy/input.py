@@ -83,6 +83,48 @@ class InputTemplate:
 
         return data
 
+    def merge_dicts(self, dicts):
+        """
+        Merge dicts from a given list
+        """
+        merged_dict = {}
+        for d in dicts:
+            for key, val in d.items():
+                merged_dict[key] = val
+        return merged_dict
+
+
+class CompositionScaling(InputTemplate):
+    def __init__(self):
+        self._input_chemical_composition = None
+        self._output_chemical_composition = None
+        self._restrictions = None
+
+    @property
+    def input_chemical_composition(self):
+        return self._input_chemical_composition        
+
+    @input_chemical_composition.setter
+    def input_chemical_composition(self, val):
+        self._input_chemical_composition = self.merge_dicts(val)        
+
+    @property
+    def output_chemical_composition(self):
+        return self._output_chemical_composition
+
+    @output_chemical_composition.setter
+    def output_chemical_composition(self, val):
+        self._output_chemical_composition = self.merge_dicts(val)
+
+    @property
+    def restrictions(self):
+        return self._restrictions
+
+    @restrictions.setter
+    def restrictions(self, val):
+        self._restrictions = check_and_convert_to_list(val)       
+
+
 class Calculation(InputTemplate):
     def __init__(self):
         super(InputTemplate, self).__init__()
@@ -162,7 +204,7 @@ class Calculation(InputTemplate):
         self.melting_temperature.attempts = 5
 
         #new mode for composition trf
-        self.composition_scaling = InputTemplate()
+        self.composition_scaling = CompositionScaling()
         self.composition_scaling.input_chemical_composition = None
         self.composition_scaling.output_chemical_composition = None
         self.composition_scaling.restrictions = None
