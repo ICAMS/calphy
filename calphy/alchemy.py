@@ -305,6 +305,15 @@ class Alchemy(cph.Phase):
             concentration=self.concentration, nsims=self.calc.n_iterations, 
             full=True, solid=False, alchemy=True)
         
+        if self.calc.mode == "composition_scaling":
+            w_arr, q_arr, qerr_arr, flambda_arr = find_w(self.simfolder, nelements=self.calc.n_elements, 
+                concentration=self.concentration, nsims=self.calc.n_iterations, 
+                full=True, solid=False, alchemy=True, composition_integration=True)
+
+            #now we need to process the comp scaling
+            outfile = os.path.join(self.simfolder, "composition_sweep.dat")
+            np.savetxt(outfile, np.column_stack((flambda_arr, w_arr, q_arr, qerr_arr)))
+
         self.w = w
         self.ferr = qerr
         self.fe = self.w
