@@ -205,9 +205,6 @@ class Calculation(InputTemplate):
 
         #new mode for composition trf
         self.composition_scaling = CompositionScaling()
-        self.composition_scaling.input_chemical_composition = None
-        self.composition_scaling.output_chemical_composition = None
-        self.composition_scaling.restrictions = None
     
     def __repr__(self):
         """
