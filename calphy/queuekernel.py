@@ -34,7 +34,7 @@ from calphy.input import read_inputfile
 from calphy.liquid import Liquid
 from calphy.solid import Solid
 from calphy.alchemy import Alchemy
-from calphy.routines import MeltingTemp, routine_fe, routine_ts, routine_only_ts, routine_pscale, routine_tscale, routine_alchemy
+from calphy.routines import MeltingTemp, routine_fe, routine_ts, routine_only_ts, routine_pscale, routine_tscale, routine_alchemy, routine_composition_scaling
 
 
 def setup_calculation(calc):
@@ -58,7 +58,7 @@ def setup_calculation(calc):
     if calc.mode == "melting_temperature":
         simfolder = None
         job = MeltingTemp(calculation=calc, simfolder=simfolder)
-    elif calc.mode == "alchemy":
+    elif calc.mode == "alchemy" or calc.mode == "composition_scaling":
         simfolder = calc.create_folders()
         job = Alchemy(calculation=calc, simfolder=simfolder)
     else:
@@ -96,8 +96,10 @@ def run_calculation(job):
         job = routine_tscale(job)
     elif job.calc.mode == "pscale":
         job = routine_pscale(job)
+    elif job.calc.mode == "composition_scaling":
+        job = routine_composition_scaling(job)
     else:
-        raise ValueError("Mode should be either fe/ts/mts/alchemy/melting_temperature/tscale/pscale")
+        raise ValueError("Mode should be either fe/ts/mts/alchemy/melting_temperature/tscale/pscale/composition_scaling")
     return job
 
 def main():
