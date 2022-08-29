@@ -301,7 +301,18 @@ class CompositionTransformation:
                 else:
                     raise ValueError("A possible transformation could not be found, please check the restrictions")
         self.unique_mappings, self.unique_mapping_counts = np.unique(self.mappings, return_counts=True)
-        
+
+        #now make the transformation dict
+        self.transformation_list = []
+        for count, mapping in enumerate(self.unique_mappings):
+            mapsplit = mapping.split("-")
+            if not mapsplit[0] == mapsplit[1]:
+                transformation_dict = {}
+                transformation_dict["primary_element"] = self.reversetypedict[int(mapsplit[0])]
+                transformation_dict["secondary_element"] = self.reversetypedict[int(mapsplit[1])]
+                transformation_dict["count"] = self.unique_mapping_counts[count]
+                self.transformation_list.append(transformation_dict)
+
     def get_mappings(self):
         self.update_typedicts()
         self.compute_possible_mappings()

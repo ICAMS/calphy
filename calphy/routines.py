@@ -459,21 +459,44 @@ def routine_composition_scaling(job):
     job.logger.info(f"pair coeff 1: {job.calc.pair_coeff[0]}")
     job.logger.info(f"pair coeff 2: {job.calc.pair_coeff[1]}")
     backup_element = job.calc.element.copy()
+    if len(backup_mass) > 2:
+        job.logger.warning("Composition scaling is untested for more than 2 elements!")
     job.calc.element = comp.pair_list_old
     #job.calc._ghost_element_count = len(comp.new_atomtype) - len()
-    
-    #update and backup mass
-    job.logger.info(f"Original mass: {job.calc.mass}")
-    backup_mass = job.calc.mass.copy()
-    mass_dict = {key:val for (key, val) in zip(backup_element, backup_mass)}
-    job.calc.mass = [job.calc.mass[0] for x in range(len(job.calc.element))] 
-    job.logger.info(f"Temporarily replacing mass: {job.calc.mass}")
 
     #write new file out and update lattice
     outfilename = ".".join([job.calc.lattice, "comp", "dump"])
     comp.write_structure(outfilename)
     job.calc.lattice = outfilename
     job.logger.info(f"Modified lattice written to {outfilename}")
+
+    #prepare mass change methods
+    #update and backup mass
+    job.logger.info(f"Original mass: {job.calc.mass}")
+    backup_mass = job.calc.mass.copy()
+    mass_dict = {key:val for (key, val) in zip(backup_element, backup_mass)}
+
+    target_masses = []
+    target_counts = []
+
+    ref_mass_list = []
+
+    for mdict in comp.transformation_list:
+        ref_mass_list.append(mass_dict[mdict["primary_element"]])
+        target_masses.append(mass_dict[mdict["secondary_element"]])
+        target_counts.append(mdict["count"])
+
+
+    if len(np.unique(ref_mass_list)) > 1:
+        job.logger.warning("More than one kind of transformation found! Stopping")
+        raise RuntimeError("More than one kind of transformation found! Stopping")
+
+    ref_mass = ref_mass_list[0] 
+    
+    #now replace mass    
+    job.calc.mass = [ref_mass for x in range(len(job.calc.element))] 
+    job.logger.info(f"Temporarily replacing mass: {job.calc.mass}")
+
 
     #now start cycle
     ts = time.time()
@@ -487,3 +510,15 @@ def routine_composition_scaling(job):
         job.run_integration(iteration=(i+1))
         te = (time.time() - ts)
         job.logger.info("Alchemy integration cycle %d finished in %f s"%(i+1, te))
+
+    flambda_arr, w_arr, q_arr, qerr_arr = job.thermodynamic_integration()
+
+    #now add mass correction
+    ref_mass = job.calc.mass[0]
+
+    #read the file
+    mcorrarr = job.mass_integration(flambda_arr, ref_mass, target_masses, target_counts)
+    netfe = w_arr - mcorrarr
+
+    outfile = os.path.join(job.simfolder, "composition_sweep.dat")
+    np.savetxt(outfile, np.column_stack((flambda_arr, netfe, w_arr, mcorrarr)))
