@@ -134,7 +134,7 @@ def main():
         os.rmdir(simfolder)
         simfolder = None
         job = MeltingTemp(calculation=calc, simfolder=simfolder)
-    elif calc.mode == "alchemy":
+    elif calc.mode == "alchemy" or calc.mode == "composition_scaling":
         job = Alchemy(calculation=calc, simfolder=simfolder)
         os.chdir(simfolder)
     else:
