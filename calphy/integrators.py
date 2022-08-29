@@ -670,12 +670,8 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1,
 def integrate_mass(flambda, ref_mass, target_masses, target_counts,
     temperature, natoms):
     
-    mcorarr = []
-    for i in range(len(flambda)):
-        mass_sum = 0
-        for j in range(len(target_masses)):
-            n = flambda[i]*target_counts[j]
-            if n>0:
-                mass_sum += (1.5*kb*temperature*(n*np.log(ref_mass/target_masses[j])/natoms))
-        mcorarr.append(mass_sum)
-    return np.array(mcorarr)
+    mcorarr = np.zeros(len(flambda))
+    for i in range(len(target_masses)):
+        mcorarr += 1.5*kb*temperature*(flambda*(target_counts[i]/natoms)*np.log(ref_mass/target_masses[i]))
+    
+    return mcorarr
