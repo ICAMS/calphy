@@ -8,7 +8,7 @@ dependencies:
   - mendeleev
   - openmpi 
   - mpi4py
-  - lammps =2021.09.29=*openmpi*_2
+  - lammps =2022.06.23=*openmpi*_0
   - pylammpsmpi =0.0.8
   - pyscal
   - matplotlib
