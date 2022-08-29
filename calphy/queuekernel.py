@@ -158,5 +158,7 @@ def main():
         _ = routine_tscale(job)
     elif job.calc.mode == "pscale":
         _ = routine_pscale(job)
+    elif job.calc.mode == "composition_scaling":
+        _ = routine_composition_scaling(job)
     else:
-        raise ValueError("Mode should be either fe/ts/mts/alchemy/melting_temperature/tscale/pscale")
+        raise ValueError("Mode should be either fe/ts/mts/alchemy/melting_temperature/tscale/pscale/composition_scaling")
