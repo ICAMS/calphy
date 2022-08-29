@@ -453,20 +453,26 @@ def routine_composition_scaling(job):
     #update pair styles
     res = comp.update_pair_coeff(job.calc.pair_coeff[0])
     job.calc.pair_style.append(job.calc.pair_style[0])
-    job.calc.pair_coeff = res
+    job.calc.pair_coeff[0] = res[0]
+    job.calc.pair_coeff.append(res[1])
     job.logger.info("Update pair coefficients")
     job.logger.info(f"pair coeff 1: {job.calc.pair_coeff[0]}")
     job.logger.info(f"pair coeff 2: {job.calc.pair_coeff[1]}")
-
+    backup_element = job.calc.element.copy()
+    job.calc.element = comp.pair_list_old
+    #job.calc._ghost_element_count = len(comp.new_atomtype) - len()
+    
     #update and backup mass
     job.logger.info(f"Original mass: {job.calc.mass}")
-    backupmass = job.calc.mass.copy()
-    job.calc.mass = [job.calc.mass[0] for x in range(len(backupmass))] 
+    backup_mass = job.calc.mass.copy()
+    mass_dict = {key:val for (key, val) in zip(backup_element, backup_mass)}
+    job.calc.mass = [job.calc.mass[0] for x in range(len(job.calc.element))] 
     job.logger.info(f"Temporarily replacing mass: {job.calc.mass}")
 
     #write new file out and update lattice
     outfilename = ".".join([job.calc.lattice, "comp", "dump"])
     comp.write_structure(outfilename)
+    job.calc.lattice = outfilename
     job.logger.info(f"Modified lattice written to {outfilename}")
 
     #now start cycle
