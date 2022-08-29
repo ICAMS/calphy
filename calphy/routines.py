@@ -34,6 +34,7 @@ import calphy.helpers as ph
 
 from calphy.liquid import Liquid
 from calphy.solid import Solid
+from calphy.composition_transformation import CompositionTransformation
 
 class MeltingTemp:
     """
@@ -436,3 +437,47 @@ def routine_alchemy(job):
     job.thermodynamic_integration()
     job.submit_report()
     return job 
+
+
+def routine_composition_scaling(job):
+    """
+    Perform a compositional scaling routine
+    """
+    #we set up comp scaling first
+    job.logger.info("Calculating composition scaling")
+    comp = CompositionTransformation(job.calc.lattice, 
+        job.calc.composition_scaling.input_chemical_composition, 
+        job.calc.composition_scaling.output_chemical_composition, 
+        restrictions=job.calc.composition_scaling.restrictions)
+
+    #update pair styles
+    res = comp.update_pair_coeff(job.calc.pair_coeff[0])
+    job.calc.pair_style.append(job.calc.pair_style[0])
+    job.calc.pair_coeff = res
+    job.logger.info("Update pair coefficients")
+    job.logger.info(f"pair coeff 1: {job.calc.pair_coeff[0]}")
+    job.logger.info(f"pair coeff 2: {job.calc.pair_coeff[1]}")
+
+    #update and backup mass
+    job.logger.info(f"Original mass: {job.calc.mass}")
+    backupmass = job.calc.mass.copy()
+    job.calc.mass = [job.calc.mass[0] for x in range(len(backupmass))] 
+    job.logger.info(f"Temporarily replacing mass: {job.calc.mass}")
+
+    #write new file out and update lattice
+    outfilename = ".".join([job.calc.lattice, "comp", "dump"])
+    comp.write_structure(outfilename)
+    job.logger.info(f"Modified lattice written to {outfilename}")
+
+    #now start cycle
+    ts = time.time()
+    job.run_averaging()
+    te = (time.time() - ts)
+    job.logger.info("Averaging routine finished in %f s"%te)
+
+    #now run integration loops
+    for i in range(job.calc.n_iterations):
+        ts = time.time()
+        job.run_integration(iteration=(i+1))
+        te = (time.time() - ts)
+        job.logger.info("Alchemy integration cycle %d finished in %f s"%(i+1, te))

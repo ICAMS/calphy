@@ -24,6 +24,7 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 import re
 import numpy as np
 import os
+import random
 import pyscal.core as pc
 from mendeleev import element
 from ase.io import read, write
