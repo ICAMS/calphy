@@ -594,7 +594,7 @@ class Calculation(InputTemplate):
             l = self.lattice
             l = l.split('/')
             l = l[-1]
-        identistring = "-".join([prefix, l, str(ts), ps])
+        identistring = "-".join([prefix, l, str(ts), str(ps)])
         return identistring
 
     def create_folders(self, prefix=None):
