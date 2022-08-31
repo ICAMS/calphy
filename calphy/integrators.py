@@ -360,15 +360,15 @@ def find_w(mainfolder, nelements=1, concentration=[1,], nsims=5, full=False, use
     if composition_integration:
         wsmean = np.mean(ws, axis=0)
         qsmean = np.mean(qs, axis=0)
-        qsstd = np.mean(qs, axis=0)
+        wsstd = np.std(ws, axis=0)
         return wsmean, qsmean, qsstd, flambda
 
     wsmean = np.mean(ws)
     qsmean = np.mean(qs)
-    qsstd = np.mean(qs)
+    wsstd = np.std(ws)
 
     if full:
-        return wsmean, qsmean, qsstd
+        return wsmean, qsmean, wsstd
     else:
         return wsmean
 

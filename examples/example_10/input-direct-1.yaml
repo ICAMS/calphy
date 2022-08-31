@@ -5,7 +5,7 @@ calculations:
   temperature: 800
   pressure: [0]
   lattice: [ZrCu.dump]
-  n_iterations: 1
+  n_iterations: 3
   reference_phase: solid
   pair_style: eam/fs
   pair_coeff: "* * ../potentials/ZrCu.eam.fs Zr Cu"
