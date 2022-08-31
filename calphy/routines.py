@@ -514,8 +514,11 @@ def routine_composition_scaling(job):
     flambda_arr, w_arr, q_arr, qerr_arr = job.thermodynamic_integration()
 
     #read the file
-    mcorrarr = job.mass_integration(flambda_arr, ref_mass, target_masses, target_counts)
+    mcorrarr, mcorsum = job.mass_integration(flambda_arr, ref_mass, target_masses, target_counts)
     netfe = w_arr - mcorrarr
+
+    job.fe = job.fe - mcorsum
+    job.submit_report(extra_dict = {"mass_correction": mcorsum})
 
     outfile = os.path.join(job.simfolder, "composition_sweep.dat")
     np.savetxt(outfile, np.column_stack((flambda_arr, netfe, w_arr, mcorrarr)))

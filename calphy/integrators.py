@@ -671,7 +671,10 @@ def integrate_mass(flambda, ref_mass, target_masses, target_counts,
     temperature, natoms):
     
     mcorarr = np.zeros(len(flambda))
+    mcorsum = 0
+
     for i in range(len(target_masses)):
         mcorarr += 1.5*kb*temperature*(flambda*(target_counts[i]/natoms)*np.log(ref_mass/target_masses[i]))
-    
-    return mcorarr
+        mcorsum += 1.5*kb*temperature*(1.0*(target_counts[i]/natoms)*np.log(ref_mass/target_masses[i]))
+
+    return mcorarr, mcorsum

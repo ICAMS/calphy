@@ -321,8 +321,8 @@ class Alchemy(cph.Phase):
 
 
     def mass_integration(self, flambda, ref_mass, target_masses, target_counts):
-        mcorarr = integrate_mass(flambda, ref_mass, target_masses, target_counts,
+        mcorarr, mcorsum = integrate_mass(flambda, ref_mass, target_masses, target_counts,
     self.calc._temperature, self.natoms)
-        return mcorarr      
+        return mcorarr, mcorsum      
 
 
