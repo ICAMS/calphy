@@ -361,7 +361,7 @@ def find_w(mainfolder, nelements=1, concentration=[1,], nsims=5, full=False, use
         wsmean = np.mean(ws, axis=0)
         qsmean = np.mean(qs, axis=0)
         wsstd = np.std(ws, axis=0)
-        return wsmean, qsmean, qsstd, flambda
+        return wsmean, qsmean, wsstd, flambda
 
     wsmean = np.mean(ws)
     qsmean = np.mean(qs)
