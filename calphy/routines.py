@@ -518,7 +518,7 @@ def routine_composition_scaling(job):
     netfe = w_arr - mcorrarr
 
     job.fe = job.fe - mcorsum
-    job.submit_report(extra_dict = {"mass_correction": mcorsum})
+    job.submit_report(extra_dict = {"results":{"mass_correction": float(mcorsum)}})
 
     outfile = os.path.join(job.simfolder, "composition_sweep.dat")
     np.savetxt(outfile, np.column_stack((flambda_arr, netfe, w_arr, mcorrarr)))
