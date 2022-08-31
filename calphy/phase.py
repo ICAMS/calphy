@@ -181,7 +181,7 @@ class Phase:
     def _from_dict(self, org_dict, indict):
         for key, val in indict.items():
             if isinstance(val, dict):
-                if val not in org_dict.keys():
+                if key not in org_dict.keys():
                     org_dict[key] = {}
                 self._from_dict(org_dict[key], val)
             else:
