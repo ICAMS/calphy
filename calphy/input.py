@@ -93,7 +93,6 @@ class InputTemplate:
                 merged_dict[key] = val
         return merged_dict
 
-
 class CompositionScaling(InputTemplate):
     def __init__(self):
         self._input_chemical_composition = None
