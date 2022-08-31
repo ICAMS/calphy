@@ -30,6 +30,18 @@ import itertools
 import shutil
 import numpy as np
 
+def read_report(folder):
+    """
+    Read the finished calculation report
+    """
+    repfile = os.path.join(folder, "report.yaml")
+    if not os.path.exists(repfile):
+        raise FileNotFoundError(f"file {repfile} not found")
+
+    with open(repfile, 'r') as fin:
+        data = yaml.safe_load(fin)
+    return data
+
 class InputTemplate:
     def __init__(self):
         pass
@@ -92,7 +104,6 @@ class InputTemplate:
             for key, val in d.items():
                 merged_dict[key] = val
         return merged_dict
-
 
 class CompositionScaling(InputTemplate):
     def __init__(self):
@@ -157,6 +168,7 @@ class Calculation(InputTemplate):
         self._n_print_steps = 0
         self._n_iterations = 1
         self._equilibration_control = None
+        self._folder_prefix = None
 
         #add second level options; for example spring constants
         self._spring_constants = None
@@ -549,6 +561,14 @@ class Calculation(InputTemplate):
         val = self.check_and_convert_to_list(val, check_none=True)
         self._spring_constants = val
 
+    @property
+    def folder_prefix(self):
+        return self._folder_prefix
+
+    @folder_prefix.setter
+    def folder_prefix(self, val):
+        self._folder_prefix = val
+
     def fix_paths(self, potlist): 
         """
         Fix paths for potential files to complete ones
@@ -594,7 +614,11 @@ class Calculation(InputTemplate):
             l = self.lattice
             l = l.split('/')
             l = l[-1]
-        identistring = "-".join([prefix, l, str(ts), str(ps)])
+        
+        if self.folder_prefix is None:
+            identistring = "-".join([prefix, l, str(ts), str(ps)])
+        else:
+            identistring = "-".join([self.folder_prefix, prefix, l, str(ts), str(ps)])
         return identistring
 
     def create_folders(self, prefix=None):
@@ -688,7 +712,8 @@ def read_inputfile(file):
         if mode == "melting_temperature":
             calc = Calculation.generate(indata)
             calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
-                                "n_switching_steps", "n_print_steps", "n_iterations", "spring_constants", "equilibration_control"])
+                                "n_switching_steps", "n_print_steps", "n_iterations", "spring_constants", "equilibration_control",
+                                "folder_prefix"])
             calc.pressure = Calculation.convert_to_list(ci["pressure"], check_none=True) if "pressure" in ci.keys() else 0
             calc.temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else None
             calc.lattice = Calculation.convert_to_list(ci["lattice"]) if "lattice" in ci.keys() else None
@@ -724,7 +749,7 @@ def read_inputfile(file):
                 calc = Calculation.generate(indata)
                 calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
                                 "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
-                                "melting_cycle", "equilibration_control"])
+                                "melting_cycle", "equilibration_control", "folder_prefix"])
                 calc.lattice = combo[0]["lattice"]
                 calc.lattice_constant = combo[0]["lattice_constant"]
                 calc.reference_phase = combo[0]["reference_phase"]

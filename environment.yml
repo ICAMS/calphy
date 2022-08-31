@@ -13,3 +13,4 @@ dependencies:
   - pyscal
   - matplotlib
   - tqdm
+  - uncertainties

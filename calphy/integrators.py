@@ -360,15 +360,15 @@ def find_w(mainfolder, nelements=1, concentration=[1,], nsims=5, full=False, use
     if composition_integration:
         wsmean = np.mean(ws, axis=0)
         qsmean = np.mean(qs, axis=0)
-        qsstd = np.mean(qs, axis=0)
-        return wsmean, qsmean, qsstd, flambda
+        wsstd = np.std(ws, axis=0)
+        return wsmean, qsmean, wsstd, flambda
 
     wsmean = np.mean(ws)
     qsmean = np.mean(qs)
-    qsstd = np.mean(qs)
+    wsstd = np.std(ws)
 
     if full:
-        return wsmean, qsmean, qsstd
+        return wsmean, qsmean, wsstd
     else:
         return wsmean
 
@@ -671,7 +671,10 @@ def integrate_mass(flambda, ref_mass, target_masses, target_counts,
     temperature, natoms):
     
     mcorarr = np.zeros(len(flambda))
+    mcorsum = 0
+
     for i in range(len(target_masses)):
         mcorarr += 1.5*kb*temperature*(flambda*(target_counts[i]/natoms)*np.log(ref_mass/target_masses[i]))
-    
-    return mcorarr
+        mcorsum += 1.5*kb*temperature*(1.0*(target_counts[i]/natoms)*np.log(ref_mass/target_masses[i]))
+
+    return mcorarr, mcorsum

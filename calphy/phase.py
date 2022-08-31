@@ -178,6 +178,15 @@ class Phase:
         data = self.calc.__repr__()
         return data
 
+    def _from_dict(self, org_dict, indict):
+        for key, val in indict.items():
+            if isinstance(val, dict):
+                if key not in org_dict.keys():
+                    org_dict[key] = {}
+                self._from_dict(org_dict[key], val)
+            else:
+                org_dict[key] = val        
+
     def prepare_lattice(self):
         """
         Prepare the lattice for the simulation
@@ -564,13 +573,14 @@ class Phase:
             os.remove(file)
 
 
-    def submit_report(self):
+    def submit_report(self, extra_dict=None):
         """
         Submit final report containing results
 
         Parameters
         ----------
-        None
+        extra_dict: dict
+            extra information to be written out
 
         Returns
         -------
@@ -602,6 +612,10 @@ class Phase:
         report["results"]["reference_system"] = float(self.fref)
         report["results"]["work"] = float(self.w)
         report["results"]["pv"] = float(self.pv)
+
+        if extra_dict is not None:
+            self._from_dict(report, extra_dict)
+
         self.report = report
 
         reportfile = os.path.join(self.simfolder, "report.yaml")

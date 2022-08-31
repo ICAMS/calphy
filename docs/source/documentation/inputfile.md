@@ -12,7 +12,7 @@ The inputfile is `yaml` formatted. In this section the possible keys in the inpu
 | [mode](#mode) | [lattice](#lattice) | [reference_phase](#reference_phase) | [temperature](#temperature) | [pressure](#pressure) |
 | [temperature_high](#temperature_high) | [lattice_constant](#lattice_constant) | [repeat](#repeat) | [n_iterations](#n_iterations) | [n_switching_steps](#n_switching_steps) | 
 | [n_equilibration_steps](#n_equilibration_steps) | [pair_style](#pair_style) | [pair_coeff](#pair_coeff) | [n_print_steps](#n_print_steps) | [potential_file](#potential_file) |  
-| [spring_constants](#spring_constants) | [equilibration_control](#equilibration_control) | [melting_cycle](#melting_cycle) | | |   
+| [spring_constants](#spring_constants) | [equilibration_control](#equilibration_control) | [melting_cycle](#melting_cycle) | [folder_prefix](#folder_prefix) | |   
 
 | `md` block  | | | | |
 | :-: | :-: | :-: | :-: | :-: |
@@ -31,6 +31,10 @@ The inputfile is `yaml` formatted. In this section the possible keys in the inpu
 | `melting_temperature` block | | | | |
 | :-: | :-: | :-: | :-: | :-: |
 | [step](#step) | [attempts](#attempts) |
+
+| `composition_scaling` block | | | | |
+| :-: | :-: | :-: | :-: | :-: |
+| [input_chemical_composition](#input_chemical_composition) | [output_chemical_composition](#output_chemical_composition) |
 
 | `nose_hoover` block | | | | |
 | :-: | :-: | :-: | :-: | :-: |
@@ -384,6 +388,20 @@ melting_cycle: False
 
 If True, a melting cycle is carried out to melt the given input structure. Only used if the `reference_phase` is `"liquid"`.
 
+
+---
+
+#### <a name="folder_prefix"></a>`folder_prefix`        
+
+_type_: string    
+_default_: None     
+_example_:
+```
+folder_prefix: set1
+```  
+
+Prefix string to be added to folder names for calculation. Folders for calculations in calphy are named as `mode-lattice-temperature-pressure`. Therefore, if more than one calculation is run with the same parameters, they will be overwritten. To prevent this, `folder_prefix` can be used. If `folder_prefix` is provided, the folders will be named as `folder_prefix-mode-lattice-temperature-pressure`.
+
 ---
 ---
 
@@ -727,6 +745,51 @@ attempts: 5
 ```
 
 The number of maximum attempts to try find the melting temperature in a automated manner. Only used if mode is `melting_temperature`.
+
+---
+---
+
+## `composition_scaling` block
+
+This block contains keywords that are used only for the mode `composition_scaling`.
+
+```
+composition_scaling:
+  input_chemical_composition:
+     - Cu: 512
+     - Zr: 512
+  output_chemical_composition:
+     - Cu: 513
+     - Zr: 511
+```
+
+---
+
+#### <a name="input_chemical_composition"></a>`input_chemical_composition`
+
+_type_: list         
+_example_:
+```
+input_chemical_composition:
+   - Cu: 512
+   - Zr: 512
+```
+
+The input chemical composition in number of atoms. It should be identical to the input structure provided.
+
+---
+
+#### <a name="output_chemical_composition"></a>`output_chemical_composition`
+
+_type_: list         
+_example_:
+```
+output_chemical_composition:
+   - Cu: 513
+   - Zr: 511
+```
+
+The output chemical composition in number of atoms. The total number of atoms should be equal to the input provided.
 
 ---
 ---

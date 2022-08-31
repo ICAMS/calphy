@@ -155,6 +155,7 @@ class Alchemy(cph.Phase):
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
+        lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(self.calc._temperature, np.random.randint(0, 10000)))
         # Integrator & thermostat.
         if self.calc._npt:
             lmp.command("fix             f1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, 
@@ -321,8 +322,8 @@ class Alchemy(cph.Phase):
 
 
     def mass_integration(self, flambda, ref_mass, target_masses, target_counts):
-        mcorarr = integrate_mass(flambda, ref_mass, target_masses, target_counts,
+        mcorarr, mcorsum = integrate_mass(flambda, ref_mass, target_masses, target_counts,
     self.calc._temperature, self.natoms)
-        return mcorarr      
+        return mcorarr, mcorsum      
 
 
