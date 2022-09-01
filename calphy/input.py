@@ -117,7 +117,9 @@ class CompositionScaling(InputTemplate):
 
     @input_chemical_composition.setter
     def input_chemical_composition(self, val):
-        self._input_chemical_composition = self.merge_dicts(val)        
+        if isinstance(val, list):
+            val = self.merge_dicts(val) 
+        self._input_chemical_composition = val         
 
     @property
     def output_chemical_composition(self):
@@ -125,7 +127,9 @@ class CompositionScaling(InputTemplate):
 
     @output_chemical_composition.setter
     def output_chemical_composition(self, val):
-        self._output_chemical_composition = self.merge_dicts(val)
+        if isinstance(val, list):
+            val = self.merge_dicts(val) 
+        self._output_chemical_composition = val
 
     @property
     def restrictions(self):
