@@ -137,7 +137,7 @@ class CompositionScaling(InputTemplate):
 
     @restrictions.setter
     def restrictions(self, val):
-        self._restrictions = check_and_convert_to_list(val)       
+        self._restrictions = self.check_and_convert_to_list(val)       
 
 
 class Calculation(InputTemplate):
