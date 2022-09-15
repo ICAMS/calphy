@@ -30,3 +30,7 @@ DOI: 10.1103/PhysRevMaterials.5.103801
 
 Download bibtex [here](https://journals.aps.org/prmaterials/export/10.1103/PhysRevMaterials.5.103801?type=bibtex&download=true)
 
+
+[![Anaconda-Server Badge](https://anaconda.org/conda-forge/calphy/badges/installer/conda.svg)](https://conda.anaconda.org/conda-forge)
+
+[![PyPI version](https://badge.fury.io/py/calphy.svg)](https://badge.fury.io/py/calphy)
