@@ -660,7 +660,7 @@ class Phase:
         pf = lf*pi
 
         #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, self.calc.md.cmdargs)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f"%li)
@@ -835,7 +835,7 @@ class Phase:
         pf = lf*p0
 
         #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, self.calc.md.cmdargs)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f"%li)
@@ -919,7 +919,7 @@ class Phase:
         pf = self.calc._pressure_stop
 
         #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, self.calc.md.cmdargs)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f"%li)
