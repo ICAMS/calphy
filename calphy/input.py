@@ -587,7 +587,7 @@ class Calculation(InputTemplate):
                 pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
                 fixedpots.append(pcnew)
             else:
-                fixedpots.append(pcraw)
+                fixedpots.append(pot)
         return fixedpots
     
     def create_identifier(self):
