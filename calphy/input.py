@@ -64,7 +64,7 @@ class InputTemplate:
                 setattr(self, key, val)
 
     def to_dict(self):
-        tdict = self.__dict__
+        tdict = copy.deepcopy(self.__dict__)
         for key, val in tdict.items():
             if isinstance(val, InputTemplate):
                 tdict[key] = val.to_dict()
@@ -410,13 +410,15 @@ class Calculation(InputTemplate):
             if len(val) == 2:
                 self._temperature = val[0]
                 self._temperature_stop = val[1]
-                self._temperature_high = 2*val[1]
+                if self._temperature_high is None:
+                    self._temperature_high = 2*val[1]
             else:
                 raise ValueError("Temperature cannot have len>2")
         else:
             self._temperature = val
             self._temperature_stop = val
-            self._temperature_high = 2*val
+            if self._temperature_high is None:
+                self._temperature_high = 2*val
 
     @property
     def temperature_high(self):
@@ -682,6 +684,9 @@ class Calculation(InputTemplate):
                 calc.berendsen.add_from_dict(indata["berendsen"])
             if "composition_scaling" in indata.keys():
                 calc.composition_scaling.add_from_dict(indata["composition_scaling"])
+            #if temperature_high is present, set it
+            if "temperature_high" in indata.keys():
+                calc.temperature_high = indata["temperature_high"]
             return calc
         else:
             raise FileNotFoundError('%s input file not found'% indata)
@@ -754,7 +759,7 @@ def read_inputfile(file):
                 calc = Calculation.generate(indata)
                 calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
                                 "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
-                                "melting_cycle", "equilibration_control", "folder_prefix"])
+                                "melting_cycle", "equilibration_control", "folder_prefix", "temperature_high"])
                 calc.lattice = combo[0]["lattice"]
                 calc.lattice_constant = combo[0]["lattice_constant"]
                 calc.reference_phase = combo[0]["reference_phase"]
