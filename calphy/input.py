@@ -64,7 +64,7 @@ class InputTemplate:
                 setattr(self, key, val)
 
     def to_dict(self):
-        tdict = self.__dict__
+        tdict = copy.deepcopy(self.__dict__)
         for key, val in tdict.items():
             if isinstance(val, InputTemplate):
                 tdict[key] = val.to_dict()
