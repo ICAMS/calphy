@@ -75,7 +75,7 @@ class Alchemy(cph.Phase):
         Fix lattice option is not implemented at present.
         At the end of the run, the averaged box dimensions are calculated. 
         """
-        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, self.calc.md.cmdargs)
 
         #set up structure
         lmp = ph.create_structure(lmp, self.calc)
@@ -137,7 +137,7 @@ class Alchemy(cph.Phase):
         """
 
         #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep)
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, self.calc.md.cmdargs)
         
         # Adiabatic switching parameters.
         lmp.command("variable        li       equal   1.0")

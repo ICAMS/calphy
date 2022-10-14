@@ -186,6 +186,7 @@ class Calculation(InputTemplate):
         self.md.n_cycles = 100
         self.md.thermostat_damping = 0.1
         self.md.barostat_damping = 0.1
+        self.md.cmdargs = None
 
         self.nose_hoover = InputTemplate()
         self.nose_hoover.thermostat_damping = 0.1
@@ -586,7 +587,7 @@ class Calculation(InputTemplate):
                 pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
                 fixedpots.append(pcnew)
             else:
-                fixedpots.append(pcraw)
+                fixedpots.append(pot)
         return fixedpots
     
     def create_identifier(self):

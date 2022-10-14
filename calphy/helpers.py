@@ -32,7 +32,7 @@ from ase.io import read, write
 from pyscal.trajectory import Trajectory
 
 
-def create_object(cores, directory, timestep):
+def create_object(cores, directory, timestep, cmdargs=None):
     """
     Create LAMMPS object
 
@@ -52,7 +52,7 @@ def create_object(cores, directory, timestep):
     lmp : LammpsLibrary object
     """
     lmp = LammpsLibrary(mode="local", cores=cores, 
-        working_directory=directory)
+        working_directory=directory, cmdargs=cmdargs)
     
     lmp.units("metal")
     lmp.boundary("p p p")
