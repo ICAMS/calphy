@@ -409,13 +409,15 @@ class Calculation(InputTemplate):
             if len(val) == 2:
                 self._temperature = val[0]
                 self._temperature_stop = val[1]
-                self._temperature_high = 2*val[1]
+                if self._temperature_high is None:
+                    self._temperature_high = 2*val[1]
             else:
                 raise ValueError("Temperature cannot have len>2")
         else:
             self._temperature = val
             self._temperature_stop = val
-            self._temperature_high = 2*val
+            if self._temperature_high is None:
+                self._temperature_high = 2*val
 
     @property
     def temperature_high(self):
@@ -681,6 +683,9 @@ class Calculation(InputTemplate):
                 calc.berendsen.add_from_dict(indata["berendsen"])
             if "composition_scaling" in indata.keys():
                 calc.composition_scaling.add_from_dict(indata["composition_scaling"])
+            #if temperature_high is present, set it
+            if "temperature_high" in indata.keys():
+                calc.temperature_high = indata["temperature_high"]
             return calc
         else:
             raise FileNotFoundError('%s input file not found'% indata)
