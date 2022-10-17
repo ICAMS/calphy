@@ -143,7 +143,7 @@ class Solid(cph.Phase):
 
         #set up potential
         if self.calc.potential_file is None:
-            lmp = ph.set_potential(lmp, self.calc)
+            lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
         else:
             lmp.command("include %s"%self.calc.potential_file)
 
@@ -214,7 +214,7 @@ class Solid(cph.Phase):
 
         #set up potential
         if self.calc.potential_file is None:
-            lmp = ph.set_potential(lmp, self.calc)
+            lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
         else:
             lmp.command("include %s"%self.calc.potential_file)
 

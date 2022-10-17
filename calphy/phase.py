@@ -675,7 +675,7 @@ class Phase:
         lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.calc)
+        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -755,7 +755,7 @@ class Phase:
         else:
             self.check_if_solidfied(lmp, "traj.temp.dat")
 
-        lmp = ph.set_potential(lmp, self.calc)
+        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #reverse scaling
         lmp.command("variable         flambda equal ramp(${li},${lf})")
@@ -850,7 +850,7 @@ class Phase:
         lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.calc)
+        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -936,7 +936,7 @@ class Phase:
         lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.calc)
+        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)

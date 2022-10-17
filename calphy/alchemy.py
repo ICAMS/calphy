@@ -81,7 +81,7 @@ class Alchemy(cph.Phase):
         lmp = ph.create_structure(lmp, self.calc)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.calc)
+        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -149,7 +149,7 @@ class Alchemy(cph.Phase):
 
         #set up hybrid potential
         #here we only need to set one potential
-        lmp = ph.set_potential(lmp, self.calc)
+        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
         #lmp = ph.set_double_hybrid_potential(lmp, self.options, self.calc._pressureair_style, self.calc._pressureair_coeff)
 
         #remap the box to get the correct pressure
