@@ -118,7 +118,7 @@ class Liquid(cph.Phase):
         lmp = ph.create_structure(lmp, self.calc, species=self.calc.n_elements+self.calc._ghost_element_count)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.calc)
+        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #Melt regime for the liquid
         lmp.velocity("all create", self.calc._temperature_high, np.random.randint(0, 10000))
@@ -183,7 +183,7 @@ class Liquid(cph.Phase):
 
         #set hybrid ufm and normal potential
         #lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
-        lmp = ph.set_potential(lmp, self.calc)
+        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
