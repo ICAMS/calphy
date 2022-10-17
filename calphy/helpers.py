@@ -99,7 +99,19 @@ def create_structure(lmp, calc, species=None):
     return lmp
 
 
-def set_potential(lmp, options):
+def set_mass(lmp, options, ghost_elements=0):
+    count = 0
+    for i in range(options.n_elements):
+        lmp.mass(i+1, options.mass[i])
+        count += 1
+
+    for i in range(ghost_elements):
+        lmp.mass(count+i, 1.00)
+
+    return lmp
+
+
+def set_potential(lmp, options, ghost_elements=0):
     """
     Set the interatomic potential
 
@@ -116,8 +128,8 @@ def set_potential(lmp, options):
     lmp.pair_style(options.pair_style[0])
     lmp.pair_coeff(options.pair_coeff[0])
 
-    for i in range(options.n_elements):
-        lmp.mass(i+1, options.mass[i])
+    lmp = set_mass(lmp, options, ghost_elements=ghost_elements)
+
     return lmp
 
 
@@ -158,7 +170,7 @@ def get_structures(file, species, index=None):
         aseobjs = traj[index].to_ase(species=species)
     return aseobjs
 
-def set_hybrid_potential(lmp, options, eps):
+def set_hybrid_potential(lmp, options, eps, ghost_elements=0):
     pc =  options.pair_coeff[0]
     pcraw = pc.split()
     pcnew = " ".join([*pcraw[:2], *[options.pair_style[0],], *pcraw[2:]])
@@ -167,11 +179,11 @@ def set_hybrid_potential(lmp, options, eps):
     lmp.command("pair_coeff       %s"%pcnew)
     lmp.command("pair_coeff       * * ufm %f 1.5"%eps) 
 
-    for i in range(options.n_elements):
-        lmp.mass(i+1, options.mass[i])
+    lmp = set_mass(lmp, options, ghost_elements=ghost_elements)
+
     return lmp
 
-def set_double_hybrid_potential(lmp, options, pair_style, pair_coeff):
+def set_double_hybrid_potential(lmp, options, pair_style, pair_coeff, ghost_elements=0):
     
     pc1 =  pair_coeff[0]
     pcraw1 = pc1.split()
@@ -191,8 +203,8 @@ def set_double_hybrid_potential(lmp, options, pair_style, pair_coeff):
     lmp.command("pair_coeff       %s"%pcnew1)
     lmp.command("pair_coeff       %s"%pcnew2) 
 
-    for i in range(options.n_elements):
-        lmp.mass(i+1, options.mass[i])
+    lmp = set_mass(lmp, options, ghost_elements=ghost_elements)
+
     return lmp
 
 def remap_box(lmp, x, y, z):
