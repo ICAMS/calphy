@@ -209,7 +209,7 @@ class Calculation(InputTemplate):
         
         self.tolerance = InputTemplate()
         self.tolerance.lattice_constant = 0.0002
-        self.tolerance.spring_constant = 0.01
+        self.tolerance.spring_constant = 0.1
         self.tolerance.solid_fraction = 0.7
         self.tolerance.liquid_fraction = 0.05
         self.tolerance.pressure = 0.5
