@@ -100,7 +100,7 @@ def create_structure(lmp, calc, species=None):
 
 
 def set_mass(lmp, options, ghost_elements=0):
-    count = 0
+    count = 1
     for i in range(options.n_elements):
         lmp.mass(i+1, options.mass[i])
         count += 1
