@@ -163,12 +163,12 @@ class Phase:
 
         #now manually tune pair styles
         if self.calc.pair_style is not None:
-            self.logger.info("pair_style: %s"%self.calc.pair_style[0])
+            self.logger.info("pair_style: %s"%self.calc.pair_style_with_options[0])
             self.logger.info("pair_coeff: %s"%self.calc.pair_coeff[0])
 
             #log second pair style
             if len(self.calc.pair_style)>1:
-                self.logger.info("second pair_style: %s"%self.calc.pair_style[1])
+                self.logger.info("second pair_style: %s"%self.calc.pair_style_with_options[1])
                 self.logger.info("second pair_coeff: %s"%self.calc.pair_coeff[1])
         else:
             self.logger.info("pair_style or pair_coeff not provided")
@@ -726,7 +726,7 @@ class Phase:
         pcnew1 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], "1", *pcraw[2:]])
         pcnew2 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], "2", *pcraw[2:]])
 
-        lmp.command("pair_style       hybrid/scaled v_one %s v_fscale %s"%(self.calc.pair_style[0], self.calc.pair_style[0]))
+        lmp.command("pair_style       hybrid/scaled v_one %s v_fscale %s"%(self.calc.pair_style_with_options[0], self.calc.pair_style_with_options[0]))
         lmp.command("pair_coeff       %s"%pcnew1)
         lmp.command("pair_coeff       %s"%pcnew2)
 
@@ -764,7 +764,7 @@ class Phase:
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
 
-        lmp.command("pair_style       hybrid/scaled v_one %s v_bscale %s"%(self.calc.pair_style[0], self.calc.pair_style[0]))
+        lmp.command("pair_style       hybrid/scaled v_one %s v_bscale %s"%(self.calc.pair_style_with_options[0], self.calc.pair_style_with_options[0]))
         lmp.command("pair_coeff       %s"%pcnew1)
         lmp.command("pair_coeff       %s"%pcnew2)
 

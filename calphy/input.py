@@ -432,6 +432,11 @@ class Calculation(InputTemplate):
     @property
     def pair_style(self):
         return self._pair_style
+
+    @property
+    def pair_style_with_options(self):
+        return [" ".join([self.pair_style[i], self._pair_style_options[i]]) for i in range(len(self.pair_style))]
+
     
     @pair_style.setter
     def pair_style(self, val):

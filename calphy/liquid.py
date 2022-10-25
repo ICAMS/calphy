@@ -204,7 +204,7 @@ class Liquid(cph.Phase):
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.calc.pair_style[0])
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.calc.pair_style_with_options[0])
 
         pc =  self.calc.pair_coeff[0]
         pcraw = pc.split()
@@ -268,7 +268,7 @@ class Liquid(cph.Phase):
         lmp.command("variable         flambda equal ramp(${lf},${li})")
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.calc.pair_style[0])
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.calc.pair_style_with_options[0])
 
         lmp.command("pair_coeff       %s"%pcnew)
         lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps)
