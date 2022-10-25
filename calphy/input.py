@@ -774,7 +774,7 @@ def read_inputfile(file):
             #create calculations
             for combo in combos:
                 calc = Calculation.generate(indata)
-                calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
+                calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "pair_style_options", "npt", "repeat", "n_equilibration_steps",
                                 "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
                                 "melting_cycle", "equilibration_control", "folder_prefix", "temperature_high"])
                 calc.lattice = combo[0]["lattice"]
