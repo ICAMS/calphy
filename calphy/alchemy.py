@@ -194,8 +194,11 @@ class Alchemy(cph.Phase):
             pc2 = " ".join([*pcraw[:2], *[self.calc.pair_style[1],], *pcraw[2:]])
 
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.calc.pair_style[0], 
-            self.calc.pair_style[1]))
+        lmp.command("pair_style       hybrid/scaled v_flambda %s %s v_blambda %s %s"%(
+            self.calc.pair_style_with_options[0],
+            self.calc.pair_style_with_options[1]
+            )
+        )
         lmp.command("pair_coeff       %s"%pc1)
         lmp.command("pair_coeff       %s"%pc2)
 
@@ -230,7 +233,7 @@ class Alchemy(cph.Phase):
         lmp.command("uncompute       c2")
 
 
-        lmp.command("pair_style      %s"%self.calc.pair_style[1])
+        lmp.command("pair_style      %s"%self.calc.pair_style_with_options[1])
         lmp.command("pair_coeff      %s"%self.calc.pair_coeff[1])
 
         # Thermo output.
@@ -246,8 +249,8 @@ class Alchemy(cph.Phase):
         lmp.command("variable         blambda equal ramp(${li},${lf})")
         
         
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.calc.pair_style[0], 
-            self.calc.pair_style[1]))
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.calc.pair_style_with_options[0], 
+            self.calc.pair_style_with_options[1]))
         lmp.command("pair_coeff       %s"%pc1)
         lmp.command("pair_coeff       %s"%pc2)
 

@@ -159,6 +159,7 @@ class Calculation(InputTemplate):
         self._fix_lattice = False
         self._melting_cycle = True
         self._pair_style = None
+        self._pair_style_options = None
         self._pair_coeff = None
         self._potential_file = None
         self._fix_potential_path = True
@@ -431,12 +432,28 @@ class Calculation(InputTemplate):
     @property
     def pair_style(self):
         return self._pair_style
+
+    @property
+    def pair_style_with_options(self):
+        return [" ".join([self.pair_style[i], self._pair_style_options[i]]) for i in range(len(self.pair_style))]
+
     
     @pair_style.setter
     def pair_style(self, val):
         val = self.check_and_convert_to_list(val)
+        ps_lst = []
+        ps_options_lst = []
+        for ps in val:
+            ps_split = ps.split()
+            ps_lst.append(ps_split[0])
+            if len(ps) > 1:
+                ps_options_lst.append(" ".join(ps_split[1:]))
+            else:
+                ps_options_lst.append("")
+
         #val = self.fix_paths(val)
-        self._pair_style = val
+        self._pair_style = ps_lst
+        self._pair_style_options = ps_options_lst
 
     @property
     def pair_coeff(self):

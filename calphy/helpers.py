@@ -125,7 +125,7 @@ def set_potential(lmp, options, ghost_elements=0):
     -------
     lmp : LammpsLibrary object
     """
-    lmp.pair_style(options.pair_style[0])
+    lmp.pair_style(options.pair_style_with_options[0])
     lmp.pair_coeff(options.pair_coeff[0])
 
     lmp = set_mass(lmp, options, ghost_elements=ghost_elements)
@@ -173,9 +173,9 @@ def get_structures(file, species, index=None):
 def set_hybrid_potential(lmp, options, eps, ghost_elements=0):
     pc =  options.pair_coeff[0]
     pcraw = pc.split()
-    pcnew = " ".join([*pcraw[:2], *[options.pair_style[0],], *pcraw[2:]])
+    pcnew = " ".join([*pcraw[:2], *[options.pair_style_with_options[0],], *pcraw[2:]])
     
-    lmp.command("pair_style       hybrid/overlay %s ufm 7.5"%options.pair_style[0])
+    lmp.command("pair_style       hybrid/overlay %s ufm 7.5"%options.pair_style_with_options[0])
     lmp.command("pair_coeff       %s"%pcnew)
     lmp.command("pair_coeff       * * ufm %f 1.5"%eps) 
 
@@ -183,22 +183,22 @@ def set_hybrid_potential(lmp, options, eps, ghost_elements=0):
 
     return lmp
 
-def set_double_hybrid_potential(lmp, options, pair_style, pair_coeff, ghost_elements=0):
+def set_double_hybrid_potential(lmp, options, ghost_elements=0):
     
-    pc1 =  pair_coeff[0]
+    pc1 =  options.pair_coeff[0]
     pcraw1 = pc1.split()
     
-    pc2 =  pair_coeff[1]
+    pc2 =  options.pair_coeff[1]
     pcraw2 = pc2.split()
 
-    if pair_style[0] == pair_style[1]:
-        pcnew1 = " ".join([*pcraw1[:2], *[pair_style[0],], "1", *pcraw1[2:]])
-        pcnew2 = " ".join([*pcraw2[:2], *[pair_style[1],], "2", *pcraw2[2:]])
+    if options.pair_style[0] == options.pair_style[1]:
+        pcnew1 = " ".join([*pcraw1[:2], *[options.pair_style[0],], "1", *pcraw1[2:]])
+        pcnew2 = " ".join([*pcraw2[:2], *[options.pair_style[1],], "2", *pcraw2[2:]])
     else:
-        pcnew1 = " ".join([*pcraw1[:2], *[pair_style[0],], *pcraw1[2:]])
-        pcnew2 = " ".join([*pcraw2[:2], *[pair_style[1],], *pcraw2[2:]])
+        pcnew1 = " ".join([*pcraw1[:2], *[options.pair_style[0],], *pcraw1[2:]])
+        pcnew2 = " ".join([*pcraw2[:2], *[options.pair_style[1],], *pcraw2[2:]])
 
-    lmp.command("pair_style       hybrid/overlay %s %s"%(pair_style[0], pair_style[1]))
+    lmp.command("pair_style       hybrid/overlay %s %s"%(options.pair_style_with_options[0], options.pair_style_with_options[1]))
     
     lmp.command("pair_coeff       %s"%pcnew1)
     lmp.command("pair_coeff       %s"%pcnew2) 
