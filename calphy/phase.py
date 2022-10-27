@@ -508,7 +508,7 @@ class Phase:
     def run_constrained_pressure_convergence(self, lmp):
         """
         """
-        lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping))
+        lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1]))
         lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
         lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
         lmp.command("thermo           10")
