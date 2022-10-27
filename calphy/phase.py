@@ -125,6 +125,9 @@ class Phase:
         self.logger.info("Thermostat damping is %f"%(self.calc.md.thermostat_damping[1]))
         self.logger.info("Barostat damping is %f"%(self.calc.md.barostat_damping[1]))
 
+        if self.calc._fix_lattice:
+            self.logger.info("Lattice is fixed, pressure convergence criteria is 50*tolerance.pressure; change if needed!")
+
         self.l = None
         self.alat = None
         self.apc = None
@@ -508,8 +511,8 @@ class Phase:
     def run_constrained_pressure_convergence(self, lmp):
         """
         """
-        lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping))
         lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
+        lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1]))
         lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
         lmp.command("thermo           10")
         
@@ -528,7 +531,11 @@ class Phase:
             
             lxpc = ipress
             mean = np.mean(lxpc)
-            if (np.abs(mean - lastmean)) < self.calc.tolerance.pressure:
+            std = np.std(lxpc)
+            volatom = np.mean((lx*ly*lz)/self.natoms)
+            self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
+
+            if (np.abs(mean - lastmean)) < 50*self.calc.tolerance.pressure:
                 #here we actually have to set the pressure
                 self.calc._pressure = mean
                 std = np.std(lxpc)
