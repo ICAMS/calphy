@@ -432,11 +432,6 @@ class Calculation(InputTemplate):
     @property
     def pair_style(self):
         return self._pair_style
-
-    @property
-    def pair_style_with_options(self):
-        return [" ".join([self.pair_style[i], self._pair_style_options[i]]) for i in range(len(self.pair_style))]
-
     
     @pair_style.setter
     def pair_style(self, val):
@@ -453,7 +448,27 @@ class Calculation(InputTemplate):
 
         #val = self.fix_paths(val)
         self._pair_style = ps_lst
-        self._pair_style_options = ps_options_lst
+
+        #only set if its None
+        if self.pair_style_options is None:
+            self.pair_style_options = ps_options_lst
+
+
+    @property
+    def pair_style_options(self):
+        return self._pair_style_options
+
+    @pair_style_options.setter
+    def pair_style_options(self, val):
+        val = self.check_and_convert_to_list(val)
+        self._pair_style_options = val
+
+    @property
+    def pair_style_with_options(self):
+        #ignore options if lengths do not match
+        if len(self.pair_style) != len(self.pair_style_options):
+            self.pair_style_options = [self.pair_style_options[0] for x in range(len(self.pair_style))]
+        return [" ".join([self.pair_style[i], self.pair_style_options[i]]) for i in range(len(self.pair_style))]
 
     @property
     def pair_coeff(self):

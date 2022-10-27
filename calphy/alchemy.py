@@ -194,7 +194,7 @@ class Alchemy(cph.Phase):
             pc2 = " ".join([*pcraw[:2], *[self.calc.pair_style[1],], *pcraw[2:]])
 
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s %s v_blambda %s %s"%(
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(
             self.calc.pair_style_with_options[0],
             self.calc.pair_style_with_options[1]
             )
