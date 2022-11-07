@@ -30,7 +30,7 @@ import warnings
 from calphy.input import read_inputfile #, create_identifier
 import calphy.scheduler as pq
 import argparse as ap
-
+from calphy import __version__ as version
 
 def run_jobs(inputfile):
     """
@@ -96,11 +96,18 @@ def main():
     arg = ap.ArgumentParser()
     
     #argument name of input file
-    arg.add_argument("-i", "--input", required=True, type=str,
+    arg.add_argument("-i", "--input", required=False, type=str,
+    help="name of the input file")
+
+    arg.add_argument("-v", "--version", action='store_true',
     help="name of the input file")
     
     #parse args
     args = vars(arg.parse_args())
 
-    #spawn job
-    run_jobs(args["input"])
+    if args["version"]:
+        print(version)
+    else:
+        #spawn job
+        if args["input"]:
+            run_jobs(args["input"])
