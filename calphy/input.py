@@ -231,6 +231,9 @@ class Calculation(InputTemplate):
         data = "%s system with T=%s, P=%s in %s lattice for mode %s"%(self.to_string(self.reference_phase),
             self.to_string(self._temperature), self.to_string(self._pressure), self.to_string(self.lattice), self.to_string(self.mode)) 
         return data
+
+    def _repr_json_(self):
+        return self.to_dict()
     
     def to_string(self, val):
         if val is None:
