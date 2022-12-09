@@ -559,7 +559,7 @@ class Phase:
             lmp.close()
             raise ValueError("pressure did not converge")
 
-    def process_traj(self, lmp, filename, outfilename):
+    def process_traj(self, filename, outfilename):
         """
         Process the out trajectory after averaging cycle and 
         extract a configuration to run integration
