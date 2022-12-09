@@ -248,6 +248,18 @@ def find_solid_fraction(file):
     return solids
 
 def reset_timestep(file, conf):
+    with open(file, "r") as f:
+        with open(conf, "w") as c:
+            zero = False
+            for l in f:
+                if zero:
+                    c.write("0\n")
+                    zero = False
+                    continue
+                elif l.startswith("ITEM: TIMESTEP"):
+                    zero = True
+                c.write(l)
+
     shutil.copy(file, conf)
     #lmp = create_object(
     #    cores=1,
