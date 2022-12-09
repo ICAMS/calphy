@@ -27,6 +27,7 @@ import logging
 import numpy as np
 from lammps import lammps
 import calphy.lattice as pl
+import shutil
 import pyscal.core as pc
 from ase.io import read, write
 from pyscal.trajectory import Trajectory
@@ -82,7 +83,7 @@ def create_structure(lmp, calc, species=None):
 
     if l == "file":
         if dumpfile:
-            reset_timestep(lmp, calc.lattice, calc.lattice, keys=None)
+            #reset_timestep(calc.lattice, calc.lattice, keys=None)
             lmp.command("lattice          fcc 4.0")
             lmp.command("region           box block 0 2 0 2 0 2")
             lmp.command("create_box       %d box"%species)
@@ -246,11 +247,18 @@ def find_solid_fraction(file):
     solids = sys.find_solids()
     return solids
 
-def reset_timestep(lmp, file, conf):
-    lmp.command("dump              2 all custom 1 %s id type mass x y z vx vy vz"%(file))
-    lmp.command("run               0")
-    lmp.command("undump            2")
-    lmp.command("reset_timestep     0")
+def reset_timestep(file, conf):
+    shutil.copy(file, conf)
+    #lmp = create_object(
+    #    cores=1,
+    #    directory = os.path.dirname(file),
+    #    timestep=0,
+    #    cmdargs=None,
+    #)
+    #lmp.command("dump              2 all custom 1 %s id type mass x y z vx vy vz"%(file))+
+    #lmp.command("reset_timestep     0")
+    #lmp.command("run               0")
+    #lmp.command("undump            2")
 
 
 """
