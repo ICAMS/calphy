@@ -259,8 +259,7 @@ def reset_timestep(file, conf):
                 elif l.startswith("ITEM: TIMESTEP"):
                     zero = True
                 c.write(l)
-
-    shutil.copy(file, conf)
+                
     #lmp = create_object(
     #    cores=1,
     #    directory = os.path.dirname(file),
