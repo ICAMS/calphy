@@ -181,7 +181,7 @@ class Solid(cph.Phase):
         #check for melting
         self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
         self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
-
+        lmp = ph.write_data(lmp, "current.data")
         #close object and process traj
         lmp.close()
         self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.dump")

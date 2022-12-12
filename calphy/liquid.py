@@ -144,7 +144,7 @@ class Liquid(cph.Phase):
         self.dump_current_snapshot(lmp, "traj.equilibration_stage1.dat")
         self.check_if_solidfied(lmp, "traj.equilibration_stage1.dat")
         self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
-        
+        lmp = ph.write_data(lmp, "current.data")
         lmp.close()
 
         #process the trajectory
