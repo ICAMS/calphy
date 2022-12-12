@@ -577,7 +577,7 @@ class Phase:
         files = ptp.split_trajectory(trajfile)
         conf = os.path.join(self.simfolder, outfilename)
 
-        ph.reset_timestep(conf)
+        ph.reset_timestep(conf, os.path.join(self.simfolder, "current.data"))
 
         os.remove(trajfile)
         for file in files:
