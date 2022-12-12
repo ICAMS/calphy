@@ -209,8 +209,9 @@ class Solid(cph.Phase):
         lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, self.calc.md.cmdargs)
 
         #read in the conf file
-        conf = os.path.join(self.simfolder, "conf.equilibration.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
+        #conf = os.path.join(self.simfolder, "conf.equilibration.dump")
+        conf = os.path.join(self.simfolder, "conf.equilibration.data")
+        lmp = ph.read_data(lmp, conf)
 
         #set up potential
         if self.calc.potential_file is None:

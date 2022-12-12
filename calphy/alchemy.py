@@ -108,11 +108,12 @@ class Alchemy(cph.Phase):
 
         #check for melting
         self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
+
         self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
 
         #close object and process traj
         lmp.close()
-        self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.dump")
+        self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.data")
 
 
     
@@ -144,8 +145,9 @@ class Alchemy(cph.Phase):
         lmp.command("variable        lf       equal   0.0")
         
         #read dump file
-        conf = os.path.join(self.simfolder, "conf.equilibration.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
+        #conf = os.path.join(self.simfolder, "conf.equilibration.dump")
+        conf = os.path.join(self.simfolder, "conf.equilibration.data")
+        lmp = ph.read_data(lmp, conf)
 
         #set up hybrid potential
         #here we only need to set one potential

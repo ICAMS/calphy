@@ -86,6 +86,7 @@ def create_structure(lmp, calc, species=None):
             #reset_timestep(calc.lattice, calc.lattice, keys=None)
             lmp.command("lattice          fcc 4.0")
             lmp.command("region           box block 0 2 0 2 0 2")
+            lmp.command("box tilt large")
             lmp.command("create_box       %d box"%species)
             lmp.command("read_dump        %s 0 x y z scaled no box yes add keep"%calc.lattice)
             lmp.command("change_box       all triclinic")
@@ -143,6 +144,12 @@ def read_dump(lmp, file, species=1):
     lmp.command("read_dump        %s 0 x y z vx vy vz scaled no box yes add keep"%file)
     lmp.command("change_box       all triclinic")
     return lmp
+
+
+def read_data(lmp, file):
+    lmp.command(f"read_data {file}")
+    return lmp
+
 
 def convert_to_data_file(inputfile, outputfile, ghost_elements=0):
     atoms = read(inputfile, format="lammps-dump-text")
@@ -211,8 +218,8 @@ def set_double_hybrid_potential(lmp, options, ghost_elements=0):
     return lmp
 
 def remap_box(lmp, x, y, z):
-    lmp.command("run 0")
-    lmp.command("change_box     all x final 0.0 %f y final 0.0 %f z final 0.0 %f remap units box"%(x, y, z))
+    #lmp.command("run 0")
+    #lmp.command("change_box     all x final 0.0 %f y final 0.0 %f z final 0.0 %f remap units box"%(x, y, z))
     return lmp
 
 
@@ -249,18 +256,32 @@ def find_solid_fraction(file):
     solids = sys.find_solids()
     return solids
 
+def write_data(lmp, file):
+    lmp.command(f"write_data {file}")
+    return lmp
+
 def reset_timestep(file, conf):
-    with open(file, "r") as f:
-        with open(conf, "w") as c:
-            zero = False
-            for l in f:
-                if zero:
-                    c.write("0\n")
-                    zero = False
-                    continue
-                elif l.startswith("ITEM: TIMESTEP"):
-                    zero = True
-                c.write(l)
+    lmp = create_object(
+        cores=1,
+        directory = os.path.dirname(file),
+        timestep=0,
+        cmdargs=None,
+    )
+    lmp = read_data(lmp, file)
+    lmp = write_data(lmp, conf)
+    return lmp
+
+    #with open(file, "r") as f:
+    #    with open(conf, "w") as c:
+    #        zero = False
+    #        for l in f:
+    #            if zero:
+    #                c.write("0\n")
+    #                zero = False
+    #                continue
+    #            elif l.startswith("ITEM: TIMESTEP"):
+    #                zero = True
+    #            c.write(l)
                 
     #lmp = create_object(
     #    cores=1,

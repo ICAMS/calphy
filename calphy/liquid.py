@@ -148,7 +148,7 @@ class Liquid(cph.Phase):
         lmp.close()
 
         #process the trajectory
-        self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.dump")
+        self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.data")
 
 
 
@@ -178,8 +178,9 @@ class Liquid(cph.Phase):
         lmp.command("variable        lf       equal   0.0")
 
         #read in the conf file
-        conf = os.path.join(self.simfolder, "conf.equilibration.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
+        #conf = os.path.join(self.simfolder, "conf.equilibration.dump")
+        conf = os.path.join(self.simfolder, "conf.equilibration.data")
+        lmp = ph.read_data(lmp, conf)
 
         #set hybrid ufm and normal potential
         #lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
