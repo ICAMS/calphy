@@ -218,8 +218,8 @@ def set_double_hybrid_potential(lmp, options, ghost_elements=0):
     return lmp
 
 def remap_box(lmp, x, y, z):
-    #lmp.command("run 0")
-    #lmp.command("change_box     all x final 0.0 %f y final 0.0 %f z final 0.0 %f remap units box"%(x, y, z))
+    lmp.command("run 0")
+    lmp.command("change_box     all x final 0.0 %f y final 0.0 %f z final 0.0 %f remap units box"%(x, y, z))
     return lmp
 
 
