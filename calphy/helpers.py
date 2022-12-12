@@ -87,8 +87,8 @@ def create_structure(lmp, calc, species=None):
             lmp.command("lattice          fcc 4.0")
             lmp.command("region           box block 0 2 0 2 0 2")
             lmp.command("create_box       %d box"%species)
-            lmp.command("change_box       all triclinic")
             lmp.command("read_dump        %s 0 x y z scaled no box yes add keep"%calc.lattice)
+            lmp.command("change_box       all triclinic")
         else:
             lmp.command("read_data      %s"%calc.lattice)
     else:
@@ -140,8 +140,8 @@ def read_dump(lmp, file, species=1):
     lmp.command("lattice          fcc 4.0")
     lmp.command("region           box block 0 2 0 2 0 2")
     lmp.command("create_box       %d box"%species)
-    lmp.command("change_box       all triclinic")
     lmp.command("read_dump        %s 0 x y z vx vy vz scaled no box yes add keep"%file)
+    lmp.command("change_box       all triclinic")
     return lmp
 
 def convert_to_data_file(inputfile, outputfile, ghost_elements=0):
