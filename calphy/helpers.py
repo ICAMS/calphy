@@ -59,6 +59,7 @@ def create_object(cores, directory, timestep, cmdargs=None):
     lmp.boundary("p p p")
     lmp.atom_style("atomic")
     lmp.timestep(timestep)
+    lmp.command("box    tilt large")
     return lmp
 
 def create_structure(lmp, calc, species=None):
