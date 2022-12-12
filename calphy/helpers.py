@@ -260,7 +260,7 @@ def write_data(lmp, file):
     lmp.command(f"write_data {file}")
     return lmp
 
-def reset_timestep(file, conf):
+def reset_timestep(conf, file="current.data"):
     lmp = create_object(
         cores=1,
         directory = os.path.dirname(file),
