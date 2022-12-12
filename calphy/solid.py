@@ -184,7 +184,7 @@ class Solid(cph.Phase):
         lmp = ph.write_data(lmp, "current.data")
         #close object and process traj
         lmp.close()
-        self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.dump")
+        self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.data")
 
 
 
