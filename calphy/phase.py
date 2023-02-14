@@ -241,7 +241,7 @@ class Phase:
         filename = None
 
         if stage == "fe":
-            filename = os.path.join(self.simfolder, "conf.equilibration.dump")
+            filename = os.path.join(self.simfolder, "conf.equilibration.data")
         elif stage == "ts":
             if direction == "forward":
                 filename = os.path.join(self.simfolder, "traj.ts.forward_%d.dat"%n_iteration)
@@ -577,7 +577,7 @@ class Phase:
         files = ptp.split_trajectory(trajfile)
         conf = os.path.join(self.simfolder, outfilename)
 
-        ph.reset_timestep(files[-1], conf)
+        ph.reset_timestep(conf, os.path.join(self.simfolder, "current.data"))
 
         os.remove(trajfile)
         for file in files:
@@ -678,8 +678,9 @@ class Phase:
         lmp.command("variable          lf equal %f"%lf)
 
         #read in conf file
-        conf = os.path.join(self.simfolder, "conf.equilibration.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
+        #conf = os.path.join(self.simfolder, "conf.equilibration.dump")
+        conf = os.path.join(self.simfolder, "conf.equilibration.data")
+        lmp = ph.read_data(lmp, conf)
 
         #set up potential
         lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
@@ -853,8 +854,9 @@ class Phase:
         lmp.command("variable          lf equal %f"%lf)
 
         #read in conf
-        conf = os.path.join(self.simfolder, "conf.equilibration.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
+        #conf = os.path.join(self.simfolder, "conf.equilibration.dump")
+        conf = os.path.join(self.simfolder, "conf.equilibration.data")
+        lmp = ph.read_data(lmp, conf)
 
         #set up potential
         lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
@@ -939,8 +941,9 @@ class Phase:
         lmp.command("variable          pf equal %f"%pf)
 
         #read in conf
-        conf = os.path.join(self.simfolder, "conf.dump")
-        lmp = ph.read_dump(lmp, conf, species=self.calc.n_elements+self.calc._ghost_element_count)
+        #conf = os.path.join(self.simfolder, "conf.dump")
+        conf = os.path.join(self.simfolder, "conf.equilibration.data")
+        lmp = ph.read_data(lmp, conf)
 
         #set up potential
         lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
