@@ -58,11 +58,19 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
     'sphinx.ext.napoleon',
-    'm2r2',
-    'sphinx_markdown_tables',
-    'nbsphinx',
+    "sphinx.ext.extlinks", 
+    "sphinx.ext.intersphinx", 
+    "sphinx.ext.todo", 
+    "sphinx.ext.viewcode",
+    "myst_parser", 
+    "sphinx_copybutton", 
+    "sphinx_design", 
+    "sphinx_inline_tabs",
+    "nbsphinx",
+    "sphinx_gallery.load_style",
 ]
 
+myst_enable_extensions = ["dollarmath", "amsmath"]
 #html_theme = 'sphinx_rtd_theme'
 html_theme = 'furo'
 #html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]

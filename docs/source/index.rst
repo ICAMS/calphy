@@ -41,32 +41,18 @@ be found in the `associated
 publication <https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.5.103801>`__.
 
 
-Documentation
-~~~~~~~~~~~~~
-
 .. toctree::
-   gettingstarted 
-   documentation
-
-Examples
-~~~~~~~~
-
-.. toctree::
+   :hidden:
    :maxdepth: 2
 
+   Installation <gettingstarted> 
+   Using calphy <running_calphy/running_calphy>
+   inputfile
    examples
-
-API reference
-~~~~~~~~~~~~~
-
-.. toctree::
    calphy
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
-
-.. math::
+   faqs
+   prologue/extending
+   prologue/helpandsupport
+   prologue/acknowledgements
+   prologue/citing
+   prologue/license
