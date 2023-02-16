@@ -47,7 +47,7 @@ setup(
     description="free energy calculation for python",
     install_requires=['matplotlib', 'pytest',
     'scipy', 'pyyaml', 'mendeleev', 
-    'tqdm', 'mpi4py', 'pylammpsmpi'],
+    'tqdm', 'pylammpsmpi'],
     license="GNU General Public License v3",
     long_description=readme,
     long_description_content_type='text/markdown',
