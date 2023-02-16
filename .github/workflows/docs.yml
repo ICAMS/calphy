@@ -14,6 +14,10 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     # Standard drop-in approach that should work for most people.
+    - name: run tests
+      shell: bash -l {0}
+      run: |
+        pip install -e .
     - uses: ammaraskar/sphinx-action@master
       with:
         docs-folder: "docs/"
