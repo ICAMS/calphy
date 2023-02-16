@@ -1,48 +1,53 @@
 
-# `calphy` input file
+# `calphy` input keywords
+
 
 The inputfile is `yaml` formatted. In this section the possible keys in the inputfile is discussed. The input file consists of two main keys, and four separate blocks. For a sample of the inputfile see the end of this document. The table below gives a quick overview of all available keywords in calphy.
 
-| Main keys  | |
-| :-: | :-: |
-| [element](#element) | [mass](#mass) | 
 
-| `calculations` block | | | | |
-| :-: | :-: | :-: | :-: | :-: |
-| [mode](#mode) | [lattice](#lattice) | [reference_phase](#reference_phase) | [temperature](#temperature) | [pressure](#pressure) |
-| [temperature_high](#temperature_high) | [lattice_constant](#lattice_constant) | [repeat](#repeat) | [n_iterations](#n_iterations) | [n_switching_steps](#n_switching_steps) | 
-| [n_equilibration_steps](#n_equilibration_steps) | [pair_style](#pair_style) | [pair_coeff](#pair_coeff) | [n_print_steps](#n_print_steps) | [potential_file](#potential_file) |  
-| [spring_constants](#spring_constants) | [equilibration_control](#equilibration_control) | [melting_cycle](#melting_cycle) | [folder_prefix](#folder_prefix) | |   
+| Main keys | |
+| :------: | :------: |
+| [](element) | [](mass) | 
 
-| `md` block  | | | | |
-| :-: | :-: | :-: | :-: | :-: |
-| [timestep](#timestep) | [n_small_steps](#n_small_steps) | [n_every_steps](#n_every_steps) | [n_repeat_steps](#n_repeat_steps) | [n_cycles](#n_cycles) |
-| [thermostat_damping](#thermostat_damping) | [barostat_damping](#barostat_damping) |
 
-| `queue` block  | | | | |
-| :-: | :-: | :-: | :-: | :-: |
-| [scheduler](#scheduler) | [cores](#cores) | [jobname](#jobname) | [walltime](#walltime) | [queuename](#queuename) |
-| [memory](#memory) | [commands](#commands) | [modules](#modules) | [options](#options) |
+| `calculations` block | | | |
+| :------: | :------: | :------: | :------: |
+| [](mode) | [](lattice) | [](reference_phase) | [](temperature) |
+| [](pressure) | [](temperature_high) | [](lattice_constant) | [](repeat) |
+| [](n_iterations) | [](n_switching_steps) | [](n_equilibration_steps) | [](pair_style) |
+| [](pair_coeff) | [](n_print_steps) | [](potential_file) | [](spring_constants) |
+| [](equilibration_control) | [](melting_cycle) | [](folder_prefix) |
 
-| `tolerance` block | | | | |
-| :-: | :-: | :-: | :-: | :-: |
-| [lattice_constant](#tol_lattice_constant) | [spring_constant](#tol_spring_constant) | [solid_fraction](#tol_solid_frac) | [liquid_fraction](#tol_liquid_frac) | [pressure](#tol_pressure) |
+| `md` block | | | |
+| :------: | :------: | :------: | :------: |
+| [](timestep) | [](n_small_steps) | [](n_every_steps) | [](n_repeat_steps) |
+| [](n_cycles) | [](thermostat_damping) | [](barostat_damping) |
 
-| `melting_temperature` block | | | | |
-| :-: | :-: | :-: | :-: | :-: |
-| [step](#step) | [attempts](#attempts) |
+| `queue` block | | | |
+| :------: | :------: | :------: | :------: |
+| [](scheduler) | [](cores) | [](jobname) | [](walltime) |
+| [](queuename) | [](memory) | [](commands) | [](modules) |
+| [](options) | 
 
-| `composition_scaling` block | | | | |
-| :-: | :-: | :-: | :-: | :-: |
-| [input_chemical_composition](#input_chemical_composition) | [output_chemical_composition](#output_chemical_composition) |
+| `tolerance` block | | | |
+| :------: | :------: | :------: | :------: |
+| [](tol_spring_constant) | [](tol_solid_fraction) | [](tol_liquid_fraction) | [](tol_pressure) |
 
-| `nose_hoover` block | | | | |
-| :-: | :-: | :-: | :-: | :-: |
-| [thermostat_damping](#nose_hoover_thermostat_damping) | [barostat_damping](#nose_hoover_barostat_damping) |
+| `melting_temperature` block | |
+| :------: | :------: |
+| [](step) | [](attempts) |
 
-| `berendsen` block | | | | |
-| :-: | :-: | :-: | :-: | :-: |
-| [thermostat_damping](#berendsen_thermostat_damping) | [barostat_damping](#berendsen_barostat_damping) |
+| `composition_scaling` block | |
+| :------: | :------: |
+| [](input_chemical_composition) | [](output_chemical_composition) |
+
+| `nose_hoover` block | |
+| :------: | :------: |
+| [](nose_hoover_thermostat_damping) | [](nose_hoover_barostat_damping) |
+
+| `berendsen` block | |
+| :------: | :------: |
+| [](berendsen_thermostat_damping) | [](berendsen_barostat_damping) |
 
 
 ---
@@ -52,7 +57,8 @@ The inputfile is `yaml` formatted. In this section the possible keys in the inpu
 
 ---
 
-#### <a name="element"></a>`element`
+(element)=
+#### `element`
 
 _type_: string/list of strings  
 _default_: None  
@@ -65,7 +71,8 @@ Chemical symbol(s) of the element(s) in the simulation.
 
 ---
 
-#### <a name="mass"></a>`mass`
+(mass)=
+#### `mass`
 
 _type_: float/list of floats
 _default_: 1.0
@@ -79,6 +86,7 @@ Mass of the element(s) in the simulation. It should follow the same order as tha
 
 ---
 ---
+
 
 ## `calculations` block
 
@@ -99,7 +107,8 @@ The various keys are-
 
 ---
 
-#### <a name="mode"></a>`mode`  
+(mode)=
+#### `mode`  
 
 _type_: string, `fe` or `ts` or `mts` or `alchemy` or `melting_temperature` or `tscale` or `pscale`  
 _default_: None  
@@ -120,7 +129,8 @@ Calculation mode. A small description of the different modes are given below.
 
 ---
 
-#### <a name="temperature"></a>`temperature`  
+(temperature)=
+#### `temperature`  
 
 _type_: float or list of floats  
 _default_: None  
@@ -137,7 +147,8 @@ Temperatures for the simulation in Kelvin. The way temperature is used in `calph
 
 ---
 
-#### <a name="pressure"></a>`pressure`  
+(pressure)=
+#### `pressure`  
 
 _type_: None or float or list of floats  
 _default_: None  
@@ -165,7 +176,8 @@ Pressure for the simulation in bars. Depending on the pressure input, other opti
 
 ---
 
-#### <a name="lattice"></a>`lattice`
+(lattice)=
+#### `lattice`
 
 _type_: string or list of strings  
 _default_: None  
@@ -180,7 +192,8 @@ Lattice to be used for the calculations. The `lattice` option can use either LAM
 
 ---
 
-#### <a name="reference_phase"></a>`reference_phase`         
+(reference_phase)=
+#### `reference_phase`         
    
 _type_: string or list of strings  
 _default_: None  
@@ -194,7 +207,8 @@ The protocol to be used for the calculation. The `reference_phase` input is clos
 
 ---
 
-#### <a name="lattice_constant"></a>`lattice_constant`
+(lattice_constant)=
+#### `lattice_constant`
 
 _type_: float or list of floats  
 _default_: Experimental lattice constant  
@@ -208,7 +222,8 @@ Lattice constant for input structures. Lattice constant values to be used for in
 
 ---
 
-#### <a name="repeat"></a>`repeat`
+(repeat)=
+#### `repeat`
 
 _type_: list of ints of length 3   
 _default_: [1, 1, 1]  
@@ -221,7 +236,8 @@ repeat: [3,3,3]
 
 ---
 
-#### <a name="n_iterations"></a>`n_iterations`         
+(n_iterations)=
+#### `n_iterations`         
 
 _type_: int     
 _example_:
@@ -233,7 +249,8 @@ The number of backward and forward integrations to be carried out in all modes. 
 
 ---
 
-#### <a name="temperature_high"></a>`temperature_high`
+(temperature_high)=
+#### `temperature_high`
 
 _type_: float  
 _default_: 2*temperature  
@@ -246,7 +263,8 @@ The temperature used to melt a solid structure to create a liquid. If `reference
 
 ---
 
-#### <a name="npt"></a>`npt`
+(npt)=
+#### `npt`
 
 _type_: bool  
 _default_: True  
@@ -263,7 +281,8 @@ npt: True
 
 ---
 
-#### <a name="pair_style"></a>`pair_style`
+(pair_style)=
+#### `pair_style`
 
 _type_: string or list of strings       
 _example_:
@@ -278,7 +297,8 @@ The [pair style](https://lammps.sandia.gov/doc/pair_style.html) command for LAMM
 
 ---
 
-#### <a name="pair_coeff"></a>`pair_coeff`
+(pair_coeff)=
+#### `pair_coeff`
 
 _type_: string or list of strings    
 _default_: None  
@@ -293,7 +313,8 @@ The [pair coeff](https://lammps.sandia.gov/doc/pair_coeff.html) command for LAMM
 
 ---
 
-#### <a name="potential_file"></a>`potential_file`
+(potential_file)=
+#### `potential_file`
 
 _type_: string      
 _default_: None  
@@ -306,6 +327,7 @@ If specified, the `pair_style` and `pair_coeff` commands are not used, but rathe
 
 ---
 
+(n_equilibration_steps)=
 #### <a name="n_equilibration_steps"></a>`n_equilibration_steps`
 
 _type_: int   
@@ -315,11 +337,12 @@ _example_:
 n_equilibration_steps: 10000
 ```
 
----
-
 The number of time steps for equilibrating the system.
 
-#### <a name="n_switching_steps"></a>`n_switching_steps`
+---
+
+(n_switching_steps)=
+#### `n_switching_steps`
 
 _type_: int or list of ints  
 _default_: 50000  
@@ -333,7 +356,8 @@ The number of switching steps. If a list of two integers is provided, the first 
 
 ---
 
-#### <a name="n_print_steps"></a>`n_print_steps`        
+(n_print_steps)=
+#### `n_print_steps`        
 
 _type_: int  
 _default_: 0  
@@ -347,7 +371,8 @@ Record MD trajectory during temperature sweep runs in the given interval of time
 
 ---
 
-#### <a name="spring_constants"></a>`spring_constants`        
+(spring_constants)=
+#### `spring_constants`        
 
 _type_: list of floats  
 _default_: None   
@@ -362,7 +387,8 @@ Spring constants for Einstein crystal. If specified, the automatic calculation i
 
 ---
 
-#### <a name="equilibration_control"></a>`equilibration_control`        
+(equilibration_control)=
+#### `equilibration_control`        
 
 _type_: str  
 _default_: None   
@@ -372,11 +398,12 @@ equilibration_control: berendsen
 equilibration_control: nose-hoover
 ```
 
-The barostat and thermostat combination to be used for the equilibration stage. By default, Berendsen will be used for solid reference and Nose-Hoover will be used for liquid. The damping parameters can be tuned using the [nose_hoover](#nose_hoover) block or the [berendsen](#berendsen) block. Used only for equilibration stage.
+The barostat and thermostat combination to be used for the equilibration stage. By default, Berendsen will be used for solid reference and Nose-Hoover will be used for liquid. The damping parameters can be tuned using the [nose_hoover](nose_hoover_block) block or the [berendsen](berendsen_block) block. Used only for equilibration stage.
 
 ---
 
-#### <a name="melting_cycle"></a>`melting_cycle`        
+(melting_cycle)=
+#### `melting_cycle`        
 
 _type_: bool    
 _default_: True     
@@ -391,7 +418,8 @@ If True, a melting cycle is carried out to melt the given input structure. Only 
 
 ---
 
-#### <a name="folder_prefix"></a>`folder_prefix`        
+(folder_prefix)=
+#### `folder_prefix`        
 
 _type_: string    
 _default_: None     
@@ -418,7 +446,8 @@ md:
 
 ---
 
-#### <a name="timestep"></a>`timestep`        
+(timestep)=
+#### `timestep`        
 
 _type_: float 
 _default_: 0.001  
@@ -431,7 +460,8 @@ The timestep for MD in picoseconds.
 
 ---
 
-#### <a name="thermostat_damping"></a>`thermostat_damping`
+(thermostat_damping)=
+#### `thermostat_damping`
 
 _type_: float   
 _default_: 0.1   
@@ -440,10 +470,11 @@ _example_:
 thermostat_damping: 0.1
 ```
 
-The thermostat damping constant for MD. For damping during equilibration stage see [`equilibration_control`](#equilibration_control).
+The thermostat damping constant for MD. For damping during equilibration stage see [`equilibration_control`](equilibration_control).
 
 ---
 
+(barostat_damping)=
 #### <a name="barostat_damping"></a>`barostat_damping`
 
 _type_: float  
@@ -453,11 +484,12 @@ _example_:
 barostat_damping: 0.1
 ```
 
-Pressure damping for MD. For damping during equilibration stage see [`equilibration_control`](#equilibration_control).
+Pressure damping for MD. For damping during equilibration stage see [`equilibration_control`](equilibration_control).
 
 ---
 
-#### <a name="n_small_steps"></a>`n_small_steps`
+(n_small_steps)=
+#### `n_small_steps`
 
 _type_: int  
 _default_: 10000  
@@ -470,7 +502,8 @@ The number of time steps for equilibration cycles to calculate spring constant a
 
 ---
 
-#### <a name="n_every_steps"></a>`n_every_steps`         
+(n_every_steps)=
+#### `n_every_steps`         
 
 _type_: int  
 _default_: 10  
@@ -483,7 +516,8 @@ Keywords to tune how often average values are recorded in LAMMPS. Please see [he
 
 ---
 
-#### <a name="n_repeat_steps"></a>`n_repeat_steps`         
+(n_repeat_steps)=
+#### `n_repeat_steps`         
 
 _type_: int  
 _default_: 10    
@@ -496,7 +530,8 @@ Keywords to tune how often average values are recorded in LAMMPS. Please see [he
 
 ---
 
-#### <a name="n_cycles"></a>`n_cycles`        
+(n_cycles)=
+#### `n_cycles`        
 
 _type_: int  
 _default_: 100    
@@ -530,7 +565,8 @@ queue:
 
 ---
 
-#### <a name="scheduler"></a>`scheduler`
+(scheduler)=
+#### `scheduler`
 
 _type_: string         
 _example_:
@@ -542,7 +578,8 @@ The scheduler to be used for the job. Can be `local`, `slurm` or `sge`. The code
 
 ---
 
-#### <a name="cores"></a>`cores`
+(cores)=
+#### `cores`
 
 _type_: int           
 _example_:
@@ -554,7 +591,8 @@ The number of cores to be used for the job.
 
 ---
 
-#### <a name="jobname"></a>`jobname`         
+(jobname)=
+#### `jobname`         
 
 _type_: string         
 _example_:
@@ -566,7 +604,8 @@ Name of the job. Not used for `local`.
 
 ---
 
-#### <a name="walltime"></a>`walltime`         
+(walltime)=
+#### `walltime`         
 
 _type_: string         
 _example_:
@@ -578,7 +617,8 @@ Walltime for the job. Not used for `local`.
 
 ---
 
-#### <a name="queuename"></a>`queuename`         
+(queuename)=
+#### `queuename`         
 
 _type_: string         
 _example_:
@@ -590,7 +630,8 @@ Name of the queue. Not used for `local`.
 
 ---
 
-#### <a name="memory"></a>`memory`         
+(memory)=
+#### `memory`         
 
 _type_: string         
 _example_:
@@ -602,7 +643,8 @@ Memory to be used per core. Not used for `local`.
 
 ---
 
-#### <a name="commands"></a>`commands`         
+(commands)=
+#### `commands`         
 
 _type_: list of strings         
 _example_:
@@ -617,7 +659,8 @@ Command that will be run **before** the actual calculations are carried out. Thi
 
 ---
 
-#### <a name="modules"></a>`modules`         
+(modules)=
+#### `modules`         
 
 _type_: list of strings         
 _example_:
@@ -631,7 +674,8 @@ List of modules to be loaded before running the calculations. The given module n
 
 ---
 
-#### <a name="options"></a>`options`         
+(options)=
+#### `options`         
 
 _type_: string         
 _example_:
@@ -659,7 +703,8 @@ tolerance:
 
 ---
 
-#### <a name="tol_spring_constant"></a>`spring_constant`
+(tol_spring_constant)=
+#### `spring_constant`
 
 _type_: float  
 _default_: 0.01  
@@ -672,7 +717,8 @@ tolerance for the convergence of spring constant calculation.
 
 ---
 
-#### <a name="tol_solid_fraction"></a>`solid_fraction`
+(tol_solid_fraction)=
+#### `solid_fraction`
 
 _type_: float         
 _default_: 0.7  
@@ -685,7 +731,8 @@ The minimum amount of solid particles that should be there in solid.
 
 ---
 
-#### <a name="tol_liquid_fraction"></a>`liquid_fraction`
+(tol_liquid_fraction)=
+#### `liquid_fraction`
 
 _type_: float         
 _default_: 0.05  
@@ -698,7 +745,8 @@ Maximum fraction of solid atoms allowed in liquid after melting.
 
 ---
 
-#### <a name="tol_pressure"></a>`pressure`
+(tol_pressure)=
+#### `pressure`
 
 _type_: float         
 _default_: 0.5  
@@ -724,7 +772,8 @@ melting_temperature:
 
 ---
 
-#### <a name="step"></a>`step`
+(step)=
+#### `step`
 
 _type_: int         
 _example_:
@@ -736,7 +785,8 @@ Temperature interval for search of melting temperature. Only used if mode is `me
 
 ---
 
-#### <a name="attempts"></a>`attempts`
+(attempts)=
+#### `attempts`
 
 _type_: int         
 _example_:
@@ -765,7 +815,8 @@ composition_scaling:
 
 ---
 
-#### <a name="input_chemical_composition"></a>`input_chemical_composition`
+(input_chemical_composition)=
+#### `input_chemical_composition`
 
 _type_: list         
 _example_:
@@ -779,7 +830,8 @@ The input chemical composition in number of atoms. It should be identical to the
 
 ---
 
-#### <a name="output_chemical_composition"></a>`output_chemical_composition`
+(output_chemical_composition)=
+#### `output_chemical_composition`
 
 _type_: list         
 _example_:
@@ -794,10 +846,10 @@ The output chemical composition in number of atoms. The total number of atoms sh
 ---
 ---
 
-
+(nose_hoover_block)=
 ## <a name="nose_hoover"></a>`nose_hoover` block
 
-This block contains keywords that are used only for the equilibration stage if [`equilibration_control`](#equilibration_control) is `nose_hoover`.
+This block contains keywords that are used only for the equilibration stage if [`equilibration_control`](equilibration_control) is `nose_hoover`.
 
 ```
 nose_hoover:
@@ -807,7 +859,8 @@ nose_hoover:
 
 ---
 
-#### <a name="nose_hoover_thermostat_damping"></a>`thermostat_damping`
+(nose_hoover_thermostat_damping)=
+#### `thermostat_damping`
 
 _type_: float   
 _default_: 0.1   
@@ -820,7 +873,8 @@ The thermostat damping constant for equilibration MD.
 
 ---
 
-#### <a name="nose_hoover_barostat_damping"></a>`barostat_damping`
+(nose_hoover_barostat_damping)=
+#### `barostat_damping`
 
 _type_: float  
 _default_: 0.1  
@@ -832,10 +886,12 @@ barostat_damping: 0.1
 Pressure damping for equilibration MD. 
 
 ---
+---
 
+(berendsen_block)=
 ## <a name="berendsen"></a>`berendsen` block
 
-This block contains keywords that are used only for the equilibration stage if [`equilibration_control`](#equilibration_control) is `berendsen`.
+This block contains keywords that are used only for the equilibration stage if [`equilibration_control`](equilibration_control) is `berendsen`.
 
 ```
 berendsen:
@@ -845,7 +901,8 @@ berendsen:
 
 ---
 
-#### <a name="berendsen_thermostat_damping"></a>`thermostat_damping`
+(berendsen_thermostat_damping)=
+#### `thermostat_damping`
 
 _type_: float   
 _default_: 100.0     
@@ -858,7 +915,8 @@ The thermostat damping constant for equilibration MD.
 
 ---
 
-#### <a name="berendsen_barostat_damping"></a>`barostat_damping`
+(berendsen_barostat_damping)=
+#### `barostat_damping`
 
 _type_: float  
 _default_: 100.0  

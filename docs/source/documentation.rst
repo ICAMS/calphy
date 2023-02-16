@@ -1,7 +1,6 @@
-Documentation
-=============
+Using calphy
+============
 
 .. toctree::
-   documentation/inputfile
    documentation/cli
    documentation/onclusters

@@ -1,6 +1,10 @@
-sphinx
+sphinx==5.3.0
 sphinx_rtd_theme
-m2r2
+myst_parser
 furo
-sphinx-markdown-tables
 nbsphinx
+sphinx_inline_tabs
+sphinx_copybutton
+sphinx_design
+docutils==0.19
+sphinx-gallery
