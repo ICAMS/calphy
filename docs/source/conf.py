@@ -70,6 +70,7 @@ extensions = [
     "sphinx_gallery.load_style",
 ]
 
+myst_enable_extensions = ["dollarmath", "amsmath"]
 #html_theme = 'sphinx_rtd_theme'
 html_theme = 'furo'
 #html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]

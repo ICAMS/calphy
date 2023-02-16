@@ -50,3 +50,9 @@ publication <https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMateri
    inputfile
    examples
    calphy
+   faqs
+   prologue/extending
+   prologue/helpandsupport
+   prologue/acknowledgements
+   prologue/citing
+   prologue/license
