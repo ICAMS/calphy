@@ -5,25 +5,21 @@
 
 `calphy` can be installed on Linux and Mac OS based systems. On Windows systems, it is recommended to use  [Windows subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install).
 
-### Installation using [Conda](https://anaconda.org/)
+### Normal installation
 
-calphy can be installed directly using [Conda](https://docs.conda.io/en/latest/) from the [conda-forge channel](https://conda-forge.org/) by the following statement:
-
-```
-conda install -c conda-forge calphy
+```{tab} Conda
+`conda install -c conda-forge calphy`
 ```
 
-### Installation from the repository
-
-calphy can be built from the repository by-
-
-```
-git clone https://github.com/ICAMS/calphy.git
-cd calphy
-python setup.py install --user
+```{tab} pip
+`pip install calphy`
 ```
 
-Please note that the list of dependencies mentioned below has to installed manually by the user.
+```{tab} from repository
+`git clone https://github.com/ICAMS/calphy.git`  
+`cd calphy`  
+`python setup.py install`
+```
 
 ### Using a conda environment
 
