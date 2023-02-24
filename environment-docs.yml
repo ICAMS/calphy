@@ -1,0 +1,25 @@
+name: calphy
+channels:
+  - conda-forge
+dependencies:
+  - pytest
+  - scipy
+  - pyyaml
+  - mendeleev
+  - openmpi 
+  - mpi4py
+  - pylammpsmpi >=0.0.9
+  - pyscal
+  - matplotlib
+  - tqdm
+  - uncertainties
+  - pip:
+    - sphinx==5.3.0
+    - sphinx_rtd_theme
+    - myst_parser
+    - furo
+    - nbsphinx
+    - sphinx_inline_tabs
+    - sphinx_copybutton
+    - sphinx_design
+    - docutils==0.19
