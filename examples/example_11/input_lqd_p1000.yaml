@@ -1,0 +1,23 @@
+element: Ti
+mass: 47.867
+calculations:
+- mode: ts 
+  temperature: [1750, 2000]
+  pressure: [1000]
+  lattice: [LQD]
+  repeat: [5, 5, 5]
+  reference_phase: [liquid]
+  n_iterations: 1
+  pair_style: eam/alloy
+  pair_coeff: "* * ../potentials/Ti.eam.fs Ti"
+  n_equilibration_steps: 10000
+  n_switching_steps: 25000
+md:
+  timestep: 0.001
+  thermostat_damping: 0.1
+  barostat_damping: 0.1
+queue:
+  scheduler: local
+  cores: 4
+  commands:
+    - conda activate calphy

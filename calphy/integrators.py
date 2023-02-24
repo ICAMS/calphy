@@ -30,6 +30,8 @@ import warnings
 from calphy.splines import splines, sum_spline1, sum_spline25, sum_spline50, sum_spline75, sum_spline100
 from scipy.integrate import cumtrapz
 from tqdm import tqdm
+import pyscal.core as pc
+from ase.io import read
 
 #Constants
 h = const.physical_constants["Planck constant in eV/Hz"][0]
@@ -305,16 +307,83 @@ def integrate_mass(flambda, ref_mass, target_masses, target_counts,
 
     return mcorarr, mcorsum
 
-def integrate_mts(folder1, folder2, natoms1, natoms2, 
-    pressure, temperature, nsims=5, scale_energy=True, 
-                  full=False, stdscale=0):
+def remove_steps(w, stdscale):
+    peak  = np.abs(w-np.roll(w, shift=-1))
+    peak = np.where(peak> stdscale*np.std(peak), peak, 0)
+    args = np.nonzero(peak)[0]
+    print(f'No of peaks #{len(args)}')
+    diff = [w[x]-w[x-1] if x in args else 0 for x in range(len(w[:-1]))]
+    diff.append(0)
+    cum_diff = np.cumsum(diff)
+    w = w-cum_diff
+    return w
+
+def remove_peaks(w, stdscale):
+    peak = np.minimum(np.abs(w-np.roll(w, shift=-1)), np.abs(np.roll(w, shift=1)-w))
+    args = np.argwhere(peak > stdscale*np.std(peak))
+    k = [(w[x-1]+w[x+1])/2 if x in args else w[x] for x in range(len(w[:-1]))]
+    k.append(w[-1])
+    return k
+
+def integrate_dcc(folder1, folder2, nsims=1, scale_energy=True, 
+                  full=False, stdscale=0.25, fit_order=None):
+    """
+    Integrate Dynamic Clausius-Clapeyron equation
+
+    Parameters
+    ----------
+    folder1: string
+        Calculation folder for calculation of the first phase
+
+    folder2: string
+        Calculation folder for calculation of the second phase
+
+    nsims: int
+        Number of iterations, default 1
+
+    full: bool
+        If True, return error, default False
+
+    stdscale: float
+        Function used to smooth the integrand. If a value is provided,
+        values in the greater than stdscale*std_dev and less than -stdscale*std_dev
+        are identified as steps/peaks and smoothened. Default 0.25
+
+    fit_order: None
+        If specified, a final fitting is done to remove kinks in the values
+        Optional, default None.
+
+    """
+
+    #get number of atoms
+    sys = pc.System()
+    sys.read_inputfile(os.path.join(folder1, "traj.equilibration_stage1.dat"))
+    natoms1 = int(sys.natoms)
+
+    sys = pc.System()
+    sys.read_inputfile(os.path.join(folder2, "traj.equilibration_stage1.dat"))
+    natoms2 = int(sys.natoms)
+
+    #get temp and pressure
+    f1_raw = os.path.basename(folder1).split("-")
+    pressure = float(f1_raw[-1])
+    temperature = float(f1_raw[-2])
+
+    #recheck for folder2
+    f2_raw = os.path.basename(folder2).split("-")
+    if pressure != float(f2_raw[-1]):
+        raise ValueError("Pressure for both calculations are different!")
+    if temperature != float(f2_raw[-2]):
+        raise ValueError("Temperature for both calculations are different!")
+    if pressure == 0:
+        raise ValueError("A non-zero pressure is needed for dcc")
 
     ws = []
-    for i in tqdm(range(nsims)):
-        fsu, fsp, fsv, fsl = np.loadtxt(os.path.join(folder1, "forward_%d.dat"%(i+1)), unpack=True)
-        bsu, bsp, bsv, bsl = np.loadtxt(os.path.join(folder1, "backward_%d.dat"%(i+1)), unpack=True)
-        flu, flp, flv, fll = np.loadtxt(os.path.join(folder2, "forward_%d.dat"%(i+1)), unpack=True)
-        blu, blp, blv, bll = np.loadtxt(os.path.join(folder2, "backward_%d.dat"%(i+1)), unpack=True)
+    for i in range(nsims):
+        fsu, fsp, fsv, fsl = np.loadtxt(os.path.join(folder1, "ts.forward_%d.dat"%(i+1)), unpack=True)
+        bsu, bsp, bsv, bsl = np.loadtxt(os.path.join(folder1, "ts.backward_%d.dat"%(i+1)), unpack=True)
+        flu, flp, flv, fll = np.loadtxt(os.path.join(folder2, "ts.forward_%d.dat"%(i+1)), unpack=True)
+        blu, blp, blv, bll = np.loadtxt(os.path.join(folder2, "ts.backward_%d.dat"%(i+1)), unpack=True)
 
         if scale_energy:
             fsu = fsu/fsl
@@ -338,6 +407,10 @@ def integrate_mts(folder1, folder2, natoms1, natoms2,
         fx = (fsu-flu)/(fsv-flv)
         bx = (bsu-blu)/(bsv-blv)
 
+        if stdscale > 0:
+            fx = remove_peaks(fx, stdscale=stdscale)
+            bx = remove_peaks(bx, stdscale=stdscale)
+
         wf = cumtrapz(fx, fsl, initial=0)
         wb = cumtrapz(bx[::-1], bsl[::-1], initial=0)
 
@@ -345,11 +418,8 @@ def integrate_mts(folder1, folder2, natoms1, natoms2,
         q = (wf - wb) / (2*fsl)
         
         if stdscale > 0:
-            peak  = (w-np.roll(w, shift=-1))
-            stdcut = np.std(peak[:-1])
-            for i in range(len(peak[:-1])):
-                if not (-stdscale*stdcut < peak[i] < stdscale*stdcut):
-                    w[i:] = w[i:] + peak[i]
+            w = remove_steps(w, stdscale=stdscale)
+        
         ws.append(w)
     
     #return ws
@@ -360,6 +430,11 @@ def integrate_mts(folder1, folder2, natoms1, natoms2,
 
     #convert back
     xp = xp*160.217*10000
+
+    #fit if needed
+    if fit_order is not None:
+        fit = np.polyfit(temp, xp, fit_order)
+        xp = np.polyval(fit, temp)
 
     #return the values
     if not full:
