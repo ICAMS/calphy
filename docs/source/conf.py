@@ -68,7 +68,6 @@ extensions = [
     "sphinx_design", 
     "sphinx_inline_tabs",
     "nbsphinx",
-    "sphinx_gallery.load_style",
 ]
 
 myst_enable_extensions = ["dollarmath", "amsmath"]
