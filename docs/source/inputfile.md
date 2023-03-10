@@ -21,7 +21,7 @@ The inputfile is `yaml` formatted. In this section the possible keys in the inpu
 | `md` block | | | |
 | :------: | :------: | :------: | :------: |
 | [](timestep) | [](n_small_steps) | [](n_every_steps) | [](n_repeat_steps) |
-| [](n_cycles) | [](thermostat_damping) | [](barostat_damping) |
+| [](n_cycles) | [](thermostat_damping) | [](barostat_damping) | [](init_commands) |
 
 | `queue` block | | | |
 | :------: | :------: | :------: | :------: |
@@ -128,7 +128,7 @@ Calculation mode. A small description of the different modes are given below.
 - `pscale` calculates the free energy as a function of the pressure.
 
 ---
-
+self.calc.md.init_commands
 (temperature)=
 #### `temperature`  
 
@@ -541,6 +541,24 @@ n_cycles: 100
 ```
 
 Number of cycles to try converging the pressure of the system. If the pressure is not converged after `n_cycles`, an error will be raised. In each `n_cycle`, `n_small_steps` MD steps will be run.
+
+
+---
+
+(init_commands)=
+#### `init_commands`
+
+_type_: list of strings
+_default_: None
+_example_:
+```
+init_commands:
+  - timestep 0.002
+  - atom_style charge
+  - neighbor 0.6 bin
+```
+
+Provides the possibility to replace or add initial commands when the LAMMPS object is initialised. If the command is already used in calphy, for example `timestep` or `atom_style` they will be replaced. If it is a new command, it will be added. This commands receive higher priority than the ones that already exist. For examples if you provide `timestep: 0.002` in the `md` block, and `timestep 0.004` in `init_commands`, the timestep used would be 0.004.
 
 ---
 ---
