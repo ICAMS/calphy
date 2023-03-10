@@ -60,7 +60,7 @@ def create_object(cores, directory, timestep, cmdargs=None,
     commands = [["units", "metal"], 
     ["boundary", "p p p"],
     ["atom_style", "atomic"],
-    ["timestep", 'str(timestep)'],
+    ["timestep", str(timestep)],
     ["box", "tilt large"]]
 
     if init_commands is not None:
@@ -357,6 +357,7 @@ def reset_timestep(conf, file="current.data"):
         directory=os.path.dirname(file),
         timestep=0,
         cmdargs=None,
+        init_commands=None,
     )
     lmp = read_data(lmp, file)
     lmp = write_data(lmp, conf)
