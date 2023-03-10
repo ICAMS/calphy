@@ -188,6 +188,7 @@ class Calculation(InputTemplate):
         self.md.thermostat_damping = 0.1
         self.md.barostat_damping = 0.1
         self.md.cmdargs = None
+        self.md.init_commands = None
 
         self.nose_hoover = InputTemplate()
         self.nose_hoover.thermostat_damping = 0.1

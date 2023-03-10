@@ -33,7 +33,8 @@ from ase.io import read, write
 from pyscal.trajectory import Trajectory
 
 
-def create_object(cores, directory, timestep, cmdargs=None):
+def create_object(cores, directory, timestep, cmdargs=None, 
+    init_commands=None):
     """
     Create LAMMPS object
 
@@ -56,11 +57,29 @@ def create_object(cores, directory, timestep, cmdargs=None):
         mode="local", cores=cores, working_directory=directory, cmdargs=cmdargs
     )
 
-    lmp.units("metal")
-    lmp.boundary("p p p")
-    lmp.atom_style("atomic")
-    lmp.timestep(timestep)
-    lmp.command("box    tilt large")
+    commands = [["units", "metal"], 
+    ["boundary", "p p p"],
+    ["atom_style", "atomic"],
+    ["timestep", str(timestep)],
+    ["box", "tilt large"]]
+
+    if init_commands is not None:
+        #we need to replace some initial commands
+        for rc in init_commands:
+            #split the command
+            raw = rc.split()
+            for x in range(len(commands)):
+                if raw[0] == commands[x][0]:
+                    #we found a matching command
+                    commands[x] = [rc]
+                    break
+            else:
+                #its a new command, add it to the list
+                commands.append([rc])
+
+    for command in commands:
+        lmp.command(" ".join(command))
+
     return lmp
 
 
@@ -338,6 +357,7 @@ def reset_timestep(conf, file="current.data"):
         directory=os.path.dirname(file),
         timestep=0,
         cmdargs=None,
+        init_commands=None,
     )
     lmp = read_data(lmp, file)
     lmp = write_data(lmp, conf)

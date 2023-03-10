@@ -112,7 +112,8 @@ class Liquid(cph.Phase):
         At the end of the run, the averaged box dimensions are calculated. 
         """
         #create lammps object
-        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, self.calc.md.cmdargs)
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, 
+            self.calc.md.cmdargs, self.calc.md.init_commands)
 
         #set up structure
         lmp = ph.create_structure(lmp, self.calc, species=self.calc.n_elements+self.calc._ghost_element_count)
@@ -171,7 +172,8 @@ class Liquid(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
-        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, self.calc.md.cmdargs)
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, 
+            self.calc.md.cmdargs, self.calc.md.init_commands)
 
         # Adiabatic switching parameters.
         lmp.command("variable        li       equal   1.0")

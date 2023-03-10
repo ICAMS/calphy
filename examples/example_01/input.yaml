@@ -18,6 +18,9 @@ md:
   timestep: 0.001
   thermostat_damping: 0.1
   barostat_damping: 0.1
+  init_commands:
+     - timestep 0.002
+     - neighbor 0.6 bin
   
 queue:
   scheduler: local
