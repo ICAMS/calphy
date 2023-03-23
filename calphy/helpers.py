@@ -351,13 +351,13 @@ def write_data(lmp, file):
     return lmp
 
 
-def reset_timestep(conf, file="current.data"):
+def reset_timestep(conf, file="current.data", init_commands=None):
     lmp = create_object(
         cores=1,
         directory=os.path.dirname(file),
         timestep=0,
         cmdargs=None,
-        init_commands=None,
+        init_commands=init_commands,
     )
     lmp = read_data(lmp, file)
     lmp = write_data(lmp, conf)
