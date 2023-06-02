@@ -117,21 +117,21 @@ def create_structure(lmp, calc, species=None):
         else:
             lmp.command("read_data      %s" % calc.lattice)
     else:
-        lmp.lattice(l, alat)
-        lmp.region("box block", 0, calc.repeat[0], 0, calc.repeat[1], 0, calc.repeat[2])
-        lmp.create_box("1 box")
-        lmp.create_atoms("1 box")
+        lmp.command(f'lattice {l} {alat}')
+        lmp.command(f'region box block 0 {calc.repeat[0]} 0 {calc.repeat[1]} 0 {calc.repeat[2]}')
+        lmp.command(f'create_box 1 box')
+        lmp.command(f'create_atoms 1 box')
     return lmp
 
 
 def set_mass(lmp, options, ghost_elements=0):
     count = 1
     for i in range(options.n_elements):
-        lmp.mass(i + 1, options.mass[i])
+        lmp.command(f'mass {i+1} {options.mass[i]}')
         count += 1
 
     for i in range(ghost_elements):
-        lmp.mass(count + i, 1.00)
+        lmp.command(f'mass {count+i} 1.00')
 
     return lmp
 
