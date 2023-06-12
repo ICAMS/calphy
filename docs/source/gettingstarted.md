@@ -90,7 +90,7 @@ Activate the environment using:
 conda activate calphy2
 ```
 
-Obtain the stable version from [here](https://github.com/lammps/lammps/archive/refs/tags/stable_29Sep2021.tar.gz) and extract the archive. From the extracted archive, the following steps, used in the [conda-forge recipe](https://github.com/conda-forge/lammps-feedstock/blob/master/recipe/build.sh) can be run:
+Obtain the stable version from [here](https://github.com/lammps/lammps/releases) and extract the archive. From the extracted archive, the following steps, used in the [conda-forge recipe](https://github.com/conda-forge/lammps-feedstock/blob/master/recipe/build.sh) can be run:
 
 ```
 mkdir build_lib
@@ -108,7 +108,7 @@ cd ..
 
 (**Optional**) The above commands only builds the [MANYBODY](https://docs.lammps.org/Packages_details.html#pkg-manybody) package. To use some of the other potentials, the following commands could be added to the `cmake` call.
 
-- `-D PKG_ML-PACE=ON` for performant [Atomic Cluster Expansion](https://docs.lammps.org/Packages_details.html#pkg-ml-pace) potential (from [October 2021 version](https://github.com/lammps/lammps/releases/tag/patch_27Oct2021)).
+- `-D PKG_ML-PACE=ON` for performant [Atomic Cluster Expansion](https://docs.lammps.org/Packages_details.html#pkg-ml-pace) potential (from [June 2022 version](https://github.com/lammps/lammps/releases/tag/patch_27Oct2021)).
 - `-D PKG_ML-SNAP=ON`for [SNAP potential](https://docs.lammps.org/Packages_details.html#pkg-ml-snap).
 - `-D PKG_MEAM=ON` for [MEAM potential](https://docs.lammps.org/Packages_details.html#meam-package).
 - `-D PKG_KIM=ON` for [KIM support](https://docs.lammps.org/Packages_details.html#pkg-kim).
