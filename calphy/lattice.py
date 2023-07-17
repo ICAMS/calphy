@@ -100,7 +100,7 @@ def check_dump_file(infile):
 
 def check_data_file(infile):
     try:
-        lmp = LammpsLibrary(mode="local", cores=1, 
+        lmp = LammpsLibrary(cores=1, 
             working_directory=os.getcwd())
         lmp.units("metal")
         lmp.boundary("p p p")

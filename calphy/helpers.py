@@ -54,7 +54,7 @@ def create_object(cores, directory, timestep, cmdargs=None,
     lmp : LammpsLibrary object
     """
     lmp = LammpsLibrary(
-        mode="local", cores=cores, working_directory=directory, cmdargs=cmdargs
+        cores=cores, working_directory=directory, cmdargs=cmdargs
     )
 
     commands = [["units", "metal"], 
