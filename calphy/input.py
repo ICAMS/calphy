@@ -535,7 +535,7 @@ class Calculation(InputTemplate):
     def script_mode(self):
         return self._script_mode
     
-    @npt.setter
+    @script_mode.setter
     def script_mode(self, val):
         val = self.to_bool(val)
         if isinstance(val, bool):
