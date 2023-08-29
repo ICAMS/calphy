@@ -22,7 +22,7 @@ def _generate_job(calc, simfolder):
             return job
         else:
             job = Solid(calculation=calc, simfolder=simfolder)
-    		return job
+            return job
 
 
 def run_averaging():
@@ -87,6 +87,6 @@ def process_integration():
     calc = calculations[kernel]
 
     job = load_job(calc.savefile)
-	job.thermodynamic_integration()
-	job.submit_report()
+    job.thermodynamic_integration()
+    job.submit_report()
     save_job(job)
