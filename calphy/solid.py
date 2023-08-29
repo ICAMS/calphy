@@ -164,7 +164,9 @@ class Solid(cph.Phase):
         At the end of the run, the averaged box dimensions are calculated. 
         """
         lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, 
-            self.calc.md.cmdargs, self.calc.md.init_commands)
+            self.calc.md.cmdargs, 
+            init_commands=self.calc.md.init_commands,
+            script_mode=self.calc.script_mode)
 
         #set up structure
         lmp = ph.create_structure(lmp, self.calc, species=self.calc.n_elements+self.calc._ghost_element_count)
@@ -238,7 +240,9 @@ class Solid(cph.Phase):
         At the end of the run, the averaged box dimensions are calculated. 
         """
         lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, 
-            self.calc.md.cmdargs, self.calc.md.init_commands)
+            self.calc.md.cmdargs, 
+            init_commands=self.calc.md.init_commands,
+            script_mode=self.calc.script_mode)
 
         #set up structure
         lmp = ph.create_structure(lmp, self.calc, species=self.calc.n_elements+self.calc._ghost_element_count)
@@ -285,7 +289,7 @@ class Solid(cph.Phase):
         #close object and process traj
 
         #now serialise script
-        file = os.path.join(self.working_directory, 'averaging.lmp')
+        file = os.path.join(self.simfolder, 'averaging.lmp')
         lmp.write(file)
 
 
@@ -308,7 +312,9 @@ class Solid(cph.Phase):
         the lambda parameter. See algorithm 4 in publication.
         """
         lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, 
-            self.calc.md.cmdargs, self.calc.md.init_commands)
+            self.calc.md.cmdargs, 
+            init_commands=self.calc.md.init_commands,
+            script_mode=self.calc.script_mode)
 
         #read in the conf file
         #conf = os.path.join(self.simfolder, "conf.equilibration.dump")
