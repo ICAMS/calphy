@@ -694,7 +694,7 @@ class Calculation(InputTemplate):
             create folder
         """
         simfolder = self.get_folder_name()
-        
+
         #if folder exists, delete it -> then create
         try:
             if os.path.exists(simfolder):
@@ -746,6 +746,12 @@ class Calculation(InputTemplate):
         else:
             raise FileNotFoundError('%s input file not found'% file)
         return indata
+
+    @property
+    def savefile(self):
+        simfolder = self.get_folder_name()
+        return os.path.join(simfolder, 'job.npy')
+
     
 def read_inputfile(file):
     """
@@ -815,3 +821,13 @@ def read_inputfile(file):
                 calc.temperature = combo[2]
                 calculations.append(calc)
     return calculations
+
+
+def save_job(job):
+    filename = os.path.join(job.simfolder, 'job.npy')
+    np.save(filename, job)
+
+def load_job(filename):
+    job = np.load(filename, allow_pickle=True).flatten()[0]
+    return job
+

@@ -1131,4 +1131,4 @@ class Phase:
             nsims=self.calc.n_iterations, return_values=return_values)
 
         if return_values:
-            return res
+            return res    

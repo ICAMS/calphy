@@ -335,6 +335,10 @@ class Solid(cph.Phase):
         file = os.path.join(self.simfolder, 'averaging.lmp')
         lmp.write(file)
 
+    def process_averaging_results(self):
+        k_m, k_s = self.analyse_spring_constants()
+        self.assign_spring_constants(k_m)
+        self.finalise_pressure()
 
     def run_integration(self, iteration=1):
         """
