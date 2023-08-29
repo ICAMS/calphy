@@ -452,6 +452,28 @@ class Phase:
         Take the equilibrated structure and rigorously check for pressure convergence.
         The cycle is stopped when the average pressure is within the given cutoff of the target pressure.
         """
+        if self.calc.script_mode:
+            self.run_minimal_pressure_convergence(lmp)
+        else:
+            self.run_iterative_pressure_convergence(lmp)
+
+    def run_iterative_pressure_convergence(self, lmp):
+        """
+        Run a pressure convergence routine
+
+        Parameters
+        ----------
+        lmp: LAMMPS object
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Take the equilibrated structure and rigorously check for pressure convergence.
+        The cycle is stopped when the average pressure is within the given cutoff of the target pressure.
+        """
 
         #apply fixes
         if self.calc.equilibration_control == "nose-hoover":
@@ -507,8 +529,52 @@ class Phase:
 
         lmp.command("unfix            2")
 
+    def run_minimal_pressure_convergence(self, lmp):
+        """
+        Run a pressure convergence routine
+
+        Parameters
+        ----------
+        lmp: LAMMPS object
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Take the equilibrated structure and rigorously check for pressure convergence.
+        The cycle is stopped when the average pressure is within the given cutoff of the target pressure.
+        """
+
+        #apply fixes
+        if self.calc.equilibration_control == "nose-hoover":
+            self.fix_nose_hoover(lmp)
+        else:
+            self.fix_berendsen(lmp)
+
+
+        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
+            int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
+        
+        lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+        lmp.command("run              %d"%int(self.calc.md.n_equilibration_steps))
+
+        #unfix thermostat and barostat
+        if self.calc.equilibration_control == "nose-hoover":
+            self.unfix_nose_hoover(lmp)
+        else:
+            self.unfix_berendsen(lmp)
+
+        lmp.command("unfix            2")
 
     def run_constrained_pressure_convergence(self, lmp):
+        if self.calc.script_mode:
+            self.run_minimal_constrained_pressure_convergence(lmp)
+        else:
+            self.run_iterative_constrained_pressure_convergence(lmp)
+
+    def run_iterative_constrained_pressure_convergence(self, lmp):
         """
         """
         lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
@@ -558,6 +624,24 @@ class Phase:
         if not converged:
             lmp.close()
             raise ValueError("pressure did not converge")
+
+    def run_minimal_constrained_pressure_convergence(self, lmp):
+        """
+        """
+        lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
+        lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1]))
+        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
+        lmp.command("thermo           10")
+        
+        #this is when the averaging routine starts
+        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
+            int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
+
+        lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+        lmp.command("run              %d"%int(self.calc.md.n_equilibration_steps))
+
+        lmp.command("unfix            1")
+        lmp.command("unfix            2")
 
     def process_traj(self, filename, outfilename):
         """
