@@ -674,6 +674,11 @@ class Calculation(InputTemplate):
             identistring = "-".join([self.folder_prefix, prefix, l, str(ts), str(ps)])
         return identistring
 
+    def get_folder_name(self):
+        identistring = self.create_identifier()
+        simfolder = os.path.join(os.getcwd(), identistring)
+        return simfolder
+
     def create_folders(self):
         """
         Create the necessary folder for calculation
@@ -688,9 +693,8 @@ class Calculation(InputTemplate):
         folder : string
             create folder
         """
-        identistring = self.create_identifier()
-        simfolder = os.path.join(os.getcwd(), identistring)
-
+        simfolder = self.get_folder_name()
+        
         #if folder exists, delete it -> then create
         try:
             if os.path.exists(simfolder):
