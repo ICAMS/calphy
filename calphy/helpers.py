@@ -32,9 +32,15 @@ import pyscal.core as pc
 from ase.io import read, write
 from pyscal.trajectory import Trajectory
 
+class LammpsScript:
+    def __init__(self):
+        self.script = []
+
+    def command(self, command_str):
+        self.script.append(command_str)
 
 def create_object(cores, directory, timestep, cmdargs=None, 
-    init_commands=None):
+    init_commands=None, script_mode=False):
     """
     Create LAMMPS object
 
@@ -53,9 +59,12 @@ def create_object(cores, directory, timestep, cmdargs=None,
     -------
     lmp : LammpsLibrary object
     """
-    lmp = LammpsLibrary(
-        cores=cores, working_directory=directory, cmdargs=cmdargs
-    )
+    if script_mode:
+        lmp = LammpsScript()
+    else:
+        lmp = LammpsLibrary(
+            cores=cores, working_directory=directory, cmdargs=cmdargs
+        )
 
     commands = [["units", "metal"], 
     ["boundary", "p p p"],
@@ -150,8 +159,10 @@ def set_potential(lmp, options, ghost_elements=0):
     -------
     lmp : LammpsLibrary object
     """
-    lmp.pair_style(options.pair_style_with_options[0])
-    lmp.pair_coeff(options.pair_coeff[0])
+    #lmp.pair_style(options.pair_style_with_options[0])
+    #lmp.pair_coeff(options.pair_coeff[0])
+    lmp.command(" ".join(["pair_style"],*options.pair_style_with_options[0]))
+    lmp.command(" ".join(["pair_coeff"],*options.pair_coeff[0]))
 
     lmp = set_mass(lmp, options, ghost_elements=ghost_elements)
 
