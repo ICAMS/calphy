@@ -717,6 +717,8 @@ class Calculation(InputTemplate):
             calc = cls()
             calc.element = indata["element"]
             calc.mass = indata["mass"]
+            calc.script_mode = indata["script_mode"]
+
             if "md" in indata.keys():
                 calc.md.add_from_dict(indata["md"])
             if "queue" in indata.keys():
@@ -811,7 +813,7 @@ def read_inputfile(file):
             for combo in combos:
                 calc = Calculation.generate(indata)
                 calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "pair_style_options", "npt", 
-                                "script_mode", "repeat", "n_equilibration_steps",
+                                "repeat", "n_equilibration_steps",
                                 "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
                                 "melting_cycle", "equilibration_control", "folder_prefix", "temperature_high"])
                 calc.lattice = combo[0]["lattice"]
