@@ -61,7 +61,7 @@ class Phase:
         self.logger.info("------------end of input file------------")
 
         print(self.calc.script_mode)
-        
+
         if self.calc._pressure is None:
             pressure_string = "None"
         else:
@@ -664,7 +664,9 @@ class Phase:
         files = ptp.split_trajectory(trajfile)
         conf = os.path.join(self.simfolder, outfilename)
 
-        ph.reset_timestep(conf, os.path.join(self.simfolder, "current.data"), init_commands=self.calc.md.init_commands)
+        ph.reset_timestep(conf, os.path.join(self.simfolder, "current.data"), 
+            init_commands=self.calc.md.init_commands,
+            script_mode=self.calc.script_mode)
 
         os.remove(trajfile)
         for file in files:

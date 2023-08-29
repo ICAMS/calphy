@@ -260,7 +260,7 @@ class Solid(cph.Phase):
         lmp.close()
         self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.data")
 
-
+    
     def run_minimal_averaging(self):
         """
         Run averaging routine
