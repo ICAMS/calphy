@@ -598,7 +598,7 @@ class Phase:
 
             if (np.abs(mean - lastmean)) < 50*self.calc.tolerance.pressure:
                 #here we actually have to set the pressure
-                self.finalise_pressure(mean, std, volatom)
+                self.finalise_pressure()
                 converged = True
                 break
 
@@ -626,11 +626,20 @@ class Phase:
         volatom = np.mean((lx*ly*lz)/self.natoms)
         return mean, std, volatom
 
-    def finalise_pressure(self, mean, std, volatom):
-        self.calc._pressure = mean
+    def finalise_pressure(self,):
+        if self.calc.script_mode:
+            ncount = int(self.calc.n_equilibration_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+        else: 
+            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+
+        file = os.path.join(self.simfolder, "avg.dat")
+        lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)        
+        lxpc = ipress
+        mean = np.mean(lxpc)
         std = np.std(lxpc)
         volatom = np.mean((lx*ly*lz)/self.natoms)
-        self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
+
+        self.calc._pressure = mean
         self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
         self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
         self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)

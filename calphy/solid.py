@@ -458,6 +458,9 @@ class Solid(cph.Phase):
         #close object
         if not self.calc.script_mode:
             lmp.close()
+        else:
+            file = os.path.join(self.simfolder, 'integration.lmp')
+            lmp.write(file)
 
 
     def thermodynamic_integration(self):
