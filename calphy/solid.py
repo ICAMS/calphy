@@ -57,6 +57,12 @@ class Solid(cph.Phase):
         simfolder=simfolder)
 
     def run_spring_constant_convergence(self, lmp):
+        if self.calc.script_mode:
+            self.run_minimal_spring_constant_convergence(lmp)
+        else:
+            self.run_iterative_spring_constant_convergence(lmp)
+            
+    def run_iterative_spring_constant_convergence(self, lmp):
         """
         """
         lmp.command("fix              3 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1]))
@@ -111,6 +117,28 @@ class Solid(cph.Phase):
             self.k = self.calc.spring_constants
             self.logger.info("Used user input sprint constants")
             self.logger.info(self.k)
+
+        lmp.command("unfix         3")
+
+    def run_minimal_spring_constant_convergence(self, lmp):
+        """
+        """
+        lmp.command("fix              3 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1]))
+        
+        #apply fix
+        lmp = ph.compute_msd(lmp, self.calc)
+        
+        if ph.check_if_any_is_none(self.calc.spring_constants):
+            #similar averaging routine
+                lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+                lmp.command("run              %d"%int(self.calc.n_equilibration_steps))
+
+        else:
+            if not (len(self.calc.spring_constants) == self.calc.n_elements):
+                raise ValueError("Spring constant input length should be same as number of elements, spring constant length %d, # elements %d"%(len(self.calc.spring_constants), self.calc.n_elements))
+
+            #still run a small NVT cycle
+            lmp.command("run              %d"%int(self.calc.md.n_small_steps))
 
         lmp.command("unfix         3")
 
