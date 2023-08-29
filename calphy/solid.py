@@ -206,6 +206,7 @@ class Solid(cph.Phase):
         is calculated.
         At the end of the run, the averaged box dimensions are calculated. 
         """
+
         lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, 
             self.calc.md.cmdargs, 
             init_commands=self.calc.md.init_commands,

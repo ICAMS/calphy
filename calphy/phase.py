@@ -60,6 +60,8 @@ class Phase:
         self.logger.info(yaml.safe_dump(self.calc.to_dict()))
         self.logger.info("------------end of input file------------")
 
+        print(self.calc.script_mode)
+        
         if self.calc._pressure is None:
             pressure_string = "None"
         else:
@@ -163,6 +165,7 @@ class Phase:
         self.lx = None
         self.ly = None
         self.lz = None
+
 
         #now manually tune pair styles
         if self.calc.pair_style is not None:

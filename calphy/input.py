@@ -532,7 +532,11 @@ class Calculation(InputTemplate):
     
     @npt.setter
     def npt(self, val):
-        self._npt = val
+        val = self.to_bool(val)
+        if isinstance(val, bool):
+            self._npt = val
+        else:
+            raise TypeError("NPT should be either True/False")
 
     @property
     def script_mode(self):
@@ -540,7 +544,11 @@ class Calculation(InputTemplate):
     
     @npt.setter
     def script_mode(self, val):
-        self._script_mode = val
+        val = self.to_bool(val)
+        if isinstance(val, bool):
+            self._script_mode = val
+        else:
+            raise TypeError("script mode should be either True/False")
     
     @property
     def n_equilibration_steps(self):
