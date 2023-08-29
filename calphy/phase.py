@@ -558,7 +558,7 @@ class Phase:
             int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
         
         lmp.command("run              %d"%int(self.calc.md.n_small_steps))
-        lmp.command("run              %d"%int(self.calc.md.n_equilibration_steps))
+        lmp.command("run              %d"%int(self.calc.n_equilibration_steps))
 
         #unfix thermostat and barostat
         if self.calc.equilibration_control == "nose-hoover":
@@ -638,7 +638,7 @@ class Phase:
             int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
 
         lmp.command("run              %d"%int(self.calc.md.n_small_steps))
-        lmp.command("run              %d"%int(self.calc.md.n_equilibration_steps))
+        lmp.command("run              %d"%int(self.calc.n_equilibration_steps))
 
         lmp.command("unfix            1")
         lmp.command("unfix            2")

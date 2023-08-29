@@ -166,8 +166,8 @@ def set_potential(lmp, options, ghost_elements=0):
     """
     #lmp.pair_style(options.pair_style_with_options[0])
     #lmp.pair_coeff(options.pair_coeff[0])
-    lmp.command(" ".join(["pair_style"],*options.pair_style_with_options[0]))
-    lmp.command(" ".join(["pair_coeff"],*options.pair_coeff[0]))
+    lmp.command(f'pair_style {options.pair_style_with_options[0]}')
+    lmp.command(f'pair_coeff {options.pair_coeff[0]}')
 
     lmp = set_mass(lmp, options, ghost_elements=ghost_elements)
 

@@ -136,6 +136,33 @@ class Solid(cph.Phase):
         is calculated.
         At the end of the run, the averaged box dimensions are calculated. 
         """
+        if self.calc.script_mode:
+            self.run_minimal_averaging()
+        else:
+            self.run_interactive_averaging()
+
+    def run_interactive_averaging(self):
+        """
+        Run averaging routine
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Run averaging routine using LAMMPS. Starting from the initial lattice two different routines can
+        be followed:
+        If pressure is specified, MD simulations are run until the pressure converges within the given
+        threshold value.
+        If `fix_lattice` option is True, then the input structure is used as it is and the corresponding pressure
+        is calculated.
+        At the end of the run, the averaged box dimensions are calculated. 
+        """
         lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, 
             self.calc.md.cmdargs, self.calc.md.init_commands)
 
@@ -187,6 +214,79 @@ class Solid(cph.Phase):
         lmp.close()
         self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.data")
 
+
+    def run_minimal_averaging(self):
+        """
+        Run averaging routine
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Run averaging routine using LAMMPS. Starting from the initial lattice two different routines can
+        be followed:
+        If pressure is specified, MD simulations are run until the pressure converges within the given
+        threshold value.
+        If `fix_lattice` option is True, then the input structure is used as it is and the corresponding pressure
+        is calculated.
+        At the end of the run, the averaged box dimensions are calculated. 
+        """
+        lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, 
+            self.calc.md.cmdargs, self.calc.md.init_commands)
+
+        #set up structure
+        lmp = ph.create_structure(lmp, self.calc, species=self.calc.n_elements+self.calc._ghost_element_count)
+
+        #set up potential
+        if self.calc.potential_file is None:
+            lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        else:
+            lmp.command("include %s"%self.calc.potential_file)
+
+        #add some computes
+        lmp.command("variable         mvol equal vol")
+        lmp.command("variable         mlx equal lx")
+        lmp.command("variable         mly equal ly")
+        lmp.command("variable         mlz equal lz")
+        lmp.command("variable         mpress equal press")
+
+        #Run if a constrained lattice is not needed
+        if not self.calc._fix_lattice:
+            if self.calc._pressure == 0:
+                self.run_zero_pressure_equilibration(lmp)
+            else:
+                self.run_finite_pressure_equilibration(lmp)
+
+
+            #this is when the averaging routine starts
+            self.run_pressure_convergence(lmp)
+
+            #dump snapshot and check if melted
+            self.dump_current_snapshot(lmp, "traj.equilibration_stage1.dat")
+        
+        #run if a constrained lattice is used
+        else:
+            #routine in which lattice constant will not varied, but is set to a given fixed value
+            self.run_constrained_pressure_convergence(lmp)
+
+        #start MSD calculation routine
+        #there two possibilities here - if spring constants are provided, use it. If not, calculate it
+        self.run_spring_constant_convergence(lmp)
+
+        #check for melting
+        self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
+        lmp = ph.write_data(lmp, "current.data")
+        #close object and process traj
+
+        #now serialise script
+        file = os.path.join(self.working_directory, 'averaging.lmp')
+        lmp.write(file)
 
 
     def run_integration(self, iteration=1):
