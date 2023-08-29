@@ -255,12 +255,11 @@ class Solid(cph.Phase):
         #check for melting
         self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
         self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
-        lmp = ph.write_data(lmp, "current.data")
+        lmp = ph.write_data(lmp, "conf.equilibration.data")
         #close object and process traj
         lmp.close()
-        self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.data")
 
-    
+
     def run_minimal_averaging(self):
         """
         Run averaging routine
@@ -329,7 +328,7 @@ class Solid(cph.Phase):
 
         #check for melting
         self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
-        lmp = ph.write_data(lmp, "current.data")
+        lmp = ph.write_data(lmp, "conf.equilibration.data")
         #close object and process traj
 
         #now serialise script

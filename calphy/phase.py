@@ -651,6 +651,8 @@ class Phase:
         Process the out trajectory after averaging cycle and 
         extract a configuration to run integration
 
+        Will be phased out...
+
         Parameters
         ----------
         None

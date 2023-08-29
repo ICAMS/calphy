@@ -674,7 +674,7 @@ class Calculation(InputTemplate):
             identistring = "-".join([self.folder_prefix, prefix, l, str(ts), str(ps)])
         return identistring
 
-    def create_folders(self, prefix=None):
+    def create_folders(self):
         """
         Create the necessary folder for calculation
 

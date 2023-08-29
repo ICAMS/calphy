@@ -122,13 +122,7 @@ def main():
     calc = calculations[kernel]
     
     #format and parse the arguments
-    identistring = calc.create_identifier()
-    simfolder = os.path.join(os.getcwd(), identistring)
-
-    #if folder exists, delete it -> then create
-    if os.path.exists(simfolder):
-        shutil.rmtree(simfolder)
-    os.mkdir(simfolder)
+    simfolder = calc.create_folders()
 
     if calc.mode == "melting_temperature":
         os.rmdir(simfolder)
