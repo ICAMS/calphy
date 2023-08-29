@@ -758,11 +758,12 @@ class Phase:
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
 
         #check melting or freezing
-        self.dump_current_snapshot(lmp, "traj.temp.dat")
-        if solid:
-            self.check_if_melted(lmp, "traj.temp.dat")
-        else:
-            self.check_if_solidfied(lmp, "traj.temp.dat")
+        if not self.calc.script_mode:
+            self.dump_current_snapshot(lmp, "traj.temp.dat")
+            if solid:
+                self.check_if_melted(lmp, "traj.temp.dat")
+            else:
+                self.check_if_solidfied(lmp, "traj.temp.dat")
 
         lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
@@ -897,11 +898,12 @@ class Phase:
         lmp.command("run               0")
         lmp.command("undump            2")
         
-        self.dump_current_snapshot(lmp, "traj.temp.dat")
-        if solid:
-            self.check_if_melted(lmp, "traj.temp.dat")
-        else:
-            self.check_if_solidfied(lmp, "traj.temp.dat")
+        if not self.calc.script_mode:
+            self.dump_current_snapshot(lmp, "traj.temp.dat")
+            if solid:
+                self.check_if_melted(lmp, "traj.temp.dat")
+            else:
+                self.check_if_solidfied(lmp, "traj.temp.dat")
 
         #start reverse loop
         lmp.command("variable          lambda equal ramp(${lf},${li})")
