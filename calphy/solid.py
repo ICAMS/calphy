@@ -102,7 +102,7 @@ class Solid(cph.Phase):
         if self.calc.script_mode:
             ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
         else:
-            ncount = int(self.calc.md.n_equilibration_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+            ncount = int(self.calc.n_equilibration_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
         
         #now we can check if it converted
         file = os.path.join(self.simfolder, "msd.dat")
