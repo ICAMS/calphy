@@ -75,7 +75,7 @@ def run_integration():
     job.run_integration()
     save_job(job)
 
-def integrate_fe():
+def process_integration():
     arg = ap.ArgumentParser()
     arg.add_argument("-i", "--input", required=True, type=str,
     help="name of the input file")
