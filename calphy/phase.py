@@ -50,7 +50,7 @@ class Phase:
     """
     def __init__(self, calculation=None, simfolder=None):
 
-        self.calc = calculation
+        self.calc = copy.deepcopy(calculation)
         self.simfolder = simfolder
         
         logfile = os.path.join(self.simfolder, "calphy.log")
@@ -59,8 +59,6 @@ class Phase:
         self.logger.info("---------------input file----------------")
         self.logger.info(yaml.safe_dump(self.calc.to_dict()))
         self.logger.info("------------end of input file------------")
-
-        print(self.calc.script_mode)
 
         if self.calc._pressure is None:
             pressure_string = "None"
