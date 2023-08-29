@@ -689,10 +689,7 @@ class Calculation(InputTemplate):
             create folder
         """
         identistring = self.create_identifier()
-        if prefix is None:
-            simfolder = os.path.join(os.getcwd(), identistring)
-        else:
-            simfolder = os.path.join(prefix, identistring)
+        simfolder = os.path.join(os.getcwd(), identistring)
 
         #if folder exists, delete it -> then create
         try:
