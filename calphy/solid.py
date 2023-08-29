@@ -61,7 +61,7 @@ class Solid(cph.Phase):
             self.run_minimal_spring_constant_convergence(lmp)
         else:
             self.run_iterative_spring_constant_convergence(lmp)
-            
+
     def run_iterative_spring_constant_convergence(self, lmp):
         """
         """
@@ -75,38 +75,13 @@ class Solid(cph.Phase):
             laststd = 0.00
             for i in range(self.calc.md.n_cycles):
                 lmp.command("run              %d"%int(self.calc.md.n_small_steps))
-                ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
-                #now we can check if it converted
-                file = os.path.join(self.simfolder, "msd.dat")
-                quant = np.loadtxt(file, usecols=(1,), unpack=True)[-ncount+1:]
-                quant = 3*kb*self.calc._temperature/quant
-                #self.logger.info(quant)
-                mean = np.mean(quant)
-                std = np.std(quant)
-                self.logger.info("At count %d mean k is %f std is %f"%(i+1, mean, std))
-                if (np.abs(laststd - std) < self.calc.tolerance.spring_constant):
+                k_mean, k_std = self.analyse_spring_constants()
+                self.logger.info("At count %d mean k is %f std is %f"%(i+1, k_mean[0], k_std[0]))
+                if (np.abs(laststd - k_std[0]) < self.calc.tolerance.spring_constant):
                     #now reevaluate spring constants
-                    k = []
-                    for i in range(self.calc.n_elements):
-                        quant = np.loadtxt(file, usecols=(i+1, ), unpack=True)[-ncount+1:]
-                        quant = 3*kb*self.calc._temperature/quant
-                        k.append(np.round(np.mean(quant), decimals=2))
-
-                    #first replace any provided values with user values
-                    if ph.check_if_any_is_not_none(self.calc.spring_constants):
-                        spring_constants = copy.copy(self.calc.spring_constants)
-                        k = ph.replace_nones(spring_constants, k, logger=self.logger)
-                    
-                    #add sanity checks
-                    k = ph.validate_spring_constants(k, logger=self.logger)
-                    
-                    #now save
-                    self.k = k
-
-                    self.logger.info("finalized sprint constants")
-                    self.logger.info(self.k)
+                    self.assign_spring_constants(k_mean)                    
                     break
-                laststd = std
+                laststd = k_std
 
         else:
             if not (len(self.calc.spring_constants) == self.calc.n_elements):
@@ -119,6 +94,46 @@ class Solid(cph.Phase):
             self.logger.info(self.k)
 
         lmp.command("unfix         3")
+
+    def analyse_spring_constants(self):
+        """
+        Analyse spring constant routine
+        """
+        if self.calc.script_mode:
+            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+        else:
+            ncount = int(self.calc.md.n_equilibration_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+        
+        #now we can check if it converted
+        file = os.path.join(self.simfolder, "msd.dat")
+        k_mean = []
+        k_std = []
+        for i in range(self.calc.n_elements):
+            quant = np.loadtxt(file, usecols=(i+1, ), unpack=True)[-ncount+1:]
+            quant = 3*kb*self.calc._temperature/quant
+            k_mean.append(np.round(np.mean(quant), decimals=2))
+            k_std.append(np.round(np.std(quant), decimals=2))
+        return k_mean, k_std
+        
+
+    def assign_spring_constants(self, k):
+        """
+        Here the spring constants are finalised, add added to the class
+        """
+        #first replace any provided values with user values
+        if ph.check_if_any_is_not_none(self.calc.spring_constants):
+            spring_constants = copy.copy(self.calc.spring_constants)
+            k = ph.replace_nones(spring_constants, k, logger=self.logger)
+        
+        #add sanity checks
+        k = ph.validate_spring_constants(k, logger=self.logger)
+        
+        #now save
+        self.k = k
+
+        self.logger.info("finalized sprint constants")
+        self.logger.info(self.k)
+
 
     def run_minimal_spring_constant_convergence(self, lmp):
         """
