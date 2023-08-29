@@ -243,20 +243,13 @@ class Calculation(InputTemplate):
         else:
             return str(val)
 
-    def to_bool(self, val):        
-        if val == "True":
-            val = True
-        elif val == "False":
-            val = False
-        elif val == 1:
-            val = True
-        elif val == 0:
-            val = False
-        elif val == "1":
-            val = True
-        elif val == "0":
-            val = False
-        return val
+    def to_bool(self, val):
+        if val in ["True", "true", 1, "1", True]:
+            return True
+        elif val in ["False", "false", 0, "0", False]:
+            return False
+        else:
+            raise ValueError(f'Unknown bool input of type {type(val)} with value {val}')
 
     @property
     def element(self):
