@@ -456,7 +456,8 @@ class Solid(cph.Phase):
         lmp.command("unfix             f4")
 
         #close object
-        lmp.close()
+        if not self.calc.script_mode:
+            lmp.close()
 
 
     def thermodynamic_integration(self):

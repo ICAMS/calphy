@@ -591,40 +591,54 @@ class Phase:
         converged = False
         for i in range(int(self.calc.md.n_cycles)):
             lmp.command("run              %d"%int(self.calc.md.n_small_steps))
-            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
-            #now we can check if it converted
-            file = os.path.join(self.simfolder, "avg.dat")
-            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
             
-            lxpc = ipress
-            mean = np.mean(lxpc)
-            std = np.std(lxpc)
-            volatom = np.mean((lx*ly*lz)/self.natoms)
+            #now we can check if it converted
+            mean, std,volatom = self.process_pressure()
             self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
 
             if (np.abs(mean - lastmean)) < 50*self.calc.tolerance.pressure:
                 #here we actually have to set the pressure
-                self.calc._pressure = mean
-                std = np.std(lxpc)
-                volatom = np.mean((lx*ly*lz)/self.natoms)
-                self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
-                self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
-                self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
-                self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
-                self.volatom = volatom
-                self.vol = self.lx*self.ly*self.lz
-                self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
-                self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
-                #now run for msd
+                self.finalise_pressure(mean, std, volatom)
                 converged = True
                 break
+
             lastmean = mean
+        
         lmp.command("unfix            1")
         lmp.command("unfix            2")
 
         if not converged:
             lmp.close()
             raise ValueError("pressure did not converge")
+
+    def process_pressure(self,):
+        if self.calc.script_mode:
+            ncount = int(self.calc.n_equilibration_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+        else: 
+            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+        
+        #now we can check if it converted
+        file = os.path.join(self.simfolder, "avg.dat")
+        lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
+        lxpc = ipress
+        mean = np.mean(lxpc)
+        std = np.std(lxpc)
+        volatom = np.mean((lx*ly*lz)/self.natoms)
+        return mean, std, volatom
+
+    def finalise_pressure(self, mean, std, volatom):
+        self.calc._pressure = mean
+        std = np.std(lxpc)
+        volatom = np.mean((lx*ly*lz)/self.natoms)
+        self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
+        self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
+        self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
+        self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
+        self.volatom = volatom
+        self.vol = self.lx*self.ly*self.lz
+        self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
+        self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
+
 
     def run_minimal_constrained_pressure_convergence(self, lmp):
         """
