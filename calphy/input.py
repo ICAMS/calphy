@@ -166,6 +166,7 @@ class Calculation(InputTemplate):
         self._reference_phase = None
         self._lattice_constant = 0
         self._repeat = [1, 1, 1]
+        self._script_mode = False
         self._npt = True
         self._n_equilibration_steps = 25000
         self._n_switching_steps = 50000
@@ -532,6 +533,14 @@ class Calculation(InputTemplate):
     @npt.setter
     def npt(self, val):
         self._npt = val
+
+    @property
+    def script_mode(self):
+        return self._script_mode
+    
+    @npt.setter
+    def script_mode(self, val):
+        self._script_mode = val
     
     @property
     def n_equilibration_steps(self):
@@ -793,7 +802,8 @@ def read_inputfile(file):
             #create calculations
             for combo in combos:
                 calc = Calculation.generate(indata)
-                calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "pair_style_options", "npt", "repeat", "n_equilibration_steps",
+                calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "pair_style_options", "npt", 
+                                "script_mode", "repeat", "n_equilibration_steps",
                                 "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
                                 "melting_cycle", "equilibration_control", "folder_prefix", "temperature_high"])
                 calc.lattice = combo[0]["lattice"]
