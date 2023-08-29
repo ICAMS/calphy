@@ -63,6 +63,7 @@ setup(
         'console_scripts': [
             'calphy = calphy.kernel:main',
             'calphy_kernel = calphy.queuekernel:main',
+            'calphy_run_averaging = calphy.clitools.run_averaging',
         ],
     }
 )
