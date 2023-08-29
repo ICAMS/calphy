@@ -39,6 +39,11 @@ class LammpsScript:
     def command(self, command_str):
         self.script.append(command_str)
 
+    def write(self, infile):
+        with open(infile, 'w') as fout:
+            for line in self.script:
+                fout.write(line)
+
 def create_object(cores, directory, timestep, cmdargs=None, 
     init_commands=None, script_mode=False):
     """
