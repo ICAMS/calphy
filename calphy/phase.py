@@ -50,7 +50,7 @@ class Phase:
     """
     def __init__(self, calculation=None, simfolder=None):
 
-        self.calc = calculation
+        self.calc = copy.deepcopy(calculation)
         self.simfolder = simfolder
         
         logfile = os.path.join(self.simfolder, "calphy.log")
@@ -163,6 +163,7 @@ class Phase:
         self.lx = None
         self.ly = None
         self.lz = None
+
 
         #now manually tune pair styles
         if self.calc.pair_style is not None:
@@ -452,6 +453,28 @@ class Phase:
         Take the equilibrated structure and rigorously check for pressure convergence.
         The cycle is stopped when the average pressure is within the given cutoff of the target pressure.
         """
+        if self.calc.script_mode:
+            self.run_minimal_pressure_convergence(lmp)
+        else:
+            self.run_iterative_pressure_convergence(lmp)
+
+    def run_iterative_pressure_convergence(self, lmp):
+        """
+        Run a pressure convergence routine
+
+        Parameters
+        ----------
+        lmp: LAMMPS object
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Take the equilibrated structure and rigorously check for pressure convergence.
+        The cycle is stopped when the average pressure is within the given cutoff of the target pressure.
+        """
 
         #apply fixes
         if self.calc.equilibration_control == "nose-hoover":
@@ -507,8 +530,52 @@ class Phase:
 
         lmp.command("unfix            2")
 
+    def run_minimal_pressure_convergence(self, lmp):
+        """
+        Run a pressure convergence routine
+
+        Parameters
+        ----------
+        lmp: LAMMPS object
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Take the equilibrated structure and rigorously check for pressure convergence.
+        The cycle is stopped when the average pressure is within the given cutoff of the target pressure.
+        """
+
+        #apply fixes
+        if self.calc.equilibration_control == "nose-hoover":
+            self.fix_nose_hoover(lmp)
+        else:
+            self.fix_berendsen(lmp)
+
+
+        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
+            int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
+        
+        lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+        lmp.command("run              %d"%int(self.calc.n_equilibration_steps))
+
+        #unfix thermostat and barostat
+        if self.calc.equilibration_control == "nose-hoover":
+            self.unfix_nose_hoover(lmp)
+        else:
+            self.unfix_berendsen(lmp)
+
+        lmp.command("unfix            2")
 
     def run_constrained_pressure_convergence(self, lmp):
+        if self.calc.script_mode:
+            self.run_minimal_constrained_pressure_convergence(lmp)
+        else:
+            self.run_iterative_constrained_pressure_convergence(lmp)
+
+    def run_iterative_constrained_pressure_convergence(self, lmp):
         """
         """
         lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
@@ -524,34 +591,19 @@ class Phase:
         converged = False
         for i in range(int(self.calc.md.n_cycles)):
             lmp.command("run              %d"%int(self.calc.md.n_small_steps))
-            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
-            #now we can check if it converted
-            file = os.path.join(self.simfolder, "avg.dat")
-            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
             
-            lxpc = ipress
-            mean = np.mean(lxpc)
-            std = np.std(lxpc)
-            volatom = np.mean((lx*ly*lz)/self.natoms)
+            #now we can check if it converted
+            mean, std,volatom = self.process_pressure()
             self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
 
             if (np.abs(mean - lastmean)) < 50*self.calc.tolerance.pressure:
                 #here we actually have to set the pressure
-                self.calc._pressure = mean
-                std = np.std(lxpc)
-                volatom = np.mean((lx*ly*lz)/self.natoms)
-                self.logger.info("At count %d mean pressure is %f with %f vol/atom"%(i+1, mean, volatom))
-                self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
-                self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
-                self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
-                self.volatom = volatom
-                self.vol = self.lx*self.ly*self.lz
-                self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
-                self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
-                #now run for msd
+                self.finalise_pressure()
                 converged = True
                 break
+
             lastmean = mean
+        
         lmp.command("unfix            1")
         lmp.command("unfix            2")
 
@@ -559,10 +611,68 @@ class Phase:
             lmp.close()
             raise ValueError("pressure did not converge")
 
+    def process_pressure(self,):
+        if self.calc.script_mode:
+            ncount = int(self.calc.n_equilibration_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+        else: 
+            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+        
+        #now we can check if it converted
+        file = os.path.join(self.simfolder, "avg.dat")
+        lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
+        lxpc = ipress
+        mean = np.mean(lxpc)
+        std = np.std(lxpc)
+        volatom = np.mean((lx*ly*lz)/self.natoms)
+        return mean, std, volatom
+
+    def finalise_pressure(self,):
+        if self.calc.script_mode:
+            ncount = int(self.calc.n_equilibration_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+        else: 
+            ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
+
+        file = os.path.join(self.simfolder, "avg.dat")
+        lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)        
+        lxpc = ipress
+        mean = np.mean(lxpc)
+        std = np.std(lxpc)
+        volatom = np.mean((lx*ly*lz)/self.natoms)
+
+        self.calc._pressure = mean
+        self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
+        self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
+        self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
+        self.volatom = volatom
+        self.vol = self.lx*self.ly*self.lz
+        self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
+        self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
+
+
+    def run_minimal_constrained_pressure_convergence(self, lmp):
+        """
+        """
+        lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
+        lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1]))
+        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
+        lmp.command("thermo           10")
+        
+        #this is when the averaging routine starts
+        lmp.command("fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"%(int(self.calc.md.n_every_steps),
+            int(self.calc.md.n_repeat_steps), int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)))
+
+        lmp.command("run              %d"%int(self.calc.md.n_small_steps))
+        lmp.command("run              %d"%int(self.calc.n_equilibration_steps))
+
+        lmp.command("unfix            1")
+        lmp.command("unfix            2")
+
     def process_traj(self, filename, outfilename):
         """
         Process the out trajectory after averaging cycle and 
         extract a configuration to run integration
+
+        Will be phased out...
 
         Parameters
         ----------
@@ -577,7 +687,9 @@ class Phase:
         files = ptp.split_trajectory(trajfile)
         conf = os.path.join(self.simfolder, outfilename)
 
-        ph.reset_timestep(conf, os.path.join(self.simfolder, "current.data"), init_commands=self.calc.md.init_commands)
+        ph.reset_timestep(conf, os.path.join(self.simfolder, "current.data"), 
+            init_commands=self.calc.md.init_commands,
+            script_mode=self.calc.script_mode)
 
         os.remove(trajfile)
         for file in files:
@@ -758,11 +870,12 @@ class Phase:
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
 
         #check melting or freezing
-        self.dump_current_snapshot(lmp, "traj.temp.dat")
-        if solid:
-            self.check_if_melted(lmp, "traj.temp.dat")
-        else:
-            self.check_if_solidfied(lmp, "traj.temp.dat")
+        if not self.calc.script_mode:
+            self.dump_current_snapshot(lmp, "traj.temp.dat")
+            if solid:
+                self.check_if_melted(lmp, "traj.temp.dat")
+            else:
+                self.check_if_solidfied(lmp, "traj.temp.dat")
 
         lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
@@ -897,11 +1010,12 @@ class Phase:
         lmp.command("run               0")
         lmp.command("undump            2")
         
-        self.dump_current_snapshot(lmp, "traj.temp.dat")
-        if solid:
-            self.check_if_melted(lmp, "traj.temp.dat")
-        else:
-            self.check_if_solidfied(lmp, "traj.temp.dat")
+        if not self.calc.script_mode:
+            self.dump_current_snapshot(lmp, "traj.temp.dat")
+            if solid:
+                self.check_if_melted(lmp, "traj.temp.dat")
+            else:
+                self.check_if_solidfied(lmp, "traj.temp.dat")
 
         #start reverse loop
         lmp.command("variable          lambda equal ramp(${lf},${li})")
@@ -1017,4 +1131,4 @@ class Phase:
             nsims=self.calc.n_iterations, return_values=return_values)
 
         if return_values:
-            return res
+            return res    

@@ -55,29 +55,84 @@ def run_jobs(inputfile):
     calculations = read_inputfile(inputfile)
     print("Total number of %d calculations found" % len(calculations))
 
-    for count, calc in enumerate(calculations):
+    if calculations[0].script_mode:
+        for count, calc in enumerate(calculations):
+            identistring = calc.create_identifier()
+            scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
+            errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
+            if calc.queue.scheduler == "local":
+                scheduler = pq.Local(calc.queue.__dict__, cores=calc.queue.cores)
+            elif calc.queue.scheduler == "slurm":
+                scheduler = pq.SLURM(calc.queue.__dict__, cores=calc.queue.cores)
+            elif calc.queue.scheduler == "sge":
+                scheduler = pq.SGE(calc.queue.__dict__, cores=calc.queue.cores)
+            else:
+                raise ValueError("Unknown scheduler")
 
-        identistring = calc.create_identifier()
-        scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
-        errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
+            #add run commands
+            command = f'calphy_run_averaging -i {inputfile} -k {count}'
+            scheduler.queueoptions['commands'].append(command)
 
-        #the below part assigns the schedulers
-        #now we have to write the submission scripts for the job
-        #parse Queue and import module
-        if calc.queue.scheduler == "local":
-            scheduler = pq.Local(calc.queue.__dict__, cores=calc.queue.cores)
-        elif calc.queue.scheduler == "slurm":
-            scheduler = pq.SLURM(calc.queue.__dict__, cores=calc.queue.cores)
-        elif calc.queue.scheduler == "sge":
-            scheduler = pq.SGE(calc.queue.__dict__, cores=calc.queue.cores)
-        else:
-            raise ValueError("Unknown scheduler")
+            command = f'cp input.yaml {os.path.join(os.getcwd(), identistring)}'
+            scheduler.queueoptions['commands'].append(command)
 
-        #for lattice just provide the number of position
-        scheduler.maincommand = "calphy_kernel -i %s -k %d"%(inputfile, 
-            count)
-        scheduler.write_script(scriptpath)
-        _ = scheduler.submit()
+            command = f'cd {os.path.join(os.getcwd(), identistring)}'
+            scheduler.queueoptions['commands'].append(command)
+            if calc.queue.cores > 1:
+                #here turn on mpi
+                command = f'{calc.mpi_executable} -np {calc.queue.cores} {calc.lammps_executable} -in averaging.lmp'
+            else:
+                command = f'{calc.lammps_executable} -in averaging.lmp'
+            scheduler.queueoptions['commands'].append(command)
+            scheduler.queueoptions['commands'].append('cd ..')
+
+            command = f'calphy_process_averaging -i {inputfile} -k {count}'
+            scheduler.queueoptions['commands'].append(command)
+
+            command = f'calphy_run_integration -i {inputfile} -k {count}'
+            scheduler.queueoptions['commands'].append(command)
+
+            command = f'cd {os.path.join(os.getcwd(), identistring)}'
+            scheduler.queueoptions['commands'].append(command)
+            if calc.queue.cores > 1:
+                #here turn on mpi
+                command = f'{calc.mpi_executable} -np {calc.queue.cores} {calc.lammps_executable} -in integration.lmp'
+            else:
+                command = f'{calc.lammps_executable} -in integration.lmp'
+            scheduler.queueoptions['commands'].append(command)
+            scheduler.queueoptions['commands'].append('cd ..')
+
+            command = f'calphy_process_integration -i {inputfile} -k {count}'
+            scheduler.maincommand = command
+            scheduler.write_script(scriptpath)
+            #_ = scheduler.submit()
+
+
+
+    else:
+        for count, calc in enumerate(calculations):
+
+            identistring = calc.create_identifier()
+            scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
+            errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
+
+            #the below part assigns the schedulers
+            #now we have to write the submission scripts for the job
+            #parse Queue and import module
+            if calc.queue.scheduler == "local":
+                scheduler = pq.Local(calc.queue.__dict__, cores=calc.queue.cores)
+            elif calc.queue.scheduler == "slurm":
+                scheduler = pq.SLURM(calc.queue.__dict__, cores=calc.queue.cores)
+            elif calc.queue.scheduler == "sge":
+                scheduler = pq.SGE(calc.queue.__dict__, cores=calc.queue.cores)
+            else:
+                raise ValueError("Unknown scheduler")
+
+            #for lattice just provide the number of position
+            scheduler.maincommand = "calphy_kernel -i %s -k %d"%(inputfile, 
+                count)
+            scheduler.write_script(scriptpath)
+            _ = scheduler.submit()
 
 
 

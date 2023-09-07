@@ -112,9 +112,8 @@ class Alchemy(cph.Phase):
         self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
 
         #close object and process traj
-        lmp = ph.write_data(lmp, "current.data")
+        lmp = ph.write_data(lmp, "conf.equilibration.data")
         lmp.close()
-        self.process_traj("traj.equilibration_stage2.dat", "conf.equilibration.data")
 
 
     

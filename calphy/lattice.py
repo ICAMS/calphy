@@ -26,6 +26,7 @@ import os
 from pylammpsmpi import LammpsLibrary
 import numpy as np
 import pyscal.core as pc
+from ase.io import read
 
 """
 Conversion factors for creating initial lattices
@@ -98,30 +99,35 @@ def check_dump_file(infile):
     except:
         return None
 
-def check_data_file(infile):
+def check_data_file(infile, script_mode=False):
     try:
-        lmp = LammpsLibrary(cores=1, 
-            working_directory=os.getcwd())
-        lmp.units("metal")
-        lmp.boundary("p p p")
-        lmp.atom_style("atomic")
-        lmp.timestep(0.001)            
-        lmp.read_data(infile)
-        natoms = lmp.natoms
-        #now we convert to a dump file and read the concentration
-        trajfile = ".".join([infile, "dump"])
-        lmp.command("mass * 1.0")
-        lmp.dump("2 all custom", 1, trajfile,"id type x y z")
-        lmp.run(0)
-        lmp.undump(2)
+        if not script_mode:
+            lmp = LammpsLibrary(cores=1, 
+                working_directory=os.getcwd())
+            lmp.units("metal")
+            lmp.boundary("p p p")
+            lmp.atom_style("atomic")
+            lmp.timestep(0.001)            
+            lmp.read_data(infile)
+            natoms = lmp.natoms
+            #now we convert to a dump file and read the concentration
+            trajfile = ".".join([infile, "dump"])
+            lmp.command("mass * 1.0")
+            lmp.dump("2 all custom", 1, trajfile,"id type x y z")
+            lmp.run(0)
+            lmp.undump(2)
+            lmp.close()
+            format = 'lammps-dump'
+        else:
+            trajfile = read(infile, format='lammps-data', style='atomic')
+            format = 'ase'
         #now use pyscal to read it in,
         sys = pc.System()
-        sys.read_inputfile(trajfile)
+        sys.read_inputfile(trajfile, format=format)
         atoms = sys.atoms
         types = [atom.type for atom in atoms]
         xx, xxcounts = np.unique(types, return_counts=True)
         conc = xxcounts/np.sum(xxcounts)
-        lmp.close()
         return (natoms, conc)
     except:
         return None

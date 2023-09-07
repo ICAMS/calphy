@@ -166,6 +166,9 @@ class Calculation(InputTemplate):
         self._reference_phase = None
         self._lattice_constant = 0
         self._repeat = [1, 1, 1]
+        self._script_mode = False
+        self._lammps_executable = None
+        self._mpi_executable = None
         self._npt = True
         self._n_equilibration_steps = 25000
         self._n_switching_steps = 50000
@@ -242,20 +245,13 @@ class Calculation(InputTemplate):
         else:
             return str(val)
 
-    def to_bool(self, val):        
-        if val == "True":
-            val = True
-        elif val == "False":
-            val = False
-        elif val == 1:
-            val = True
-        elif val == 0:
-            val = False
-        elif val == "1":
-            val = True
-        elif val == "0":
-            val = False
-        return val
+    def to_bool(self, val):
+        if val in ["True", "true", 1, "1", True]:
+            return True
+        elif val in ["False", "false", 0, "0", False]:
+            return False
+        else:
+            raise ValueError(f'Unknown bool input of type {type(val)} with value {val}')
 
     @property
     def element(self):
@@ -531,7 +527,39 @@ class Calculation(InputTemplate):
     
     @npt.setter
     def npt(self, val):
-        self._npt = val
+        val = self.to_bool(val)
+        if isinstance(val, bool):
+            self._npt = val
+        else:
+            raise TypeError("NPT should be either True/False")
+
+    @property
+    def script_mode(self):
+        return self._script_mode
+    
+    @script_mode.setter
+    def script_mode(self, val):
+        val = self.to_bool(val)
+        if isinstance(val, bool):
+            self._script_mode = val
+        else:
+            raise TypeError("script mode should be either True/False")
+
+    @property
+    def lammps_executable(self):
+        return self._lammps_executable
+    
+    @lammps_executable.setter
+    def lammps_executable(self, val):
+        self._lammps_executable = val
+
+    @property
+    def mpi_executable(self):
+        return self._mpi_executable
+    
+    @mpi_executable.setter
+    def mpi_executable(self, val):
+        self._mpi_executable = val
     
     @property
     def n_equilibration_steps(self):
@@ -664,7 +692,12 @@ class Calculation(InputTemplate):
             identistring = "-".join([self.folder_prefix, prefix, l, str(ts), str(ps)])
         return identistring
 
-    def create_folders(self, prefix=None):
+    def get_folder_name(self):
+        identistring = self.create_identifier()
+        simfolder = os.path.join(os.getcwd(), identistring)
+        return simfolder
+
+    def create_folders(self):
         """
         Create the necessary folder for calculation
 
@@ -678,11 +711,7 @@ class Calculation(InputTemplate):
         folder : string
             create folder
         """
-        identistring = self.create_identifier()
-        if prefix is None:
-            simfolder = os.path.join(os.getcwd(), identistring)
-        else:
-            simfolder = os.path.join(prefix, identistring)
+        simfolder = self.get_folder_name()
 
         #if folder exists, delete it -> then create
         try:
@@ -706,6 +735,10 @@ class Calculation(InputTemplate):
             calc = cls()
             calc.element = indata["element"]
             calc.mass = indata["mass"]
+            calc.script_mode = indata["script_mode"]
+            calc.lammps_executable = indata["lammps_executable"]
+            calc.mpi_executable = indata["mpi_executable"]
+
             if "md" in indata.keys():
                 calc.md.add_from_dict(indata["md"])
             if "queue" in indata.keys():
@@ -735,6 +768,12 @@ class Calculation(InputTemplate):
         else:
             raise FileNotFoundError('%s input file not found'% file)
         return indata
+
+    @property
+    def savefile(self):
+        simfolder = self.get_folder_name()
+        return os.path.join(simfolder, 'job.npy')
+
     
 def read_inputfile(file):
     """
@@ -793,7 +832,8 @@ def read_inputfile(file):
             #create calculations
             for combo in combos:
                 calc = Calculation.generate(indata)
-                calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "pair_style_options", "npt", "repeat", "n_equilibration_steps",
+                calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "pair_style_options", "npt", 
+                                "repeat", "n_equilibration_steps",
                                 "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
                                 "melting_cycle", "equilibration_control", "folder_prefix", "temperature_high"])
                 calc.lattice = combo[0]["lattice"]
@@ -803,3 +843,13 @@ def read_inputfile(file):
                 calc.temperature = combo[2]
                 calculations.append(calc)
     return calculations
+
+
+def save_job(job):
+    filename = os.path.join(job.simfolder, 'job.npy')
+    np.save(filename, job)
+
+def load_job(filename):
+    job = np.load(filename, allow_pickle=True).flatten()[0]
+    return job
+
