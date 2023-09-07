@@ -45,9 +45,9 @@ class CompositionTransformation:
 
     output_chemical_formula: string
         the required chemical composition string
-	
-	restrictions: list of strings, optional
-		Can be used to specify restricted transformations
+    
+    restrictions: list of strings, optional
+        Can be used to specify restricted transformations
 
     Notes
     -----
@@ -58,8 +58,8 @@ class CompositionTransformation:
     ```
     comp = CompositionTransformation(filename, {"Al":500}, {"Al":500, "Li":5})
     ```
-	Note that the atoms are chosen at random, that is, one cannot specify that only face centered lattice sites
-	in Al can be transformed to Li.
+    Note that the atoms are chosen at random, that is, one cannot specify that only face centered lattice sites
+    in Al can be transformed to Li.
 
     More complex transformations can be done. For example `{"Al": 495, "Li":5}` to `{"Al": 494, "Li": 2, "O": 3, "C":1}`.
     The corresponding input is simply:
@@ -73,17 +73,17 @@ class CompositionTransformation:
 
     ```
     comp = CompositionTransformation(filename, {"Al":500, "Li":5}, 
-    	{"Al": 494, "Li": 2, "O": 3, "C":1}, restrictions=["Al-O"])
+        {"Al": 494, "Li": 2, "O": 3, "C":1}, restrictions=["Al-O"])
     ```
 
     If the restrictions are not satisfiable, an error will be raised. 
 
     The LAMMPS data file or dump files do not contain any information about the species except the type numbers.
-	In general the number of atoms are respected, for example if the file has 10 atoms of type 1, 5 of type 2,
-	and 1 of type 3. If the `input_chemical_composition` is `{"Li": 5, "Al": 10, "O": 1}`, type 1 is assigned to Al,
-	type 2 is assigned to Li and type 3 is assigned to O. This is done irrespective of the order in which
-	`input_chemical_composition` is specified. However, if there are equal number of atoms, the order is respected. 
-	Therefore it is important to make sure that the `input_chemical_composition` is in the same order as that of
+    In general the number of atoms are respected, for example if the file has 10 atoms of type 1, 5 of type 2,
+    and 1 of type 3. If the `input_chemical_composition` is `{"Li": 5, "Al": 10, "O": 1}`, type 1 is assigned to Al,
+    type 2 is assigned to Li and type 3 is assigned to O. This is done irrespective of the order in which
+    `input_chemical_composition` is specified. However, if there are equal number of atoms, the order is respected. 
+    Therefore it is important to make sure that the `input_chemical_composition` is in the same order as that of
     types in structure file. For example, consider a NiAl structure of 10 Ni atoms and 10 Al atoms. Ni atoms are type 1 in LAMMPS terminology
     and Al atoms are type 2. In this case, to preserve the order, `input_chemical_composition` should be `{"Ni": 5, "Al": 10}`.
 
@@ -99,7 +99,7 @@ class CompositionTransformation:
 
     ```
     ('pair_coeff * * filename Al Al Li Li Li',
- 	'pair_coeff * * filename Al O Li O C')
+    'pair_coeff * * filename Al O Li O C')
     ```
 
     These pair styles map the necessary transformation and can be used with `alchemy` mode. The next option
@@ -111,7 +111,7 @@ class CompositionTransformation:
     The output is written in LAMMPS dump format.
     """
     def __init__(self, input_structure, input_chemical_composition, 
-    	output_chemical_composition, restrictions=None):
+        output_chemical_composition, restrictions=None):
         
         self.structure = self.prepare_structure(input_structure)
         self.input_chemical_composition = input_chemical_composition
@@ -246,9 +246,10 @@ class CompositionTransformation:
             #print(f"Element {key}, count {val}")
             for i in range(100000):
                 rint = self.get_random_index_of_species(self.typedict[key])
-                self.atom_mark[rint] = True
-                self.marked_atoms.append(rint)
-                val -= 1
+                if rint not in self.marked_atoms:
+                    self.atom_mark[rint] = True
+                    self.marked_atoms.append(rint)
+                    val -= 1
                 if (val <= 0):
                     break 
     
@@ -275,31 +276,39 @@ class CompositionTransformation:
                     self.possible_mappings.append(f"{self.typedict[key1]}-{self.typedict[key2]}")
     
     def update_mappings(self):
+        marked_atoms = self.marked_atoms.copy()
         for key, val in self.to_add.items():
             #now get all
-            marked_atoms = self.marked_atoms.copy()
-            random.shuffle(marked_atoms)
-            #for each addition needed
+            
+            #we to see if we can get val number of atoms from marked ones
+            if val < len(marked_atoms):
+                raise ValueError(f'Not enough atoms to choose {val} from {len(marked_atoms)} not possible')
+            
+            #otherwise find atoms until we find enough
             for i in range(val):
-                #start searching
-                #go over all possible options
-                for x in range(len(marked_atoms)):
-                    #calculate mapping
-                    int_to_change = marked_atoms[x]
-                    mapping = f"{self.atom_type[int_to_change]}-{self.typedict[key]}"
-                    #is it a possible mapping?
+                #choose a number from marked atoms
+                found = False
+                to_del = []
+                for x in range(len(self.marked_atoms)):
+                    random_choice = np.random.choice(marked_atoms)
+                    #find corresponding mappiong
+                    mapping = f"{self.atom_type[random_choice]}-{self.typedict[key]}"
                     if mapping in self.possible_mappings:
-                        #then remove this from main list
-                        self.marked_atoms.remove(int_to_change)
-                        #remove this from current list
-                        marked_atoms.remove(int_to_change)
-                        #add the mapping
-                        self.mappings[int_to_change] = mapping
-                        #break the loop
+                        #this is a valid choice
+                        self.mappings[random_choice] = mapping
+                        found = True
+                    if found:
+                        #finish up, change the array, and break
+                        #to_del.append(random_choice)
+                        marked_atoms.remove(random_choice)
                         break
-                #if the loop was not broken, that is it ran the whole cycle without finding
-                else:
+                #if it was not found, the loop finished, throw error
+                if not found:
                     raise ValueError("A possible transformation could not be found, please check the restrictions")
+                #otherwise modify our marked atoms, list, and move on
+                #for item in to_del:
+                #    marked_atoms.remove(item)
+                 
         self.unique_mappings, self.unique_mapping_counts = np.unique(self.mappings, return_counts=True)
 
         #now make the transformation dict
