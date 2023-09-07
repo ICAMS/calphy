@@ -29,6 +29,7 @@ md:
   timestep: 0.001
   thermostat_damping: 0.1
   barostat_damping: 0.1
+  equilibration_control: nose_hoover
   
 queue:
   scheduler: local
