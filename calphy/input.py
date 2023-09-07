@@ -167,6 +167,8 @@ class Calculation(InputTemplate):
         self._lattice_constant = 0
         self._repeat = [1, 1, 1]
         self._script_mode = False
+        self._lammps_executable = None
+        self._mpi_executable = None
         self._npt = True
         self._n_equilibration_steps = 25000
         self._n_switching_steps = 50000
@@ -542,6 +544,22 @@ class Calculation(InputTemplate):
             self._script_mode = val
         else:
             raise TypeError("script mode should be either True/False")
+
+    @property
+    def lammps_executable(self):
+        return self._lammps_executable
+    
+    @lammps_executable.setter
+    def lammps_executable(self, val):
+        self._lammps_executable = val
+
+    @property
+    def mpi_executable(self):
+        return self._mpi_executable
+    
+    @mpi_executable.setter
+    def mpi_executable(self, val):
+        self._mpi_executable = val
     
     @property
     def n_equilibration_steps(self):
@@ -718,6 +736,8 @@ class Calculation(InputTemplate):
             calc.element = indata["element"]
             calc.mass = indata["mass"]
             calc.script_mode = indata["script_mode"]
+            calc.lammps_executable = indata["lammps_executable"]
+            calc.mpi_executable = indata["mpi_executable"]
 
             if "md" in indata.keys():
                 calc.md.add_from_dict(indata["md"])
