@@ -29,6 +29,7 @@ import yaml
 import itertools
 import shutil
 import numpy as np
+import datetime
 
 def read_report(folder):
     """
@@ -735,9 +736,10 @@ class Calculation(InputTemplate):
             calc = cls()
             calc.element = indata["element"]
             calc.mass = indata["mass"]
-            calc.script_mode = indata["script_mode"]
-            calc.lammps_executable = indata["lammps_executable"]
-            calc.mpi_executable = indata["mpi_executable"]
+
+            calc.script_mode = check_dict(indata, "script_mode", retval=False)
+            calc.lammps_executable = check_dict(indata, "lammps_executable")
+            calc.mpi_executable = check_dict(indata, "mpi_executable")
 
             if "md" in indata.keys():
                 calc.md.add_from_dict(indata["md"])
@@ -853,3 +855,8 @@ def load_job(filename):
     job = np.load(filename, allow_pickle=True).flatten()[0]
     return job
 
+def check_dict(indict, key, retval=None):
+    if key in indict.items():
+        return indict[key]
+    else:
+        return retval
