@@ -81,7 +81,7 @@ class Solid(cph.Phase):
                     #now reevaluate spring constants
                     self.assign_spring_constants(k_mean)                    
                     break
-                laststd = k_std
+                laststd = k_std[0]
 
         else:
             if not (len(self.calc.spring_constants) == self.calc.n_elements):
