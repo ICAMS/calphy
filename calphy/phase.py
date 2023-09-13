@@ -57,7 +57,8 @@ class Phase:
         self.logger = ph.prepare_log(logfile)
 
         self.logger.info("---------------input file----------------")
-        self.logger.info(yaml.safe_dump(self.calc.to_dict()))
+        self.logger.info("commented out as causes crash when we're expanding the T range after a fail run")
+       # self.logger.info(yaml.safe_dump(self.calc.to_dict()))
         self.logger.info("------------end of input file------------")
 
         if self.calc._pressure is None:
@@ -1131,4 +1132,4 @@ class Phase:
             nsims=self.calc.n_iterations, return_values=return_values)
 
         if return_values:
-            return res    
+    return res
