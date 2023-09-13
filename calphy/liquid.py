@@ -70,7 +70,7 @@ class Liquid(cph.Phase):
 
             self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.calc._temperature_high, thmult))
             factor = (self.calc._temperature_high/self.calc._temperature)*thmult
-            lmp.velocity("all create", self.calc._temperature*factor, np.random.randint(0, 10000))
+            lmp.velocity("all create", self.calc._temperature*factor, np.random.randint(1, 10000))
             self.fix_nose_hoover(lmp, temp_start_factor=factor, temp_end_factor=factor)
             lmp.run(int(self.calc.md.n_small_steps))
             self.unfix_nose_hoover(lmp)
@@ -122,7 +122,7 @@ class Liquid(cph.Phase):
         lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #Melt regime for the liquid
-        lmp.velocity("all create", self.calc._temperature_high, np.random.randint(0, 10000))
+        lmp.velocity("all create", self.calc._temperature_high, np.random.randint(1, 10000))
         
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -192,7 +192,7 @@ class Liquid(cph.Phase):
         
         lmp.command("fix              f1 all nve")
         lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1], 
-                                        np.random.randint(0, 10000)))
+                                        np.random.randint(1, 10000)))
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
 
         lmp.command("unfix            f1")
@@ -225,11 +225,11 @@ class Liquid(cph.Phase):
         lmp.command("thermo           1000")
 
 
-        lmp.command("velocity         all create %f %d mom yes rot yes dist gaussian"%(self.calc._temperature, np.random.randint(0, 10000)))
+        lmp.command("velocity         all create %f %d mom yes rot yes dist gaussian"%(self.calc._temperature, np.random.randint(1, 10000)))
 
         lmp.command("fix              f1 all nve")
         lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1], 
-                                        np.random.randint(0, 10000)))
+                                        np.random.randint(1, 10000)))
         lmp.command("compute          Tcm all temp/com")
         lmp.command("fix_modify       f2 temp Tcm")
 
@@ -254,7 +254,7 @@ class Liquid(cph.Phase):
 
         lmp.command("fix              f1 all nve")
         lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1], 
-                                        np.random.randint(0, 10000)))
+                                        np.random.randint(1, 10000)))
         lmp.command("fix_modify       f2 temp Tcm")
 
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
@@ -286,7 +286,7 @@ class Liquid(cph.Phase):
 
         lmp.command("fix              f1 all nve")
         lmp.command("fix              f2 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1], 
-                                        np.random.randint(0, 10000)))
+                                        np.random.randint(1, 10000)))
         lmp.command("fix_modify       f2 temp Tcm")
 
         lmp.command("fix              f3 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file backward_%d.dat"%iteration)

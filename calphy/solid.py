@@ -398,7 +398,7 @@ class Solid(cph.Phase):
         
         #apply temp fix
         lmp.command("fix               f3 all langevin %f %f %f %d zero yes"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1], 
-                                        np.random.randint(0, 10000)))
+                                        np.random.randint(1, 10000)))
 
         #compute com and apply to fix
         lmp.command("compute           Tcm all temp/com")
@@ -416,7 +416,7 @@ class Solid(cph.Phase):
         lmp.command("thermo            10000")
 
         #Create velocity
-        lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(self.calc._temperature, np.random.randint(0, 10000)))
+        lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(self.calc._temperature, np.random.randint(1, 10000)))
 
         #reapply 
         for i in range(self.calc.n_elements):
