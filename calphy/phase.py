@@ -57,7 +57,8 @@ class Phase:
         self.logger = ph.prepare_log(logfile)
 
         self.logger.info("---------------input file----------------")
-        self.logger.info(yaml.safe_dump(self.calc.to_dict()))
+        self.logger.info("commented out as causes crash when we're expanding the T range after a fail run")
+       # self.logger.info(yaml.safe_dump(self.calc.to_dict()))
         self.logger.info("------------end of input file------------")
 
         if self.calc._pressure is None:
@@ -355,7 +356,7 @@ class Phase:
         Each method should close all the fixes. Run a small eqbr routine to achieve zero pressure        
         """
         #set velocity
-        lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
+        lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(1, 10000)))
         
         #apply fixes depending on thermostat/barostat
         if self.calc.equilibration_control == "nose-hoover":
@@ -397,7 +398,7 @@ class Phase:
         can prevent the issue.         
         """
         #create velocity
-        lmp.command("velocity         all create %f %d"%(0.25*self.calc._temperature, np.random.randint(0, 10000)))
+        lmp.command("velocity         all create %f %d"%(0.25*self.calc._temperature, np.random.randint(1, 10000)))
 
         #for Nose-Hoover thermo/baro combination
         if self.calc.equilibration_control == "nose-hoover":
@@ -578,7 +579,7 @@ class Phase:
     def run_iterative_constrained_pressure_convergence(self, lmp):
         """
         """
-        lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
+        lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(1, 10000)))
         lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1]))
         lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
         lmp.command("thermo           10")
@@ -652,7 +653,7 @@ class Phase:
     def run_minimal_constrained_pressure_convergence(self, lmp):
         """
         """
-        lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(0, 10000)))
+        lmp.command("velocity         all create %f %d"%(self.calc._temperature, np.random.randint(1, 10000)))
         lmp.command("fix              1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, self.calc.md.thermostat_damping[1]))
         lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
         lmp.command("thermo           10")
@@ -832,7 +833,7 @@ class Phase:
         lmp.command("thermo            10000")
 
         #create velocity and equilibriate
-        lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(t0, np.random.randint(0, 10000)))   
+        lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(t0, np.random.randint(1, 10000)))
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
         
         lmp.command("variable         flambda equal ramp(${li},${lf})")
@@ -1131,4 +1132,4 @@ class Phase:
             nsims=self.calc.n_iterations, return_values=return_values)
 
         if return_values:
-            return res    
+    return res
