@@ -31,6 +31,7 @@ import shutil
 import pyscal.core as pc
 from ase.io import read, write
 from pyscal.trajectory import Trajectory
+import warnings
 
 class LammpsScript:
     def __init__(self):
@@ -122,12 +123,16 @@ def create_structure(lmp, calc, species=None):
             # reset_timestep(calc.lattice, calc.lattice, keys=None)
             lmp.command("lattice          fcc 4.0")
             lmp.command("region           box block 0 2 0 2 0 2")
-            lmp.command("box tilt large")
+
+            #comment this out
+            warnings.warn("If the box is triclinic, please provide a data file instead")
+            #lmp.command("box tilt large")
+
             lmp.command("create_box       %d box" % species)
             lmp.command(
                 "read_dump        %s 0 x y z scaled no box yes add keep" % calc.lattice
             )
-            lmp.command("change_box       all triclinic")
+            #lmp.command("change_box       all triclinic")
         else:
             lmp.command("read_data      %s" % calc.lattice)
     else:
