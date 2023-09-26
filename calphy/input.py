@@ -34,6 +34,9 @@ import datetime
 import itertools
 import os
 import warnings
+from pyscal3 import System
+from pyscal3.core import structure_dict, element_dict, _make_crystal
+from ase.io import read
 
 def read_report(folder):
     """
@@ -122,6 +125,7 @@ class Calculation(BaseModel, title='Main input class'):
                                       Field(default=None)]
     mode: Annotated[str, Field(default=None)]
     lattice: Annotated[str, Field(default=None)]
+    file_format: Annotated[str, Field(default='lammps-data')]
     
     #pressure properties
     pressure: Annotated[ None | float | conlist(float, min_length=1, max_length=2) | conlist(conlist(float, min_length=3, max_length=3), min_length=1, max_length=2) , 
@@ -174,6 +178,9 @@ class Calculation(BaseModel, title='Main input class'):
     #add second level options; for example spring constants
     spring_constants: Annotated[List[float], Field(default = None)]
     _ghost_element_count: int = PrivateAttr(default=0)
+
+    #structure items
+    _structure: Any = PrivateAttr(default=None)
 
     @model_validator(mode='after')
     def _validate_lengths(self) -> 'Input':
@@ -275,6 +282,54 @@ class Calculation(BaseModel, title='Main input class'):
             self._n_sweep_steps = self.n_switching_steps[1]
             self._n_switching_steps = self.n_switching_steps[0]
         return self
+
+
+    @model_validator(mode='after')
+    def _validate_lattice(self) -> 'Input':
+        if self.lattice.lower() in structure_dict.keys():
+            #this is a valid structure
+            if self.lattice_constant == 0:
+                #we try try to get lattice_constant
+                if self.element[0] in element_dict.keys():
+                    self.lattice_constant = element_dict[self.element[0]]['lattice_constant']
+                else:
+                    raise ValueError('Please provide lattice_constant!')
+            #now create lattice
+            self._structure = _make_crystal(self.lattice.lower(),
+                lattice_constant=self.lattice_constant,
+                repetitions=self.repeat,
+                element=self.element)
+            
+            #extract composition
+            typelist = self._structure.atoms.species
+            types, typecounts = np.unique(typelist, return_counts=True)
+            concdict = {str(t): typecounts[c] for c, t in enumerate(types)}
+            self._composition = concdict
+            
+        else:
+            #this is a file
+            if self.file_format == 'lammps-data':
+                aseobj = read(self.lattice, format='lammps-data', style='atomic')
+                self._structure = System(aseobj, format='ase')
+            else:
+                raise TypeError('Only lammps-data files are supported!')                
+
+            #extract composition
+            typelist = self._structure.atoms.types
+            #convert to species
+            typelist = [self.element[x-1] for x in typelist]
+            types, typecounts = np.unique(typelist, return_counts=True)
+            concdict = {str(t): typecounts[c] for c, t in enumerate(types)}
+            for el in self.element:
+                if el not in concdict.keys():
+                    concdict[el] = 0
+            self._composition = concdict
+
+
+
+
+
+
 
 
     def fix_paths(self, potlist): 
@@ -382,4 +437,9 @@ def check_dict(indict, key, retval=None):
         return retval
 
 def read_inputfile(file):
-    pass
+    with open(file, 'r') as fin:
+        data = yaml.safe_load(fin)
+    calculations = []
+    for calc in data['calculations']:
+        calculations.append(Calculation(**calc))
+    return calculations
