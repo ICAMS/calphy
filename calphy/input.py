@@ -23,7 +23,7 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 
 from typing_extensions import Annotated
 from typing import Any, Callable, List
-from pydantic import BaseModel, Field, ValidationError, model_validator, conlist
+from pydantic import BaseModel, Field, ValidationError, model_validator, conlist, ClassVar
 from pydantic.functional_validators import AfterValidator, BeforeValidator
 from annotated_types import Len
 
@@ -47,6 +47,11 @@ def read_report(folder):
         data = yaml.safe_load(fin)
     return data
 
+def _check_equal(val):
+    if not (val[0]==val[1]==val[2]):
+        return False
+    return True
+
 
 def to_list(v: Any) -> List[Any]:
     return np.atleast_1d(v)
@@ -61,26 +66,48 @@ class MD(BaseModel, title='MD specific input options'):
     timestep: Annotated[float, Field(default=0.001, 
                                      description='timestep for md simulation', 
                                      example='timestep: 0.001'),]
-    n_small_steps: Annotated[int, Field(default=10000)]
-    n_every_steps: Annotated[int, Field(default=10)]
-    n_repeat_steps: Annotated[int, Field(default=10)]
-    n_cycles: Annotated[int, Field(default=100)]
-    thermostat_damping: Annotated[str, Field(default=0.1)]
-    barostat_damping: Annotated[str, Field(default=0.1)]
+    n_small_steps: Annotated[int, Field(default=10000, gt=0)]
+    n_every_steps: Annotated[int, Field(default=10, gt=0)]
+    n_repeat_steps: Annotated[int, Field(default=10, gt=0)]
+    n_cycles: Annotated[int, Field(default=100, gt=0)]
+    thermostat_damping: Annotated[str, Field(default=0.1, gt=0)]
+    barostat_damping: Annotated[str, Field(default=0.1, gt=0)]
     cmdargs: Annotated[str, Field(default=None)]
     init_commands: Annotated[str, Field(default=None)]
 
 
-class NoseHoover(BaseModel, title='MD specific input options'):
-    thermostat_damping: Annotated[float, Field(default=0.1)]
-    thermostat_damping: Annotated[float, Field(default=0.1)]
+class NoseHoover(BaseModel, title='Specific input options for Nose-Hoover thermostat'):
+    thermostat_damping: Annotated[float, Field(default=0.1, gt=0)]
+    thermostat_damping: Annotated[float, Field(default=0.1, gt=0)]
 
+class Berendsen(BaseModel, title='Specific input options for Berendsen thermostat'):
+    thermostat_damping: Annotated[float, Field(default=100.0, gt=0)]
+    thermostat_damping: Annotated[float, Field(default=100.0, gt=0)]
+
+class Queue(BaseModel, title='Options for configuring queue'):
+    scheduler: Annotated[str, Field(default='local')]
+    cores: Annotated[int, Field(default=1, gt=0)]
+    jobname: Annotated[str, Field(default='calphy')]
+    walltime: Annotated[str, Field(default=None)]
+    queuename: Annotated[str, Field(default=None)]
+    memory: Annotated[str, Field(default="3GB")]
+    commands: Annotated[List[str], Field(default=None)]
+    options: Annotated[List[str], Field(default=None)]
+    modules: Annotated[List[str], Field(default=None)]
+
+class Tolerance(BaseModel, title='Tolerance settings for convergence'):
+    lattice_constant: Annotated[float, Field(default=0.0002, ge=0)]
+    spring_constant: Annotated[float, Field(default=0.1, gt=0)]
+    solid_fraction: Annotated[float, Field(default=0.7, ge=0)]
+    liquid_fraction: Annotated[float, Field(default=0.05, ge=0)]
+    pressure: Annotated[float, Field(default=0.5, ge=0)]
+
+class MeltingTemperature(BaseModel, title='Input options for melting temperature mode'):
+    guess: Annotated[float, Field(default=None, gt=0)]
+    step: Annotated[int, Field(default=200, ge=20)]
+    attempts: Annotated[int, Field(default=5, ge=1)]
 
 class Input(BaseModel, title='Main input class'):
-    a_list: Annotated[List[int], BeforeValidator(to_list),
-                                      Field(default=None,
-                                      description='A test list',
-                                      repr=True)]
     element: Annotated[List[str], BeforeValidator(to_list),
                                       Field(default=None)]
     n_elements: Annotated[int, Field(default=None)]
@@ -88,17 +115,20 @@ class Input(BaseModel, title='Main input class'):
                                       Field(default=None)]
     mode: Annotated[str, Field(default=None)]
     lattice: Annotated[str, Field(default=None)]
-    pressure: Annotated[ None | float | conlist(float, min_length=1, max_length=3) | conlist(conlist(float, min_length=3, max_length=3), min_length=1, max_length=2) , 
-                                      Field(default=None)]
-    #pressure_stop: = 0
-    #pressure_input: = None
-    #temperature: None
-    #temperature_stop: None
-    #temperature_high: None
-    #temperature_input: None
     
-    #self._iso = False
-    #self._fix_lattice = False
+    #pressure properties
+    pressure: Annotated[ None | float | conlist(float, min_length=1, max_length=2) | conlist(conlist(float, min_length=3, max_length=3), min_length=1, max_length=2) , 
+                                      Field(default=None)]
+    pressure_stop: ClassVar[float] = None
+    pressure_input: ClassVar[Any] = None
+    iso: ClassVar[bool] = False
+    fix_lattice: ClassVar[bool] = False
+
+    temperature: Annotated[ float | conlist(float, min_length=1, max_length=2)]
+    temperature_stop: ClassVar[float] = None
+    temperature_high: ClassVar[float] = None
+    temperature_input: ClassVar[Any] = None
+    
     #self._melting_cycle = True
     #self._pair_style = None
     #self._pair_style_options = None
@@ -135,10 +165,9 @@ class Input(BaseModel, title='Main input class'):
         self.n_elements = len(self.element)
         return self
 
-
     @model_validator(mode='after')
     def _validate_pressure(self) -> 'Input':
-        self.input_pressure = copy.copy(self.pressure)
+        self.pressure_input = copy.copy(self.pressure)
         if self.pressure is None:
             self.iso = True
             self.fix_lattice = True
@@ -149,9 +178,36 @@ class Input(BaseModel, title='Main input class'):
             self.iso = True
             self.fix_lattice = False
         elif np.shape(self.pressure) == (1,):
-            print(np.shape(self.pressure))
+            self.iso = True
+            self.fix_lattice = False
+            self.pressure = self.pressure_input[0]
+            self.pressure_stop = self.pressure_input[0]
+        elif np.shape(self.pressure) == (2,):
+            self.iso = True
+            self.fix_lattice = False
+            self.pressure = self.pressure_input[0]
+            self.pressure_stop = self.pressure_input[1]
+        elif np.shape(self.pressure) == (1, 3):
+            if not _check_equal(self.pressure[0]):
+                raise ValueError('All pressure terms must be equal')
+            self.iso = False
+            self.fix_lattice = False
+            self.pressure = self.pressure_input[0][0]
+            self.pressure_stop = self.pressure_input[0][0]                
+        elif np.shape(self.pressure) == (2, 3):
+            if not (_check_equal(self.pressure[0]) and _check_equal(self.pressure[1])):
+                raise ValueError('All pressure terms must be equal')
+            self.iso = False
+            self.fix_lattice = False
+            self.pressure = self.pressure_input[0][0]
+            self.pressure_stop = self.pressure_input[1][0]                                
         else:
-            print(np.shape(self.pressure))
+            raise ValueError('Unknown format for pressure')
         return self
 
+
+    @model_validator(mode='after')
+    def _validate_temperature(self) -> 'Input':
+        self.temperature_input = copy.copy(self.temperature)
+        
 
