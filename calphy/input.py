@@ -125,16 +125,20 @@ class Input(BaseModel, title='Main input class'):
     fix_lattice: ClassVar[bool] = False
 
     temperature: Annotated[ float | conlist(float, min_length=1, max_length=2)]
+    temperature_high: Annotated[float, Field(default=None)]
     temperature_stop: ClassVar[float] = None
-    temperature_high: ClassVar[float] = None
     temperature_input: ClassVar[Any] = None
     
-    #self._melting_cycle = True
-    #self._pair_style = None
-    #self._pair_style_options = None
-    #self._pair_coeff = None
-    #self._potential_file = None
-    #self._fix_potential_path = True
+    melting_cycle: Annotated[ bool, Field(default=True)]
+    
+    pair_style: Annotated[ List(str), BeforeValidator(to_list),
+                            Field(default=None)]
+    pair_coeff: Annotated[ List(str), BeforeValidator(to_list),
+                            Field(default=None)]
+    potential_file: Annotated[ str, Field(default=None)]
+    pair_style_options: ClassVar[List(str)] = None
+    fix_potential_path: ClassVar[bool] = True
+    
     #self._reference_phase = None
     #self._lattice_constant = 0
     #self._repeat = [1, 1, 1]
@@ -209,5 +213,41 @@ class Input(BaseModel, title='Main input class'):
     @model_validator(mode='after')
     def _validate_temperature(self) -> 'Input':
         self.temperature_input = copy.copy(self.temperature)
+        if self.temperature is None:
+            pass
+        elif shape(np.atleast_1d(self.temperature)) == (1,):
+            temp = self.atleast_1d(self.temperature_input)
+            self.temperature = temp[0]
+            self.temperature_stop = temp[0]
+            self.temperature_high is None:
+                self.temperature_high = 2*temp[0]
+        elif shape(self.temperature) == (2,):
+            temp = self.temperature_input
+            self.temperature = temp[0]
+            self.temperature_stop = temp[1]
+            self.temperature_high is None:
+                self.temperature_high = 2*temp[1]
+        return self
+
+    @model_validator(mode='after')
+    def _validate_pair_style(self) -> 'Input':
+        ps_lst = []
+        ps_options_lst = []
+        for ps in self.pair_style:
+            ps_split = ps.split()
+            ps_lst.append(ps_split[0])
+            if len(ps) > 1:
+                ps_options_lst.append(" ".join(ps_split[1:]))
+            else:
+                ps_options_lst.append("")
+
+        #val = self.fix_paths(val)
+        self.pair_style = ps_lst
+
+        #only set if its None
+        if self.pair_style_options is None:
+            self.pair_style_options = ps_options_lst
+
+
         
 
