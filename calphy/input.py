@@ -124,7 +124,8 @@ class Input(BaseModel, title='Main input class'):
     iso: ClassVar[bool] = False
     fix_lattice: ClassVar[bool] = False
 
-    temperature: Annotated[ float | conlist(float, min_length=1, max_length=2)]
+    temperature: Annotated[ float | conlist(float, min_length=1, max_length=2),
+                            Field(default=None)]
     temperature_high: Annotated[float, Field(default=None)]
     temperature_stop: ClassVar[float] = None
     temperature_input: ClassVar[Any] = None
@@ -139,24 +140,28 @@ class Input(BaseModel, title='Main input class'):
     pair_style_options: ClassVar[List(str)] = None
     fix_potential_path: ClassVar[bool] = True
     
-    #self._reference_phase = None
-    #self._lattice_constant = 0
-    #self._repeat = [1, 1, 1]
-    #self._script_mode = False
-    #self._lammps_executable = None
-    #self._mpi_executable = None
-    #self._npt = True
-    #self._n_equilibration_steps = 25000
-    #self._n_switching_steps = 50000
-    #self._n_sweep_steps = 50000
-    #self._n_print_steps = 0
-    #self._n_iterations = 1
-    #self._equilibration_control = None
-    #self._folder_prefix = None
+    reference_phase: Annotated[ str, Field(default = None)]
+    lattice_constant: Annotated[int, Field(default = 0)]
+    repeat: Annotated[conlist(int, min_length=3, max_length=3), 
+                            Field(default=[1,1,1])]
+    
+    script_mode: Annotated[ bool, Field(default = False)]
+    lammps_executable: Annotated[ str, Field(default = None)]
+    mpi_executable: Annotated[ str, Field(default = None)]
+    
+    npt: Annotated[ bool, Field(default = True)]
+    n_equilibration_steps: Annotated[ int, Field(default = 25000)]
+    n_switching_steps: Annotated[ int | conlist(int, min_length=2,
+                max_length=2), Field(default = [50000, 50000])]
+    n_sweep_steps: ClassVar[int] = None
+    n_print_steps: Annotated[int, Field(default = 0)]
+    n_iterations: Annotated[int, Field(default = 1)]
+    equilibration_control: Annotated[str, Field(default = None)]
+    folder_prefix: Annotated[str, Field(default = None)]
 
     #add second level options; for example spring constants
-    #self._spring_constants = None
-    #self._ghost_element_count = 0
+    spring_constants: Annotated[List(float), Field(default = None)]
+    ghost_element_count: ClassVar[int] = 0
 
     @model_validator(mode='after')
     def _validate_lengths(self) -> 'Input':
@@ -247,7 +252,118 @@ class Input(BaseModel, title='Main input class'):
         #only set if its None
         if self.pair_style_options is None:
             self.pair_style_options = ps_options_lst
+        return self
+
+    @model_validator(mode='after')
+    def _validate_time(self) -> 'Input':
+        if np.isscalar(self.n_switching_steps):
+            self.n_sweep_steps = self.n_switching_steps
+        else:
+            self.n_sweep_steps = self.n_switching_steps[1]
+            self.n_switching_steps = self.n_switching_steps[0]
+        return self
 
 
+    def fix_paths(self, potlist): 
+        """
+        Fix paths for potential files to complete ones
+        """
+        fixedpots = []
+        for pot in potlist:
+            pcraw = pot.split()
+            if len(pcraw) >= 3:
+                filename = pcraw[2]
+                filename = os.path.abspath(filename)
+                pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
+                fixedpots.append(pcnew)
+            else:
+                fixedpots.append(pot)
+        return fixedpots
+    
+    def create_identifier(self):
+        """
+        Generate an identifier
+
+        Parameters
+        ----------
+        calc: dict
+            a calculation dict
+
+        Returns
+        -------
+        identistring: string
+            unique identification string
+        """
+        #lattice processed
+        prefix = self.mode
+        if prefix == 'melting_temperature':
+            ts = int(0)
+            ps = int(0)
+            l = 'tm'
+        else:
+            ts = int(self._temperature)
+            if self._pressure is None:
+                ps = "None"
+            else:
+                ps = "%d"%(int(self._pressure))
+            l = self.lattice
+            l = l.split('/')
+            l = l[-1]
         
+        if self.folder_prefix is None:
+            identistring = "-".join([prefix, l, str(ts), str(ps)])
+        else:
+            identistring = "-".join([self.folder_prefix, prefix, l, str(ts), str(ps)])
+        return identistring
 
+    def get_folder_name(self):
+        identistring = self.create_identifier()
+        simfolder = os.path.join(os.getcwd(), identistring)
+        return simfolder
+
+    def create_folders(self):
+        """
+        Create the necessary folder for calculation
+
+        Parameters
+        ----------
+        calc : dict
+            calculation block
+
+        Returns
+        -------
+        folder : string
+            create folder
+        """
+        simfolder = self.get_folder_name()
+
+        #if folder exists, delete it -> then create
+        try:
+            if os.path.exists(simfolder):
+                shutil.rmtree(simfolder)
+        except OSError:
+            newstr = '-'.join(str(datetime.datetime.now()).split())
+            newstr = '-'.join([simfolder, newstr])
+            shutil.move(simfolder, newstr)
+        
+        os.mkdir(simfolder)
+        return simfolder
+        
+    @property
+    def savefile(self):
+        simfolder = self.get_folder_name()
+        return os.path.join(simfolder, 'job.npy')
+
+def save_job(job):
+    filename = os.path.join(job.simfolder, 'job.npy')
+    np.save(filename, job)
+
+def load_job(filename):
+    job = np.load(filename, allow_pickle=True).flatten()[0]
+    return job
+
+def check_dict(indict, key, retval=None):
+    if key in indict.items():
+        return indict[key]
+    else:
+        return retval
