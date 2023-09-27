@@ -66,7 +66,8 @@ class Phase:
         else:
             pressure_string = "%f"%self.calc._pressure
 
-        self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %s bar"%(self.calc._temperature, self.calc._temperature_stop, pressure_string))
+        self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %s bar"%(self.calc._temperature, 
+            self.calc._temperature_stop, pressure_string))
 
         if self.calc._iso:
             self.iso = "iso"
@@ -129,9 +130,8 @@ class Phase:
         if self.calc._fix_lattice:
             self.logger.info("Lattice is fixed, pressure convergence criteria is 50*tolerance.pressure; change if needed!")
 
-        self.l = None
-        self.alat = None
-        self.apc = None
+        self.l = self.calc.lattice
+        self.alat = self.calc.lattice_constant
         self.vol = None
         self.concentration = None
         self.dumpfile = False

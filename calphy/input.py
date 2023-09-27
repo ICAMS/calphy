@@ -73,8 +73,8 @@ class MD(BaseModel, title='MD specific input options'):
     n_every_steps: Annotated[int, Field(default=10, gt=0)]
     n_repeat_steps: Annotated[int, Field(default=10, gt=0)]
     n_cycles: Annotated[int, Field(default=100, gt=0)]
-    thermostat_damping: Annotated[float, Field(default=0.1, gt=0)]
-    barostat_damping: Annotated[float, Field(default=0.1, gt=0)]
+    thermostat_damping: Annotated[float | conlist(float, min_length=2, max_length=2), Field(default=0.1, gt=0)]
+    barostat_damping: Annotated[float | conlist(float, min_length=2, max_length=2), Field(default=0.1, gt=0)]
     cmdargs: Annotated[str, Field(default=None)]
     init_commands: Annotated[str, Field(default=None)]
 
@@ -303,9 +303,11 @@ class Calculation(BaseModel, title='Main input class'):
             #extract composition
             typelist = structure.atoms.species
             types, typecounts = np.unique(typelist, return_counts=True)
-            concdict = {str(t): typecounts[c] for c, t in enumerate(types)}
-            self._composition = concdict
-
+            concdict_counts = {str(t): typecounts[c] for c, t in enumerate(types)}
+            concdict_frac = {str(t): typecounts[c]/np.sum(typecounts) for c, t in enumerate(types)}
+            self.composition = concdict_frac
+            self.composition_counts = concdict_counts
+            self.natoms = structure.natoms
             #write structure
             structure.write.file('input.conf.data', format='lammps-data')
             #set this as lattice
@@ -326,11 +328,15 @@ class Calculation(BaseModel, title='Main input class'):
             #convert to species
             typelist = [self.element[x-1] for x in typelist]
             types, typecounts = np.unique(typelist, return_counts=True)
-            concdict = {str(t): typecounts[c] for c, t in enumerate(types)}
+            concdict_counts = {str(t): typecounts[c] for c, t in enumerate(types)}
+            concdict_frac = {str(t): typecounts[c]/np.sum(typecounts) for c, t in enumerate(types)}
             for el in self.element:
-                if el not in concdict.keys():
-                    concdict[el] = 0
-            self._composition = concdict
+                if el not in concdict_counts.keys():
+                    concdict_counts[el] = 0
+                    concdict_frac[el] = 0
+            self.composition = concdict_frac
+            self.composition_counts = concdict_counts
+            self.natoms = structure.natoms
 
 
 
