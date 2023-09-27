@@ -133,7 +133,7 @@ class Phase:
         self.l = self.calc.lattice
         self.alat = self.calc.lattice_constant
         self.vol = None
-        self.concentration = self.calc._composition
+        #self.concentration = self.calc._composition
         #self.dumpfile = False
         self.prepare_lattice()
 
@@ -718,7 +718,7 @@ class Phase:
         report["input"]["pressure"] = float(self.calc._pressure)
         report["input"]["lattice"] = str(self.l)
         report["input"]["element"] = " ".join(np.array(self.calc.element).astype(str))
-        report["input"]["concentration"] = " ".join(np.array(self.concentration).astype(str))
+        report["input"]["concentration"] = " ".join(np.array([val['composition'] for key, val in self._element_dict.items()]).astype(str))
 
         #average quantities
         report["average"] = {}
