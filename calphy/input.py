@@ -124,6 +124,8 @@ class Calculation(BaseModel, title='Main input class'):
     n_elements: Annotated[int, Field(default=None)]
     mass: Annotated[List[float], BeforeValidator(to_list),
                                       Field(default=None)]
+    _element_dict: dict = PrivateAttr(default={})
+
     mode: Annotated[str, Field(default=None)]
     lattice: Annotated[str, Field(default=None)]
     file_format: Annotated[str, Field(default='lammps-data')]
@@ -153,8 +155,9 @@ class Calculation(BaseModel, title='Main input class'):
     pair_coeff: Annotated[ List[str], BeforeValidator(to_list),
                             Field(default=None)]
     potential_file: Annotated[ str, Field(default=None)]
-    _pair_style_options: float = PrivateAttr(default=None)
-    _fix_potential_path: bool = PrivateAttr(default=True)
+    fix_potential_path: Annotated[bool, Field(default=True)]
+    _pair_style_with_options: float = PrivateAttr(default=None)
+    
     
     reference_phase: Annotated[ str, Field(default = None)]
     lattice_constant: Annotated[int, Field(default = 0)]
@@ -267,12 +270,21 @@ class Calculation(BaseModel, title='Main input class'):
             else:
                 ps_options_lst.append("")
 
+        if len(self.pair_style) != len(ps_options_lst):
+            ps_options_lst = [ps_options_lst[0] for x in range(len(self.pair_style))]
+        
+        ps_options_lst = [" ".join([self.pair_style[i], ps_options_lst[i]]) for i in range(len(self.pair_style))]
+
         #val = self.fix_paths(val)
         self.pair_style = ps_lst
 
         #only set if its None
-        if self._pair_style_options is None:
-            self._pair_style_options = ps_options_lst
+        if self._pair_style_with_options is None:
+            self._pair_style_with_options = ps_options_lst
+
+        #now fix pair coeffs with path
+        if self.fix_potential_path:
+            self.pair_coeff = self.fix_paths(self.pair_coeff)
         return self
 
     @model_validator(mode='after')
@@ -287,6 +299,13 @@ class Calculation(BaseModel, title='Main input class'):
 
     @model_validator(mode='after')
     def _validate_lattice(self) -> 'Input':
+        #here we also prepare lattice dict
+        for count, element in enumerate(self.element):
+            self._element_dict[element] = {}
+            self._element_dict[element]['mass'] = self.mass[count]
+            self._element_dict[element]['count'] = 0
+            self._element_dict[element]['composition'] = 0.0
+
         if self.lattice.lower() in structure_dict.keys():
             #this is a valid structure
             if self.lattice_constant == 0:
@@ -304,10 +323,15 @@ class Calculation(BaseModel, title='Main input class'):
             #extract composition
             typelist = structure.atoms.species
             types, typecounts = np.unique(typelist, return_counts=True)
-            concdict_counts = {str(t): typecounts[c] for c, t in enumerate(types)}
-            concdict_frac = {str(t): typecounts[c]/np.sum(typecounts) for c, t in enumerate(types)}
-            self._composition = concdict_frac
-            self._composition_counts = concdict_counts
+
+            for c, t in enumerate(types):
+                self._element_dict[t]['count'] = typecounts[c]
+                self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
+
+            #concdict_counts = {str(t): typecounts[c] for c, t in enumerate(types)}
+            #concdict_frac = {str(t): typecounts[c]/np.sum(typecounts) for c, t in enumerate(types)}
+            #self._composition = concdict_frac
+            #self._composition_counts = concdict_counts
             self._natoms = structure.natoms
             #write structure
             structure.write.file('input.conf.data', format='lammps-data')
@@ -331,14 +355,9 @@ class Calculation(BaseModel, title='Main input class'):
             #convert to species
             typelist = [self.element[x-1] for x in typelist]
             types, typecounts = np.unique(typelist, return_counts=True)
-            concdict_counts = {str(t): typecounts[c] for c, t in enumerate(types)}
-            concdict_frac = {str(t): typecounts[c]/np.sum(typecounts) for c, t in enumerate(types)}
-            for el in self.element:
-                if el not in concdict_counts.keys():
-                    concdict_counts[el] = 0
-                    concdict_frac[el] = 0
-            self._composition = concdict_frac
-            self._composition_counts = concdict_counts
+            for c, t in enumerate(types):
+                self._element_dict[t]['count'] = typecounts[c]
+                self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
             self._natoms = structure.natoms
             self._original_lattice = self.lattice
         return self

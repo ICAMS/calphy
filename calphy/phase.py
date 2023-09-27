@@ -168,12 +168,12 @@ class Phase:
 
         #now manually tune pair styles
         if self.calc.pair_style is not None:
-            self.logger.info("pair_style: %s"%self.calc.pair_style_with_options[0])
+            self.logger.info("pair_style: %s"%self.calc._pair_style_with_options[0])
             self.logger.info("pair_coeff: %s"%self.calc.pair_coeff[0])
 
             #log second pair style
             if len(self.calc.pair_style)>1:
-                self.logger.info("second pair_style: %s"%self.calc.pair_style_with_options[1])
+                self.logger.info("second pair_style: %s"%self.calc._pair_style_with_options[1])
                 self.logger.info("second pair_coeff: %s"%self.calc.pair_coeff[1])
         else:
             self.logger.info("pair_style or pair_coeff not provided")

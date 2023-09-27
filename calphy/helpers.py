@@ -171,7 +171,7 @@ def set_potential(lmp, options, ghost_elements=0):
     """
     #lmp.pair_style(options.pair_style_with_options[0])
     #lmp.pair_coeff(options.pair_coeff[0])
-    lmp.command(f'pair_style {options.pair_style_with_options[0]}')
+    lmp.command(f'pair_style {options._pair_style_with_options[0]}')
     lmp.command(f'pair_coeff {options.pair_coeff[0]}')
 
     lmp = set_mass(lmp, options, ghost_elements=ghost_elements)
@@ -234,7 +234,7 @@ def set_hybrid_potential(lmp, options, eps, ghost_elements=0):
         [
             *pcraw[:2],
             *[
-                options.pair_style_with_options[0],
+                options._pair_style_with_options[0],
             ],
             *pcraw[2:],
         ]
@@ -242,7 +242,7 @@ def set_hybrid_potential(lmp, options, eps, ghost_elements=0):
 
     lmp.command(
         "pair_style       hybrid/overlay %s ufm 7.5"
-        % options.pair_style_with_options[0]
+        % options._pair_style_with_options[0]
     )
     lmp.command("pair_coeff       %s" % pcnew)
     lmp.command("pair_coeff       * * ufm %f 1.5" % eps)
@@ -303,7 +303,7 @@ def set_double_hybrid_potential(lmp, options, ghost_elements=0):
 
     lmp.command(
         "pair_style       hybrid/overlay %s %s"
-        % (options.pair_style_with_options[0], options.pair_style_with_options[1])
+        % (options._pair_style_with_options[0], options._pair_style_with_options[1])
     )
 
     lmp.command("pair_coeff       %s" % pcnew1)
