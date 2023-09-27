@@ -311,7 +311,9 @@ class Calculation(BaseModel, title='Main input class'):
             #write structure
             structure.write.file('input.conf.data', format='lammps-data')
             #set this as lattice
+            self._original_lattice = self.lattice
             self.lattice = 'input.conf.data'
+
             
         else:
             #this is a file
@@ -336,7 +338,8 @@ class Calculation(BaseModel, title='Main input class'):
                     concdict_frac[el] = 0
             self._composition = concdict_frac
             self._composition_counts = concdict_counts
-            self._natoms = structure.natoms
+            self._natoms = structure.
+            self._original_lattice = self.lattice
         return self
 
 
@@ -388,7 +391,7 @@ class Calculation(BaseModel, title='Main input class'):
                 ps = "None"
             else:
                 ps = "%d"%(int(self._pressure))
-            l = self.lattice
+            l = self._original_lattice
             l = l.split('/')
             l = l[-1]
         
