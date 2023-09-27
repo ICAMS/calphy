@@ -305,9 +305,9 @@ class Calculation(BaseModel, title='Main input class'):
             types, typecounts = np.unique(typelist, return_counts=True)
             concdict_counts = {str(t): typecounts[c] for c, t in enumerate(types)}
             concdict_frac = {str(t): typecounts[c]/np.sum(typecounts) for c, t in enumerate(types)}
-            self.composition = concdict_frac
-            self.composition_counts = concdict_counts
-            self.natoms = structure.natoms
+            self._composition = concdict_frac
+            self._composition_counts = concdict_counts
+            self._natoms = structure.natoms
             #write structure
             structure.write.file('input.conf.data', format='lammps-data')
             #set this as lattice
@@ -334,9 +334,10 @@ class Calculation(BaseModel, title='Main input class'):
                 if el not in concdict_counts.keys():
                     concdict_counts[el] = 0
                     concdict_frac[el] = 0
-            self.composition = concdict_frac
-            self.composition_counts = concdict_counts
-            self.natoms = structure.natoms
+            self._composition = concdict_frac
+            self._composition_counts = concdict_counts
+            self._natoms = structure.natoms
+        return self
 
 
 

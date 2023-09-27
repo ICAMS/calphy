@@ -133,14 +133,14 @@ class Phase:
         self.l = self.calc.lattice
         self.alat = self.calc.lattice_constant
         self.vol = None
-        self.concentration = self.calc.composition
+        self.concentration = self.calc._composition
         #self.dumpfile = False
         self.prepare_lattice()
 
         #other properties
         self.cores = self.calc.queue.cores
         self.ncells = np.prod(self.calc.repeat)
-        self.natoms = self.ncells*self.apc        
+        self.natoms = self.calc._natoms        
         self.logger.info("%d atoms in %d cells on %d cores"%(self.natoms, self.ncells, self.cores))
 
         #reference system props; may not be always used
