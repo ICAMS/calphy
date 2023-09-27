@@ -337,7 +337,7 @@ class Calculation(BaseModel, title='Main input class'):
             structure.write.file('input.conf.data', format='lammps-data')
             #set this as lattice
             self._original_lattice = self.lattice
-            self.lattice = 'input.conf.data'
+            self.lattice = os.path.join(os.getcwd(), 'input.conf.data')
 
             
         else:
@@ -360,6 +360,7 @@ class Calculation(BaseModel, title='Main input class'):
                 self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
             self._natoms = structure.natoms
             self._original_lattice = self.lattice
+            self.lattice = os.path.abspath(self.lattice)
         return self
 
 
