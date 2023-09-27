@@ -251,7 +251,7 @@ class Calculation(BaseModel, title='Main input class'):
             if self._temperature_high is None:
                 self._temperature_high = 2*temp[0]
         elif np.shape(self.temperature) == (2,):
-            temp = self.temperature_input
+            temp = self.temperature
             self._temperature = temp[0]
             self._temperature_stop = temp[1]
             if self._temperature_high is None:
@@ -557,11 +557,12 @@ def _convert_legacy_inputfile(file):
                                 "melting_cycle", "equilibration_control", "folder_prefix", "temperature_high"]:
                     if key in ci.keys():
                         calc[key] = ci[key]
+                #print(combo)
                 calc["lattice"] = str(combo[0]["lattice"])
                 calc["lattice_constant"] = float(combo[0]["lattice_constant"])
                 calc["reference_phase"] = str(combo[0]["reference_phase"])
-                calc["pressure"] = float(combo[1])
-                calc["temperature"] = float(combo[2])
+                calc["pressure"] = _to_float(combo[1])
+                calc["temperature"] = _to_float(combo[2])
                 calculations.append(calc)
 
     newdata = {}
@@ -571,4 +572,23 @@ def _convert_legacy_inputfile(file):
     warnings.warn(f'Old style input file calphy < v2 found. Converted input in {outfile}. Please check!')
     with open(outfile, 'w') as fout:
         yaml.safe_dump(newdata, fout)
-    return outfile 
+    return outfile
+
+
+def _to_str(val):
+    if np.isscalar(val):
+        return str(val)
+    else:
+        return [str(x) for x in val] 
+
+def _to_int(val):
+    if np.isscalar(val):
+        return int(val)
+    else:
+        return [int(x) for x in val] 
+
+def _to_float(val):
+    if np.isscalar(val):
+        return float(val)
+    else:
+        return [float(x) for x in val] 

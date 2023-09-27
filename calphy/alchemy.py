@@ -160,7 +160,7 @@ class Alchemy(cph.Phase):
 
         lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(self.calc._temperature, np.random.randint(1, 10000)))
         # Integrator & thermostat.
-        if self.calc._npt:
+        if self.calc.npt:
             lmp.command("fix             f1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, 
                 self.calc.md.thermostat_damping[1], self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping[1]))        
         else:
