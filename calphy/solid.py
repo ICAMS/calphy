@@ -485,11 +485,11 @@ class Solid(cph.Phase):
         matching with Einstein crystal
         """
         f1 = get_einstein_crystal_fe(self.calc._temperature, 
-            self.natoms, self.calc.mass, 
-            self.vol, self.k, self.concentration)
+            self.natoms, [val['mass'] for key, val in self.calc._element_dict.items()], 
+            self.vol, self.k, [val['composition'] for key, val in self.calc._element_dict.items()])
         w, q, qerr = find_w(self.simfolder, 
             nelements=self.calc.n_elements, 
-            concentration=self.concentration, nsims=self.calc.n_iterations, 
+            concentration=[val['composition'] for key, val in self.calc._element_dict.items()], nsims=self.calc.n_iterations, 
             full=True, solid=True)
         
         self.fref = f1

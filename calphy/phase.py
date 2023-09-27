@@ -716,9 +716,9 @@ class Phase:
         report["input"] = {}
         report["input"]["temperature"] = int(self.calc._temperature)
         report["input"]["pressure"] = float(self.calc._pressure)
-        report["input"]["lattice"] = str(self.l)
+        report["input"]["lattice"] = str(self.calc._original_lattice)
         report["input"]["element"] = " ".join(np.array(self.calc.element).astype(str))
-        report["input"]["concentration"] = " ".join(np.array([val['composition'] for key, val in self._element_dict.items()]).astype(str))
+        report["input"]["concentration"] = " ".join(np.array([val['composition'] for key, val in self.calc._element_dict.items()]).astype(str))
 
         #average quantities
         report["average"] = {}
@@ -736,6 +736,7 @@ class Phase:
         report["results"]["reference_system"] = float(self.fref)
         report["results"]["work"] = float(self.w)
         report["results"]["pv"] = float(self.pv)
+        report["results"]["unit"] = "eV/atom"
 
         if extra_dict is not None:
             self._from_dict(report, extra_dict)
