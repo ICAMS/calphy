@@ -37,6 +37,7 @@ import warnings
 from pyscal3 import System
 from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
+import shutil
 
 def read_report(folder):
     """
@@ -81,11 +82,11 @@ class MD(BaseModel, title='MD specific input options'):
 
 class NoseHoover(BaseModel, title='Specific input options for Nose-Hoover thermostat'):
     thermostat_damping: Annotated[float, Field(default=0.1, gt=0)]
-    thermostat_damping: Annotated[float, Field(default=0.1, gt=0)]
+    barostat_damping: Annotated[float, Field(default=0.1, gt=0)]
 
 class Berendsen(BaseModel, title='Specific input options for Berendsen thermostat'):
     thermostat_damping: Annotated[float, Field(default=100.0, gt=0)]
-    thermostat_damping: Annotated[float, Field(default=100.0, gt=0)]
+    barostat_damping: Annotated[float, Field(default=100.0, gt=0)]
 
 class Queue(BaseModel, title='Options for configuring queue'):
     scheduler: Annotated[str, Field(default='local')]
