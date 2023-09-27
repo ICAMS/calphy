@@ -219,10 +219,10 @@ class Phase:
         #self.apc = apc
         #self.concentration = self.calc.composition
         #self.dumpfile = dumpfile
-        self.logger.info("Lattice: %s with a=%f"%(self.l, self.alat))
-        self.logger.info("%d atoms in the unit cell"%self.apc)
-        self.logger.info("concentration:")
-        self.logger.info(self.concentration)
+        #self.logger.info("Lattice: %s with a=%f"%(self.l, self.alat))
+        #self.logger.info("%d atoms in the unit cell"%self.apc)
+        #self.logger.info("concentration:")
+        #self.logger.info(self.concentration)
         #if self.l == "file":
         #    if self.dumpfile:
         #        self.logger.info("Input structure is read in from a LAMMPS dump file")
