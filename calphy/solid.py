@@ -213,7 +213,7 @@ class Solid(cph.Phase):
             script_mode=self.calc.script_mode)
 
         #set up structure
-        lmp = ph.create_structure(lmp, self.calc, species=self.calc.n_elements+self.calc._ghost_element_count)
+        lmp = ph.create_structure(lmp, self.calc)
 
         #set up potential
         if self.calc.potential_file is None:

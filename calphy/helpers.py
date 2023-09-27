@@ -98,7 +98,7 @@ def create_object(cores, directory, timestep, cmdargs=None,
     return lmp
 
 
-def create_structure(lmp, calc, species=None):
+def create_structure(lmp, calc):
     """
     Create structure using LAMMPS
 
@@ -113,33 +113,7 @@ def create_structure(lmp, calc, species=None):
     -------
     lmp : LammpsLibrary object
     """
-    l, alat, apc, conc, dumpfile = pl.prepare_lattice(calc)
-
-    if species is None:
-        species = len(conc)
-
-    if l == "file":
-        if dumpfile:
-            # reset_timestep(calc.lattice, calc.lattice, keys=None)
-            lmp.command("lattice          fcc 4.0")
-            lmp.command("region           box block 0 2 0 2 0 2")
-
-            #comment this out
-            warnings.warn("If the box is triclinic, please provide a data file instead")
-            #lmp.command("box tilt large")
-
-            lmp.command("create_box       %d box" % species)
-            lmp.command(
-                "read_dump        %s 0 x y z scaled no box yes add keep" % calc.lattice
-            )
-            #lmp.command("change_box       all triclinic")
-        else:
-            lmp.command("read_data      %s" % calc.lattice)
-    else:
-        lmp.command(f'lattice {l} {alat}')
-        lmp.command(f'region box block 0 {calc.repeat[0]} 0 {calc.repeat[1]} 0 {calc.repeat[2]}')
-        lmp.command(f'create_box 1 box')
-        lmp.command(f'create_atoms 1 box')
+    lmp.command("read_data      %s" % calc.lattice)
     return lmp
 
 
