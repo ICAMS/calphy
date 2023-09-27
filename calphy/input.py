@@ -160,7 +160,7 @@ class Calculation(BaseModel, title='Main input class'):
     
     
     reference_phase: Annotated[ str, Field(default = None)]
-    lattice_constant: Annotated[int, Field(default = 0)]
+    lattice_constant: Annotated[float, Field(default = 0)]
     repeat: Annotated[conlist(int, min_length=3, max_length=3), 
                             Field(default=[1,1,1])]
     
