@@ -338,7 +338,7 @@ class Calculation(BaseModel, title='Main input class'):
                     concdict_frac[el] = 0
             self._composition = concdict_frac
             self._composition_counts = concdict_counts
-            self._natoms = structure.
+            self._natoms = structure.natoms
             self._original_lattice = self.lattice
         return self
 
