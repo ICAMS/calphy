@@ -478,51 +478,60 @@ def _convert_legacy_inputfile(file):
     calculations = []
     for ci in data['calculations']:
         mode = ci["mode"]
-
-        pressure = np.atleast_1d(ci['pressure'])
-        temperature = np.atleast_1d(ci['temperature'])
-        lattice = np.atleast_1d(ci['lattice'])
-        reference_phase = np.atleast_1d(ci['reference_phase'])
-        if "lattice_constant" in ci.keys():
-            lattice_constant = np.atleast_1d(ci["lattice_constant"])
-        else:
-            lattice_constant = [0 for x in range(len(lattice))]
-
-        lat_props = [{"lattice": lattice[x], "lattice_constant":lattice_constant[x], "reference_phase":reference_phase[x]} for x in range(len(lattice))]
-
-        if (mode == "fe") or (mode == "alchemy") or (mode == "composition_scaling"):
-            combos = itertools.product(lat_props, pressure, temperature)
-        elif mode == "ts" or mode == "tscale" or mode == "mts":
-            if not len(temperature) == 2:
-                raise ValueError("ts/tscale mode needs 2 temperature values")
-            temperature = [temperature]
-            combos = itertools.product(lat_props, pressure, temperature)
-        elif mode == "pscale":
-            if not len(pressure) == 2:
-                raise ValueError("pscale mode needs 2 pressure values")
-            pressure = [pressure]
-            combos = itertools.product(lat_props, pressure, temperature)
-
-        for combo in combos:
+        if mode == "melting_temperature":
             calc = {}
-            for key in ['md', 'queue', 'tolerance', 'melting_temperature', 'nose_hoover', 'berendsen', 'composition_scaling', 'temperature_high']:
-                if key in data.keys():
-                    calc[key] = copy.copy(data[key]) 
-            for key in ['element', 'mass', 'script_mode', 'lammps_executable', 'mpi_executable']:
-                if key in data.keys():
-                    calc[key] = data[key]
-            for key in ["mode", "pair_style", "pair_coeff", "pair_style_options", "npt", 
-                            "repeat", "n_equilibration_steps",
-                            "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
-                            "melting_cycle", "equilibration_control", "folder_prefix", "temperature_high"]:
-                if key in ci.keys():
-                    calc[key] = ci[key]
-            calc["lattice"] = str(combo[0]["lattice"])
-            calc["lattice_constant"] = float(combo[0]["lattice_constant"])
-            calc["reference_phase"] = str(combo[0]["reference_phase"])
-            calc["pressure"] = float(combo[1])
-            calc["temperature"] = float(combo[2])
+            calc['pressure'] = np.atleast_1d(ci["pressure"]) if "pressure" in ci.keys() else np.atleast_1d(0)
+            calc['temperature'] = np.atleast_1d(ci["temperature"]) if "temperature" in ci.keys() else np.atleast_1d(None)
+            calc['lattice'] = np.atleast_1d(ci["lattice"]) if "lattice" in ci.keys() else np.atleast_1d(None)
+            calc['reference_phase'] = np.atleast_1d(ci["reference_phase"]) if "reference_phase" in ci.keys() else np.atleast_1d(None)
+            calc['lattice_constant'] = np.atleast_1d(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else np.atleast_1d(0) 
             calculations.append(calc)
+
+        else:
+            pressure = np.atleast_1d(ci['pressure'])
+            temperature = np.atleast_1d(ci['temperature'])
+            lattice = np.atleast_1d(ci['lattice'])
+            reference_phase = np.atleast_1d(ci['reference_phase'])
+            if "lattice_constant" in ci.keys():
+                lattice_constant = np.atleast_1d(ci["lattice_constant"])
+            else:
+                lattice_constant = [0 for x in range(len(lattice))]
+
+            lat_props = [{"lattice": lattice[x], "lattice_constant":lattice_constant[x], "reference_phase":reference_phase[x]} for x in range(len(lattice))]
+
+            if (mode == "fe") or (mode == "alchemy") or (mode == "composition_scaling"):
+                combos = itertools.product(lat_props, pressure, temperature)
+            elif mode == "ts" or mode == "tscale" or mode == "mts":
+                if not len(temperature) == 2:
+                    raise ValueError("ts/tscale mode needs 2 temperature values")
+                temperature = [temperature]
+                combos = itertools.product(lat_props, pressure, temperature)
+            elif mode == "pscale":
+                if not len(pressure) == 2:
+                    raise ValueError("pscale mode needs 2 pressure values")
+                pressure = [pressure]
+                combos = itertools.product(lat_props, pressure, temperature)
+
+            for combo in combos:
+                calc = {}
+                for key in ['md', 'queue', 'tolerance', 'melting_temperature', 'nose_hoover', 'berendsen', 'composition_scaling', 'temperature_high']:
+                    if key in data.keys():
+                        calc[key] = copy.copy(data[key]) 
+                for key in ['element', 'mass', 'script_mode', 'lammps_executable', 'mpi_executable']:
+                    if key in data.keys():
+                        calc[key] = data[key]
+                for key in ["mode", "pair_style", "pair_coeff", "pair_style_options", "npt", 
+                                "repeat", "n_equilibration_steps",
+                                "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
+                                "melting_cycle", "equilibration_control", "folder_prefix", "temperature_high"]:
+                    if key in ci.keys():
+                        calc[key] = ci[key]
+                calc["lattice"] = str(combo[0]["lattice"])
+                calc["lattice_constant"] = float(combo[0]["lattice_constant"])
+                calc["reference_phase"] = str(combo[0]["reference_phase"])
+                calc["pressure"] = float(combo[1])
+                calc["temperature"] = float(combo[2])
+                calculations.append(calc)
 
     newdata = {}
     newdata['calculations'] = calculations
