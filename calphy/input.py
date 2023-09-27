@@ -36,7 +36,7 @@ import os
 import warnings
 from pyscal3 import System
 from pyscal3.core import structure_dict, element_dict, _make_crystal
-from ase.io import read
+from ase.io import read, write
 
 def read_report(folder):
     """
@@ -295,19 +295,26 @@ class Calculation(BaseModel, title='Main input class'):
                 else:
                     raise ValueError('Please provide lattice_constant!')
             #now create lattice
-            self._structure = _make_crystal(self.lattice.lower(),
+            structure = _make_crystal(self.lattice.lower(),
                 lattice_constant=self.lattice_constant,
                 repetitions=self.repeat,
                 element=self.element)
             
             #extract composition
-            typelist = self._structure.atoms.species
+            typelist = structure.atoms.species
             types, typecounts = np.unique(typelist, return_counts=True)
             concdict = {str(t): typecounts[c] for c, t in enumerate(types)}
             self._composition = concdict
+
+            #write structure
+            structure.write.file('input.conf.data', format='lammps-data')
+            #set this as lattice
+            self.lattice = 'input.conf.data'
             
         else:
             #this is a file
+            if not os.path.exists(self.lattice):
+                raise ValueError(f'File {self.lattice} could not be found')
             if self.file_format == 'lammps-data':
                 aseobj = read(self.lattice, format='lammps-data', style='atomic')
                 self._structure = System(aseobj, format='ase')
