@@ -55,8 +55,8 @@ def run_jobs(inputfile):
     calculations = read_inputfile(inputfile)
     print("Total number of %d calculations found" % len(calculations))
 
-    if calculations[0].script_mode:
-        for count, calc in enumerate(calculations):
+    for count, calc in enumerate(calculations):
+        if calc.script_mode:
             identistring = calc.create_identifier()
             scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
             errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
@@ -107,10 +107,7 @@ def run_jobs(inputfile):
             scheduler.write_script(scriptpath)
             #_ = scheduler.submit()
 
-
-
-    else:
-        for count, calc in enumerate(calculations):
+        else:
 
             identistring = calc.create_identifier()
             scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
