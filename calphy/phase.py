@@ -133,8 +133,8 @@ class Phase:
         self.l = self.calc.lattice
         self.alat = self.calc.lattice_constant
         self.vol = None
-        self.concentration = None
-        self.dumpfile = False
+        self.concentration = self.calc.composition
+        #self.dumpfile = False
         self.prepare_lattice()
 
         #other properties
@@ -213,21 +213,21 @@ class Phase:
         Calculates the lattic, lattice constant, number of atoms per unit cell
         and concentration of the input system.
         """
-        l, alat, apc, conc, dumpfile = pl.prepare_lattice(self.calc)
-        self.l = l
-        self.alat = alat
-        self.apc = apc
-        self.concentration = conc
-        self.dumpfile = dumpfile
+        #l, alat, apc, conc, dumpfile = pl.prepare_lattice(self.calc)
+        #self.l = l
+        #self.alat = alat
+        #self.apc = apc
+        #self.concentration = self.calc.composition
+        #self.dumpfile = dumpfile
         self.logger.info("Lattice: %s with a=%f"%(self.l, self.alat))
         self.logger.info("%d atoms in the unit cell"%self.apc)
         self.logger.info("concentration:")
         self.logger.info(self.concentration)
-        if self.l == "file":
-            if self.dumpfile:
-                self.logger.info("Input structure is read in from a LAMMPS dump file")
-            else:
-                self.logger.info("Input structure is read in from a LAMMPS data file")
+        #if self.l == "file":
+        #    if self.dumpfile:
+        #        self.logger.info("Input structure is read in from a LAMMPS dump file")
+        #    else:
+        #        self.logger.info("Input structure is read in from a LAMMPS data file")
                 
     def dump_current_snapshot(self, lmp, filename):
         """
