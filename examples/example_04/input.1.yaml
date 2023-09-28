@@ -1,0 +1,20 @@
+calculations:
+- element: Cu
+  mass: 63.546
+  md:
+    timestep: 0.001
+  mode: melting_temperature
+  n_equilibration_steps: 10000
+  n_iterations: 1
+  n_switching_steps: 15000
+  pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
+  pair_style: eam/alloy
+  queue:
+    commands:
+    - conda activate calphy
+    cores: 4
+    scheduler: local
+  repeat:
+  - 5
+  - 5
+  - 5
