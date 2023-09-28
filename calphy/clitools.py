@@ -100,7 +100,6 @@ def convert_legacy_inputfile():
     arg.add_argument("-o", "--output", required=False, type=str, 
     help="output file string, calculations will be named <outputstring>.*.yaml", default=False)    
     args = vars(arg.parse_args())
-    kernel = args["kernel"]
     calculations = _convert_legacy_inputfile(args['input'], return_calcs=True)
     outputstr = args['output']
 
