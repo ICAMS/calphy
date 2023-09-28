@@ -310,7 +310,8 @@ class Alchemy(cph.Phase):
         the calculated free energy is the same as the work.
         """
         w, q, qerr = find_w(self.simfolder, nelements=self.calc.n_elements, 
-            concentration=self.concentration, nsims=self.calc.n_iterations, 
+            concentration=[val['composition'] for key, val in self.calc._element_dict.items()], 
+            nsims=self.calc.n_iterations, 
             full=True, solid=False, alchemy=True)
 
         self.w = w
@@ -319,7 +320,8 @@ class Alchemy(cph.Phase):
         
         if self.calc.mode == "composition_scaling":
             w_arr, q_arr, qerr_arr, flambda_arr = find_w(self.simfolder, nelements=self.calc.n_elements, 
-                concentration=self.concentration, nsims=self.calc.n_iterations, 
+                concentration=[val['composition'] for key, val in self.calc._element_dict.items()], 
+                nsims=self.calc.n_iterations, 
                 full=True, solid=False, alchemy=True, composition_integration=True)
 
             #now we need to process the comp scaling
