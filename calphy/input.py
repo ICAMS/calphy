@@ -316,6 +316,27 @@ class Calculation(BaseModel, title='Main input class'):
                 self.lattice_constant = element_dict[self.element[0]]['lattice_constant']
             else:
                 raise ValueError("Could not find structure, please provide lattice and lattice_constant explicitely")                
+            
+            structure = _make_crystal(self.lattice.lower(),
+                lattice_constant=self.lattice_constant,
+                repetitions=self.repeat,
+                element=self.element)
+            
+            #extract composition
+            typelist = structure.atoms.species
+            types, typecounts = np.unique(typelist, return_counts=True)
+
+            for c, t in enumerate(types):
+                self._element_dict[t]['count'] = typecounts[c]
+                self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
+
+            self._natoms = structure.natoms
+            #write structure
+            structure.write.file('input.conf.data', format='lammps-data')
+            #set this as lattice
+            self._original_lattice = self.lattice
+            self.lattice = os.path.join(os.getcwd(), 'input.conf.data')
+
 
         elif self.lattice.lower() in structure_dict.keys():
             #this is a valid structure
