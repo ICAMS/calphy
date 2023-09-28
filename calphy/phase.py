@@ -774,6 +774,7 @@ class Phase:
         -------
         None
         """
+        self.logger.info(f'Starting temperature sweep cycle: {iteration}')
         solid = False
         if self.calc.reference_phase == 'solid':
             solid = True
@@ -810,8 +811,11 @@ class Phase:
                 self.iso, pi, pi, self.calc.md.barostat_damping[1]))
         else:
             lmp.command("fix               f1 all nvt temp %f %f %f"%(t0, t0, self.calc.md.thermostat_damping[1]))
-
+        
+        self.logger.info(f'Starting equilibration: {iteration}')
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
+        self.logger.info(f'Finished equilibration: {iteration}')
+
         lmp.command("unfix             f1")
 
         #now fix com
@@ -836,7 +840,10 @@ class Phase:
 
         #create velocity and equilibriate
         lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(t0, np.random.randint(1, 10000)))
+
+        self.logger.info(f'Starting equilibration with constrained com: {iteration}')
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
+        self.logger.info(f'Finished equilibration with constrained com: {iteration}')
         
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
@@ -859,8 +866,10 @@ class Phase:
         if self.calc.n_print_steps > 0:
             lmp.command("dump              d1 all custom %d traj.ts.forward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
-
+        
+        self.logger.info(f'Started forward sweep: {iteration}')
         lmp.command("run               %d"%self.calc._n_sweep_steps)
+        self.logger.info(f'Finished forward sweep: {iteration}')
 
         #unfix
         lmp.command("unfix             f3")
@@ -900,7 +909,9 @@ class Phase:
             lmp.command("dump              d1 all custom %d traj.ts.backward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 
+        self.logger.info(f'Started backward sweep: {iteration}')
         lmp.command("run               %d"%self.calc._n_sweep_steps)
+        self.logger.info(f'Finished backward sweep: {iteration}')
         
         lmp.command("unfix             f3")
 
