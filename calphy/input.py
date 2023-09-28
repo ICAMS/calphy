@@ -498,7 +498,7 @@ def _read_inputfile(file):
         calculations.append(Calculation(**calc))
     return calculations
 
-def _convert_legacy_inputfile(file):
+def _convert_legacy_inputfile(file, return_calcs=False):
     with open(file, 'r') as fin:
         data = yaml.safe_load(fin)
     if not 'element' in data.keys():
@@ -565,14 +565,17 @@ def _convert_legacy_inputfile(file):
                 calc["temperature"] = _to_float(combo[2])
                 calculations.append(calc)
 
-    newdata = {}
-    newdata['calculations'] = calculations
-    #print(newdata)
-    outfile = 'new.'+file
-    warnings.warn(f'Old style input file calphy < v2 found. Converted input in {outfile}. Please check!')
-    with open(outfile, 'w') as fout:
-        yaml.safe_dump(newdata, fout)
-    return outfile
+    if return_calcs:
+        return calculations
+    else:
+        newdata = {}
+        newdata['calculations'] = calculations
+        #print(newdata)
+        outfile = 'new.'+file
+        warnings.warn(f'Old style input file calphy < v2 found. Converted input in {outfile}. Please check!')
+        with open(outfile, 'w') as fout:
+            yaml.safe_dump(newdata, fout)
+        return outfile
 
 
 def _to_str(val):
