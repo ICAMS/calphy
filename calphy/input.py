@@ -514,7 +514,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
             calc['pressure'] = np.atleast_1d(ci["pressure"]) if "pressure" in ci.keys() else np.atleast_1d(0)
             calc['temperature'] = np.atleast_1d(ci["temperature"]) if "temperature" in ci.keys() else np.atleast_1d(0)
             calc['lattice'] = np.atleast_1d(ci["lattice"]) if "lattice" in ci.keys() else np.atleast_1d('none')
-            calc['reference_phase'] = np.atleast_1d(ci["reference_phase"]) if "reference_phase" in ci.keys() else np.atleast_1d(None)
+            calc['reference_phase'] = np.atleast_1d(ci["reference_phase"]) if "reference_phase" in ci.keys() else np.atleast_1d('none')
             calc['lattice_constant'] = np.atleast_1d(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else np.atleast_1d(0) 
             calculations.append(calc)
 
