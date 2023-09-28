@@ -84,6 +84,7 @@ class MeltingTemp:
         None 
         """
         self.calc.temperature = [int(self.tmin), int(self.tmax)]
+        self.calc._temperature = int(self.tmin)
         self.calc._temperature_stop = int(self.tmax)
         csol = copy.deepcopy(self.calc)
         clqd = copy.deepcopy(self.calc)
