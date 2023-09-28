@@ -417,9 +417,9 @@ class Calculation(BaseModel, title='Main input class'):
             l = l[-1]
         
         if self.folder_prefix is None:
-            identistring = "-".join([prefix, l, self.reference_phase, str(ts), str(ps)])
+            identistring = "-".join([prefix, l.lower(), self.reference_phase, str(ts), str(ps)])
         else:
-            identistring = "-".join([self.folder_prefix, prefix, l, self.reference_phase, str(ts), str(ps)])
+            identistring = "-".join([self.folder_prefix, prefix, l.lower(), self.reference_phase, str(ts), str(ps)])
         return identistring
 
     def get_folder_name(self):
