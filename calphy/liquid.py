@@ -116,7 +116,7 @@ class Liquid(cph.Phase):
             self.calc.md.cmdargs, self.calc.md.init_commands)
 
         #set up structure
-        lmp = ph.create_structure(lmp, self.calc, species=self.calc.n_elements+self.calc._ghost_element_count)
+        lmp = ph.create_structure(lmp, self.calc)
 
         #set up potential
         lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
