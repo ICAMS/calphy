@@ -47,11 +47,12 @@ class Alchemy(cph.Phase):
         base folder for running calculations
 
     """
-    def __init__(self, calculation=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
 
         #call base class
         super().__init__(calculation=calculation,
-        simfolder=simfolder)
+        simfolder=simfolder,
+        log_to_screen=log_to_screen)
 
 
     def run_averaging(self):

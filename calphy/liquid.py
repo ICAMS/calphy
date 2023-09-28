@@ -48,12 +48,12 @@ class Liquid(cph.Phase):
         base folder for running calculations
 
     """
-    def __init__(self, calculation=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
         """
         Set up class
         """
         #call base class
-        super().__init__(calculation=calculation, simfolder=simfolder)
+        super().__init__(calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen)
 
 
     def melt_structure(self, lmp):
