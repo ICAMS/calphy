@@ -122,7 +122,7 @@ class MeltingTemp:
         #self.lattice_constant = chem.lattice_constant
         self.org_tm = chem.melting_point
         
-        if self.exp_tm is None:
+        if self.exp_tm == 0:
             self.exp_tm = chem.melting_point
 
         #if lattice == "HEX":
