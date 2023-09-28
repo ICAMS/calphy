@@ -1,0 +1,27 @@
+calculations:
+- element:
+  - Cu
+  lattice: FCC
+  lattice_constant: 0.0
+  mass:
+  - 63.546
+  mode: fe
+  n_equilibration_steps: 10000
+  n_iterations: 1
+  n_switching_steps: 25000
+  pair_coeff:
+  - '* * ../../potentials/Cu01.eam.alloy Cu'
+  pair_style:
+  - eam/alloy
+  pressure: 0.0
+  queue:
+    commands:
+    - conda activate calphy
+    cores: 4
+    scheduler: local
+  reference_phase: solid
+  repeat:
+  - 5
+  - 5
+  - 5
+  temperature: 600.0
