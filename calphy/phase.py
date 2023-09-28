@@ -48,13 +48,14 @@ class Phase:
         base folder for running calculations
 
     """
-    def __init__(self, calculation=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
 
         self.calc = copy.deepcopy(calculation)
         self.simfolder = simfolder
+        self.log_to_screen = log_to_screen
         
         logfile = os.path.join(self.simfolder, "calphy.log")
-        self.logger = ph.prepare_log(logfile)
+        self.logger = ph.prepare_log(logfile, screen=log_to_screen)
 
         self.logger.info("---------------input file----------------")
         self.logger.info("commented out as causes crash when we're expanding the T range after a fail run")

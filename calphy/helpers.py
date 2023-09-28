@@ -388,7 +388,7 @@ NOrmal helper routines
 """
 
 
-def prepare_log(file):
+def prepare_log(file, screen=False):
     logger = logging.getLogger(__name__)
     handler = logging.FileHandler(file)
     formatter = logging.Formatter("%(asctime)s %(name)-12s %(levelname)-8s %(message)s")
@@ -396,8 +396,13 @@ def prepare_log(file):
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
-    return logger
 
+    if screen:
+        scr = logging.StreamHandler()
+        scr.setLevel(logging.INFO)
+        scr.setFormatter(formatter)
+        logger.addHandler(scr)
+    return logger
 
 def check_if_any_is_none(data):
     """

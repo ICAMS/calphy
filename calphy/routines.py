@@ -52,9 +52,10 @@ class MeltingTemp:
     simfolder : string
         base folder for running calculations
     """
-    def __init__(self, calculation=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
         self.calc = calculation
         self.simfolder = simfolder
+        self.log_to_screen = log_to_screen
         self.org_tm = 0
         self.dtemp = self.calc.melting_temperature.step
         self.maxattempts = self.calc.melting_temperature.attempts
@@ -68,7 +69,7 @@ class MeltingTemp:
         
 
         logfile = os.path.join(os.getcwd(), "calphy.log")
-        self.logger = ph.prepare_log(logfile)
+        self.logger = ph.prepare_log(logfile, screen=log_to_screen)
     
     def prepare_calcs(self):
         """

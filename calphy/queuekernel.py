@@ -112,11 +112,15 @@ def main():
     arg.add_argument("-k", "--kernel", required=True, type=int, 
     help="kernel number of the calculation to be run.")
 
+    arg.add_argument("-s", "--screen", required=False, type=bool, 
+    help="enable logging to screen", default=False)
 
     #parse input
     #parse arguments
     args = vars(arg.parse_args())
     kernel = args["kernel"]
+    log_to_screen = args["screen"]
+
     calculations = read_inputfile(args["input"])
 
     calc = calculations[kernel]
@@ -127,15 +131,15 @@ def main():
     if calc.mode == "melting_temperature":
         os.rmdir(simfolder)
         simfolder = None
-        job = MeltingTemp(calculation=calc, simfolder=simfolder)
+        job = MeltingTemp(calculation=calc, simfolder=simfolder, log_to_screen=log_to_screen)
     elif calc.mode == "alchemy" or calc.mode == "composition_scaling":
-        job = Alchemy(calculation=calc, simfolder=simfolder)
+        job = Alchemy(calculation=calc, simfolder=simfolder, log_to_screen=log_to_screen)
         os.chdir(simfolder)
     else:
         if calc.reference_phase == "liquid":
-            job = Liquid(calculation=calc, simfolder=simfolder)
+            job = Liquid(calculation=calc, simfolder=simfolder, log_to_screen=log_to_screen)
         else:
-            job = Solid(calculation=calc, simfolder=simfolder)
+            job = Solid(calculation=calc, simfolder=simfolder, log_to_screen=log_to_screen)
         os.chdir(simfolder)
 
     if job.calc.mode == "fe":
