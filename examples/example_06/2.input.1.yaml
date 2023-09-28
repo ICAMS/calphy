@@ -1,0 +1,23 @@
+calculations:
+- element: Fe
+  lattice: BCC
+  lattice_constant: 0.0
+  mass: 55.845
+  mode: fe
+  n_equilibration_steps: 10000
+  n_iterations: 1
+  n_switching_steps: 25000
+  pair_coeff: '* * ../potentials/Fe.eam'
+  pair_style: eam
+  pressure: 0.0
+  queue:
+    commands:
+    - conda activate calphy
+    cores: 4
+    scheduler: local
+  reference_phase: solid
+  repeat:
+  - 5
+  - 5
+  - 5
+  temperature: 1000.0
