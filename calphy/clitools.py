@@ -98,7 +98,8 @@ def convert_legacy_inputfile():
     arg.add_argument("-s", "--split", required=False, type=bool, 
     help="split each calculation into new file.", default=True)
     arg.add_argument("-o", "--output", required=False, type=str, 
-    help="output file string, calculations will be named <outputstring>.*.yaml", default=False)    
+    help="output file string, calculations will be named <outputstring>.*.yaml", 
+        default='input')    
     args = vars(arg.parse_args())
     calculations = _convert_legacy_inputfile(args['input'], return_calcs=True)
     outputstr = args['output']
@@ -108,7 +109,7 @@ def convert_legacy_inputfile():
         for count, calc in enumerate(calculations):
             data = {}
             data['calculations'] = [calc]
-            outfile = ".".join([outputstr, str(count), 'yaml'])
+            outfile = ".".join([outputstr, str(count+1), 'yaml'])
             with open(outfile, 'w') as fout:
                 yaml.safe_dump(data, fout)
     else:
