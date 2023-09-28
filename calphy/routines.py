@@ -21,11 +21,11 @@ For more information contact:
 sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 """
 
-from mendeleev import element
 import copy
 import numpy as np
 import os
 import time
+from mendeleev import element
 
 from calphy.input import read_inputfile
 #import calphy.queuekernel as cq
@@ -88,12 +88,12 @@ class MeltingTemp:
         csol = copy.deepcopy(self.calc)
         clqd = copy.deepcopy(self.calc)
         
-        csol.lattice = self.lattice.upper()
-        clqd.lattice = 'LQD'
+        #csol.lattice = self.lattice.upper()
+        #clqd.lattice = 'LQD'
         csol.reference_phase = 'solid'
         clqd.reference_phase = 'liquid'
-        csol.lattice_constant = self.lattice_constant
-        clqd.lattice_constant = self.lattice_constant
+        #csol.lattice_constant = self.lattice_constant
+        #clqd.lattice_constant = self.lattice_constant
         csol._temperature_high = self.tmin
         clqd._temperature_high = 1.5*self.tmax
         csol.mode = 'ts'
@@ -118,16 +118,16 @@ class MeltingTemp:
         None
         """
         chem = element(elem)
-        lattice = chem.lattice_structure
-        self.lattice_constant = chem.lattice_constant
+        #lattice = chem.lattice_structure
+        #self.lattice_constant = chem.lattice_constant
         self.org_tm = chem.melting_point
         
         if self.exp_tm is None:
             self.exp_tm = chem.melting_point
 
-        if lattice == "HEX":
-            lattice = "HCP"
-        self.lattice = lattice.lower()
+        #if lattice == "HEX":
+        #    lattice = "HCP"
+        #self.lattice = lattice.lower()
         
     def get_trange(self):
         """

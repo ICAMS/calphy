@@ -39,6 +39,7 @@ from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
+
 def read_report(folder):
     """
     Read the finished calculation report
@@ -127,12 +128,12 @@ class Calculation(BaseModel, title='Main input class'):
     _element_dict: dict = PrivateAttr(default={})
 
     mode: Annotated[str, Field(default=None)]
-    lattice: Annotated[str, Field(default=None)]
+    lattice: Annotated[str, Field(default="")]
     file_format: Annotated[str, Field(default='lammps-data')]
     
     #pressure properties
     pressure: Annotated[ None | float | conlist(float, min_length=1, max_length=2) | conlist(conlist(float, min_length=3, max_length=3), min_length=1, max_length=2) , 
-                                      Field(default=None)]
+                                      Field(default=0)]
     
     _pressure_stop: float = PrivateAttr(default=None)
     _pressure: float = PrivateAttr(default=None) 
@@ -142,7 +143,7 @@ class Calculation(BaseModel, title='Main input class'):
     _fix_lattice: bool = PrivateAttr(default=False)
 
     temperature: Annotated[ float | conlist(float, min_length=1, max_length=2),
-                            Field(default=None)]
+                            Field(default=0)]
     _temperature: float = PrivateAttr(default=None)
     _temperature_high: float = PrivateAttr(default=None)
     _temperature_stop: float = PrivateAttr(default=None)
@@ -159,7 +160,7 @@ class Calculation(BaseModel, title='Main input class'):
     _pair_style_with_options: float = PrivateAttr(default=None)
     
     
-    reference_phase: Annotated[ str, Field(default = None)]
+    reference_phase: Annotated[ str, Field(default = "")]
     lattice_constant: Annotated[float, Field(default = 0)]
     repeat: Annotated[conlist(int, min_length=3, max_length=3), 
                             Field(default=[1,1,1])]
@@ -306,7 +307,17 @@ class Calculation(BaseModel, title='Main input class'):
             self._element_dict[element]['count'] = 0
             self._element_dict[element]['composition'] = 0.0
 
-        if self.lattice.lower() in structure_dict.keys():
+        if self.lattice == "":
+            #fetch from dict
+            if len(self.element) > 1:
+                raise ValueError("MeltingTemperature can be used only with one element")
+            if self.element[0] in element_dict.keys():
+                self.lattice = element_dict[self.element[0]]['structure']           
+                self.lattice_constant = element_dict[self.element[0]]['lattice_constant']
+            else:
+                raise ValueError("Could not find structure, please provide lattice and lattice_constant explicitely")                
+
+        elif self.lattice.lower() in structure_dict.keys():
             #this is a valid structure
             if self.lattice_constant == 0:
                 #we try try to get lattice_constant
@@ -511,11 +522,24 @@ def _convert_legacy_inputfile(file, return_calcs=False):
         mode = ci["mode"]
         if mode == "melting_temperature":
             calc = {}
-            calc['pressure'] = np.atleast_1d(ci["pressure"]) if "pressure" in ci.keys() else np.atleast_1d(0)
-            calc['temperature'] = np.atleast_1d(ci["temperature"]) if "temperature" in ci.keys() else np.atleast_1d(0)
-            calc['lattice'] = np.atleast_1d(ci["lattice"]) if "lattice" in ci.keys() else np.atleast_1d('none')
-            calc['reference_phase'] = np.atleast_1d(ci["reference_phase"]) if "reference_phase" in ci.keys() else np.atleast_1d('none')
-            calc['lattice_constant'] = np.atleast_1d(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else np.atleast_1d(0) 
+            for key in ['md', 'queue', 'tolerance', 'melting_temperature', 'nose_hoover', 'berendsen', 'composition_scaling', 'temperature_high']:
+                if key in data.keys():
+                    calc[key] = copy.copy(data[key]) 
+            for key in ['element', 'mass', 'script_mode', 'lammps_executable', 'mpi_executable']:
+                if key in data.keys():
+                    calc[key] = data[key]
+            for key in ["mode", "pair_style", "pair_coeff", "pair_style_options", "npt", 
+                            "repeat", "n_equilibration_steps",
+                            "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
+                            "melting_cycle", "equilibration_control", "folder_prefix", "temperature_high"]:
+                if key in ci.keys():
+                    calc[key] = ci[key]
+
+            #calc['pressure'] = float(np.atleast_1d(ci["pressure"]) if "pressure" in ci.keys() else np.atleast_1d(0))
+            #calc['temperature'] = float(np.atleast_1d(ci["temperature"]) if "temperature" in ci.keys() else np.atleast_1d(0))
+            #calc['lattice'] = str(ci["lattice"]) if "lattice" in ci.keys() else 'none'
+            #calc['reference_phase'] = str(ci["reference_phase"]) if "reference_phase" in ci.keys() else 'none'
+            #calc['lattice_constant'] = float(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else 0
             calculations.append(calc)
 
         else:
