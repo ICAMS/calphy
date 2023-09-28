@@ -205,7 +205,7 @@ class Liquid(cph.Phase):
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.calc.pair_style_with_options[0])
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.calc._pair_style_with_options[0])
 
         pc =  self.calc.pair_coeff[0]
         pcraw = pc.split()
@@ -327,7 +327,9 @@ class Liquid(cph.Phase):
 
         #Get ideal gas fe
         f2 = get_ideal_gas_fe(self.calc._temperature, self.rho, 
-            self.natoms, self.calc.mass, self.concentration)
+            self.natoms, 
+            [val['mass'] for key, val in self.calc._element_dict.items()], 
+            [val['composition'] for key, val in self.calc._element_dict.items()])
         
         self.ferr = qerr
         self.fref = f1
