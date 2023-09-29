@@ -62,8 +62,8 @@ def to_list(v: Any) -> List[Any]:
     return np.atleast_1d(v)
 
 class CompositionScaling(BaseModel, title='Composition scaling input options'):
-    input_chemical_composition: Annotated[List[dict], Field(default=None, required=False)]
-    output_chemical_composition: Annotated[List[dict], Field(default=None, required=False)]
+    input_chemical_composition: Annotated[dict, Field(default=None, required=False)]
+    output_chemical_composition: Annotated[dict, Field(default=None, required=False)]
     restrictions: Annotated[List[str], BeforeValidator(to_list),
                                             Field(default=None, required=False)]
 
