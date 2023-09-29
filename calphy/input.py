@@ -62,7 +62,7 @@ def to_list(v: Any) -> List[Any]:
     return np.atleast_1d(v)
 
 class CompositionScaling(BaseModel, title='Composition scaling input options'):
-    input_chemical_composition: Annotated[dict, Field(default=None, required=False)]
+    _input_chemical_composition: PrivateAttr(default=None)
     output_chemical_composition: Annotated[dict, Field(default=None, required=False)]
     restrictions: Annotated[List[str], BeforeValidator(to_list),
                                             Field(default=None, required=False)]
@@ -397,15 +397,26 @@ class Calculation(BaseModel, title='Main input class'):
 
     @model_validator(mode='after')
     def _validate_comp_scaling(self) -> 'Input':
-        aseobj = read(self.lattice, format='lammps-data', style='atomic')
-        structure = System(aseobj, format='ase')
-
         if self.mode == 'composition_scaling':
-        natoms1 = np.sum([val for key, val in self.input_chemical_composition.items()])
-        natoms2 = np.sum([val for key, val in self.output_chemical_composition.items()])
-        if not (natoms1==natoms2==structure.natoms):
-            raise ValueError(f"Input and output number of atoms are not conserved! Input {self.dict_to_string(self.input_chemical_composition)}, output {self.dict_to_string(self.output_chemical_composition)}, total atoms in structure {structure.natoms}")
+            aseobj = read(self.lattice, format='lammps-data', style='atomic')
+            structure = System(aseobj, format='ase')
 
+            #we also should check if actual contents are present
+            input_chem_comp = {}
+            for key, val in self._element_dict.items():
+                input_chem_comp[key] = val
+            self.composition_scaling._input_chemical_composition = input_chem_comp
+
+            #now we should check output chem comp and see there are no keys extra
+            for key in self.composition_scaling.output_chemical_composition.keys():
+                if key not in self.composition_scaling._input_chemical_composition.keys():
+                    raise ValueError('An element in output composition is not possible with the given potential')
+
+            natoms1 = np.sum([val for key, val in self.composition_scaling._input_chemical_composition.items()])
+            natoms2 = np.sum([val for key, val in self.composition_scaling.output_chemical_composition.items()])
+            if not (natoms1==natoms2==structure.natoms):
+                raise ValueError(f"Input and output number of atoms are not conserved! Input {self.dict_to_string(self.input_chemical_composition)}, output {self.dict_to_string(self.output_chemical_composition)}, total atoms in structure {structure.natoms}")
+        return self
 
     def fix_paths(self, potlist): 
         """
