@@ -1,16 +1,16 @@
 calculations:
 - composition_scaling:
     input_chemical_composition:
-    - Cu: 512
-    - Zr: 512
+    - Cu: 125
+    - Zr: 125
     output_chemical_composition:
-    - Cu: 513
-    - Zr: 511
+    - Cu: 128
+    - Zr: 122
   element:
   - Zr
   - Cu
   folder_prefix: sub
-  lattice: ZrCu.dump
+  lattice: ZrCu_48.data
   lattice_constant: 0.0
   mass:
   - 91.224

@@ -62,8 +62,8 @@ def to_list(v: Any) -> List[Any]:
     return np.atleast_1d(v)
 
 class CompositionScaling(BaseModel, title='Composition scaling input options'):
-    input_chemical_composition: Annotated[dict, Field(default=None, required=False)]
-    output_chemical_composition: Annotated[dict, Field(default=None, required=False)]
+    input_chemical_composition: Annotated[List[dict], Field(default=None, required=False)]
+    output_chemical_composition: Annotated[List[dict], Field(default=None, required=False)]
     restrictions: Annotated[List[str], BeforeValidator(to_list),
                                             Field(default=None, required=False)]
 
@@ -378,12 +378,12 @@ class Calculation(BaseModel, title='Main input class'):
                 raise ValueError(f'File {self.lattice} could not be found')
             if self.file_format == 'lammps-data':
                 aseobj = read(self.lattice, format='lammps-data', style='atomic')
-                self._structure = System(aseobj, format='ase')
+                structure = System(aseobj, format='ase')
             else:
                 raise TypeError('Only lammps-data files are supported!')                
 
             #extract composition
-            typelist = self._structure.atoms.types
+            typelist = structure.atoms.types
             #convert to species
             typelist = [self.element[x-1] for x in typelist]
             types, typecounts = np.unique(typelist, return_counts=True)
