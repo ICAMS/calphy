@@ -395,11 +395,16 @@ class Calculation(BaseModel, title='Main input class'):
             self.lattice = os.path.abspath(self.lattice)
         return self
 
+    @model_validator(mode='after')
+    def _validate_comp_scaling(self) -> 'Input':
+        aseobj = read(self.lattice, format='lammps-data', style='atomic')
+        structure = System(aseobj, format='ase')
 
-
-
-
-
+        if self.mode == 'composition_scaling':
+        natoms1 = np.sum([val for key, val in self.input_chemical_composition.items()])
+        natoms2 = np.sum([val for key, val in self.output_chemical_composition.items()])
+        if not (natoms1==natoms2==structure.natoms):
+            raise ValueError(f"Input and output number of atoms are not conserved! Input {self.dict_to_string(self.input_chemical_composition)}, output {self.dict_to_string(self.output_chemical_composition)}, total atoms in structure {structure.natoms}")
 
 
     def fix_paths(self, potlist): 

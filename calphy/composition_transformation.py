@@ -110,16 +110,13 @@ class CompositionTransformation:
     ```
     The output is written in LAMMPS dump format.
     """
-    def __init__(self, input_structure, input_chemical_composition, 
-        output_chemical_composition, restrictions=None):
+    def __init__(self, calc):
         
-        self.structure = self.prepare_structure(input_structure)
-        self.input_chemical_composition = input_chemical_composition
-        self.output_chemical_composition = output_chemical_composition
-        if restrictions is None:
-            self.restrictions = []
-        else:
-            self.restrictions = restrictions
+        self.structure = self.prepare_structure(calc)
+        self.input_chemical_composition = calc.composition_scaling.input_chemical_composition
+        self.output_chemical_composition = calc.composition_scaling.output_chemical_composition
+        self.restrictions = calc.composition_scaling.restrictions
+        
         self.actual_species = None
         self.new_species = None
         self.maxtype = None        
@@ -170,7 +167,10 @@ class CompositionTransformation:
         pstruct.read.file(self.structure, format="ase")
         
         #here we have to validate the input composition dict; and map it
-        composition = pstruct.composition
+        typelist = pstruct.atoms.species
+        types, typecounts = np.unique(typelist, return_counts=True)
+        composition = {types[x]: typecounts[x] for x in range(len(types))}
+
         atomsymbols = []
         atomtypes = []
         for key, val in self.input_chemical_composition.items():
