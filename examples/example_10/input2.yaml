@@ -1,0 +1,21 @@
+calculations:
+- element:
+  - Zr
+  - Cu
+  lattice: ZrCu_substitution.dump
+  lattice_constant: 0.0
+  mass:
+  - 91.224
+  - 63.546
+  mode: fe
+  n_equilibration_steps: 5000
+  n_iterations: 3
+  n_switching_steps: 5000
+  pair_coeff: '* * ../potentials/ZrCu.eam.fs Zr Cu'
+  pair_style: eam/fs
+  pressure: 0.0
+  queue:
+    cores: 4
+    scheduler: local
+  reference_phase: solid
+  temperature: 800.0
