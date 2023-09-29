@@ -25,7 +25,7 @@ import re
 import numpy as np
 import os
 import random
-import pyscal.core as pc
+import pyscal3.core as pc
 from mendeleev import element
 from ase.io import read, write
 from ase.atoms import Atoms
@@ -167,10 +167,10 @@ class CompositionTransformation:
         Convert a given system to pyscal and give a dict of type mappings
         """
         pstruct = pc.System()
-        pstruct.read_inputfile(self.structure, format="ase")
+        pstruct.read.file(self.structure, format="ase")
         
         #here we have to validate the input composition dict; and map it
-        composition = pstruct.get_concentration()
+        composition = pstruct.composition
         atomsymbols = []
         atomtypes = []
         for key, val in self.input_chemical_composition.items():
@@ -237,7 +237,7 @@ class CompositionTransformation:
     def mark_atoms(self):
         for i in range(self.natoms):
             self.atom_mark.append(False)
-            self.atom_type = [atom.type for atom in self.pyscal_structure.iter_atoms()]
+            self.atom_type = self.pyscal_structure.atoms.types
             self.mappings = [f"{x}-{x}" for x in self.atom_type]
             
     def update_mark_atoms(self):
@@ -345,10 +345,8 @@ class CompositionTransformation:
     def update_types(self):
         for x in range(len(self.atom_type)):
             self.atom_type[x] = self.mappingdict[self.mappings[x]]
-        atoms = self.pyscal_structure.atoms
-        for count, atom in enumerate(atoms):
-            atom.type = self.atom_type[count]
-        self.pyscal_structure.atoms = atoms
+        for count in range(len(self.pyscal_structure.atoms.types)):
+            self.pyscal_structure.atoms.types[count] = self.atom_type[count]
             
     def iselement(self, symbol):
         try:
@@ -380,7 +378,7 @@ class CompositionTransformation:
         return pc_old, pc_new
     
     def write_structure(self, outfilename):
-        self.pyscal_structure.to_file(outfilename)
+        self.pyscal_structure.write.file(outfilename, format='lammps-data')
         
     def prepare_mappings(self):
         self.atom_mark = []
