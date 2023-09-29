@@ -214,27 +214,27 @@ class Calculation(BaseModel, title='Main input class'):
         elif np.shape(self.pressure) == (1,):
             self._iso = True
             self._fix_lattice = False
-            self._pressure = self.pressure_input[0]
-            self._pressure_stop = self.pressure_input[0]
+            self._pressure = self.pressure[0]
+            self._pressure_stop = self.pressure[0]
         elif np.shape(self.pressure) == (2,):
             self._iso = True
             self._fix_lattice = False
-            self._pressure = self.pressure_input[0]
-            self._pressure_stop = self.pressure_input[1]
+            self._pressure = self.pressure[0]
+            self._pressure_stop = self.pressure[1]
         elif np.shape(self.pressure) == (1, 3):
             if not _check_equal(self.pressure[0]):
                 raise ValueError('All pressure terms must be equal')
             self._iso = False
             self._fix_lattice = False
-            self._pressure = self.pressure_input[0][0]
-            self._pressure_stop = self.pressure_input[0][0]                
+            self._pressure = self.pressure[0][0]
+            self._pressure_stop = self.pressure[0][0]                
         elif np.shape(self.pressure) == (2, 3):
             if not (_check_equal(self.pressure[0]) and _check_equal(self.pressure[1])):
                 raise ValueError('All pressure terms must be equal')
             self._iso = False
             self._fix_lattice = False
-            self._pressure = self.pressure_input[0][0]
-            self._pressure_stop = self.pressure_input[1][0]                                
+            self._pressure = self.pressure[0][0]
+            self._pressure_stop = self.pressure[1][0]                                
         else:
             raise ValueError('Unknown format for pressure')
         return self
