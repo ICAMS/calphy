@@ -1,23 +1,57 @@
-element: Cu
-mass: 63.546
 calculations:
-- mode: ts 
-  temperature: [1200, 1400]
-  pressure: [0]
-  lattice: [FCC, LQD]
-  repeat: [5, 5, 5]
-  reference_phase: [solid, liquid]
-  n_iterations: 1
-  pair_style: eam/alloy
-  pair_coeff: "* * ../potentials/Cu01.eam.alloy Cu"
+- element: Cu
+  lattice: FCC
+  lattice_constant: 0.0
+  mass: 63.546
+  md:
+    barostat_damping: 0.1
+    thermostat_damping: 0.1
+    timestep: 0.001
+  mode: ts
   n_equilibration_steps: 10000
+  n_iterations: 1
   n_switching_steps: 25000
-md:
-  timestep: 0.001
-  thermostat_damping: 0.1
-  barostat_damping: 0.1
-queue:
-  scheduler: local
-  cores: 4
-  commands:
+  pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
+  pair_style: eam/alloy
+  pressure: 0.0
+  queue:
+    commands:
     - conda activate calphy-dev
+    cores: 4
+    scheduler: local
+  reference_phase: solid
+  repeat:
+  - 5
+  - 5
+  - 5
+  temperature:
+  - 1200.0
+  - 1400.0
+- element: Cu
+  lattice: fcc
+  lattice_constant: 0.0
+  mass: 63.546
+  md:
+    barostat_damping: 0.1
+    thermostat_damping: 0.1
+    timestep: 0.001
+  mode: ts
+  n_equilibration_steps: 10000
+  n_iterations: 1
+  n_switching_steps: 25000
+  pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
+  pair_style: eam/alloy
+  pressure: 0.0
+  queue:
+    commands:
+    - conda activate calphy-dev
+    cores: 4
+    scheduler: local
+  reference_phase: liquid
+  repeat:
+  - 5
+  - 5
+  - 5
+  temperature:
+  - 1200.0
+  - 1400.0
