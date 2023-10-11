@@ -56,16 +56,4 @@ The gallery of examples below cover different ways in which calphy can be used t
 :link: examples/example_09/analysis
 :link-type: doc
 ```
-
-```{grid-item-card} Free energy with composition change in a binary system
-:img-top: example10.jpg
-:link: examples/example_10/analysis
-:link-type: doc
-```
-
-```{grid-item-card} Dynamic Clausius-Clapeyron integration
-:img-top: example01.jpg
-:link: examples/example_11/analysis
-:link-type: doc
-```
 ````
