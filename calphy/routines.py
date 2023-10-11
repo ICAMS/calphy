@@ -447,10 +447,7 @@ def routine_composition_scaling(job):
     """
     #we set up comp scaling first
     job.logger.info("Calculating composition scaling")
-    comp = CompositionTransformation(job.calc.lattice, 
-        job.calc.composition_scaling.input_chemical_composition, 
-        job.calc.composition_scaling.output_chemical_composition, 
-        restrictions=job.calc.composition_scaling.restrictions)
+    comp = CompositionTransformation(job.calc)
 
     #update pair styles
     res = comp.update_pair_coeff(job.calc.pair_coeff[0])

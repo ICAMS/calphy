@@ -138,8 +138,8 @@ class CompositionTransformation:
         """
         Convert a given system to pyscal and give a dict of type mappings
         """
-        pstruct = pc.System()
-        pstruct.read.file(self.structure, format="ase")
+        aseobj = read(self.calc.lattice, format='lammps-data', style='atomic')
+        pstruct = pc.System(aseobj, format='ase')
         
         #here we have to validate the input composition dict; and map it
         typelist = pstruct.atoms.species
@@ -333,8 +333,15 @@ class CompositionTransformation:
         return pc_old, pc_new
     
     def write_structure(self, outfilename):
+        #create some species dict
+        #just to trick ase to write
+        utypes = np.unique(self.pyscal_structure.atoms["types"])
+        element_list = list(element_dict.keys())       
+        element_dict = {str(u):element_list[count] for count, u in enumerate(utypes)}
+        species = [element_dict[str(x)] for x in self.pyscal_structure.atoms["types"]]
+        self.pyscal_structure.atoms["species"] = species
         self.pyscal_structure.write.file(outfilename, format='lammps-dump')
-        #read it back in with ase
+        
 
         
         
