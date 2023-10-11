@@ -340,7 +340,7 @@ class CompositionTransformation:
         element_type_dict = {str(u):element_list[count] for count, u in enumerate(utypes)}
         species = [element_type_dict[str(x)] for x in self.pyscal_structure.atoms["types"]]
         self.pyscal_structure.atoms["species"] = species
-        self.pyscal_structure.write.file(outfilename, format='lammps-dump')
+        self.pyscal_structure.write.file(outfilename, format='lammps-data')
         
 
         
