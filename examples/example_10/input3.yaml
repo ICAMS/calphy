@@ -9,6 +9,7 @@ calculations:
   folder_prefix: sub
   lattice: ZrCu_48.data
   lattice_constant: 0.0
+  equilibration_control: berendsen
   mass:
   - 91.224
   - 63.546

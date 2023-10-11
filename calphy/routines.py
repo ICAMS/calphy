@@ -452,6 +452,7 @@ def routine_composition_scaling(job):
     #update pair styles
     res = comp.update_pair_coeff(job.calc.pair_coeff[0])
     job.calc.pair_style.append(job.calc.pair_style[0])
+    job.calc._pair_style_with_options.append(job.calc._pair_style_with_options[0])
     job.calc.pair_coeff[0] = res[0]
     job.calc.pair_coeff.append(res[1])
     job.logger.info("Update pair coefficients")
