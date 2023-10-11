@@ -65,7 +65,7 @@ class CompositionScaling(BaseModel, title='Composition scaling input options'):
     _input_chemical_composition: PrivateAttr(default=None)
     output_chemical_composition: Annotated[dict, Field(default=None, required=False)]
     restrictions: Annotated[List[str], BeforeValidator(to_list),
-                                            Field(default=None, required=False)]
+                                            Field(default=[], required=False)]
 
 class MD(BaseModel, title='MD specific input options'):
     timestep: Annotated[float, Field(default=0.001, 
@@ -404,7 +404,7 @@ class Calculation(BaseModel, title='Main input class'):
             #we also should check if actual contents are present
             input_chem_comp = {}
             for key, val in self._element_dict.items():
-                input_chem_comp[key] = val
+                input_chem_comp[key] = val['count']
             self.composition_scaling._input_chemical_composition = input_chem_comp
 
             #now we should check output chem comp and see there are no keys extra

@@ -1,11 +1,8 @@
 calculations:
 - composition_scaling:
-    input_chemical_composition:
+    output_chemical_composition:
       Cu: 122
       Zr: 128
-    output_chemical_composition:
-      Cu: 128
-      Zr: 122
   element:
   - Zr
   - Cu

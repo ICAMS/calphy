@@ -438,9 +438,16 @@ class Solid(cph.Phase):
         command = str1 + str2 + str3
         lmp.command(command)
 
+        if self.calc.n_print_steps > 0:
+            lmp.command("dump              d1 all custom %d traj.fe.forward_%d.dat id type mass x y z fx fy fz"%(self.calc.n_print_steps,
+                iteration))
+
         #Forward switching over ts steps
         lmp.command("run               %d"%self.calc._n_switching_steps)
         lmp.command("unfix             f4")
+
+        if self.calc.n_print_steps > 0:
+            lmp.command("undump           d1")
 
         #Equilibriate
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
@@ -456,9 +463,16 @@ class Solid(cph.Phase):
         command = str1 + str2 + str3
         lmp.command(command)
 
+        if self.calc.n_print_steps > 0:
+            lmp.command("dump              d1 all custom %d traj.fe.backward_%d.dat id type mass x y z fx fy fz"%(self.calc.n_print_steps,
+                iteration))
+
         #Reverse switching over ts steps
         lmp.command("run               %d"%self.calc._n_switching_steps)
         lmp.command("unfix             f4")
+
+        if self.calc.n_print_steps > 0:
+            lmp.command("undump           d1")
 
         #close object
         if not self.calc.script_mode:

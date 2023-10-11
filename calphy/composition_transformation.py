@@ -29,6 +29,7 @@ import pyscal3.core as pc
 from mendeleev import element
 from ase.io import read, write
 from ase.atoms import Atoms
+from pyscal3.core import element_dict
 
 class CompositionTransformation:
     """
@@ -112,11 +113,10 @@ class CompositionTransformation:
     """
     def __init__(self, calc):
         
-        self.structure = self.prepare_structure(calc)
-        self.input_chemical_composition = calc.composition_scaling.input_chemical_composition
+        self.input_chemical_composition = calc.composition_scaling._input_chemical_composition
         self.output_chemical_composition = calc.composition_scaling.output_chemical_composition
         self.restrictions = calc.composition_scaling.restrictions
-        
+        self.calc = calc
         self.actual_species = None
         self.new_species = None
         self.maxtype = None        
@@ -133,31 +133,6 @@ class CompositionTransformation:
             strlst.append(str(val))
         return "".join(strlst)
     
-    def is_data_file(self, filename):
-        try:
-            atoms = read(filename, format="lammps-data", style="atomic")
-            return atoms
-        except:
-            return None
-    
-    def is_dump_file(self, filename):
-        try:
-            atoms = read(filename, format="lammps-dump-text")
-            return atoms
-        except:
-            return None
-        
-    def prepare_structure(self, input_structure):
-        """
-        Check the format of a given input file and validate it.
-        """
-        if isinstance(input_structure, Atoms):
-            return input_structure
-        elif os.path.exists(input_structure):
-            atoms = self.is_data_file(input_structure)
-            if atoms is None:
-                atoms = self.is_dump_file(input_structure)
-            return atoms
     
     def convert_to_pyscal(self):
         """
@@ -171,20 +146,8 @@ class CompositionTransformation:
         types, typecounts = np.unique(typelist, return_counts=True)
         composition = {types[x]: typecounts[x] for x in range(len(types))}
 
-        atomsymbols = []
-        atomtypes = []
-        for key, val in self.input_chemical_composition.items():
-            if not val==0:
-                found = False
-                for key1, val1 in composition.items():
-                    if val1==val:
-                        found = True
-                        atomsymbols.append(key)
-                        atomtypes.append(int(key1))
-                        del composition[key1]
-                        break
-                if not found:
-                    raise ValueError("Input structure and composition do not match!")
+        atomsymbols = self.calc.element
+        atomtypes = [x+1 for x in range(len(self.calc.element))]
         
         self.pyscal_structure = pstruct
         self.typedict = dict(zip(atomsymbols, atomtypes))
@@ -196,14 +159,6 @@ class CompositionTransformation:
         self.maxtype = self.actual_species + 1 #+ self.new_species
         #print(self.typedict)            
 
-    def check_if_atoms_conserved(self):
-        """
-        Check if a given transformation is possible by checking if number of atoms are conserved
-        """
-        natoms1 = np.sum([val for key, val in self.input_chemical_composition.items()])
-        natoms2 = np.sum([val for key, val in self.output_chemical_composition.items()])
-        if not (natoms1==natoms2==self.natoms):
-            raise ValueError(f"Input and output number of atoms are not conserved! Input {self.dict_to_string(self.input_chemical_composition)}, output {self.dict_to_string(self.output_chemical_composition)}, total atoms in structure {self.natoms}")
 
     def get_composition_transformation(self):
         """
@@ -378,7 +333,10 @@ class CompositionTransformation:
         return pc_old, pc_new
     
     def write_structure(self, outfilename):
-        self.pyscal_structure.write.file(outfilename, format='lammps-data')
+        self.pyscal_structure.write.file(outfilename, format='lammps-dump')
+        #read it back in with ase
+
+        
         
     def prepare_mappings(self):
         self.atom_mark = []
@@ -388,7 +346,6 @@ class CompositionTransformation:
         
         self.get_composition_transformation()
         self.convert_to_pyscal()
-        self.check_if_atoms_conserved()
 
         self.mark_atoms()
         self.update_mark_atoms()
