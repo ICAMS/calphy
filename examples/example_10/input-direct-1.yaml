@@ -2,7 +2,7 @@ calculations:
 - element:
   - Zr
   - Cu
-  lattice: ZrCu_52.data
+  lattice: ZrCu.dump
   lattice_constant: 0.0
   mass:
   - 91.224
