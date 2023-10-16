@@ -48,13 +48,14 @@ class Phase:
         base folder for running calculations
 
     """
-    def __init__(self, calculation=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
 
         self.calc = copy.deepcopy(calculation)
         self.simfolder = simfolder
+        self.log_to_screen = log_to_screen
         
         logfile = os.path.join(self.simfolder, "calphy.log")
-        self.logger = ph.prepare_log(logfile)
+        self.logger = ph.prepare_log(logfile, screen=log_to_screen)
 
         self.logger.info("---------------input file----------------")
         self.logger.info("commented out as causes crash when we're expanding the T range after a fail run")
@@ -66,7 +67,8 @@ class Phase:
         else:
             pressure_string = "%f"%self.calc._pressure
 
-        self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %s bar"%(self.calc._temperature, self.calc._temperature_stop, pressure_string))
+        self.logger.info("Temperature start: %f K, temperature stop: %f K, pressure: %s bar"%(self.calc._temperature, 
+            self.calc._temperature_stop, pressure_string))
 
         if self.calc._iso:
             self.iso = "iso"
@@ -129,18 +131,17 @@ class Phase:
         if self.calc._fix_lattice:
             self.logger.info("Lattice is fixed, pressure convergence criteria is 50*tolerance.pressure; change if needed!")
 
-        self.l = None
-        self.alat = None
-        self.apc = None
+        self.l = self.calc.lattice
+        self.alat = self.calc.lattice_constant
         self.vol = None
-        self.concentration = None
-        self.dumpfile = False
+        #self.concentration = self.calc._composition
+        #self.dumpfile = False
         self.prepare_lattice()
 
         #other properties
         self.cores = self.calc.queue.cores
         self.ncells = np.prod(self.calc.repeat)
-        self.natoms = self.ncells*self.apc        
+        self.natoms = self.calc._natoms        
         self.logger.info("%d atoms in %d cells on %d cores"%(self.natoms, self.ncells, self.cores))
 
         #reference system props; may not be always used
@@ -168,12 +169,12 @@ class Phase:
 
         #now manually tune pair styles
         if self.calc.pair_style is not None:
-            self.logger.info("pair_style: %s"%self.calc.pair_style_with_options[0])
+            self.logger.info("pair_style: %s"%self.calc._pair_style_with_options[0])
             self.logger.info("pair_coeff: %s"%self.calc.pair_coeff[0])
 
             #log second pair style
             if len(self.calc.pair_style)>1:
-                self.logger.info("second pair_style: %s"%self.calc.pair_style_with_options[1])
+                self.logger.info("second pair_style: %s"%self.calc._pair_style_with_options[1])
                 self.logger.info("second pair_coeff: %s"%self.calc.pair_coeff[1])
         else:
             self.logger.info("pair_style or pair_coeff not provided")
@@ -213,21 +214,21 @@ class Phase:
         Calculates the lattic, lattice constant, number of atoms per unit cell
         and concentration of the input system.
         """
-        l, alat, apc, conc, dumpfile = pl.prepare_lattice(self.calc)
-        self.l = l
-        self.alat = alat
-        self.apc = apc
-        self.concentration = conc
-        self.dumpfile = dumpfile
-        self.logger.info("Lattice: %s with a=%f"%(self.l, self.alat))
-        self.logger.info("%d atoms in the unit cell"%self.apc)
-        self.logger.info("concentration:")
-        self.logger.info(self.concentration)
-        if self.l == "file":
-            if self.dumpfile:
-                self.logger.info("Input structure is read in from a LAMMPS dump file")
-            else:
-                self.logger.info("Input structure is read in from a LAMMPS data file")
+        #l, alat, apc, conc, dumpfile = pl.prepare_lattice(self.calc)
+        #self.l = l
+        #self.alat = alat
+        #self.apc = apc
+        #self.concentration = self.calc.composition
+        #self.dumpfile = dumpfile
+        #self.logger.info("Lattice: %s with a=%f"%(self.l, self.alat))
+        #self.logger.info("%d atoms in the unit cell"%self.apc)
+        #self.logger.info("concentration:")
+        #self.logger.info(self.concentration)
+        #if self.l == "file":
+        #    if self.dumpfile:
+        #        self.logger.info("Input structure is read in from a LAMMPS dump file")
+        #    else:
+        #        self.logger.info("Input structure is read in from a LAMMPS data file")
                 
     def dump_current_snapshot(self, lmp, filename):
         """
@@ -716,9 +717,9 @@ class Phase:
         report["input"] = {}
         report["input"]["temperature"] = int(self.calc._temperature)
         report["input"]["pressure"] = float(self.calc._pressure)
-        report["input"]["lattice"] = str(self.l)
+        report["input"]["lattice"] = str(self.calc._original_lattice)
         report["input"]["element"] = " ".join(np.array(self.calc.element).astype(str))
-        report["input"]["concentration"] = " ".join(np.array(self.concentration).astype(str))
+        report["input"]["concentration"] = " ".join(np.array([val['composition'] for key, val in self.calc._element_dict.items()]).astype(str))
 
         #average quantities
         report["average"] = {}
@@ -736,6 +737,7 @@ class Phase:
         report["results"]["reference_system"] = float(self.fref)
         report["results"]["work"] = float(self.w)
         report["results"]["pv"] = float(self.pv)
+        report["results"]["unit"] = "eV/atom"
 
         if extra_dict is not None:
             self._from_dict(report, extra_dict)
@@ -772,6 +774,7 @@ class Phase:
         -------
         None
         """
+        self.logger.info(f'Starting temperature sweep cycle: {iteration}')
         solid = False
         if self.calc.reference_phase == 'solid':
             solid = True
@@ -803,13 +806,16 @@ class Phase:
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
         #set thermostat and run equilibrium
-        if self.calc._npt:
+        if self.calc.npt:
             lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f"%(t0, t0, self.calc.md.thermostat_damping[1], 
                 self.iso, pi, pi, self.calc.md.barostat_damping[1]))
         else:
             lmp.command("fix               f1 all nvt temp %f %f %f"%(t0, t0, self.calc.md.thermostat_damping[1]))
-
+        
+        self.logger.info(f'Starting equilibration: {iteration}')
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
+        self.logger.info(f'Finished equilibration: {iteration}')
+
         lmp.command("unfix             f1")
 
         #now fix com
@@ -817,7 +823,7 @@ class Phase:
         lmp.command("variable         ycm equal xcm(all,y)")
         lmp.command("variable         zcm equal xcm(all,z)")
 
-        if self.calc._npt:
+        if self.calc.npt:
             lmp.command("fix               f1 all npt temp %f %f %f %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"%(t0, t0, self.calc.md.thermostat_damping[1], 
                 self.iso, pi, pi, self.calc.md.barostat_damping[1]))
         else:
@@ -834,7 +840,10 @@ class Phase:
 
         #create velocity and equilibriate
         lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(t0, np.random.randint(1, 10000)))
+
+        self.logger.info(f'Starting equilibration with constrained com: {iteration}')
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
+        self.logger.info(f'Finished equilibration with constrained com: {iteration}')
         
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
@@ -848,7 +857,7 @@ class Phase:
         pcnew1 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], "1", *pcraw[2:]])
         pcnew2 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], "2", *pcraw[2:]])
 
-        lmp.command("pair_style       hybrid/scaled v_one %s v_fscale %s"%(self.calc.pair_style_with_options[0], self.calc.pair_style_with_options[0]))
+        lmp.command("pair_style       hybrid/scaled v_one %s v_fscale %s"%(self.calc._pair_style_with_options[0], self.calc._pair_style_with_options[0]))
         lmp.command("pair_coeff       %s"%pcnew1)
         lmp.command("pair_coeff       %s"%pcnew2)
 
@@ -857,8 +866,10 @@ class Phase:
         if self.calc.n_print_steps > 0:
             lmp.command("dump              d1 all custom %d traj.ts.forward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
-
+        
+        self.logger.info(f'Started forward sweep: {iteration}')
         lmp.command("run               %d"%self.calc._n_sweep_steps)
+        self.logger.info(f'Finished forward sweep: {iteration}')
 
         #unfix
         lmp.command("unfix             f3")
@@ -887,7 +898,7 @@ class Phase:
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
 
-        lmp.command("pair_style       hybrid/scaled v_one %s v_bscale %s"%(self.calc.pair_style_with_options[0], self.calc.pair_style_with_options[0]))
+        lmp.command("pair_style       hybrid/scaled v_one %s v_bscale %s"%(self.calc._pair_style_with_options[0], self.calc._pair_style_with_options[0]))
         lmp.command("pair_coeff       %s"%pcnew1)
         lmp.command("pair_coeff       %s"%pcnew2)
 
@@ -898,7 +909,9 @@ class Phase:
             lmp.command("dump              d1 all custom %d traj.ts.backward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 
+        self.logger.info(f'Started backward sweep: {iteration}')
         lmp.command("run               %d"%self.calc._n_sweep_steps)
+        self.logger.info(f'Finished backward sweep: {iteration}')
         
         lmp.command("unfix             f3")
 

@@ -25,10 +25,11 @@ import re
 import numpy as np
 import os
 import random
-import pyscal.core as pc
+import pyscal3.core as pc
 from mendeleev import element
 from ase.io import read, write
 from ase.atoms import Atoms
+from pyscal3.core import element_dict
 
 class CompositionTransformation:
     """
@@ -110,16 +111,12 @@ class CompositionTransformation:
     ```
     The output is written in LAMMPS dump format.
     """
-    def __init__(self, input_structure, input_chemical_composition, 
-        output_chemical_composition, restrictions=None):
+    def __init__(self, calc):
         
-        self.structure = self.prepare_structure(input_structure)
-        self.input_chemical_composition = input_chemical_composition
-        self.output_chemical_composition = output_chemical_composition
-        if restrictions is None:
-            self.restrictions = []
-        else:
-            self.restrictions = restrictions
+        self.input_chemical_composition = calc.composition_scaling._input_chemical_composition
+        self.output_chemical_composition = calc.composition_scaling.output_chemical_composition
+        self.restrictions = calc.composition_scaling.restrictions
+        self.calc = calc
         self.actual_species = None
         self.new_species = None
         self.maxtype = None        
@@ -136,55 +133,21 @@ class CompositionTransformation:
             strlst.append(str(val))
         return "".join(strlst)
     
-    def is_data_file(self, filename):
-        try:
-            atoms = read(filename, format="lammps-data", style="atomic")
-            return atoms
-        except:
-            return None
-    
-    def is_dump_file(self, filename):
-        try:
-            atoms = read(filename, format="lammps-dump-text")
-            return atoms
-        except:
-            return None
-        
-    def prepare_structure(self, input_structure):
-        """
-        Check the format of a given input file and validate it.
-        """
-        if isinstance(input_structure, Atoms):
-            return input_structure
-        elif os.path.exists(input_structure):
-            atoms = self.is_data_file(input_structure)
-            if atoms is None:
-                atoms = self.is_dump_file(input_structure)
-            return atoms
     
     def convert_to_pyscal(self):
         """
         Convert a given system to pyscal and give a dict of type mappings
         """
-        pstruct = pc.System()
-        pstruct.read_inputfile(self.structure, format="ase")
+        aseobj = read(self.calc.lattice, format='lammps-data', style='atomic')
+        pstruct = pc.System(aseobj, format='ase')
         
         #here we have to validate the input composition dict; and map it
-        composition = pstruct.get_concentration()
-        atomsymbols = []
-        atomtypes = []
-        for key, val in self.input_chemical_composition.items():
-            if not val==0:
-                found = False
-                for key1, val1 in composition.items():
-                    if val1==val:
-                        found = True
-                        atomsymbols.append(key)
-                        atomtypes.append(int(key1))
-                        del composition[key1]
-                        break
-                if not found:
-                    raise ValueError("Input structure and composition do not match!")
+        typelist = pstruct.atoms.species
+        types, typecounts = np.unique(typelist, return_counts=True)
+        composition = {types[x]: typecounts[x] for x in range(len(types))}
+
+        atomsymbols = self.calc.element
+        atomtypes = [x+1 for x in range(len(self.calc.element))]
         
         self.pyscal_structure = pstruct
         self.typedict = dict(zip(atomsymbols, atomtypes))
@@ -196,14 +159,6 @@ class CompositionTransformation:
         self.maxtype = self.actual_species + 1 #+ self.new_species
         #print(self.typedict)            
 
-    def check_if_atoms_conserved(self):
-        """
-        Check if a given transformation is possible by checking if number of atoms are conserved
-        """
-        natoms1 = np.sum([val for key, val in self.input_chemical_composition.items()])
-        natoms2 = np.sum([val for key, val in self.output_chemical_composition.items()])
-        if not (natoms1==natoms2==self.natoms):
-            raise ValueError(f"Input and output number of atoms are not conserved! Input {self.dict_to_string(self.input_chemical_composition)}, output {self.dict_to_string(self.output_chemical_composition)}, total atoms in structure {self.natoms}")
 
     def get_composition_transformation(self):
         """
@@ -237,7 +192,7 @@ class CompositionTransformation:
     def mark_atoms(self):
         for i in range(self.natoms):
             self.atom_mark.append(False)
-            self.atom_type = [atom.type for atom in self.pyscal_structure.iter_atoms()]
+            self.atom_type = self.pyscal_structure.atoms.types
             self.mappings = [f"{x}-{x}" for x in self.atom_type]
             
     def update_mark_atoms(self):
@@ -345,10 +300,8 @@ class CompositionTransformation:
     def update_types(self):
         for x in range(len(self.atom_type)):
             self.atom_type[x] = self.mappingdict[self.mappings[x]]
-        atoms = self.pyscal_structure.atoms
-        for count, atom in enumerate(atoms):
-            atom.type = self.atom_type[count]
-        self.pyscal_structure.atoms = atoms
+        for count in range(len(self.pyscal_structure.atoms.types)):
+            self.pyscal_structure.atoms.types[count] = self.atom_type[count]
             
     def iselement(self, symbol):
         try:
@@ -380,7 +333,17 @@ class CompositionTransformation:
         return pc_old, pc_new
     
     def write_structure(self, outfilename):
-        self.pyscal_structure.to_file(outfilename)
+        #create some species dict
+        #just to trick ase to write
+        utypes = np.unique(self.pyscal_structure.atoms["types"])
+        element_list = list(element_dict.keys())       
+        element_type_dict = {str(u):element_list[count] for count, u in enumerate(utypes)}
+        species = [element_type_dict[str(x)] for x in self.pyscal_structure.atoms["types"]]
+        self.pyscal_structure.atoms["species"] = species
+        self.pyscal_structure.write.file(outfilename, format='lammps-data')
+        
+
+        
         
     def prepare_mappings(self):
         self.atom_mark = []
@@ -390,7 +353,6 @@ class CompositionTransformation:
         
         self.get_composition_transformation()
         self.convert_to_pyscal()
-        self.check_if_atoms_conserved()
 
         self.mark_atoms()
         self.update_mark_atoms()

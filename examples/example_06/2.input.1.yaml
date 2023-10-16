@@ -1,13 +1,8 @@
 calculations:
 - element: Fe
   lattice: BCC
-  lattice_constant: 2.884
+  lattice_constant: 0.0
   mass: 55.845
-  md:
-    barostat_damping: 0.1
-    equilibration_control: nose_hoover
-    thermostat_damping: 0.1
-    timestep: 0.001
   mode: fe
   n_equilibration_steps: 10000
   n_iterations: 1
@@ -25,6 +20,4 @@ calculations:
   - 5
   - 5
   - 5
-  temperature: 100.0
-  tolerance:
-    pressure: 1
+  temperature: 1000.0

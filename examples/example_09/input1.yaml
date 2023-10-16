@@ -1,21 +1,67 @@
-element: Cu
-mass: 63.546
 calculations:
-- mode: fe
-  temperature: 1200
-  pressure: [0, 5000, 10000]
-  lattice: [FCC]
-  repeat: [5, 5, 5]
-  reference_phase: [solid]
-  n_iterations: 1
+- element: Cu
+  lattice: FCC
   lattice_constant: 3.697
-  pair_style: eam/alloy
-  pair_coeff: "* * ../potentials/Cu01.eam.alloy Cu"
+  mass: 63.546
+  mode: fe
   n_equilibration_steps: 10000
+  n_iterations: 1
   n_switching_steps: 25000
-  
-queue:
-  scheduler: local
-  cores: 4
-  commands:
+  pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
+  pair_style: eam/alloy
+  pressure: 0.0
+  queue:
+    commands:
     - conda activate calphy
+    cores: 4
+    scheduler: local
+  reference_phase: solid
+  repeat:
+  - 5
+  - 5
+  - 5
+  temperature: 1200.0
+- element: Cu
+  lattice: FCC
+  lattice_constant: 3.697
+  mass: 63.546
+  mode: fe
+  n_equilibration_steps: 10000
+  n_iterations: 1
+  n_switching_steps: 25000
+  pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
+  pair_style: eam/alloy
+  pressure: 5000.0
+  queue:
+    commands:
+    - conda activate calphy
+    cores: 4
+    scheduler: local
+  reference_phase: solid
+  repeat:
+  - 5
+  - 5
+  - 5
+  temperature: 1200.0
+- element: Cu
+  lattice: FCC
+  lattice_constant: 3.697
+  mass: 63.546
+  mode: fe
+  n_equilibration_steps: 10000
+  n_iterations: 1
+  n_switching_steps: 25000
+  pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
+  pair_style: eam/alloy
+  pressure: 10000.0
+  queue:
+    commands:
+    - conda activate calphy
+    cores: 4
+    scheduler: local
+  reference_phase: solid
+  repeat:
+  - 5
+  - 5
+  - 5
+  temperature: 1200.0

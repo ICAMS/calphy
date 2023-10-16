@@ -98,7 +98,7 @@ def create_object(cores, directory, timestep, cmdargs=None,
     return lmp
 
 
-def create_structure(lmp, calc, species=None):
+def create_structure(lmp, calc):
     """
     Create structure using LAMMPS
 
@@ -113,33 +113,7 @@ def create_structure(lmp, calc, species=None):
     -------
     lmp : LammpsLibrary object
     """
-    l, alat, apc, conc, dumpfile = pl.prepare_lattice(calc)
-
-    if species is None:
-        species = len(conc)
-
-    if l == "file":
-        if dumpfile:
-            # reset_timestep(calc.lattice, calc.lattice, keys=None)
-            lmp.command("lattice          fcc 4.0")
-            lmp.command("region           box block 0 2 0 2 0 2")
-
-            #comment this out
-            warnings.warn("If the box is triclinic, please provide a data file instead")
-            #lmp.command("box tilt large")
-
-            lmp.command("create_box       %d box" % species)
-            lmp.command(
-                "read_dump        %s 0 x y z scaled no box yes add keep" % calc.lattice
-            )
-            #lmp.command("change_box       all triclinic")
-        else:
-            lmp.command("read_data      %s" % calc.lattice)
-    else:
-        lmp.command(f'lattice {l} {alat}')
-        lmp.command(f'region box block 0 {calc.repeat[0]} 0 {calc.repeat[1]} 0 {calc.repeat[2]}')
-        lmp.command(f'create_box 1 box')
-        lmp.command(f'create_atoms 1 box')
+    lmp.command("read_data      %s" % calc.lattice)
     return lmp
 
 
@@ -171,7 +145,7 @@ def set_potential(lmp, options, ghost_elements=0):
     """
     #lmp.pair_style(options.pair_style_with_options[0])
     #lmp.pair_coeff(options.pair_coeff[0])
-    lmp.command(f'pair_style {options.pair_style_with_options[0]}')
+    lmp.command(f'pair_style {options._pair_style_with_options[0]}')
     lmp.command(f'pair_coeff {options.pair_coeff[0]}')
 
     lmp = set_mass(lmp, options, ghost_elements=ghost_elements)
@@ -234,7 +208,7 @@ def set_hybrid_potential(lmp, options, eps, ghost_elements=0):
         [
             *pcraw[:2],
             *[
-                options.pair_style_with_options[0],
+                options._pair_style_with_options[0],
             ],
             *pcraw[2:],
         ]
@@ -242,7 +216,7 @@ def set_hybrid_potential(lmp, options, eps, ghost_elements=0):
 
     lmp.command(
         "pair_style       hybrid/overlay %s ufm 7.5"
-        % options.pair_style_with_options[0]
+        % options._pair_style_with_options[0]
     )
     lmp.command("pair_coeff       %s" % pcnew)
     lmp.command("pair_coeff       * * ufm %f 1.5" % eps)
@@ -303,7 +277,7 @@ def set_double_hybrid_potential(lmp, options, ghost_elements=0):
 
     lmp.command(
         "pair_style       hybrid/overlay %s %s"
-        % (options.pair_style_with_options[0], options.pair_style_with_options[1])
+        % (options._pair_style_with_options[0], options._pair_style_with_options[1])
     )
 
     lmp.command("pair_coeff       %s" % pcnew1)
@@ -414,7 +388,7 @@ NOrmal helper routines
 """
 
 
-def prepare_log(file):
+def prepare_log(file, screen=False):
     logger = logging.getLogger(__name__)
     handler = logging.FileHandler(file)
     formatter = logging.Formatter("%(asctime)s %(name)-12s %(levelname)-8s %(message)s")
@@ -422,8 +396,13 @@ def prepare_log(file):
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
-    return logger
 
+    if screen:
+        scr = logging.StreamHandler()
+        scr.setLevel(logging.INFO)
+        scr.setFormatter(formatter)
+        logger.addHandler(scr)
+    return logger
 
 def check_if_any_is_none(data):
     """

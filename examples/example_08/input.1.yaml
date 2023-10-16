@@ -1,12 +1,8 @@
 calculations:
 - element: Cu
-  lattice: fcc
-  lattice_constant: 3.61
+  lattice: FCC
+  lattice_constant: 3.697
   mass: 63.546
-  md:
-    barostat_damping: 0.1
-    thermostat_damping: 0.1
-    timestep: 0.001
   mode: ts
   n_equilibration_steps: 10000
   n_iterations: 1
@@ -16,7 +12,7 @@ calculations:
   pressure: 0.0
   queue:
     commands:
-    - conda activate calphy-dev
+    - conda activate calphy
     cores: 4
     scheduler: local
   reference_phase: solid
@@ -28,14 +24,10 @@ calculations:
   - 1200.0
   - 1400.0
 - element: Cu
-  lattice: fcc
-  lattice_constant: 3.61
+  lattice: FCC
+  lattice_constant: 3.697
   mass: 63.546
-  md:
-    barostat_damping: 0.1
-    thermostat_damping: 0.1
-    timestep: 0.001
-  mode: ts
+  mode: tscale
   n_equilibration_steps: 10000
   n_iterations: 1
   n_switching_steps: 25000
@@ -44,10 +36,10 @@ calculations:
   pressure: 0.0
   queue:
     commands:
-    - conda activate calphy-dev
+    - conda activate calphy
     cores: 4
     scheduler: local
-  reference_phase: liquid
+  reference_phase: solid
   repeat:
   - 5
   - 5

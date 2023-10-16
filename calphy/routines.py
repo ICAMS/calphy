@@ -21,11 +21,11 @@ For more information contact:
 sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 """
 
-from mendeleev import element
 import copy
 import numpy as np
 import os
 import time
+from mendeleev import element
 
 from calphy.input import read_inputfile
 #import calphy.queuekernel as cq
@@ -52,9 +52,10 @@ class MeltingTemp:
     simfolder : string
         base folder for running calculations
     """
-    def __init__(self, calculation=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
         self.calc = calculation
         self.simfolder = simfolder
+        self.log_to_screen = log_to_screen
         self.org_tm = 0
         self.dtemp = self.calc.melting_temperature.step
         self.maxattempts = self.calc.melting_temperature.attempts
@@ -68,7 +69,7 @@ class MeltingTemp:
         
 
         logfile = os.path.join(os.getcwd(), "calphy.log")
-        self.logger = ph.prepare_log(logfile)
+        self.logger = ph.prepare_log(logfile, screen=log_to_screen)
     
     def prepare_calcs(self):
         """
@@ -83,16 +84,17 @@ class MeltingTemp:
         None 
         """
         self.calc.temperature = [int(self.tmin), int(self.tmax)]
+        self.calc._temperature = int(self.tmin)
         self.calc._temperature_stop = int(self.tmax)
         csol = copy.deepcopy(self.calc)
         clqd = copy.deepcopy(self.calc)
         
-        csol.lattice = self.lattice.upper()
-        clqd.lattice = 'LQD'
+        #csol.lattice = self.lattice.upper()
+        #clqd.lattice = 'LQD'
         csol.reference_phase = 'solid'
         clqd.reference_phase = 'liquid'
-        csol.lattice_constant = self.lattice_constant
-        clqd.lattice_constant = self.lattice_constant
+        #csol.lattice_constant = self.lattice_constant
+        #clqd.lattice_constant = self.lattice_constant
         csol._temperature_high = self.tmin
         clqd._temperature_high = 1.5*self.tmax
         csol.mode = 'ts'
@@ -117,16 +119,16 @@ class MeltingTemp:
         None
         """
         chem = element(elem)
-        lattice = chem.lattice_structure
-        self.lattice_constant = chem.lattice_constant
+        #lattice = chem.lattice_structure
+        #self.lattice_constant = chem.lattice_constant
         self.org_tm = chem.melting_point
         
-        if self.exp_tm is None:
+        if self.exp_tm == 0:
             self.exp_tm = chem.melting_point
 
-        if lattice == "HEX":
-            lattice = "HCP"
-        self.lattice = lattice.lower()
+        #if lattice == "HEX":
+        #    lattice = "HCP"
+        #self.lattice = lattice.lower()
         
     def get_trange(self):
         """
@@ -445,14 +447,12 @@ def routine_composition_scaling(job):
     """
     #we set up comp scaling first
     job.logger.info("Calculating composition scaling")
-    comp = CompositionTransformation(job.calc.lattice, 
-        job.calc.composition_scaling.input_chemical_composition, 
-        job.calc.composition_scaling.output_chemical_composition, 
-        restrictions=job.calc.composition_scaling.restrictions)
+    comp = CompositionTransformation(job.calc)
 
     #update pair styles
     res = comp.update_pair_coeff(job.calc.pair_coeff[0])
     job.calc.pair_style.append(job.calc.pair_style[0])
+    job.calc._pair_style_with_options.append(job.calc._pair_style_with_options[0])
     job.calc.pair_coeff[0] = res[0]
     job.calc.pair_coeff.append(res[1])
     job.logger.info("Update pair coefficients")
@@ -513,6 +513,10 @@ def routine_composition_scaling(job):
 
     flambda_arr, w_arr, q_arr, qerr_arr = job.thermodynamic_integration()
 
+    job.logger.info('performing mass rescaling')
+    job.logger.info(f'Ref. mass is {ref_mass}')
+    job.logger.info(f'Target masses are {target_masses}')
+
     #read the file
     mcorrarr, mcorsum = job.mass_integration(flambda_arr, ref_mass, target_masses, target_counts)
     netfe = w_arr - mcorrarr
@@ -522,4 +526,6 @@ def routine_composition_scaling(job):
 
     outfile = os.path.join(job.simfolder, "composition_sweep.dat")
     np.savetxt(outfile, np.column_stack((flambda_arr, netfe, w_arr, mcorrarr)))
+
+    job.logger.info('Composition scaling does not include free energy of mixing!')
     return job

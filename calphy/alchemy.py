@@ -47,11 +47,12 @@ class Alchemy(cph.Phase):
         base folder for running calculations
 
     """
-    def __init__(self, calculation=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
 
         #call base class
         super().__init__(calculation=calculation,
-        simfolder=simfolder)
+        simfolder=simfolder,
+        log_to_screen=log_to_screen)
 
 
     def run_averaging(self):
@@ -160,7 +161,7 @@ class Alchemy(cph.Phase):
 
         lmp.command("velocity          all create %f %d mom yes rot yes dist gaussian"%(self.calc._temperature, np.random.randint(1, 10000)))
         # Integrator & thermostat.
-        if self.calc._npt:
+        if self.calc.npt:
             lmp.command("fix             f1 all npt temp %f %f %f %s %f %f %f"%(self.calc._temperature, self.calc._temperature, 
                 self.calc.md.thermostat_damping[1], self.iso, self.calc._pressure, self.calc._pressure, self.calc.md.barostat_damping[1]))        
         else:
@@ -198,8 +199,8 @@ class Alchemy(cph.Phase):
 
 
         lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(
-            self.calc.pair_style_with_options[0],
-            self.calc.pair_style_with_options[1]
+            self.calc._pair_style_with_options[0],
+            self.calc._pair_style_with_options[1]
             )
         )
         lmp.command("pair_coeff       %s"%pc1)
@@ -236,7 +237,7 @@ class Alchemy(cph.Phase):
         lmp.command("uncompute       c2")
 
 
-        lmp.command("pair_style      %s"%self.calc.pair_style_with_options[1])
+        lmp.command("pair_style      %s"%self.calc._pair_style_with_options[1])
         lmp.command("pair_coeff      %s"%self.calc.pair_coeff[1])
 
         # Thermo output.
@@ -252,8 +253,8 @@ class Alchemy(cph.Phase):
         lmp.command("variable         blambda equal ramp(${li},${lf})")
         
         
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.calc.pair_style_with_options[0], 
-            self.calc.pair_style_with_options[1]))
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(self.calc._pair_style_with_options[0], 
+            self.calc._pair_style_with_options[1]))
         lmp.command("pair_coeff       %s"%pc1)
         lmp.command("pair_coeff       %s"%pc2)
 
@@ -309,7 +310,8 @@ class Alchemy(cph.Phase):
         the calculated free energy is the same as the work.
         """
         w, q, qerr = find_w(self.simfolder, nelements=self.calc.n_elements, 
-            concentration=self.concentration, nsims=self.calc.n_iterations, 
+            concentration=[val['composition'] for key, val in self.calc._element_dict.items()], 
+            nsims=self.calc.n_iterations, 
             full=True, solid=False, alchemy=True)
 
         self.w = w
@@ -318,7 +320,8 @@ class Alchemy(cph.Phase):
         
         if self.calc.mode == "composition_scaling":
             w_arr, q_arr, qerr_arr, flambda_arr = find_w(self.simfolder, nelements=self.calc.n_elements, 
-                concentration=self.concentration, nsims=self.calc.n_iterations, 
+                concentration=[val['composition'] for key, val in self.calc._element_dict.items()], 
+                nsims=self.calc.n_iterations, 
                 full=True, solid=False, alchemy=True, composition_integration=True)
 
             #now we need to process the comp scaling

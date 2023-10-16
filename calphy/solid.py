@@ -50,11 +50,12 @@ class Solid(cph.Phase):
         base folder for running calculations
 
     """
-    def __init__(self, calculation=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
 
         #call base class
         super().__init__(calculation=calculation,
-        simfolder=simfolder)
+        simfolder=simfolder,
+        log_to_screen=log_to_screen)
 
     def run_spring_constant_convergence(self, lmp):
         if self.calc.script_mode:
@@ -213,7 +214,7 @@ class Solid(cph.Phase):
             script_mode=self.calc.script_mode)
 
         #set up structure
-        lmp = ph.create_structure(lmp, self.calc, species=self.calc.n_elements+self.calc._ghost_element_count)
+        lmp = ph.create_structure(lmp, self.calc)
 
         #set up potential
         if self.calc.potential_file is None:
@@ -437,9 +438,16 @@ class Solid(cph.Phase):
         command = str1 + str2 + str3
         lmp.command(command)
 
+        if self.calc.n_print_steps > 0:
+            lmp.command("dump              d1 all custom %d traj.fe.forward_%d.dat id type mass x y z fx fy fz"%(self.calc.n_print_steps,
+                iteration))
+
         #Forward switching over ts steps
         lmp.command("run               %d"%self.calc._n_switching_steps)
         lmp.command("unfix             f4")
+
+        if self.calc.n_print_steps > 0:
+            lmp.command("undump           d1")
 
         #Equilibriate
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
@@ -455,9 +463,16 @@ class Solid(cph.Phase):
         command = str1 + str2 + str3
         lmp.command(command)
 
+        if self.calc.n_print_steps > 0:
+            lmp.command("dump              d1 all custom %d traj.fe.backward_%d.dat id type mass x y z fx fy fz"%(self.calc.n_print_steps,
+                iteration))
+
         #Reverse switching over ts steps
         lmp.command("run               %d"%self.calc._n_switching_steps)
         lmp.command("unfix             f4")
+
+        if self.calc.n_print_steps > 0:
+            lmp.command("undump           d1")
 
         #close object
         if not self.calc.script_mode:
@@ -485,11 +500,11 @@ class Solid(cph.Phase):
         matching with Einstein crystal
         """
         f1 = get_einstein_crystal_fe(self.calc._temperature, 
-            self.natoms, self.calc.mass, 
-            self.vol, self.k, self.concentration)
+            self.natoms, [val['mass'] for key, val in self.calc._element_dict.items()], 
+            self.vol, self.k, [val['composition'] for key, val in self.calc._element_dict.items()])
         w, q, qerr = find_w(self.simfolder, 
             nelements=self.calc.n_elements, 
-            concentration=self.concentration, nsims=self.calc.n_iterations, 
+            concentration=[val['composition'] for key, val in self.calc._element_dict.items()], nsims=self.calc.n_iterations, 
             full=True, solid=True)
         
         self.fref = f1

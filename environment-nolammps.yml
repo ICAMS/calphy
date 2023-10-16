@@ -16,3 +16,4 @@ dependencies:
   - matplotlib
   - tqdm
   - uncertainties
+  - pydantic

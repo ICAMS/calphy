@@ -1,25 +1,25 @@
 calculations:
 - element: Cu
-  lattice: FCC
-  lattice_constant: 3.697
+  lattice: fcc
+  lattice_constant: 3.61
   mass: 63.546
-  mode: pscale
+  mode: ts
   n_equilibration_steps: 10000
   n_iterations: 1
   n_switching_steps: 25000
   pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
   pair_style: eam/alloy
-  pressure:
-  - 0.0
-  - 10000.0
+  pressure: 2000000.0
   queue:
     commands:
     - conda activate calphy
     cores: 4
     scheduler: local
-  reference_phase: solid
+  reference_phase: liquid
   repeat:
-  - 7
-  - 7
-  - 7
-  temperature: 1200.0
+  - 5
+  - 5
+  - 5
+  temperature:
+  - 5300.0
+  - 5500.0

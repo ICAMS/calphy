@@ -21,15 +21,24 @@ For more information contact:
 sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 """
 
-import os
+from typing_extensions import Annotated
+from typing import Any, Callable, List, ClassVar, Optional
+from pydantic import BaseModel, Field, ValidationError, model_validator, conlist, PrivateAttr
+from pydantic.functional_validators import AfterValidator, BeforeValidator
+from annotated_types import Len
+
 import yaml
-import warnings
-import copy
-import yaml
-import itertools
-import shutil
 import numpy as np
+import copy
 import datetime
+import itertools
+import os
+import warnings
+from pyscal3 import System
+from pyscal3.core import structure_dict, element_dict, _make_crystal
+from ase.io import read, write
+import shutil
+
 
 def read_report(folder):
     """
@@ -43,403 +52,221 @@ def read_report(folder):
         data = yaml.safe_load(fin)
     return data
 
-class InputTemplate:
-    def __init__(self):
-        pass
+def _check_equal(val):
+    if not (val[0]==val[1]==val[2]):
+        return False
+    return True
+
+
+def to_list(v: Any) -> List[Any]:
+    return np.atleast_1d(v)
+
+class CompositionScaling(BaseModel, title='Composition scaling input options'):
+    _input_chemical_composition: PrivateAttr(default=None)
+    output_chemical_composition: Annotated[dict, Field(default=None, required=False)]
+    restrictions: Annotated[List[str], BeforeValidator(to_list),
+                                            Field(default=[], required=False)]
+
+class MD(BaseModel, title='MD specific input options'):
+    timestep: Annotated[float, Field(default=0.001, 
+                                     description='timestep for md simulation', 
+                                     example='timestep: 0.001'),]
+    n_small_steps: Annotated[int, Field(default=10000, gt=0)]
+    n_every_steps: Annotated[int, Field(default=10, gt=0)]
+    n_repeat_steps: Annotated[int, Field(default=10, gt=0)]
+    n_cycles: Annotated[int, Field(default=100, gt=0)]
+    thermostat_damping: Annotated[float | conlist(float, min_length=2, max_length=2), Field(default=0.1, gt=0)]
+    barostat_damping: Annotated[float | conlist(float, min_length=2, max_length=2), Field(default=0.1, gt=0)]
+    cmdargs: Annotated[str, Field(default=None)]
+    init_commands: Annotated[str, Field(default=None)]
+
+
+class NoseHoover(BaseModel, title='Specific input options for Nose-Hoover thermostat'):
+    thermostat_damping: Annotated[float, Field(default=0.1, gt=0)]
+    barostat_damping: Annotated[float, Field(default=0.1, gt=0)]
+
+class Berendsen(BaseModel, title='Specific input options for Berendsen thermostat'):
+    thermostat_damping: Annotated[float, Field(default=100.0, gt=0)]
+    barostat_damping: Annotated[float, Field(default=100.0, gt=0)]
+
+class Queue(BaseModel, title='Options for configuring queue'):
+    scheduler: Annotated[str, Field(default='local')]
+    cores: Annotated[int, Field(default=1, gt=0)]
+    jobname: Annotated[str, Field(default='calphy')]
+    walltime: Annotated[str, Field(default=None)]
+    queuename: Annotated[str, Field(default=None)]
+    memory: Annotated[str, Field(default="3GB")]
+    commands: Annotated[List[str], Field(default=None)]
+    options: Annotated[List[str], Field(default=None)]
+    modules: Annotated[List[str], Field(default=None)]
+
+class Tolerance(BaseModel, title='Tolerance settings for convergence'):
+    lattice_constant: Annotated[float, Field(default=0.0002, ge=0)]
+    spring_constant: Annotated[float, Field(default=0.1, gt=0)]
+    solid_fraction: Annotated[float, Field(default=0.7, ge=0)]
+    liquid_fraction: Annotated[float, Field(default=0.05, ge=0)]
+    pressure: Annotated[float, Field(default=0.5, ge=0)]
+
+class MeltingTemperature(BaseModel, title='Input options for melting temperature mode'):
+    guess: Annotated[float, Field(default=None, gt=0)]
+    step: Annotated[int, Field(default=200, ge=20)]
+    attempts: Annotated[int, Field(default=5, ge=1)]
+
+class Calculation(BaseModel, title='Main input class'):
+    composition_scaling: Optional[CompositionScaling] = CompositionScaling()
+    md: Optional[MD] = MD()
+    nose_hoover: Optional[NoseHoover] = NoseHoover()
+    berendsen: Optional[Berendsen] = Berendsen()
+    queue: Optional[Queue] = Queue()
+    tolerance: Optional[Tolerance] = Tolerance() 
+    melting_temperature: Optional[MeltingTemperature] = MeltingTemperature() 
+    element: Annotated[List[str], BeforeValidator(to_list),
+                                      Field(default=[])]
+    n_elements: Annotated[int, Field(default=0)]
+    mass: Annotated[List[float], BeforeValidator(to_list),
+                                      Field(default=[])]
+    _element_dict: dict = PrivateAttr(default={})
+
+    mode: Annotated[str, Field(default=None)]
+    lattice: Annotated[str, Field(default="")]
+    file_format: Annotated[str, Field(default='lammps-data')]
     
-    def add_from_dict(self, indict, keys=None):
-        if keys is None:
-            for key, val in indict.items():
-                setattr(self, key, val) 
-        elif isinstance(keys, list):
-            for key, val in indict.items():
-                if key in keys:
-                    setattr(self, key, val)
-
-    def from_dict(self, indict):
-        for key, val in indict.items():
-            if isinstance(val, dict):
-                setattr(self, key, InputTemplate())
-                getattr(self, key).from_dict(val)
-            else:
-                setattr(self, key, val)
-
-    def to_dict(self):
-        tdict = copy.deepcopy(self.__dict__)
-        for key, val in tdict.items():
-            if isinstance(val, InputTemplate):
-                tdict[key] = val.to_dict()
-        return tdict
-
-    def check_and_convert_to_list(self, data, check_none=False):
-        """
-        Check if the given item is a list, if not convert to a single item list
-        """
-        if not isinstance(data, list):
-            data = [data]
-
-        if check_none:
-            data = [None if x=="None" else x for x in data]
-
-        return data
+    #pressure properties
+    pressure: Annotated[ None | float | conlist(float, min_length=1, max_length=2) | conlist(conlist(float, min_length=3, max_length=3), min_length=1, max_length=2) , 
+                                      Field(default=0)]
     
-    @staticmethod
-    def convert_to_list(data, check_none=False):
-        """
-        Check if the given item is a list, if not convert to a single item list
-        """
-        if not isinstance(data, list):
-            data = [data]
+    _pressure_stop: float = PrivateAttr(default=None)
+    _pressure: float = PrivateAttr(default=None) 
+    _pressure_stop: float = PrivateAttr(default=None) 
+    _pressure_input: Any = PrivateAttr(default=None)
+    _iso: bool = PrivateAttr(default=False)
+    _fix_lattice: bool = PrivateAttr(default=False)
 
-        if check_none:
-            data = [None if x=="None" else x for x in data]
-
-        return data
-
-    def merge_dicts(self, dicts):
-        """
-        Merge dicts from a given list
-        """
-        merged_dict = {}
-        for d in dicts:
-            for key, val in d.items():
-                merged_dict[key] = val
-        return merged_dict
-
-class CompositionScaling(InputTemplate):
-    def __init__(self):
-        self._input_chemical_composition = None
-        self._output_chemical_composition = None
-        self._restrictions = None
-
-    @property
-    def input_chemical_composition(self):
-        return self._input_chemical_composition        
-
-    @input_chemical_composition.setter
-    def input_chemical_composition(self, val):
-        if isinstance(val, list):
-            val = self.merge_dicts(val) 
-        self._input_chemical_composition = val         
-
-    @property
-    def output_chemical_composition(self):
-        return self._output_chemical_composition
-
-    @output_chemical_composition.setter
-    def output_chemical_composition(self, val):
-        if isinstance(val, list):
-            val = self.merge_dicts(val) 
-        self._output_chemical_composition = val
-
-    @property
-    def restrictions(self):
-        return self._restrictions
-
-    @restrictions.setter
-    def restrictions(self, val):
-        self._restrictions = self.check_and_convert_to_list(val)       
-
-
-class Calculation(InputTemplate):
-    def __init__(self):
-        super(InputTemplate, self).__init__()
-        self._element = None
-        self._n_elements = 0
-        self._mass = 1.0
-        self._mode = None
-        self._lattice = None
-        self._pressure = 0
-        self._pressure_stop = 0
-        self._pressure_input = None
-        self._temperature = None
-        self._temperature_stop = None
-        self._temperature_high = None
-        self._temperature_input = None
-        self._iso = False
-        self._fix_lattice = False
-        self._melting_cycle = True
-        self._pair_style = None
-        self._pair_style_options = None
-        self._pair_coeff = None
-        self._potential_file = None
-        self._fix_potential_path = True
-        self._reference_phase = None
-        self._lattice_constant = 0
-        self._repeat = [1, 1, 1]
-        self._script_mode = False
-        self._lammps_executable = None
-        self._mpi_executable = None
-        self._npt = True
-        self._n_equilibration_steps = 25000
-        self._n_switching_steps = 50000
-        self._n_sweep_steps = 50000
-        self._n_print_steps = 0
-        self._n_iterations = 1
-        self._equilibration_control = None
-        self._folder_prefix = None
-
-        #add second level options; for example spring constants
-        self._spring_constants = None
-        self._ghost_element_count = 0
-        
-        self.md = InputTemplate()
-        self.md.timestep = 0.001
-        self.md.n_small_steps = 10000
-        self.md.n_every_steps = 10
-        self.md.n_repeat_steps = 10
-        self.md.n_cycles = 100
-        self.md.thermostat_damping = 0.1
-        self.md.barostat_damping = 0.1
-        self.md.cmdargs = None
-        self.md.init_commands = None
-
-        self.nose_hoover = InputTemplate()
-        self.nose_hoover.thermostat_damping = 0.1
-        self.nose_hoover.barostat_damping = 0.1
-
-        self.berendsen = InputTemplate()
-        self.berendsen.thermostat_damping = 100.0
-        self.berendsen.barostat_damping = 100.0
-
-        self.queue = InputTemplate()
-        self.queue.scheduler = "local"
-        self.queue.cores = 1
-        self.queue.jobname = "calphy"
-        self.queue.walltime = None
-        self.queue.queuename = None
-        self.queue.memory = "3GB"
-        self.queue.commands = None
-        self.queue.options = None
-        self.queue.modules = None
-        
-        self.tolerance = InputTemplate()
-        self.tolerance.lattice_constant = 0.0002
-        self.tolerance.spring_constant = 0.1
-        self.tolerance.solid_fraction = 0.7
-        self.tolerance.liquid_fraction = 0.05
-        self.tolerance.pressure = 0.5
-        
-        #specific input options
-        self.melting_temperature = InputTemplate()
-        self.melting_temperature.guess = None
-        self.melting_temperature.step = 200
-        self.melting_temperature.attempts = 5
-
-        #new mode for composition trf
-        self.composition_scaling = CompositionScaling()
+    temperature: Annotated[ float | conlist(float, min_length=1, max_length=2),
+                            Field(default=0)]
+    temperature_high: Annotated[ float, Field(default=0.0)]
+    _temperature: float = PrivateAttr(default=None)
+    _temperature_high: float = PrivateAttr(default=None)
+    _temperature_stop: float = PrivateAttr(default=None)
+    _temperature_input: float = PrivateAttr(default=None)
     
-    def __repr__(self):
-        """
-        String of the class
-        """
-        data = "%s system with T=%s, P=%s in %s lattice for mode %s"%(self.to_string(self.reference_phase),
-            self.to_string(self._temperature), self.to_string(self._pressure), self.to_string(self.lattice), self.to_string(self.mode)) 
-        return data
-
-    def _repr_json_(self):
-        return self.to_dict()
+    melting_cycle: Annotated[ bool, Field(default=True)]
     
-    def to_string(self, val):
-        if val is None:
-            return "None"
-        else:
-            return str(val)
-
-    def to_bool(self, val):
-        if val in ["True", "true", 1, "1", True]:
-            return True
-        elif val in ["False", "false", 0, "0", False]:
-            return False
-        else:
-            raise ValueError(f'Unknown bool input of type {type(val)} with value {val}')
-
-    @property
-    def element(self):
-        return self._element
-
-    @element.setter
-    def element(self, val):
-        val = self.check_and_convert_to_list(val)
-        self._n_elements = len(val)
-        self._element = val
+    pair_style: Annotated[ List[str], BeforeValidator(to_list),
+                            Field(default=None)]
+    pair_coeff: Annotated[ List[str], BeforeValidator(to_list),
+                            Field(default=None)]
+    potential_file: Annotated[ str, Field(default=None)]
+    fix_potential_path: Annotated[bool, Field(default=True)]
+    _pair_style_with_options: float = PrivateAttr(default=None)
     
-    @property
-    def n_elements(self):
-        return self._n_elements
     
-    @property
-    def mass(self):
-        return self._mass
+    reference_phase: Annotated[ str, Field(default = "")]
+    lattice_constant: Annotated[float, Field(default = 0)]
+    repeat: Annotated[conlist(int, min_length=3, max_length=3), 
+                            Field(default=[1,1,1])]
     
-    @mass.setter
-    def mass(self, val):
-        val = self.check_and_convert_to_list(val)
-        if self.element is not None:
-            if not len(self.element) == len(val):
-                raise ValueError("Elements and mass must have same length")
-        self._mass = val
+    script_mode: Annotated[ bool, Field(default = False)]
+    lammps_executable: Annotated[ str, Field(default = None)]
+    mpi_executable: Annotated[ str, Field(default = None)]
+    
+    npt: Annotated[ bool, Field(default = True)]
+    n_equilibration_steps: Annotated[ int, Field(default = 25000)]
+    n_switching_steps: Annotated[ int | conlist(int, min_length=2,
+                max_length=2), Field(default = [50000, 50000])]
+    _n_switching_steps: int = PrivateAttr(default=50000)
+    _n_sweep_steps: int = PrivateAttr(default=50000)
+    n_print_steps: Annotated[int, Field(default = 0)]
+    n_iterations: Annotated[int, Field(default = 1)]
+    equilibration_control: Annotated[str, Field(default = None)]
+    folder_prefix: Annotated[str, Field(default = None)]
 
-    @property
-    def mode(self):
-        return self._mode
+    #add second level options; for example spring constants
+    spring_constants: Annotated[List[float], Field(default = None)]
+    _ghost_element_count: int = PrivateAttr(default=0)
 
-    @mode.setter
-    def mode(self, val):
-        #add check
-        self._mode = val
-        if val == "melting_temperature":
-            self.temperature = 0
-            self.pressure = 0
+    #structure items
+    _structure: Any = PrivateAttr(default=None)
 
-    @property
-    def lattice(self):
-        return self._lattice
+    @model_validator(mode='after')
+    def _validate_lengths(self) -> 'Input':
+        if not (len(self.element) == len(self.mass)):
+            raise ValueError('mass and elements should have same length')
+        return self
 
-    @lattice.setter
-    def lattice(self, val):
-        self._lattice = val
+    @model_validator(mode='after')
+    def _validate_nelements(self) -> 'Input':
+        self.n_elements = len(self.element)
+        return self
 
-    @property
-    def pressure(self):
-        return self._pressure_input
-
-    @pressure.setter
-    def pressure(self, val):
-        """
-        Pressure input can be of many diff types:
-        Input                      iso           fix_lattice  Mode  add. constraints
-        1. None                    True          True         any   No
-        2. scalar                  True          False        any   No
-        3. list of scalar len 1    True          False        any   No
-        4. list of scalar len 2    True          False        ps    No
-        5. list of scalar len 3    False         False        any   All terms equal
-        6. list of list   len 1x3  False         False        any   Each inner term equal
-        7. list of list   len 2x3  False         False        ps    Each inner term equal
-        """
-        def _check_equal(val):
-            if not (val[0]==val[1]==val[2]):
-                return False
-            return True
-
-        self._pressure_input = val
-
-        error_message = "Available pressure types are of shape: None, 1, 3, (1x1), (2x1), (3x1), (2x3)"
-        # Case: 1
-        if val is None:
+    @model_validator(mode='after')
+    def _validate_pressure(self) -> 'Input':
+        self._pressure_input = copy.copy(self.pressure)
+        if self.pressure is None:
             self._iso = True
             self._fix_lattice = True
             self._pressure = None
             self._pressure_stop = None
-
-        # Cases: 3,4,5,6,7
-        elif isinstance(val, list):
-            shape = np.shape(val)
-            indx = shape[0]
-            indy = shape[1] if len(shape)==2 else None
-
-            if indx == 1:
-                if indy is None:
-                    # Case: 3
-                    self._iso = True
-                    self._fix_lattice = False
-                    self._pressure = val[0]
-                    self._pressure_stop = val[0]
-                elif indy == 3:
-                    # Case: 6
-                    if _check_equal(val[0]):
-                        self._iso = False
-                        self._fix_lattice = False
-                        self._pressure = val[0][0]
-                        self._pressure_stop = val[0][0]
-                    else:
-                        raise NotImplementedError("Pressure should have px=py=pz")
-                else:
-                    raise NotImplementedError(error_message)
-            elif indx == 2:
-                if indy is None:
-                    # Case: 4
-                    self._iso = True
-                    self._fix_lattice = False
-                    self._pressure = val[0]
-                    self._pressure_stop = val[1]
-                elif indy == 3:
-                    # Case: 7
-                    self._iso = False
-                    self._fix_lattice = False                    
-                    if _check_equal(val[0]) and _check_equal(val[1]):
-                        self._pressure = val[0][0]
-                        self._pressure_stop = val[1][0]
-                    else:
-                        raise NotImplementedError("Pressure should have px=py=pz")
-                else:
-                    raise NotImplementedError(error_message)
-
-            elif indx == 3:
-                if indy is None:
-                    # Case: 5
-                    if _check_equal(val):
-                        self._iso = False
-                        self._fix_lattice = False                    
-                        self._pressure = val[0]
-                        self._pressure_stop = val[0]                                
-                    else:
-                        raise NotImplementedError("Pressure should have px=py=pz")
-                else:
-                    raise NotImplementedError(error_message)
-            else:
-                raise NotImplementedError()
-        
-        # Case: 2
-        else:
-            self._pressure = val
-            self._pressure_stop = val
+        elif np.isscalar(self.pressure):
+            self._pressure = self.pressure
+            self._pressure_stop = self.pressure
             self._iso = True
             self._fix_lattice = False
-
-    @property
-    def temperature(self):
-        return self._temperature_input
-
-    @temperature.setter
-    def temperature(self, val):
-        self._temperature_input = val
-        if val is None:
-                self._temperature = val
-                self._temperature_stop = val
-                self._temperature_high = val
-        elif isinstance(val, list):
-            if len(val) == 2:
-                self._temperature = val[0]
-                self._temperature_stop = val[1]
-                if self._temperature_high is None:
-                    self._temperature_high = 2*val[1]
-            else:
-                raise ValueError("Temperature cannot have len>2")
+        elif np.shape(self.pressure) == (1,):
+            self._iso = True
+            self._fix_lattice = False
+            self._pressure = self.pressure[0]
+            self._pressure_stop = self.pressure[0]
+        elif np.shape(self.pressure) == (2,):
+            self._iso = True
+            self._fix_lattice = False
+            self._pressure = self.pressure[0]
+            self._pressure_stop = self.pressure[1]
+        elif np.shape(self.pressure) == (1, 3):
+            if not _check_equal(self.pressure[0]):
+                raise ValueError('All pressure terms must be equal')
+            self._iso = False
+            self._fix_lattice = False
+            self._pressure = self.pressure[0][0]
+            self._pressure_stop = self.pressure[0][0]                
+        elif np.shape(self.pressure) == (2, 3):
+            if not (_check_equal(self.pressure[0]) and _check_equal(self.pressure[1])):
+                raise ValueError('All pressure terms must be equal')
+            self._iso = False
+            self._fix_lattice = False
+            self._pressure = self.pressure[0][0]
+            self._pressure_stop = self.pressure[1][0]                                
         else:
-            self._temperature = val
-            self._temperature_stop = val
+            raise ValueError('Unknown format for pressure')
+        return self
+
+
+    @model_validator(mode='after')
+    def _validate_temperature(self) -> 'Input':
+        self._temperature_input = copy.copy(self.temperature)
+        if self.temperature is None:
+            self._temperature = None
+        elif np.shape(np.atleast_1d(self.temperature)) == (1,):
+            temp = np.atleast_1d(self.temperature)
+            self._temperature = temp[0]
+            self._temperature_stop = temp[0]
             if self._temperature_high is None:
-                self._temperature_high = 2*val
+                self._temperature_high = 2*temp[0]
+        elif np.shape(self.temperature) == (2,):
+            temp = self.temperature
+            self._temperature = temp[0]
+            self._temperature_stop = temp[1]
+            if self.temperature_high == 0:
+                self._temperature_high = 2*temp[1]
+            else:
+                self._temperature_high = self.temperature_high
+        return self
 
-    @property
-    def temperature_high(self):
-        return self._temperature_high
-
-    @temperature_high.setter
-    def temperature_high(self, val):
-        self._temperature_high = val
-    
-    @property
-    def pair_style(self):
-        return self._pair_style
-    
-    @pair_style.setter
-    def pair_style(self, val):
-        val = self.check_and_convert_to_list(val)
+    @model_validator(mode='after')
+    def _validate_pair_style(self) -> 'Input':
         ps_lst = []
         ps_options_lst = []
-        for ps in val:
+        for ps in self.pair_style:
             ps_split = ps.split()
             ps_lst.append(ps_split[0])
             if len(ps) > 1:
@@ -447,199 +274,153 @@ class Calculation(InputTemplate):
             else:
                 ps_options_lst.append("")
 
+        if len(self.pair_style) != len(ps_options_lst):
+            ps_options_lst = [ps_options_lst[0] for x in range(len(self.pair_style))]
+        
+        ps_options_lst = [" ".join([self.pair_style[i], ps_options_lst[i]]) for i in range(len(self.pair_style))]
+
         #val = self.fix_paths(val)
-        self._pair_style = ps_lst
+        self.pair_style = ps_lst
 
         #only set if its None
-        if self.pair_style_options is None:
-            self.pair_style_options = ps_options_lst
+        if self._pair_style_with_options is None:
+            self._pair_style_with_options = ps_options_lst
 
+        #now fix pair coeffs with path
+        if self.fix_potential_path:
+            self.pair_coeff = self.fix_paths(self.pair_coeff)
+        return self
 
-    @property
-    def pair_style_options(self):
-        return self._pair_style_options
-
-    @pair_style_options.setter
-    def pair_style_options(self, val):
-        val = self.check_and_convert_to_list(val)
-        self._pair_style_options = val
-
-    @property
-    def pair_style_with_options(self):
-        #ignore options if lengths do not match
-        if len(self.pair_style) != len(self.pair_style_options):
-            self.pair_style_options = [self.pair_style_options[0] for x in range(len(self.pair_style))]
-        return [" ".join([self.pair_style[i], self.pair_style_options[i]]) for i in range(len(self.pair_style))]
-
-    @property
-    def pair_coeff(self):
-        return self._pair_coeff
-    
-    @pair_coeff.setter
-    def pair_coeff(self, val):
-        val = self.check_and_convert_to_list(val)
-        if self._fix_potential_path:
-            val = self.fix_paths(val)
-        self._pair_coeff = val
-
-    @property
-    def potential_file(self):
-        return self._potential_file
-
-    @potential_file.setter
-    def potential_file(self, val):
-        if os.path.exists(val):
-            self._potential_file = val
+    @model_validator(mode='after')
+    def _validate_time(self) -> 'Input':
+        if np.isscalar(self.n_switching_steps):
+            self._n_sweep_steps = self.n_switching_steps
+            self._n_switching_steps = self.n_switching_steps
         else:
-            raise FileNotFoundError("File %s not found"%val)
+            self._n_sweep_steps = self.n_switching_steps[1]
+            self._n_switching_steps = self.n_switching_steps[0]
+        return self
 
-    @property
-    def reference_phase(self):
-        return self._reference_phase
-    
-    @reference_phase.setter
-    def reference_phase(self, val):
-        self._reference_phase = val
 
-    @property
-    def lattice_constant(self):
-        return self._lattice_constant
-    
-    @lattice_constant.setter
-    def lattice_constant(self, val):
-        self._lattice_constant = val
+    @model_validator(mode='after')
+    def _validate_lattice(self) -> 'Input':
+        #here we also prepare lattice dict
+        for count, element in enumerate(self.element):
+            self._element_dict[element] = {}
+            self._element_dict[element]['mass'] = self.mass[count]
+            self._element_dict[element]['count'] = 0
+            self._element_dict[element]['composition'] = 0.0
 
-    @property
-    def repeat(self):
-        return self._repeat
-    
-    @repeat.setter
-    def repeat(self, val):
-        if isinstance(val, list):
-            if not len(val) == 3:
-                raise ValueError("repeat should be three")
-        else:
-            val = [val, val, val]
-        self._repeat = val
-    
-    @property
-    def npt(self):
-        return self._npt
-    
-    @npt.setter
-    def npt(self, val):
-        val = self.to_bool(val)
-        if isinstance(val, bool):
-            self._npt = val
-        else:
-            raise TypeError("NPT should be either True/False")
-
-    @property
-    def script_mode(self):
-        return self._script_mode
-    
-    @script_mode.setter
-    def script_mode(self, val):
-        val = self.to_bool(val)
-        if isinstance(val, bool):
-            self._script_mode = val
-        else:
-            raise TypeError("script mode should be either True/False")
-
-    @property
-    def lammps_executable(self):
-        return self._lammps_executable
-    
-    @lammps_executable.setter
-    def lammps_executable(self, val):
-        self._lammps_executable = val
-
-    @property
-    def mpi_executable(self):
-        return self._mpi_executable
-    
-    @mpi_executable.setter
-    def mpi_executable(self, val):
-        self._mpi_executable = val
-    
-    @property
-    def n_equilibration_steps(self):
-        return self._n_equilibration_steps
-    
-    @n_equilibration_steps.setter
-    def n_equilibration_steps(self, val):
-        self._n_equilibration_steps = val
-
-    @property
-    def n_switching_steps(self):
-        return self._n_switching_steps
-    
-    @n_switching_steps.setter
-    def n_switching_steps(self, val):
-        if isinstance(val, list):
-            if len(val) == 2:
-                self._n_switching_steps = val[0]
-                self._n_sweep_steps = val[1]
+        if self.lattice == "":
+            #fetch from dict
+            if len(self.element) > 1:
+                raise ValueError("MeltingTemperature can be used only with one element")
+            if self.element[0] in element_dict.keys():
+                self.lattice = element_dict[self.element[0]]['structure']           
+                self.lattice_constant = element_dict[self.element[0]]['lattice_constant']
             else:
-                raise TypeError("n_switching_steps should be len 1 or 2")
+                raise ValueError("Could not find structure, please provide lattice and lattice_constant explicitely")                
+            
+            structure = _make_crystal(self.lattice.lower(),
+                lattice_constant=self.lattice_constant,
+                repetitions=self.repeat,
+                element=self.element)
+            
+            #extract composition
+            typelist = structure.atoms.species
+            types, typecounts = np.unique(typelist, return_counts=True)
+
+            for c, t in enumerate(types):
+                self._element_dict[t]['count'] = typecounts[c]
+                self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
+
+            self._natoms = structure.natoms
+            #write structure
+            structure.write.file('input.conf.data', format='lammps-data')
+            #set this as lattice
+            self._original_lattice = self.lattice
+            self.lattice = os.path.join(os.getcwd(), 'input.conf.data')
+
+
+        elif self.lattice.lower() in structure_dict.keys():
+            #this is a valid structure
+            if self.lattice_constant == 0:
+                #we try try to get lattice_constant
+                if self.element[0] in element_dict.keys():
+                    self.lattice_constant = element_dict[self.element[0]]['lattice_constant']
+                else:
+                    raise ValueError('Please provide lattice_constant!')
+            #now create lattice
+            structure = _make_crystal(self.lattice.lower(),
+                lattice_constant=self.lattice_constant,
+                repetitions=self.repeat,
+                element=self.element)
+            
+            #extract composition
+            typelist = structure.atoms.species
+            types, typecounts = np.unique(typelist, return_counts=True)
+
+            for c, t in enumerate(types):
+                self._element_dict[t]['count'] = typecounts[c]
+                self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
+
+            #concdict_counts = {str(t): typecounts[c] for c, t in enumerate(types)}
+            #concdict_frac = {str(t): typecounts[c]/np.sum(typecounts) for c, t in enumerate(types)}
+            #self._composition = concdict_frac
+            #self._composition_counts = concdict_counts
+            self._natoms = structure.natoms
+            #write structure
+            structure.write.file('input.conf.data', format='lammps-data')
+            #set this as lattice
+            self._original_lattice = self.lattice
+            self.lattice = os.path.join(os.getcwd(), 'input.conf.data')
+
+            
         else:
-            self._n_switching_steps = val
-            self._n_sweep_steps = val
+            #this is a file
+            if not os.path.exists(self.lattice):
+                raise ValueError(f'File {self.lattice} could not be found')
+            if self.file_format == 'lammps-data':
+                aseobj = read(self.lattice, format='lammps-data', style='atomic')
+                structure = System(aseobj, format='ase')
+            else:
+                raise TypeError('Only lammps-data files are supported!')                
 
-    @property
-    def n_print_steps(self):
-        return self._n_print_steps
-    
-    @n_print_steps.setter
-    def n_print_steps(self, val):
-        self._n_print_steps = val
+            #extract composition
+            typelist = structure.atoms.types
+            #convert to species
+            typelist = [self.element[x-1] for x in typelist]
+            types, typecounts = np.unique(typelist, return_counts=True)
+            for c, t in enumerate(types):
+                self._element_dict[t]['count'] = typecounts[c]
+                self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
+            self._natoms = structure.natoms
+            self._original_lattice = self.lattice
+            self.lattice = os.path.abspath(self.lattice)
+        return self
 
-    @property
-    def n_iterations(self):
-        return self._n_iterations
-    
-    @n_iterations.setter
-    def n_iterations(self, val):
-        self._n_iterations = val
+    @model_validator(mode='after')
+    def _validate_comp_scaling(self) -> 'Input':
+        if self.mode == 'composition_scaling':
+            aseobj = read(self.lattice, format='lammps-data', style='atomic')
+            structure = System(aseobj, format='ase')
 
-    @property
-    def equilibration_control(self):
-        return self._equilibration_control
+            #we also should check if actual contents are present
+            input_chem_comp = {}
+            for key, val in self._element_dict.items():
+                input_chem_comp[key] = val['count']
+            self.composition_scaling._input_chemical_composition = input_chem_comp
 
-    @equilibration_control.setter
-    def equilibration_control(self, val):
-        if val not in ["berendsen", "nose-hoover", None]:
-            raise ValueError("Equilibration control should be either berendsen or nose-hoover or None")
-        self._equilibration_control = val
+            #now we should check output chem comp and see there are no keys extra
+            for key in self.composition_scaling.output_chemical_composition.keys():
+                if key not in self.composition_scaling._input_chemical_composition.keys():
+                    raise ValueError('An element in output composition is not possible with the given potential')
 
-    @property
-    def melting_cycle(self):
-        return self._melting_cycle
-    
-    @melting_cycle.setter
-    def melting_cycle(self, val):
-        val = self.to_bool(val)
-        if isinstance(val, bool):
-            self._melting_cycle = val
-        else:
-            raise TypeError("Melting cycle should be either True/False")
-
-    @property
-    def spring_constants(self):
-        return self._spring_constants
-
-    @spring_constants.setter
-    def spring_constants(self, val):
-        val = self.check_and_convert_to_list(val, check_none=True)
-        self._spring_constants = val
-
-    @property
-    def folder_prefix(self):
-        return self._folder_prefix
-
-    @folder_prefix.setter
-    def folder_prefix(self, val):
-        self._folder_prefix = val
+            natoms1 = np.sum([val for key, val in self.composition_scaling._input_chemical_composition.items()])
+            natoms2 = np.sum([val for key, val in self.composition_scaling.output_chemical_composition.items()])
+            if not (natoms1==natoms2==structure.natoms):
+                raise ValueError(f"Input and output number of atoms are not conserved! Input {self.dict_to_string(self.input_chemical_composition)}, output {self.dict_to_string(self.output_chemical_composition)}, total atoms in structure {structure.natoms}")
+        return self
 
     def fix_paths(self, potlist): 
         """
@@ -683,14 +464,14 @@ class Calculation(InputTemplate):
                 ps = "None"
             else:
                 ps = "%d"%(int(self._pressure))
-            l = self.lattice
+            l = self._original_lattice
             l = l.split('/')
             l = l[-1]
         
         if self.folder_prefix is None:
-            identistring = "-".join([prefix, l, str(ts), str(ps)])
+            identistring = "-".join([prefix, l.lower(), self.reference_phase, str(ts), str(ps)])
         else:
-            identistring = "-".join([self.folder_prefix, prefix, l, str(ts), str(ps)])
+            identistring = "-".join([self.folder_prefix, prefix, l.lower(), self.reference_phase, str(ts), str(ps)])
         return identistring
 
     def get_folder_name(self):
@@ -725,127 +506,11 @@ class Calculation(InputTemplate):
         
         os.mkdir(simfolder)
         return simfolder
-    
-    @classmethod
-    def generate(cls, indata):
-        if not isinstance(indata, dict):
-            if os.path.exists(indata):
-                with open(indata) as file:
-                    indata = yaml.load(file, Loader=yaml.FullLoader)            
-        if isinstance(indata, dict):
-            calc = cls()
-            calc.element = indata["element"]
-            calc.mass = indata["mass"]
-
-            calc.script_mode = check_dict(indata, "script_mode", retval=False)
-            calc.lammps_executable = check_dict(indata, "lammps_executable")
-            calc.mpi_executable = check_dict(indata, "mpi_executable")
-
-            if "md" in indata.keys():
-                calc.md.add_from_dict(indata["md"])
-            if "queue" in indata.keys():
-                calc.queue.add_from_dict(indata["queue"])
-            if "tolerance" in indata.keys():
-                calc.tolerance.add_from_dict(indata["tolerance"])
-            if "melting_temperature" in indata.keys():
-                calc.melting_temperature.add_from_dict(indata["melting_temperature"])
-            if "nose_hoover" in indata.keys():
-                calc.nose_hoover.add_from_dict(indata["nose_hoover"])
-            if "berendsen" in indata.keys():
-                calc.berendsen.add_from_dict(indata["berendsen"])
-            if "composition_scaling" in indata.keys():
-                calc.composition_scaling.add_from_dict(indata["composition_scaling"])
-            #if temperature_high is present, set it
-            if "temperature_high" in indata.keys():
-                calc.temperature_high = indata["temperature_high"]
-            return calc
-        else:
-            raise FileNotFoundError('%s input file not found'% indata)
-    
-    @staticmethod
-    def read_file(file):
-        if os.path.exists(file):
-            with open(file) as file:
-                indata = yaml.load(file, Loader=yaml.FullLoader)
-        else:
-            raise FileNotFoundError('%s input file not found'% file)
-        return indata
-
+        
     @property
     def savefile(self):
         simfolder = self.get_folder_name()
         return os.path.join(simfolder, 'job.npy')
-
-    
-def read_inputfile(file):
-    """
-    Read calphy inputfile
-    
-    Parameters
-    ----------
-    file : string
-        input file
-    
-    Returns
-    -------
-    options : dict
-        dictionary containing input options
-    """
-    indata = Calculation.read_file(file)
-    calculations = []
-    for ci in indata["calculations"]:
-        #get main variables
-        mode = ci["mode"]
-        if mode == "melting_temperature":
-            calc = Calculation.generate(indata)
-            calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "repeat", "n_equilibration_steps",
-                                "n_switching_steps", "n_print_steps", "n_iterations", "spring_constants", "equilibration_control",
-                                "folder_prefix"])
-            calc.pressure = Calculation.convert_to_list(ci["pressure"], check_none=True) if "pressure" in ci.keys() else 0
-            calc.temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else None
-            calc.lattice = Calculation.convert_to_list(ci["lattice"]) if "lattice" in ci.keys() else None
-            calc.reference_phase = Calculation.convert_to_list(ci["reference_phase"]) if "reference_phase" in ci.keys() else None
-            calc.lattice_constant = Calculation.convert_to_list(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else 0 
-            calculations.append(calc)
-        else:
-            pressure = Calculation.convert_to_list(ci["pressure"], check_none=True) if "pressure" in ci.keys() else []
-            temperature = Calculation.convert_to_list(ci["temperature"]) if "temperature" in ci.keys() else []
-            lattice = Calculation.convert_to_list(ci["lattice"])
-            reference_phase = Calculation.convert_to_list(ci["reference_phase"])
-            if "lattice_constant" in ci.keys():
-                lattice_constant = Calculation.convert_to_list(ci["lattice_constant"])
-            else:
-                lattice_constant = [0 for x in range(len(lattice))]
-            if not len(lattice_constant)==len(reference_phase)==len(lattice):
-                raise ValueError("lattice constant, reference phase and lattice should have same length")
-            lat_props = [{"lattice": lattice[x], "lattice_constant":lattice_constant[x], "reference_phase":reference_phase[x]} for x in range(len(lattice))]
-            if (mode == "fe") or (mode == "alchemy") or (mode == "composition_scaling"):
-                combos = itertools.product(lat_props, pressure, temperature)
-            elif mode == "ts" or mode == "tscale" or mode == "mts":
-                if not len(temperature) == 2:
-                    raise ValueError("ts/tscale mode needs 2 temperature values")
-                temperature = [temperature]
-                combos = itertools.product(lat_props, pressure, temperature)
-            elif mode == "pscale":
-                if not len(pressure) == 2:
-                    raise ValueError("pscale mode needs 2 pressure values")
-                pressure = [pressure]
-                combos = itertools.product(lat_props, pressure, temperature)
-            #create calculations
-            for combo in combos:
-                calc = Calculation.generate(indata)
-                calc.add_from_dict(ci, keys=["mode", "pair_style", "pair_coeff", "pair_style_options", "npt", 
-                                "repeat", "n_equilibration_steps",
-                                "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
-                                "melting_cycle", "equilibration_control", "folder_prefix", "temperature_high"])
-                calc.lattice = combo[0]["lattice"]
-                calc.lattice_constant = combo[0]["lattice_constant"]
-                calc.reference_phase = combo[0]["reference_phase"]
-                calc.pressure = combo[1]
-                calc.temperature = combo[2]
-                calculations.append(calc)
-    return calculations
-
 
 def save_job(job):
     filename = os.path.join(job.simfolder, 'job.npy')
@@ -860,3 +525,138 @@ def check_dict(indict, key, retval=None):
         return indict[key]
     else:
         return retval
+
+
+def read_inputfile(file):
+    if not os.path.exists(file):
+        raise FileNotFoundError(f'Input file {file} not found.')
+
+    with open(file, 'r') as fin:
+        data = yaml.safe_load(fin)
+
+    if 'element' in data.keys():
+        #old format
+        outfile = _convert_legacy_inputfile(file)
+    else:
+        outfile = file
+    calculations = _read_inputfile(outfile)
+    return calculations 
+
+def _read_inputfile(file):
+    with open(file, 'r') as fin:
+        data = yaml.safe_load(fin)
+    calculations = []
+    for calc in data['calculations']:
+        calculations.append(Calculation(**calc))
+    return calculations
+
+def _convert_legacy_inputfile(file, return_calcs=False):
+    with open(file, 'r') as fin:
+        data = yaml.safe_load(fin)
+    if not 'element' in data.keys():
+        #new format
+        raise ValueError('Not old format, exiting..')
+
+    #prepare combos
+    calculations = []
+    for ci in data['calculations']:
+        mode = ci["mode"]
+        if mode == "melting_temperature":
+            calc = {}
+            for key in ['md', 'queue', 'tolerance', 'melting_temperature', 'nose_hoover', 'berendsen', 'composition_scaling', 'temperature_high']:
+                if key in data.keys():
+                    calc[key] = copy.copy(data[key]) 
+            for key in ['element', 'mass', 'script_mode', 'lammps_executable', 'mpi_executable']:
+                if key in data.keys():
+                    calc[key] = data[key]
+            for key in ["mode", "pair_style", "pair_coeff", "pair_style_options", "npt", 
+                            "repeat", "n_equilibration_steps",
+                            "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
+                            "melting_cycle", "equilibration_control", "folder_prefix", "temperature_high"]:
+                if key in ci.keys():
+                    calc[key] = ci[key]
+
+            #calc['pressure'] = float(np.atleast_1d(ci["pressure"]) if "pressure" in ci.keys() else np.atleast_1d(0))
+            #calc['temperature'] = float(np.atleast_1d(ci["temperature"]) if "temperature" in ci.keys() else np.atleast_1d(0))
+            #calc['lattice'] = str(ci["lattice"]) if "lattice" in ci.keys() else 'none'
+            #calc['reference_phase'] = str(ci["reference_phase"]) if "reference_phase" in ci.keys() else 'none'
+            #calc['lattice_constant'] = float(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else 0
+            calculations.append(calc)
+
+        else:
+            pressure = np.atleast_1d(ci['pressure'])
+            temperature = np.atleast_1d(ci['temperature'])
+            lattice = np.atleast_1d(ci['lattice'])
+            reference_phase = np.atleast_1d(ci['reference_phase'])
+            if "lattice_constant" in ci.keys():
+                lattice_constant = np.atleast_1d(ci["lattice_constant"])
+            else:
+                lattice_constant = [0 for x in range(len(lattice))]
+
+            lat_props = [{"lattice": lattice[x], "lattice_constant":lattice_constant[x], "reference_phase":reference_phase[x]} for x in range(len(lattice))]
+
+            if (mode == "fe") or (mode == "alchemy") or (mode == "composition_scaling"):
+                combos = itertools.product(lat_props, pressure, temperature)
+            elif mode == "ts" or mode == "tscale" or mode == "mts":
+                if not len(temperature) == 2:
+                    raise ValueError("ts/tscale mode needs 2 temperature values")
+                temperature = [temperature]
+                combos = itertools.product(lat_props, pressure, temperature)
+            elif mode == "pscale":
+                if not len(pressure) == 2:
+                    raise ValueError("pscale mode needs 2 pressure values")
+                pressure = [pressure]
+                combos = itertools.product(lat_props, pressure, temperature)
+
+            for combo in combos:
+                calc = {}
+                for key in ['md', 'queue', 'tolerance', 'melting_temperature', 'nose_hoover', 'berendsen', 'composition_scaling', 'temperature_high']:
+                    if key in data.keys():
+                        calc[key] = copy.copy(data[key]) 
+                for key in ['element', 'mass', 'script_mode', 'lammps_executable', 'mpi_executable']:
+                    if key in data.keys():
+                        calc[key] = data[key]
+                for key in ["mode", "pair_style", "pair_coeff", "pair_style_options", "npt", 
+                                "repeat", "n_equilibration_steps",
+                                "n_switching_steps", "n_print_steps", "n_iterations", "potential_file", "spring_constants",
+                                "melting_cycle", "equilibration_control", "folder_prefix", "temperature_high"]:
+                    if key in ci.keys():
+                        calc[key] = ci[key]
+                #print(combo)
+                calc["lattice"] = str(combo[0]["lattice"])
+                calc["lattice_constant"] = float(combo[0]["lattice_constant"])
+                calc["reference_phase"] = str(combo[0]["reference_phase"])
+                calc["pressure"] = _to_float(combo[1])
+                calc["temperature"] = _to_float(combo[2])
+                calculations.append(calc)
+
+    if return_calcs:
+        return calculations
+    else:
+        newdata = {}
+        newdata['calculations'] = calculations
+        #print(newdata)
+        outfile = 'new.'+file
+        warnings.warn(f'Old style input file calphy < v2 found. Converted input in {outfile}. Please check!')
+        with open(outfile, 'w') as fout:
+            yaml.safe_dump(newdata, fout)
+        return outfile
+
+
+def _to_str(val):
+    if np.isscalar(val):
+        return str(val)
+    else:
+        return [str(x) for x in val] 
+
+def _to_int(val):
+    if np.isscalar(val):
+        return int(val)
+    else:
+        return [int(x) for x in val] 
+
+def _to_float(val):
+    if np.isscalar(val):
+        return float(val)
+    else:
+        return [float(x) for x in val] 

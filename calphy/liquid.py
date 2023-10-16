@@ -48,12 +48,12 @@ class Liquid(cph.Phase):
         base folder for running calculations
 
     """
-    def __init__(self, calculation=None, simfolder=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
         """
         Set up class
         """
         #call base class
-        super().__init__(calculation=calculation, simfolder=simfolder)
+        super().__init__(calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen)
 
 
     def melt_structure(self, lmp):
@@ -116,7 +116,7 @@ class Liquid(cph.Phase):
             self.calc.md.cmdargs, self.calc.md.init_commands)
 
         #set up structure
-        lmp = ph.create_structure(lmp, self.calc, species=self.calc.n_elements+self.calc._ghost_element_count)
+        lmp = ph.create_structure(lmp, self.calc)
 
         #set up potential
         lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
@@ -205,7 +205,7 @@ class Liquid(cph.Phase):
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.calc.pair_style_with_options[0])
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.calc._pair_style_with_options[0])
 
         pc =  self.calc.pair_coeff[0]
         pcraw = pc.split()
@@ -269,7 +269,7 @@ class Liquid(cph.Phase):
         lmp.command("variable         flambda equal ramp(${lf},${li})")
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
-        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.calc.pair_style_with_options[0])
+        lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.calc._pair_style_with_options[0])
 
         lmp.command("pair_coeff       %s"%pcnew)
         lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps)
@@ -327,7 +327,9 @@ class Liquid(cph.Phase):
 
         #Get ideal gas fe
         f2 = get_ideal_gas_fe(self.calc._temperature, self.rho, 
-            self.natoms, self.calc.mass, self.concentration)
+            self.natoms, 
+            [val['mass'] for key, val in self.calc._element_dict.items()], 
+            [val['composition'] for key, val in self.calc._element_dict.items()])
         
         self.ferr = qerr
         self.fref = f1
