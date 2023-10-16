@@ -2,7 +2,8 @@ calculations:
 - element:
   - Zr
   - Cu
-  lattice: ZrCu.dump
+  lattice: ZrCu.data
+  equilibration_control: berendsen
   lattice_constant: 0.0
   mass:
   - 91.224

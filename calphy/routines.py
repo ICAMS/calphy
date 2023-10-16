@@ -513,8 +513,12 @@ def routine_composition_scaling(job):
 
     flambda_arr, w_arr, q_arr, qerr_arr = job.thermodynamic_integration()
 
+    job.logger.info('performing mass rescaling')
+    job.logger.info(f'Ref. mass is {ref_mass}')
+    job.logger.info(f'Target masses are {target_masses}')
+    
     #read the file
-    mcorrarr, mcorsum = job.mass_integration(flambda_arr, ref_mass, target_masses, target_counts)
+    mcorrarr, mcorsum = job.mass_integration(flambda_arr, target_masses, ref_mass, target_counts)
     netfe = w_arr - mcorrarr
 
     job.fe = job.fe - mcorsum

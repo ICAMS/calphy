@@ -292,6 +292,7 @@ class Calculation(BaseModel, title='Main input class'):
     def _validate_time(self) -> 'Input':
         if np.isscalar(self.n_switching_steps):
             self._n_sweep_steps = self.n_switching_steps
+            self._n_switching_steps = self.n_switching_steps
         else:
             self._n_sweep_steps = self.n_switching_steps[1]
             self._n_switching_steps = self.n_switching_steps[0]
