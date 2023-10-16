@@ -1,25 +1,25 @@
-element: Al
-mass: 26.98
 calculations:
-- mode: fe 
-  temperature: [800]
-  pressure: [10000]
-  lattice: ['FCC']
-  repeat: [3, 3, 3]
-  reference_phase: [liquid]
-  n_iterations: 1
-  pair_style: eam/alloy
-  pair_coeff: "* * tests/Al99.eam.alloy Al"
+- element: Al
+  lattice: FCC
+  lattice_constant: 0.0
+  mass: 26.98
+  md:
+    barostat_damping: 0.1
+    thermostat_damping: 0.1
+    timestep: 0.001
+  mode: fe
   n_equilibration_steps: 1000
+  n_iterations: 1
   n_switching_steps: 1000
-  tolerance:
-    pressure: 1000
-    spring_constant: 100
-md:
-  timestep: 0.001
-  thermostat_damping: 0.1
-  barostat_damping: 0.1
-  
-queue:
-  scheduler: local
-  cores: 2
+  pair_coeff: '* * tests/Al99.eam.alloy Al'
+  pair_style: eam/alloy
+  pressure: 10000.0
+  queue:
+    cores: 2
+    scheduler: local
+  reference_phase: liquid
+  repeat:
+  - 3
+  - 3
+  - 3
+  temperature: 800.0

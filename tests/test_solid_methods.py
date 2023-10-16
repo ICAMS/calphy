@@ -9,7 +9,7 @@ import numpy as np
 def test_solid_averaging_berendsen_finite_pressure(): 
     calculations = read_inputfile(os.path.join(os.getcwd(), "tests/inp2.yaml"))                                     
     sol = Solid(calculation=calculations[0], simfolder=os.getcwd())
-    assert sol.calc.equilibration_control == "berendsen"                                                  
+    assert sol.calc.equilibration_control == "nose-hoover"                                                  
 
 def test_solid_averaging_nose_hoover_finite_pressure(): 
     calculations = read_inputfile(os.path.join(os.getcwd(), "tests/inp3.yaml"))                                     

@@ -1,34 +1,36 @@
-
-element: 'Cu'
-mass: 63.546
 calculations:
-- mode: ts #select from temperature-sweep or free-energy 
-  temperature: [1300, 1400]
-  pressure: [0]
-  lattice: [FCC]
-  repeat: [4, 4, 4]
-  reference_phase: solid
-  n_iterations: 1
-  pair_style: eam/alloy
-  pair_coeff: "* * tests/Cu01.eam.alloy Cu"
+- element: Cu
+  lattice: FCC
+  lattice_constant: 0.0
+  mass: 63.546
+  md:
+    barostat_damping: 0.1
+    n_small_steps: 1000
+    thermostat_damping: 0.1
+    timestep: 0.001
+  mode: ts
   n_equilibration_steps: 1000
+  n_iterations: 1
   n_switching_steps: 1500
-
-md:
-  timestep: 0.001
-  n_small_steps: 1000
-  thermostat_damping: 0.1
-  barostat_damping: 0.1
-
-tolerance:
-  pressure: 100
-  
-queue:
-  scheduler: local
-  cores: 2
-  jobname: ti
-  walltime: "23:50:00"
-  queuename: shorttime
-  memory: 3GB
-  commands:
+  pair_coeff: '* * tests/Cu01.eam.alloy Cu'
+  pair_style: eam/alloy
+  pressure: 0.0
+  queue:
+    commands:
     - conda activate ace
+    cores: 2
+    jobname: ti
+    memory: 3GB
+    queuename: shorttime
+    scheduler: local
+    walltime: '23:50:00'
+  reference_phase: solid
+  repeat:
+  - 4
+  - 4
+  - 4
+  temperature:
+  - 1300.0
+  - 1400.0
+  tolerance:
+    pressure: 100
