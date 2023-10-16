@@ -8,7 +8,8 @@ on:
     branches: [ main ]
 
 jobs:
-  build:    
+  build:
+    runs-on: ${{ matrix.operating-system }}
     strategy:
       matrix:
         include:
@@ -16,8 +17,6 @@ jobs:
             python-version: 3.9
             label: linux-64-py-3-9
             prefix: /usr/share/miniconda3/envs/my-env
-
-    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
     - name: Setup Mambaforge
