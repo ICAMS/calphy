@@ -1,18 +1,31 @@
 
 # `calphy` input keywords
 
-Term 1
-: Definition
+# Intro
 
-Term 2
-: Chemical symbol(s) of the element(s) in the simulation.   
-: _type_: string/list of strings  
-: _default_: None  
-: _example_:
-  ```
-  element: 'Cu'
-  element: ['Cu', 'Zr']
-  ```
+Just an intro
+
+::::{grid}
+:gutter: 2
+
+:::{grid-item}
+:outline:
+A
+:::
+:::{grid-item}
+:outline:
+B
+:::
+:::{grid-item}
+:outline:
+C
+:::
+:::{grid-item}
+:outline:
+D
+:::
+
+::::
 
 
 The inputfile is `yaml` formatted. In this section the possible keys in the inputfile is discussed. The input file consists of two main keys, and four separate blocks. For a sample of the inputfile see the end of this document. The table below gives a quick overview of all available keywords in calphy.
