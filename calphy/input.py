@@ -144,6 +144,7 @@ class Calculation(BaseModel, title='Main input class'):
 
     temperature: Annotated[ float | conlist(float, min_length=1, max_length=2),
                             Field(default=0)]
+    temperature_high: Annotated[ float, Field(default=0.0)]
     _temperature: float = PrivateAttr(default=None)
     _temperature_high: float = PrivateAttr(default=None)
     _temperature_stop: float = PrivateAttr(default=None)
@@ -255,8 +256,10 @@ class Calculation(BaseModel, title='Main input class'):
             temp = self.temperature
             self._temperature = temp[0]
             self._temperature_stop = temp[1]
-            if self._temperature_high is None:
+            if self.temperature_high == 0:
                 self._temperature_high = 2*temp[1]
+            else:
+                self._temperature_high = self.temperature_high
         return self
 
     @model_validator(mode='after')

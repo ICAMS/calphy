@@ -1,6 +1,6 @@
 calculations:
 - element: Fe
-  lattice: BCC
+  lattice: bcc
   lattice_constant: 2.8842
   mass: 55.845
   mode: fe

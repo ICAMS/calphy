@@ -1,7 +1,7 @@
 calculations:
 - element: Fe
-  lattice: BCC
-  lattice_constant: 0.0
+  lattice: bcc
+  lattice_constant: 2.884
   mass: 55.845
   md:
     barostat_damping: 0.1

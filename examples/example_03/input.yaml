@@ -1,7 +1,7 @@
 calculations:
 - element: Cu
-  lattice: FCC
-  lattice_constant: 0.0
+  lattice: fcc
+  lattice_constant: 3.61
   mass: 63.546
   md:
     barostat_damping: 0.1
@@ -29,7 +29,7 @@ calculations:
   - 1400.0
 - element: Cu
   lattice: fcc
-  lattice_constant: 0.0
+  lattice_constant: 3.61
   mass: 63.546
   md:
     barostat_damping: 0.1

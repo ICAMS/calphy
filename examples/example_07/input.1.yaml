@@ -1,8 +1,8 @@
 calculations:
 - element:
   - Cu
-  lattice: FCC
-  lattice_constant: 0.0
+  lattice: fcc
+  lattice_constant: 3.61
   mass:
   - 63.546
   mode: alchemy
