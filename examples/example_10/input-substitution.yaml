@@ -15,7 +15,7 @@ calculations:
   - 63.546
   mode: composition_scaling
   n_equilibration_steps: 5000
-  n_iterations: 1
+  n_iterations: 3
   n_switching_steps: 5000
   pair_coeff: '* * ../potentials/ZrCu.eam.fs Zr Cu'
   pair_style: eam/fs

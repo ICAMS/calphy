@@ -526,4 +526,6 @@ def routine_composition_scaling(job):
 
     outfile = os.path.join(job.simfolder, "composition_sweep.dat")
     np.savetxt(outfile, np.column_stack((flambda_arr, netfe, w_arr, mcorrarr)))
+
+    job.logger.info('Composition scaling does not include free energy of mixing!')
     return job
