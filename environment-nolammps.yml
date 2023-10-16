@@ -15,5 +15,6 @@ dependencies:
   - pyscal
   - matplotlib
   - tqdm
-  - uncertainties
-  - pydantic
+  - uncertainties  
+  - pydantic >=2.3.0
+  - pyscal3
