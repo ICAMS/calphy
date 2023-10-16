@@ -11,8 +11,11 @@ jobs:
   build:    
     strategy:
       matrix:
-        os: [ubuntu-latest,]
-        python-version: [3.9]
+        include:
+          - operating-system: ubuntu-latest
+            python-version: 3.9
+            label: linux-64-py-3-9
+            prefix: /usr/share/miniconda3/envs/my-env
 
     runs-on: ${{ matrix.os }}
     steps:
