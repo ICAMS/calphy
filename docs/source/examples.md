@@ -56,4 +56,10 @@ The gallery of examples below cover different ways in which calphy can be used t
 :link: examples/example_09/analysis
 :link-type: doc
 ```
+
+```{grid-item-card} Variation of free energy with composition
+:img-top: example10.jpg
+:link: examples/example_10/analysis
+:link-type: doc
+```
 ````
