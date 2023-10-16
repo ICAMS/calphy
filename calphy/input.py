@@ -121,10 +121,10 @@ class Calculation(BaseModel, title='Main input class'):
     tolerance: Optional[Tolerance] = Tolerance() 
     melting_temperature: Optional[MeltingTemperature] = MeltingTemperature() 
     element: Annotated[List[str], BeforeValidator(to_list),
-                                      Field(default=None)]
-    n_elements: Annotated[int, Field(default=None)]
+                                      Field(default=[])]
+    n_elements: Annotated[int, Field(default=0)]
     mass: Annotated[List[float], BeforeValidator(to_list),
-                                      Field(default=None)]
+                                      Field(default=[])]
     _element_dict: dict = PrivateAttr(default={})
 
     mode: Annotated[str, Field(default=None)]
