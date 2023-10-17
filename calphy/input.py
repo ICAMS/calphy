@@ -22,7 +22,7 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 """
 
 from typing_extensions import Annotated
-from typing import Any, Callable, List, ClassVar, Optional
+from typing import Any, Callable, List, ClassVar, Optional, Union
 from pydantic import BaseModel, Field, ValidationError, model_validator, conlist, PrivateAttr
 from pydantic.functional_validators import AfterValidator, BeforeValidator
 from annotated_types import Len
@@ -75,8 +75,8 @@ class MD(BaseModel, title='MD specific input options'):
     n_every_steps: Annotated[int, Field(default=10, gt=0)]
     n_repeat_steps: Annotated[int, Field(default=10, gt=0)]
     n_cycles: Annotated[int, Field(default=100, gt=0)]
-    thermostat_damping: Annotated["float | conlist(float, min_length=2, max_length=2)", Field(default=0.1, gt=0)]
-    barostat_damping: Annotated["float | conlist(float, min_length=2, max_length=2)", Field(default=0.1, gt=0)]
+    thermostat_damping: Annotated[Union[float, conlist(float, min_length=2, max_length=2)], Field(default=0.1, gt=0)]
+    barostat_damping: Annotated[Union[float, conlist(float, min_length=2, max_length=2)], Field(default=0.1, gt=0)]
     cmdargs: Annotated[str, Field(default=None)]
     init_commands: Annotated[str, Field(default=None)]
 
@@ -132,7 +132,7 @@ class Calculation(BaseModel, title='Main input class'):
     file_format: Annotated[str, Field(default='lammps-data')]
     
     #pressure properties
-    pressure: Annotated[ "None | float | conlist(float, min_length=1, max_length=2) | conlist(conlist(float, min_length=3, max_length=3), min_length=1, max_length=2)" , 
+    pressure: Annotated[ Union[None, float, conlist(float, min_length=1, max_length=2), conlist(conlist(float, min_length=3, max_length=3), min_length=1, max_length=2)] , 
                                       Field(default=0)]
     
     _pressure_stop: float = PrivateAttr(default=None)
@@ -142,7 +142,7 @@ class Calculation(BaseModel, title='Main input class'):
     _iso: bool = PrivateAttr(default=False)
     _fix_lattice: bool = PrivateAttr(default=False)
 
-    temperature: Annotated[ "float | conlist(float, min_length=1, max_length=2)",
+    temperature: Annotated[ Union[float, conlist(float, min_length=1, max_length=2)],
                             Field(default=0)]
     temperature_high: Annotated[ float, Field(default=0.0)]
     _temperature: float = PrivateAttr(default=None)
@@ -172,7 +172,7 @@ class Calculation(BaseModel, title='Main input class'):
     
     npt: Annotated[ bool, Field(default = True)]
     n_equilibration_steps: Annotated[ int, Field(default = 25000)]
-    n_switching_steps: Annotated[ "int | conlist(int, min_length=2, max_length=2)", Field(default = [50000, 50000])]
+    n_switching_steps: Annotated[ Union[int, conlist(int, min_length=2, max_length=2)], Field(default = [50000, 50000])]
     _n_switching_steps: int = PrivateAttr(default=50000)
     _n_sweep_steps: int = PrivateAttr(default=50000)
     n_print_steps: Annotated[int, Field(default = 0)]
