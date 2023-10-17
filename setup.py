@@ -33,7 +33,7 @@ test_requirements = ['pytest>=3', ]
 setup(
     author="Sarath Menon, Yury Lysogorskiy, Ralf Drautz",
     author_email='sarathmenon@mailbox.org',
-    python_requires='>=3.10',
+    python_requires='>=3.8',
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Natural Language :: English',
