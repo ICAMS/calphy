@@ -38,7 +38,7 @@ from pyscal3 import System
 from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
-
+from __future__ import annotations
 
 def read_report(folder):
     """
