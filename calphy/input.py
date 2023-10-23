@@ -33,6 +33,7 @@ import copy
 import datetime
 import itertools
 import os
+import uuid
 import warnings
 from pyscal3 import System
 from pyscal3.core import structure_dict, element_dict, _make_crystal
@@ -310,6 +311,9 @@ class Calculation(BaseModel, title='Main input class'):
             self._element_dict[element]['count'] = 0
             self._element_dict[element]['composition'] = 0.0
 
+        #generate temporary filename if needed
+        structure_filename = ".".join([str(uuid.uuid4().hex), "data"])
+
         if self.lattice == "":
             #fetch from dict
             if len(self.element) > 1:
@@ -335,10 +339,10 @@ class Calculation(BaseModel, title='Main input class'):
 
             self._natoms = structure.natoms
             #write structure
-            structure.write.file('input.conf.data', format='lammps-data')
+            structure.write.file(structure_filename, format='lammps-data')
             #set this as lattice
             self._original_lattice = self.lattice
-            self.lattice = os.path.join(os.getcwd(), 'input.conf.data')
+            self.lattice = os.path.join(os.getcwd(), structure_filename)
 
 
         elif self.lattice.lower() in structure_dict.keys():
@@ -369,10 +373,10 @@ class Calculation(BaseModel, title='Main input class'):
             #self._composition_counts = concdict_counts
             self._natoms = structure.natoms
             #write structure
-            structure.write.file('input.conf.data', format='lammps-data')
+            structure.write.file(structure_filename, format='lammps-data')
             #set this as lattice
             self._original_lattice = self.lattice
-            self.lattice = os.path.join(os.getcwd(), 'input.conf.data')
+            self.lattice = os.path.join(os.getcwd(), structure_filename)
 
             
         else:
