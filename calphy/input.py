@@ -189,18 +189,13 @@ class Calculation(BaseModel, title='Main input class'):
     _structure: Any = PrivateAttr(default=None)
 
     @model_validator(mode='after')
-    def _validate_lengths(self) -> 'Input':
+    def _validate_all(self) -> 'Input':
+
         if not (len(self.element) == len(self.mass)):
             raise ValueError('mass and elements should have same length')
-        return self
-
-    @model_validator(mode='after')
-    def _validate_nelements(self) -> 'Input':
+        
         self.n_elements = len(self.element)
-        return self
-
-    @model_validator(mode='after')
-    def _validate_pressure(self) -> 'Input':
+        
         self._pressure_input = copy.copy(self.pressure)
         if self.pressure is None:
             self._iso = True
@@ -238,11 +233,7 @@ class Calculation(BaseModel, title='Main input class'):
             self._pressure_stop = self.pressure[1][0]                                
         else:
             raise ValueError('Unknown format for pressure')
-        return self
 
-
-    @model_validator(mode='after')
-    def _validate_temperature(self) -> 'Input':
         self._temperature_input = copy.copy(self.temperature)
         if self.temperature is None:
             self._temperature = None
@@ -260,10 +251,7 @@ class Calculation(BaseModel, title='Main input class'):
                 self._temperature_high = 2*temp[1]
             else:
                 self._temperature_high = self.temperature_high
-        return self
 
-    @model_validator(mode='after')
-    def _validate_pair_style(self) -> 'Input':
         ps_lst = []
         ps_options_lst = []
         for ps in self.pair_style:
@@ -289,21 +277,14 @@ class Calculation(BaseModel, title='Main input class'):
         #now fix pair coeffs with path
         if self.fix_potential_path:
             self.pair_coeff = self.fix_paths(self.pair_coeff)
-        return self
-
-    @model_validator(mode='after')
-    def _validate_time(self) -> 'Input':
+        
         if np.isscalar(self.n_switching_steps):
             self._n_sweep_steps = self.n_switching_steps
             self._n_switching_steps = self.n_switching_steps
         else:
             self._n_sweep_steps = self.n_switching_steps[1]
             self._n_switching_steps = self.n_switching_steps[0]
-        return self
-
-
-    @model_validator(mode='after')
-    def _validate_lattice(self) -> 'Input':
+        
         #here we also prepare lattice dict
         for count, element in enumerate(self.element):
             self._element_dict[element] = {}
@@ -400,10 +381,7 @@ class Calculation(BaseModel, title='Main input class'):
             self._natoms = structure.natoms
             self._original_lattice = self.lattice
             self.lattice = os.path.abspath(self.lattice)
-        return self
-
-    @model_validator(mode='after')
-    def _validate_comp_scaling(self) -> 'Input':
+        
         if self.mode == 'composition_scaling':
             aseobj = read(self.lattice, format='lammps-data', style='atomic')
             structure = System(aseobj, format='ase')
