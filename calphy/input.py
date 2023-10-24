@@ -293,7 +293,7 @@ class Calculation(BaseModel, title='Main input class'):
             self._element_dict[element]['composition'] = 0.0
 
         #generate temporary filename if needed
-        structure_filename = ".".join([str(uuid.uuid4().hex), "data"])
+        write_structure_file = False
 
         if self.lattice == "":
             #fetch from dict
@@ -319,12 +319,8 @@ class Calculation(BaseModel, title='Main input class'):
                 self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
 
             self._natoms = structure.natoms
-            #write structure
-            structure.write.file(structure_filename, format='lammps-data')
-            #set this as lattice
             self._original_lattice = self.lattice
-            self.lattice = os.path.join(os.getcwd(), structure_filename)
-
+            write_structure_file = True
 
         elif self.lattice.lower() in structure_dict.keys():
             #this is a valid structure
@@ -353,12 +349,8 @@ class Calculation(BaseModel, title='Main input class'):
             #self._composition = concdict_frac
             #self._composition_counts = concdict_counts
             self._natoms = structure.natoms
-            #write structure
-            structure.write.file(structure_filename, format='lammps-data')
-            #set this as lattice
             self._original_lattice = self.lattice
-            self.lattice = os.path.join(os.getcwd(), structure_filename)
-
+            write_structure_file = True
             
         else:
             #this is a file
@@ -381,6 +373,13 @@ class Calculation(BaseModel, title='Main input class'):
             self._natoms = structure.natoms
             self._original_lattice = self.lattice
             self.lattice = os.path.abspath(self.lattice)
+
+        #if needed, write the file out
+        if write_structure_file:
+            structure_filename = ".".join([self.create_identifier(), "data"])
+            structure_filename = os.path.join(os.getcwd(), structure_filename)
+            structure.write.file(structure_filename, format='lammps-data')
+            self.lattice = structure_filename
         
         if self.mode == 'composition_scaling':
             aseobj = read(self.lattice, format='lammps-data', style='atomic')
@@ -477,14 +476,9 @@ class Calculation(BaseModel, title='Main input class'):
         simfolder = self.get_folder_name()
 
         #if folder exists, delete it -> then create
-        try:
-            if os.path.exists(simfolder):
-                shutil.rmtree(simfolder)
-        except OSError:
-            newstr = '-'.join(str(datetime.datetime.now()).split())
-            newstr = '-'.join([simfolder, newstr])
-            shutil.move(simfolder, newstr)
-        
+        if os.path.exists(simfolder):
+            raise ValueError(f'Simulation folder {simfolder} exists. Please remove and run again!')
+                
         os.mkdir(simfolder)
         return simfolder
         
