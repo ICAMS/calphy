@@ -33,7 +33,6 @@ import copy
 import datetime
 import itertools
 import os
-import uuid
 import warnings
 from pyscal3 import System
 from pyscal3.core import structure_dict, element_dict, _make_crystal
@@ -127,6 +126,7 @@ class Calculation(BaseModel, title='Main input class'):
     mass: Annotated[List[float], BeforeValidator(to_list),
                                       Field(default=[])]
     _element_dict: dict = PrivateAttr(default={})
+    kernel: Annotated[int, Field(default=0)]
 
     mode: Annotated[str, Field(default=None)]
     lattice: Annotated[str, Field(default="")]
@@ -189,18 +189,13 @@ class Calculation(BaseModel, title='Main input class'):
     _structure: Any = PrivateAttr(default=None)
 
     @model_validator(mode='after')
-    def _validate_lengths(self) -> 'Input':
+    def _validate_all(self) -> 'Input':
+
         if not (len(self.element) == len(self.mass)):
             raise ValueError('mass and elements should have same length')
-        return self
-
-    @model_validator(mode='after')
-    def _validate_nelements(self) -> 'Input':
+        
         self.n_elements = len(self.element)
-        return self
-
-    @model_validator(mode='after')
-    def _validate_pressure(self) -> 'Input':
+        
         self._pressure_input = copy.copy(self.pressure)
         if self.pressure is None:
             self._iso = True
@@ -238,11 +233,7 @@ class Calculation(BaseModel, title='Main input class'):
             self._pressure_stop = self.pressure[1][0]                                
         else:
             raise ValueError('Unknown format for pressure')
-        return self
 
-
-    @model_validator(mode='after')
-    def _validate_temperature(self) -> 'Input':
         self._temperature_input = copy.copy(self.temperature)
         if self.temperature is None:
             self._temperature = None
@@ -260,10 +251,7 @@ class Calculation(BaseModel, title='Main input class'):
                 self._temperature_high = 2*temp[1]
             else:
                 self._temperature_high = self.temperature_high
-        return self
 
-    @model_validator(mode='after')
-    def _validate_pair_style(self) -> 'Input':
         ps_lst = []
         ps_options_lst = []
         for ps in self.pair_style:
@@ -289,21 +277,14 @@ class Calculation(BaseModel, title='Main input class'):
         #now fix pair coeffs with path
         if self.fix_potential_path:
             self.pair_coeff = self.fix_paths(self.pair_coeff)
-        return self
-
-    @model_validator(mode='after')
-    def _validate_time(self) -> 'Input':
+        
         if np.isscalar(self.n_switching_steps):
             self._n_sweep_steps = self.n_switching_steps
             self._n_switching_steps = self.n_switching_steps
         else:
             self._n_sweep_steps = self.n_switching_steps[1]
             self._n_switching_steps = self.n_switching_steps[0]
-        return self
-
-
-    @model_validator(mode='after')
-    def _validate_lattice(self) -> 'Input':
+        
         #here we also prepare lattice dict
         for count, element in enumerate(self.element):
             self._element_dict[element] = {}
@@ -312,7 +293,7 @@ class Calculation(BaseModel, title='Main input class'):
             self._element_dict[element]['composition'] = 0.0
 
         #generate temporary filename if needed
-        structure_filename = ".".join([str(uuid.uuid4().hex), "data"])
+        write_structure_file = False
 
         if self.lattice == "":
             #fetch from dict
@@ -338,12 +319,8 @@ class Calculation(BaseModel, title='Main input class'):
                 self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
 
             self._natoms = structure.natoms
-            #write structure
-            structure.write.file(structure_filename, format='lammps-data')
-            #set this as lattice
             self._original_lattice = self.lattice
-            self.lattice = os.path.join(os.getcwd(), structure_filename)
-
+            write_structure_file = True
 
         elif self.lattice.lower() in structure_dict.keys():
             #this is a valid structure
@@ -372,12 +349,8 @@ class Calculation(BaseModel, title='Main input class'):
             #self._composition = concdict_frac
             #self._composition_counts = concdict_counts
             self._natoms = structure.natoms
-            #write structure
-            structure.write.file(structure_filename, format='lammps-data')
-            #set this as lattice
             self._original_lattice = self.lattice
-            self.lattice = os.path.join(os.getcwd(), structure_filename)
-
+            write_structure_file = True
             
         else:
             #this is a file
@@ -400,10 +373,14 @@ class Calculation(BaseModel, title='Main input class'):
             self._natoms = structure.natoms
             self._original_lattice = self.lattice
             self.lattice = os.path.abspath(self.lattice)
-        return self
 
-    @model_validator(mode='after')
-    def _validate_comp_scaling(self) -> 'Input':
+        #if needed, write the file out
+        if write_structure_file:
+            structure_filename = ".".join([self.create_identifier(), str(self.kernel), "data"])
+            structure_filename = os.path.join(os.getcwd(), structure_filename)
+            structure.write.file(structure_filename, format='lammps-data')
+            self.lattice = structure_filename
+        
         if self.mode == 'composition_scaling':
             aseobj = read(self.lattice, format='lammps-data', style='atomic')
             structure = System(aseobj, format='ase')
@@ -499,14 +476,9 @@ class Calculation(BaseModel, title='Main input class'):
         simfolder = self.get_folder_name()
 
         #if folder exists, delete it -> then create
-        try:
-            if os.path.exists(simfolder):
-                shutil.rmtree(simfolder)
-        except OSError:
-            newstr = '-'.join(str(datetime.datetime.now()).split())
-            newstr = '-'.join([simfolder, newstr])
-            shutil.move(simfolder, newstr)
-        
+        if os.path.exists(simfolder):
+            raise ValueError(f'Simulation folder {simfolder} exists. Please remove and run again!')
+                
         os.mkdir(simfolder)
         return simfolder
         
@@ -549,7 +521,8 @@ def _read_inputfile(file):
     with open(file, 'r') as fin:
         data = yaml.safe_load(fin)
     calculations = []
-    for calc in data['calculations']:
+    for count, calc in enumerate(data['calculations']):
+        calc['kernel'] = count
         calculations.append(Calculation(**calc))
     return calculations
 
@@ -562,7 +535,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
 
     #prepare combos
     calculations = []
-    for ci in data['calculations']:
+    for cc, ci in enumerate(data['calculations']):
         mode = ci["mode"]
         if mode == "melting_temperature":
             calc = {}
@@ -584,6 +557,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
             #calc['lattice'] = str(ci["lattice"]) if "lattice" in ci.keys() else 'none'
             #calc['reference_phase'] = str(ci["reference_phase"]) if "reference_phase" in ci.keys() else 'none'
             #calc['lattice_constant'] = float(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else 0
+            calc['kernel'] = cc
             calculations.append(calc)
 
         else:
@@ -611,6 +585,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
                 pressure = [pressure]
                 combos = itertools.product(lat_props, pressure, temperature)
 
+            cc = 0
             for combo in combos:
                 calc = {}
                 for key in ['md', 'queue', 'tolerance', 'melting_temperature', 'nose_hoover', 'berendsen', 'composition_scaling', 'temperature_high']:
@@ -631,6 +606,8 @@ def _convert_legacy_inputfile(file, return_calcs=False):
                 calc["reference_phase"] = str(combo[0]["reference_phase"])
                 calc["pressure"] = _to_float(combo[1])
                 calc["temperature"] = _to_float(combo[2])
+                calc['kernel'] = cc
+                cc += 1
                 calculations.append(calc)
 
     if return_calcs:
