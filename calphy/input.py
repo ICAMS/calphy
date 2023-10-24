@@ -33,7 +33,6 @@ import copy
 import datetime
 import itertools
 import os
-import uuid
 import warnings
 from pyscal3 import System
 from pyscal3.core import structure_dict, element_dict, _make_crystal
@@ -127,6 +126,7 @@ class Calculation(BaseModel, title='Main input class'):
     mass: Annotated[List[float], BeforeValidator(to_list),
                                       Field(default=[])]
     _element_dict: dict = PrivateAttr(default={})
+    kernel: Annotated[int, Field(default=0)]
 
     mode: Annotated[str, Field(default=None)]
     lattice: Annotated[str, Field(default="")]
@@ -376,7 +376,7 @@ class Calculation(BaseModel, title='Main input class'):
 
         #if needed, write the file out
         if write_structure_file:
-            structure_filename = ".".join([self.create_identifier(), "data"])
+            structure_filename = ".".join([self.create_identifier(), str(self.kernel), "data"])
             structure_filename = os.path.join(os.getcwd(), structure_filename)
             structure.write.file(structure_filename, format='lammps-data')
             self.lattice = structure_filename
@@ -521,7 +521,8 @@ def _read_inputfile(file):
     with open(file, 'r') as fin:
         data = yaml.safe_load(fin)
     calculations = []
-    for calc in data['calculations']:
+    for count, calc in enumerate(data['calculations']):
+        calc['kernel'] = count
         calculations.append(Calculation(**calc))
     return calculations
 
@@ -534,7 +535,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
 
     #prepare combos
     calculations = []
-    for ci in data['calculations']:
+    for cc, ci in enumerate(data['calculations']):
         mode = ci["mode"]
         if mode == "melting_temperature":
             calc = {}
@@ -556,6 +557,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
             #calc['lattice'] = str(ci["lattice"]) if "lattice" in ci.keys() else 'none'
             #calc['reference_phase'] = str(ci["reference_phase"]) if "reference_phase" in ci.keys() else 'none'
             #calc['lattice_constant'] = float(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else 0
+            calc['kernel'] = cc
             calculations.append(calc)
 
         else:
@@ -583,6 +585,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
                 pressure = [pressure]
                 combos = itertools.product(lat_props, pressure, temperature)
 
+            cc = 0
             for combo in combos:
                 calc = {}
                 for key in ['md', 'queue', 'tolerance', 'melting_temperature', 'nose_hoover', 'berendsen', 'composition_scaling', 'temperature_high']:
@@ -603,6 +606,8 @@ def _convert_legacy_inputfile(file, return_calcs=False):
                 calc["reference_phase"] = str(combo[0]["reference_phase"])
                 calc["pressure"] = _to_float(combo[1])
                 calc["temperature"] = _to_float(combo[2])
+                calc['kernel'] = cc
+                cc += 1
                 calculations.append(calc)
 
     if return_calcs:
