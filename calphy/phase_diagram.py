@@ -25,12 +25,46 @@ def get_free_energy_at(d, phase, comp, temp, threshold=1E-1):
         val = d[phase]["%.2f"%comp]["free_energy"][arg] 
     return val
     
-def calculate_configurational_entropy(x):
+def calculate_configurational_entropy(x, correction=0):
     """
     Calculate configurational entropy
     """
-    s = np.array([(c*np.log(c) + (1-c)*np.log(1-c)) if 1 > c > 0 else 0 for c in x])
+    if correction == 0:
+        s = np.array([(c*np.log(c) + (1-c)*np.log(1-c)) if 1 > c > 0 else 0 for c in x])
+    else:
+        arg = np.argsort(np.abs(x-correction))[0]
+        left_side = x[:arg+1]
+        right_side = x[arg:]
+        #print(len(left_side))
+        #print(left_side)
+        #print(len(right_side))
+        #print(right_side)
+
+        if len(left_side)>0:
+            left_side = left_side/left_side[-1]
+            s_left = np.array([(c*np.log(c) + (1-c)*np.log(1-c)) if 1 > c > 0 else 0 for c in left_side])
+            
+        #correct to zero
+        if len(right_side)>0:
+            right_side = right_side - right_side[0]
+            right_side = right_side/right_side[-1]
+            s_right = np.array([(c*np.log(c) + (1-c)*np.log(1-c)) if 1 > c > 0 else 0 for c in right_side])
+        
+        if len(left_side) == 0:
+            return s_right
+        elif len(right_side) == 0:
+            return s_left
+        else:
+            return np.concatenate((s_left, s_right[1:]))
+        
+        
     return -s
+
+#def get_free_energy_splines(composition, free_energy, k=3):
+#    """
+#    Create splines for free energy, and return them
+#    """
+#    return splrep(comp, fes, k=3)
 
 def get_free_energy_fit(composition, free_energy, fit_order=5):
     """
@@ -45,6 +79,7 @@ def get_free_energy_fit(composition, free_energy, fit_order=5):
 
 def get_phase_free_energy(data, phase, temp, 
                           ideal_configurational_entropy=False,
+                          entropy_correction=0.0,
                           composition_grid=10000,
                           fit_order=5,
                           plot=False,
@@ -72,7 +107,10 @@ def get_phase_free_energy(data, phase, temp,
         warnings.warn("Some temperatures could not be found!")
     else:  
         if ideal_configurational_entropy:
-            fes = fes -kb*temp*calculate_configurational_entropy(comp)
+            entropy_term = kb*temp*calculate_configurational_entropy(comp, correction=entropy_correction) 
+            fes = fes - entropy_term
+        else:
+            entropy_term = []
 
         fe_fit = get_free_energy_fit(comp, fes, fit_order=fit_order)
         compfine = np.linspace(np.min(comp), np.max(comp), composition_grid)
@@ -92,8 +130,9 @@ def get_phase_free_energy(data, phase, temp,
             plt.xlabel("x")
             plt.ylabel("F (eV/atom)")
             plt.legend()
-            plt.ylim(top=0.0)
-        return {"phase":phase, "temperature": temp, "composition": compfine, "free_energy": fe}
+            #plt.ylim(top=0.0)
+        return {"phase":phase, "temperature": temp, "composition": compfine, 
+                "free_energy": fe, "entropy": entropy_term}
     return None
 
 
@@ -103,7 +142,7 @@ def get_free_energy_mixing(dict_list, threshold=1E-3):
     """
     #we have to get min_comp from all possible values
     min_comp = np.min([np.min(d["composition"]) for d in dict_list])
-    max_comp = np.min([np.max(d["composition"]) for d in dict_list])
+    max_comp = np.max([np.max(d["composition"]) for d in dict_list])
     
     #now left ref will be min fe value from all dicts, corresponds to min_comp
     min_fe = []
@@ -122,12 +161,18 @@ def get_free_energy_mixing(dict_list, threshold=1E-3):
     left_ref = np.min(min_fe)
     right_ref = np.min(max_fe)
     
+    #print(left_ref, right_ref)
     #now once again, loop through, and add the diff
     for d in dict_list:
-        ref = d["free_energy"] - (right_ref*(d["composition"]-min_comp)/max_comp + left_ref*(d["composition"][::-1]-min_comp)/max_comp)
+        #adjust ref based on composition demands
+        scaled_comp = d["composition"]/max_comp
+        right_ref_scaled = right_ref*scaled_comp
+        left_ref_scaled = left_ref*(1-scaled_comp)
+        
+        #print(d["free_energy"][-1])
+        #print((right_ref_scaled + left_ref_scaled)[-1])
+        ref = d["free_energy"] - (right_ref_scaled + left_ref_scaled)
         d["free_energy_mix"] = ref
-    
-    #return dict list
     return dict_list    
 
 def create_color_list(dict_list, color_list=None):
@@ -192,12 +237,14 @@ def get_tangent_type(dict_list, tangent, energy):
             
     
 def get_common_tangents(dict_list, peak_cutoff=0.01, plot=False, 
-                        remove_self_tangents_for=[]):
+                        remove_self_tangents_for=[],
+                        color_dict=None):
     """
     Get common tangent constructions using convex hull method
     """
     points = np.vstack([np.column_stack((d["composition"], d["free_energy_mix"])) for d in dict_list]) 
-    color_dict = create_color_list(dict_list) 
+    if color_dict is None:
+        color_dict = create_color_list(dict_list) 
     
     #make common tangent constructions
     #term checks if two different phases are stable at the end points, then common tangent is needed
