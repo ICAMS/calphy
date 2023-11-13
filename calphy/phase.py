@@ -854,8 +854,8 @@ class Phase:
         #set up potential
         pc =  self.calc.pair_coeff[0]
         pcraw = pc.split()
-        pcnew1 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], "1", *pcraw[2:]])
-        pcnew2 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], "2", *pcraw[2:]])
+        pcnew1 = " ".join([*pcraw[:2], *[self.calc._pair_style_names[0],], "1", *pcraw[2:]])
+        pcnew2 = " ".join([*pcraw[:2], *[self.calc._pair_style_names[0],], "2", *pcraw[2:]])
 
         lmp.command("pair_style       hybrid/scaled v_one %s v_fscale %s"%(self.calc._pair_style_with_options[0], self.calc._pair_style_with_options[0]))
         lmp.command("pair_coeff       %s"%pcnew1)

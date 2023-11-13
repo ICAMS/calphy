@@ -209,12 +209,12 @@ class Liquid(cph.Phase):
 
         pc =  self.calc.pair_coeff[0]
         pcraw = pc.split()
-        pcnew = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], *pcraw[2:]])
+        pcnew = " ".join([*pcraw[:2], *[self.calc._pair_style_names[0],], *pcraw[2:]])
 
         lmp.command("pair_coeff       %s"%pcnew)
         lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps)
 
-        lmp.command("compute          c1 all pair %s"%self.calc.pair_style[0])
+        lmp.command("compute          c1 all pair %s"%self.calc._pair_style_names[0])
         lmp.command("compute          c2 all pair ufm")
 
         lmp.command("variable         step equal step")
@@ -274,7 +274,7 @@ class Liquid(cph.Phase):
         lmp.command("pair_coeff       %s"%pcnew)
         lmp.command("pair_coeff       * * ufm %f 1.5"%self.eps)
 
-        lmp.command("compute          c1 all pair %s"%self.calc.pair_style[0])
+        lmp.command("compute          c1 all pair %s"%self.calc._pair_style_names[0])
         lmp.command("compute          c2 all pair ufm")
 
         lmp.command("variable         step equal step")

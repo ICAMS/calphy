@@ -185,17 +185,17 @@ class Alchemy(cph.Phase):
         if self.calc.pair_style[0] == self.calc.pair_style[1]:
             pc =  self.calc.pair_coeff[0]
             pcraw = pc.split()
-            pc1 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], "1", *pcraw[2:]])
+            pc1 = " ".join([*pcraw[:2], *[self.calc._pair_style_names[0],], "1", *pcraw[2:]])
             pc =  self.calc.pair_coeff[1]
             pcraw = pc.split()
-            pc2 = " ".join([*pcraw[:2], *[self.calc.pair_style[1],], "2", *pcraw[2:]])
+            pc2 = " ".join([*pcraw[:2], *[self.calc._pair_style_names[1],], "2", *pcraw[2:]])
         else:
             pc =  self.calc.pair_coeff[0]
             pcraw = pc.split()
-            pc1 = " ".join([*pcraw[:2], *[self.calc.pair_style[0],], *pcraw[2:]])
+            pc1 = " ".join([*pcraw[:2], *[self.calc._pair_style_names[0],], *pcraw[2:]])
             pc =  self.calc.pair_coeff[1]
             pcraw = pc.split()
-            pc2 = " ".join([*pcraw[:2], *[self.calc.pair_style[1],], *pcraw[2:]])
+            pc2 = " ".join([*pcraw[:2], *[self.calc._pair_style_names[1],], *pcraw[2:]])
 
 
         lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda %s"%(
@@ -208,12 +208,12 @@ class Alchemy(cph.Phase):
 
 
         #apply pair force commands
-        if self.calc.pair_style[0] == self.calc.pair_style[1]:
-            lmp.command("compute         c1 all pair %s 1"%self.calc.pair_style[0])
-            lmp.command("compute         c2 all pair %s 2"%self.calc.pair_style[1])
+        if self.calc._pair_style_names[0] == self.calc._pair_style_names[1]:
+            lmp.command("compute         c1 all pair %s 1"%self.calc._pair_style_names[0])
+            lmp.command("compute         c2 all pair %s 2"%self.calc._pair_style_names[1])
         else:
-            lmp.command("compute         c1 all pair %s"%self.calc.pair_style[0])
-            lmp.command("compute         c2 all pair %s"%self.calc.pair_style[1])
+            lmp.command("compute         c1 all pair %s"%self.calc._pair_style_names[0])
+            lmp.command("compute         c2 all pair %s"%self.calc._pair_style_names[1])
 
 
         # Output variables.
@@ -260,12 +260,12 @@ class Alchemy(cph.Phase):
 
 
         #apply pair force commands
-        if self.calc.pair_style[0] == self.calc.pair_style[1]:
-            lmp.command("compute         c1 all pair %s 1"%self.calc.pair_style[0])
-            lmp.command("compute         c2 all pair %s 2"%self.calc.pair_style[1])
+        if self.calc._pair_style_names[0] == self.calc._pair_style_names[1]:
+            lmp.command("compute         c1 all pair %s 1"%self.calc._pair_style_names[0])
+            lmp.command("compute         c2 all pair %s 2"%self.calc._pair_style_names[1])
         else:
-            lmp.command("compute         c1 all pair %s"%self.calc.pair_style[0])
-            lmp.command("compute         c2 all pair %s"%self.calc.pair_style[1])
+            lmp.command("compute         c1 all pair %s"%self.calc._pair_style_names[0])
+            lmp.command("compute         c2 all pair %s"%self.calc._pair_style_names[1])
 
 
         # Output variables.
