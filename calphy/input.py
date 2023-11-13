@@ -407,8 +407,11 @@ class Calculation(BaseModel, title='Main input class'):
             if len(pcraw) >= 3:
                 filename = pcraw[2]
                 filename = os.path.abspath(filename)
-                pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
-                fixedpots.append(pcnew)
+                if os.path.exists(filename):
+                    pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
+                    fixedpots.append(pcnew)
+                else:
+                    fixedpots.append(pot)
             else:
                 fixedpots.append(pot)
         return fixedpots
