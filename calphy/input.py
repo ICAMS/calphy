@@ -322,7 +322,6 @@ class Calculation(BaseModel, title='Main input class'):
                 raise ValueError("Cannot create lattice for more than one element")
             if self.element[0] in element_dict.keys():
                 self.lattice = element_dict[self.element[0]]['structure']
-                self._original_lattice = self.lattice           
                 self.lattice_constant = element_dict[self.element[0]]['lattice_constant']
             else:
                 raise ValueError("Could not find structure, please provide lattice and lattice_constant explicitely")                
@@ -344,7 +343,7 @@ class Calculation(BaseModel, title='Main input class'):
                 self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
 
             self._natoms = structure.natoms
-            self._original_lattice = self.lattice
+            self._original_lattice = self.lattice.lower()
             write_structure_file = True
 
         elif self.lattice.lower() in structure_dict.keys():
@@ -374,7 +373,7 @@ class Calculation(BaseModel, title='Main input class'):
             #self._composition = concdict_frac
             #self._composition_counts = concdict_counts
             self._natoms = structure.natoms
-            self._original_lattice = self.lattice
+            self._original_lattice = self.lattice.lower()
             write_structure_file = True
             
         else:
@@ -396,7 +395,7 @@ class Calculation(BaseModel, title='Main input class'):
                 self._element_dict[t]['count'] = typecounts[c]
                 self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
             self._natoms = structure.natoms
-            self._original_lattice = self.lattice
+            self._original_lattice = os.path.basename(self.lattice)
             self.lattice = os.path.abspath(self.lattice)
 
         #if needed, write the file out
