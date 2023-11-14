@@ -471,9 +471,12 @@ class Calculation(BaseModel, title='Main input class'):
                 ps = "None"
             else:
                 ps = "%d"%(int(self._pressure))
-            l = self._original_lattice
-            l = l.split('/')
-            l = l[-1]
+            if self._original_lattice in ["", None]:
+                l = self._original_lattice
+                l = l.split('/')
+                l = l[-1]
+            else:
+                l = self.lattice
         
         if self.folder_prefix is None:
             identistring = "-".join([prefix, l.lower(), self.reference_phase, str(ts), str(ps)])
