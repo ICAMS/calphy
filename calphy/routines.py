@@ -26,6 +26,7 @@ import numpy as np
 import os
 import time
 from mendeleev import element
+import yaml
 
 from calphy.input import read_inputfile
 #import calphy.queuekernel as cq
@@ -83,20 +84,37 @@ class MeltingTemp:
         -------
         None 
         """
-        self.calc.temperature = [int(self.tmin), int(self.tmax)]
-        self.calc._temperature = int(self.tmin)
-        self.calc._temperature_stop = int(self.tmax)
-        csol = copy.deepcopy(self.calc)
-        clqd = copy.deepcopy(self.calc)
+
+        #here, we need to prepare a new calculation
+        #protocol, read in, modify, write a output
+        #read input again
+        calculations = {"calculations": []}
         
-        csol.reference_phase = 'solid'
-        clqd.reference_phase = 'liquid'
-        csol._temperature_high = self.tmin
-        clqd._temperature_high = 1.5*self.tmax
-        csol.mode = 'ts'
-        clqd.mode = 'ts'
+        with open(self.calc["inputfile"], 'r') as fin:
+            data = yaml.safe_load(fin)
+        calc = data["calculations"][int(self.calc["kernel"])]
+
+        calc["mode"] = "ts"
+        calc["temperature"] = [int(self.tmin), int(self.tmax)]
+        calc["reference_phase"] = 'solid'
+        calculations["calculations"].append(calc)
+
+        with open(self.calc["inputfile"], 'r') as fin:
+            data = yaml.safe_load(fin)
+        calc = data["calculations"][int(self.calc["kernel"])]
         
-        self.calculations = [csol, clqd]
+        calc["mode"] = "ts"
+        calc["temperature"] = [int(self.tmin), int(self.tmax)]
+        calc["reference_phase"] = 'liquid'
+        calculations["calculations"].append(calc)
+
+        outfile = f'{self.calc.create_identifier()}.{self.attempts}.yaml'
+        with open(outfile, "w") as fout:
+            yaml.safe_dump(calculations, fout)
+
+        #now read in again, which would allow for checking and so on
+        #one could do this smartly, and simply create from here.
+        self.calculations = read_inputfile(outfile)
         
         
     def get_props(self, elem):
