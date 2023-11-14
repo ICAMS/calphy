@@ -26,6 +26,7 @@ from typing import Any, Callable, List, ClassVar, Optional, Union
 from pydantic import BaseModel, Field, ValidationError, model_validator, conlist, PrivateAttr
 from pydantic.functional_validators import AfterValidator, BeforeValidator
 from annotated_types import Len
+import mendeleev
 
 import yaml
 import numpy as np
@@ -127,6 +128,7 @@ class Calculation(BaseModel, title='Main input class'):
                                       Field(default=[])]
     _element_dict: dict = PrivateAttr(default={})
     kernel: Annotated[int, Field(default=0)]
+    inputfile: Annotated[str, Field(default='')]
 
     mode: Annotated[str, Field(default=None)]
     lattice: Annotated[str, Field(default="")]
@@ -235,14 +237,38 @@ class Calculation(BaseModel, title='Main input class'):
             raise ValueError('Unknown format for pressure')
 
         self._temperature_input = copy.copy(self.temperature)
-        if self.temperature is None:
-            self._temperature = None
+        #guess a melting temp of the system, this will be mostly ignored
+        #chem = mendeleev.element(self.element[0])
+        #self._melting_temperature = chem.melting_point
+        try:
+            chem = mendeleev.element(self.element[0])
+            self._melting_temperature = chem.melting_point
+        except:
+            self._melting_temperature = None
+
+        if self.temperature == 0:
+            #the only situation in which it can be None is if mode is melting temp
+            if len(self.element) > 1:
+                raise ValueError("Cannot guess start temperature for more than one species, please specify")
+            #now try to guess
+            if self._melting_temperature is None:
+                raise ValueError("Could not guess start temperature for more than one species, please specify")
+            self._temperature = self._melting_temperature
+            self._temperature_stop = self._melting_temperature
+            if self.temperature_high == 0:
+                self._temperature_high = 2*self._melting_temperature
+            else:
+                self._temperature_high = self.temperature_high
+
         elif np.shape(np.atleast_1d(self.temperature)) == (1,):
             temp = np.atleast_1d(self.temperature)
             self._temperature = temp[0]
             self._temperature_stop = temp[0]
-            if self._temperature_high is None:
+            if self.temperature_high == 0:
                 self._temperature_high = 2*temp[0]
+            else:
+                self._temperature_high = self.temperature_high
+        
         elif np.shape(self.temperature) == (2,):
             temp = self.temperature
             self._temperature = temp[0]
@@ -293,16 +319,16 @@ class Calculation(BaseModel, title='Main input class'):
         if self.lattice == "":
             #fetch from dict
             if len(self.element) > 1:
-                raise ValueError("MeltingTemperature can be used only with one element")
+                raise ValueError("Cannot create lattice for more than one element")
             if self.element[0] in element_dict.keys():
-                self.lattice = element_dict[self.element[0]]['structure']           
+                self.lattice = element_dict[self.element[0]]['structure']
                 self.lattice_constant = element_dict[self.element[0]]['lattice_constant']
             else:
                 raise ValueError("Could not find structure, please provide lattice and lattice_constant explicitely")                
             
             if self.repeat == [1,1,1]:
                 self.repeat = [5,5,5]
-                
+
             structure = _make_crystal(self.lattice.lower(),
                 lattice_constant=self.lattice_constant,
                 repetitions=self.repeat,
@@ -317,7 +343,7 @@ class Calculation(BaseModel, title='Main input class'):
                 self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
 
             self._natoms = structure.natoms
-            self._original_lattice = self.lattice
+            self._original_lattice = self.lattice.lower()
             write_structure_file = True
 
         elif self.lattice.lower() in structure_dict.keys():
@@ -347,7 +373,7 @@ class Calculation(BaseModel, title='Main input class'):
             #self._composition = concdict_frac
             #self._composition_counts = concdict_counts
             self._natoms = structure.natoms
-            self._original_lattice = self.lattice
+            self._original_lattice = self.lattice.lower()
             write_structure_file = True
             
         else:
@@ -369,7 +395,7 @@ class Calculation(BaseModel, title='Main input class'):
                 self._element_dict[t]['count'] = typecounts[c]
                 self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
             self._natoms = structure.natoms
-            self._original_lattice = self.lattice
+            self._original_lattice = os.path.basename(self.lattice)
             self.lattice = os.path.abspath(self.lattice)
 
         #if needed, write the file out
@@ -435,19 +461,14 @@ class Calculation(BaseModel, title='Main input class'):
         """
         #lattice processed
         prefix = self.mode
-        if prefix == 'melting_temperature':
-            ts = int(0)
-            ps = int(0)
-            l = 'tm'
+        ts = int(self._temperature)
+        if self._pressure is None:
+            ps = "None"
         else:
-            ts = int(self._temperature)
-            if self._pressure is None:
-                ps = "None"
-            else:
-                ps = "%d"%(int(self._pressure))
-            l = self._original_lattice
-            l = l.split('/')
-            l = l[-1]
+            ps = "%d"%(int(self._pressure))
+        l = self._original_lattice
+        l = l.split('/')
+        l = l[-1]
         
         if self.folder_prefix is None:
             identistring = "-".join([prefix, l.lower(), self.reference_phase, str(ts), str(ps)])
@@ -524,6 +545,7 @@ def _read_inputfile(file):
     calculations = []
     for count, calc in enumerate(data['calculations']):
         calc['kernel'] = count
+        calc['inputfile'] = file
         calculations.append(Calculation(**calc))
     return calculations
 
@@ -559,6 +581,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
             #calc['reference_phase'] = str(ci["reference_phase"]) if "reference_phase" in ci.keys() else 'none'
             #calc['lattice_constant'] = float(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else 0
             calc['kernel'] = cc
+            calc['inputfile'] = file
             calculations.append(calc)
 
         else:
@@ -608,6 +631,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
                 calc["pressure"] = _to_float(combo[1])
                 calc["temperature"] = _to_float(combo[2])
                 calc['kernel'] = cc
+                calc['inputfile'] = file
                 cc += 1
                 calculations.append(calc)
 

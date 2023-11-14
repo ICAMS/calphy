@@ -26,6 +26,7 @@ import numpy as np
 import os
 import time
 from mendeleev import element
+import yaml
 
 from calphy.input import read_inputfile
 #import calphy.queuekernel as cq
@@ -56,19 +57,16 @@ class MeltingTemp:
         self.calc = calculation
         self.simfolder = simfolder
         self.log_to_screen = log_to_screen
-        self.org_tm = 0
         self.dtemp = self.calc.melting_temperature.step
         self.maxattempts = self.calc.melting_temperature.attempts
         self.attempts = 0
-        self.exp_tm = self.calc._temperature
         self.calculations = []
 
-        self.get_props(self.calc.element[0])
         self.get_trange()
         self.arg = None
         
 
-        logfile = os.path.join(os.getcwd(), "calphy.log")
+        logfile = os.path.join(os.getcwd(), f'{self.calc.create_identifier()}.log')
         self.logger = ph.prepare_log(logfile, screen=log_to_screen)
     
     def prepare_calcs(self):
@@ -83,53 +81,39 @@ class MeltingTemp:
         -------
         None 
         """
-        self.calc.temperature = [int(self.tmin), int(self.tmax)]
-        self.calc._temperature = int(self.tmin)
-        self.calc._temperature_stop = int(self.tmax)
-        csol = copy.deepcopy(self.calc)
-        clqd = copy.deepcopy(self.calc)
-        
-        #csol.lattice = self.lattice.upper()
-        #clqd.lattice = 'LQD'
-        csol.reference_phase = 'solid'
-        clqd.reference_phase = 'liquid'
-        #csol.lattice_constant = self.lattice_constant
-        #clqd.lattice_constant = self.lattice_constant
-        csol._temperature_high = self.tmin
-        clqd._temperature_high = 1.5*self.tmax
-        csol.mode = 'ts'
-        clqd.mode = 'ts'
-        
-        #csol['directory'] = create_identifier(csol)
-        #clqd['directory'] = create_identifier(clqd)
-        self.calculations = [csol, clqd]
-        
-        
-    def get_props(self, elem):
-        """
-        Get properties from mendeleev
 
-        Parameters
-        ----------
-        elem : string
-            Chemical symbol of the element
-
-        Returns
-        -------
-        None
-        """
-        chem = element(elem)
-        #lattice = chem.lattice_structure
-        #self.lattice_constant = chem.lattice_constant
-        self.org_tm = chem.melting_point
+        #here, we need to prepare a new calculation
+        #protocol, read in, modify, write a output
+        #read input again
+        calculations = {"calculations": []}
         
-        if self.exp_tm == 0:
-            self.exp_tm = chem.melting_point
+        with open(self.calc.inputfile, 'r') as fin:
+            data = yaml.safe_load(fin)
+        calc = data["calculations"][int(self.calc.kernel)]
 
-        #if lattice == "HEX":
-        #    lattice = "HCP"
-        #self.lattice = lattice.lower()
+        calc["mode"] = "ts"
+        calc["temperature"] = [int(self.tmin), int(self.tmax)]
+        calc["reference_phase"] = 'solid'
+        calculations["calculations"].append(calc)
+
+        with open(self.calc.inputfile, 'r') as fin:
+            data = yaml.safe_load(fin)
+        calc = data["calculations"][int(self.calc.kernel)]
         
+        calc["mode"] = "ts"
+        calc["temperature"] = [int(self.tmin), int(self.tmax)]
+        calc["reference_phase"] = 'liquid'
+        calculations["calculations"].append(calc)
+
+        outfile = f'{self.calc.create_identifier()}.{self.attempts}.yaml'
+        with open(outfile, "w") as fout:
+            yaml.safe_dump(calculations, fout)
+
+        #now read in again, which would allow for checking and so on
+        #one could do this smartly, and simply create from here.
+        self.calculations = read_inputfile(outfile)
+        
+                
     def get_trange(self):
         """
         Get temperature range for calculations
@@ -142,10 +126,10 @@ class MeltingTemp:
         -------
         None
         """
-        tmin = self.exp_tm - self.dtemp
+        tmin = self.calc._temperature - self.dtemp
         if tmin < 0:
             tmin = 10
-        tmax = self.exp_tm + self.dtemp
+        tmax = self.calc._temperature + self.dtemp
         self.tmax = tmax
         self.tmin = tmin
         
@@ -332,8 +316,9 @@ class MeltingTemp:
         self.start_calculation()
         tm, tmerr = self.find_tm()
         self.logger.info('Found melting temperature = %.2f +/- %.2f K '%(tm, tmerr))
-        self.logger.info('Experimental melting temperature = %.2f K '%(self.org_tm))
-        self.logger.info('STATE: Tm = %.2f K +/- %.2f K, Exp. Tm = %.2f K'%(tm, tmerr, self.org_tm))
+        if self.calc._melting_temperature is not None:
+            self.logger.info('Experimental melting temperature = %.2f K '%(self.calc._melting_temperature))
+        self.logger.info('STATE: Tm = %.2f K +/- %.2f K'%(tm, tmerr))
 
 def routine_fe(job):
     """
