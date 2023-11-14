@@ -90,18 +90,18 @@ class MeltingTemp:
         #read input again
         calculations = {"calculations": []}
         
-        with open(self.calc["inputfile"], 'r') as fin:
+        with open(self.calc.inputfile, 'r') as fin:
             data = yaml.safe_load(fin)
-        calc = data["calculations"][int(self.calc["kernel"])]
+        calc = data["calculations"][int(self.calc.kernel)]
 
         calc["mode"] = "ts"
         calc["temperature"] = [int(self.tmin), int(self.tmax)]
         calc["reference_phase"] = 'solid'
         calculations["calculations"].append(calc)
 
-        with open(self.calc["inputfile"], 'r') as fin:
+        with open(self.calc.inputfile, 'r') as fin:
             data = yaml.safe_load(fin)
-        calc = data["calculations"][int(self.calc["kernel"])]
+        calc = data["calculations"][int(self.calc.kernel)]
         
         calc["mode"] = "ts"
         calc["temperature"] = [int(self.tmin), int(self.tmax)]
