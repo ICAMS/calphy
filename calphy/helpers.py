@@ -208,7 +208,7 @@ def set_hybrid_potential(lmp, options, eps, ghost_elements=0):
         [
             *pcraw[:2],
             *[
-                options._pair_style_with_options[0],
+                options._pair_style_names[0],
             ],
             *pcraw[2:],
         ]
@@ -239,7 +239,7 @@ def set_double_hybrid_potential(lmp, options, ghost_elements=0):
             [
                 *pcraw1[:2],
                 *[
-                    options.pair_style[0],
+                    options._pair_style_names[0],
                 ],
                 "1",
                 *pcraw1[2:],
@@ -249,7 +249,7 @@ def set_double_hybrid_potential(lmp, options, ghost_elements=0):
             [
                 *pcraw2[:2],
                 *[
-                    options.pair_style[1],
+                    options._pair_style_names[1],
                 ],
                 "2",
                 *pcraw2[2:],
@@ -260,7 +260,7 @@ def set_double_hybrid_potential(lmp, options, ghost_elements=0):
             [
                 *pcraw1[:2],
                 *[
-                    options.pair_style[0],
+                    options._pair_style_names[0],
                 ],
                 *pcraw1[2:],
             ]
@@ -269,7 +269,7 @@ def set_double_hybrid_potential(lmp, options, ghost_elements=0):
             [
                 *pcraw2[:2],
                 *[
-                    options.pair_style[1],
+                    options._pair_style_names[1],
                 ],
                 *pcraw2[2:],
             ]

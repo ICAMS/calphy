@@ -252,28 +252,23 @@ class Calculation(BaseModel, title='Main input class'):
             else:
                 self._temperature_high = self.temperature_high
 
-        ps_lst = []
-        ps_options_lst = []
+
+        #fix pair styles
+        #two main lists
+        # _pair_style_with_options, read in as it is from file
+        # _pair_style_names, just the names of the pair styles
+
+        _pair_style_names = []
+        
         for ps in self.pair_style:
             ps_split = ps.split()
-            ps_lst.append(ps_split[0])
-            if len(ps) > 1:
-                ps_options_lst.append(" ".join(ps_split[1:]))
-            else:
-                ps_options_lst.append("")
+            _pair_style_names.append(ps_split[0])
 
-        if len(self.pair_style) != len(ps_options_lst):
-            ps_options_lst = [ps_options_lst[0] for x in range(len(self.pair_style))]
-        
-        ps_options_lst = [" ".join([self.pair_style[i], ps_options_lst[i]]) for i in range(len(self.pair_style))]
-
-        #val = self.fix_paths(val)
-        self.pair_style = ps_lst
 
         #only set if its None
-        if self._pair_style_with_options is None:
-            self._pair_style_with_options = ps_options_lst
-
+        self._pair_style_with_options = self.pair_style
+        self._pair_style_names = _pair_style_names 
+               
         #now fix pair coeffs with path
         if self.fix_potential_path:
             self.pair_coeff = self.fix_paths(self.pair_coeff)
@@ -412,8 +407,11 @@ class Calculation(BaseModel, title='Main input class'):
             if len(pcraw) >= 3:
                 filename = pcraw[2]
                 filename = os.path.abspath(filename)
-                pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
-                fixedpots.append(pcnew)
+                if os.path.exists(filename):
+                    pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
+                    fixedpots.append(pcnew)
+                else:
+                    fixedpots.append(pot)
             else:
                 fixedpots.append(pot)
         return fixedpots
