@@ -26,6 +26,7 @@ from typing import Any, Callable, List, ClassVar, Optional, Union
 from pydantic import BaseModel, Field, ValidationError, model_validator, conlist, PrivateAttr
 from pydantic.functional_validators import AfterValidator, BeforeValidator
 from annotated_types import Len
+from mendeleev import element
 
 import yaml
 import numpy as np
@@ -236,14 +237,36 @@ class Calculation(BaseModel, title='Main input class'):
             raise ValueError('Unknown format for pressure')
 
         self._temperature_input = copy.copy(self.temperature)
+        #guess a melting temp of the system, this will be mostly ignored
+        try:
+            chem = element(self.element[0])
+            self._melting_temperature = chem.melting_point
+        except:
+            self._melting_temperature = None
+
         if self.temperature is None:
-            self._temperature = None
+            #the only situation in which it can be None is if mode is melting temp
+            if len(self.element) > 1:
+                raise ValueError("Cannot guess start temperature for more than one species, please specify")
+            #now try to guess
+            if self._melting_temperature is None:
+                raise ValueError("Could not guess start temperature for more than one species, please specify")
+            self._temperature = self._melting_temperature
+            self._temperature_stop = self._melting_temperature
+            if self.temperature_high == 0:
+                self._temperature_high = 2*self._melting_temperature
+            else:
+                self._temperature_high = self.temperature_high
+
         elif np.shape(np.atleast_1d(self.temperature)) == (1,):
             temp = np.atleast_1d(self.temperature)
             self._temperature = temp[0]
             self._temperature_stop = temp[0]
-            if self._temperature_high is None:
+            if self.temperature_high == 0:
                 self._temperature_high = 2*temp[0]
+            else:
+                self._temperature_high = self.temperature_high
+        
         elif np.shape(self.temperature) == (2,):
             temp = self.temperature
             self._temperature = temp[0]
