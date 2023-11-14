@@ -64,7 +64,6 @@ class MeltingTemp:
         self.exp_tm = self.calc._temperature
         self.calculations = []
 
-        self.get_props(self.calc.element[0])
         self.get_trange()
         self.arg = None
         
@@ -116,32 +115,7 @@ class MeltingTemp:
         #one could do this smartly, and simply create from here.
         self.calculations = read_inputfile(outfile)
         
-        
-    def get_props(self, elem):
-        """
-        Get properties from mendeleev
-
-        Parameters
-        ----------
-        elem : string
-            Chemical symbol of the element
-
-        Returns
-        -------
-        None
-        """
-        chem = element(elem)
-        #lattice = chem.lattice_structure
-        #self.lattice_constant = chem.lattice_constant
-        self.org_tm = chem.melting_point
-        
-        if self.exp_tm == 0:
-            self.exp_tm = chem.melting_point
-
-        #if lattice == "HEX":
-        #    lattice = "HCP"
-        #self.lattice = lattice.lower()
-        
+                
     def get_trange(self):
         """
         Get temperature range for calculations
