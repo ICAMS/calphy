@@ -302,7 +302,7 @@ class Calculation(BaseModel, title='Main input class'):
             
             if self.repeat == [1,1,1]:
                 self.repeat = [5,5,5]
-                
+
             structure = _make_crystal(self.lattice.lower(),
                 lattice_constant=self.lattice_constant,
                 repetitions=self.repeat,
@@ -524,6 +524,7 @@ def _read_inputfile(file):
     calculations = []
     for count, calc in enumerate(data['calculations']):
         calc['kernel'] = count
+        calc['inputfile'] = file
         calculations.append(Calculation(**calc))
     return calculations
 
@@ -559,6 +560,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
             #calc['reference_phase'] = str(ci["reference_phase"]) if "reference_phase" in ci.keys() else 'none'
             #calc['lattice_constant'] = float(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else 0
             calc['kernel'] = cc
+            calc['inputfile'] = file
             calculations.append(calc)
 
         else:
@@ -608,6 +610,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
                 calc["pressure"] = _to_float(combo[1])
                 calc["temperature"] = _to_float(combo[2])
                 calc['kernel'] = cc
+                calc['inputfile'] = file
                 cc += 1
                 calculations.append(calc)
 

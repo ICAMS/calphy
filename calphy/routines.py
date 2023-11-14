@@ -68,7 +68,7 @@ class MeltingTemp:
         self.arg = None
         
 
-        logfile = os.path.join(os.getcwd(), "calphy.log")
+        logfile = os.path.join(os.getcwd(), f'{self.calc.create_identifier()}.log')
         self.logger = ph.prepare_log(logfile, screen=log_to_screen)
     
     def prepare_calcs(self):
@@ -89,19 +89,13 @@ class MeltingTemp:
         csol = copy.deepcopy(self.calc)
         clqd = copy.deepcopy(self.calc)
         
-        #csol.lattice = self.lattice.upper()
-        #clqd.lattice = 'LQD'
         csol.reference_phase = 'solid'
         clqd.reference_phase = 'liquid'
-        #csol.lattice_constant = self.lattice_constant
-        #clqd.lattice_constant = self.lattice_constant
         csol._temperature_high = self.tmin
         clqd._temperature_high = 1.5*self.tmax
         csol.mode = 'ts'
         clqd.mode = 'ts'
         
-        #csol['directory'] = create_identifier(csol)
-        #clqd['directory'] = create_identifier(clqd)
         self.calculations = [csol, clqd]
         
         
