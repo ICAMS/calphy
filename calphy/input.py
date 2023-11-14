@@ -300,6 +300,9 @@ class Calculation(BaseModel, title='Main input class'):
             else:
                 raise ValueError("Could not find structure, please provide lattice and lattice_constant explicitely")                
             
+            if self.repeat == [1,1,1]:
+                self.repeat = [5,5,5]
+                
             structure = _make_crystal(self.lattice.lower(),
                 lattice_constant=self.lattice_constant,
                 repetitions=self.repeat,
