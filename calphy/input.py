@@ -241,7 +241,7 @@ class Calculation(BaseModel, title='Main input class'):
         #chem = mendeleev.element(self.element[0])
         #self._melting_temperature = chem.melting_point
         try:
-            chem = element(self.element[0])
+            chem = mendeleev.element(self.element[0])
             self._melting_temperature = chem.melting_point
         except:
             self._melting_temperature = None
