@@ -57,11 +57,9 @@ class MeltingTemp:
         self.calc = calculation
         self.simfolder = simfolder
         self.log_to_screen = log_to_screen
-        self.org_tm = 0
         self.dtemp = self.calc.melting_temperature.step
         self.maxattempts = self.calc.melting_temperature.attempts
         self.attempts = 0
-        self.exp_tm = self.calc._temperature
         self.calculations = []
 
         self.get_trange()
