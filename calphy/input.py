@@ -26,7 +26,7 @@ from typing import Any, Callable, List, ClassVar, Optional, Union
 from pydantic import BaseModel, Field, ValidationError, model_validator, conlist, PrivateAttr
 from pydantic.functional_validators import AfterValidator, BeforeValidator
 from annotated_types import Len
-from mendeleev import element
+import mendeleev
 
 import yaml
 import numpy as np
@@ -238,13 +238,15 @@ class Calculation(BaseModel, title='Main input class'):
 
         self._temperature_input = copy.copy(self.temperature)
         #guess a melting temp of the system, this will be mostly ignored
+        #chem = mendeleev.element(self.element[0])
+        #self._melting_temperature = chem.melting_point
         try:
             chem = element(self.element[0])
             self._melting_temperature = chem.melting_point
         except:
             self._melting_temperature = None
 
-        if self.temperature is None:
+        if self.temperature == 0:
             #the only situation in which it can be None is if mode is melting temp
             if len(self.element) > 1:
                 raise ValueError("Cannot guess start temperature for more than one species, please specify")
