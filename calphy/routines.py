@@ -128,10 +128,10 @@ class MeltingTemp:
         -------
         None
         """
-        tmin = self.exp_tm - self.dtemp
+        tmin = self.calc._temperature - self.dtemp
         if tmin < 0:
             tmin = 10
-        tmax = self.exp_tm + self.dtemp
+        tmax = self.calc._temperature + self.dtemp
         self.tmax = tmax
         self.tmin = tmin
         
@@ -318,8 +318,9 @@ class MeltingTemp:
         self.start_calculation()
         tm, tmerr = self.find_tm()
         self.logger.info('Found melting temperature = %.2f +/- %.2f K '%(tm, tmerr))
-        self.logger.info('Experimental melting temperature = %.2f K '%(self.org_tm))
-        self.logger.info('STATE: Tm = %.2f K +/- %.2f K, Exp. Tm = %.2f K'%(tm, tmerr, self.org_tm))
+        if self.calc._melting_temperature is not None:
+            self.logger.info('Experimental melting temperature = %.2f K '%(self.calc._melting_temperature))
+        self.logger.info('STATE: Tm = %.2f K +/- %.2f K'%(tm, tmerr))
 
 def routine_fe(job):
     """

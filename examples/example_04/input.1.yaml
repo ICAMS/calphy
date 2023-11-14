@@ -9,6 +9,7 @@ calculations:
   n_switching_steps: 15000
   pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
   pair_style: eam/alloy
+  equilibration_control: berendsen
   queue:
     commands:
     - conda activate calphy
