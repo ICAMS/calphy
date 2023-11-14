@@ -14,7 +14,3 @@ calculations:
     - conda activate calphy
     cores: 4
     scheduler: local
-  repeat:
-  - 5
-  - 5
-  - 5

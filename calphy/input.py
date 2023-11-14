@@ -127,6 +127,7 @@ class Calculation(BaseModel, title='Main input class'):
                                       Field(default=[])]
     _element_dict: dict = PrivateAttr(default={})
     kernel: Annotated[int, Field(default=0)]
+    inputfile: Annotated[str, Field(default='')]
 
     mode: Annotated[str, Field(default=None)]
     lattice: Annotated[str, Field(default="")]
