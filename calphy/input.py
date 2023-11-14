@@ -319,7 +319,8 @@ class Calculation(BaseModel, title='Main input class'):
             if len(self.element) > 1:
                 raise ValueError("Cannot create lattice for more than one element")
             if self.element[0] in element_dict.keys():
-                self.lattice = element_dict[self.element[0]]['structure']           
+                self.lattice = element_dict[self.element[0]]['structure']
+                self._original_lattice = self.lattice           
                 self.lattice_constant = element_dict[self.element[0]]['lattice_constant']
             else:
                 raise ValueError("Could not find structure, please provide lattice and lattice_constant explicitely")                
