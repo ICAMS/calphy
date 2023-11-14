@@ -461,22 +461,14 @@ class Calculation(BaseModel, title='Main input class'):
         """
         #lattice processed
         prefix = self.mode
-        if prefix == 'melting_temperature':
-            ts = int(0)
-            ps = int(0)
-            l = 'tm'
+        ts = int(self._temperature)
+        if self._pressure is None:
+            ps = "None"
         else:
-            ts = int(self._temperature)
-            if self._pressure is None:
-                ps = "None"
-            else:
-                ps = "%d"%(int(self._pressure))
-            if self._original_lattice in ["", None]:
-                l = self._original_lattice
-                l = l.split('/')
-                l = l[-1]
-            else:
-                l = self.lattice
+            ps = "%d"%(int(self._pressure))
+        l = self._original_lattice
+        l = l.split('/')
+        l = l[-1]
         
         if self.folder_prefix is None:
             identistring = "-".join([prefix, l.lower(), self.reference_phase, str(ts), str(ps)])
