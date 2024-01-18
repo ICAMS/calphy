@@ -22,9 +22,9 @@ calculations:
     scheduler: local
   reference_phase: solid
   repeat:
-  - 5
-  - 5
-  - 5
+  - 3
+  - 3
+  - 3
   temperature: 100.0
   tolerance:
-    pressure: 1
+    pressure: 100
