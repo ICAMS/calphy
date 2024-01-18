@@ -26,7 +26,6 @@ import yaml
 import copy
 import sys
 
-import pyscal.traj_process as ptp
 from calphy.integrators import *
 import calphy.lattice as pl
 import calphy.helpers as ph
