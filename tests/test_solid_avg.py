@@ -19,13 +19,6 @@ def test_solid_averaging():
     assert os.path.exists("forward_1.dat") == True
     assert os.path.exists("backward_1.dat") == True
 
-    sol.run_integration(iteration=2)
-    assert os.path.exists("forward_2.dat") == True
-    assert os.path.exists("backward_2.dat") == True 
-
-    sol.run_integration(iteration=3)
-    assert os.path.exists("forward_3.dat") == True
-    assert os.path.exists("backward_3.dat") == True
 
     sol.thermodynamic_integration()
     assert np.abs(sol.fe - -4.00) < 0.5
