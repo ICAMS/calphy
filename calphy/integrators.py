@@ -30,7 +30,7 @@ import warnings
 from calphy.splines import splines, sum_spline1, sum_spline25, sum_spline50, sum_spline75, sum_spline100
 from scipy.integrate import cumtrapz
 from tqdm import tqdm
-import pyscal.core as pc
+import pyscal3.core as pc
 from ase.io import read
 
 #Constants
@@ -356,12 +356,10 @@ def integrate_dcc(folder1, folder2, nsims=1, scale_energy=True,
     """
 
     #get number of atoms
-    sys = pc.System()
-    sys.read_inputfile(os.path.join(folder1, "traj.equilibration_stage1.dat"))
+    sys = pc.System(os.path.join(folder1, "traj.equilibration_stage1.dat"))
     natoms1 = int(sys.natoms)
 
-    sys = pc.System()
-    sys.read_inputfile(os.path.join(folder2, "traj.equilibration_stage1.dat"))
+    sys = pc.System(os.path.join(folder2, "traj.equilibration_stage1.dat"))
     natoms2 = int(sys.natoms)
 
     #get temp and pressure
