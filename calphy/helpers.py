@@ -31,7 +31,6 @@ from pylammpsmpi import LammpsLibrary
 from lammps import lammps
 from ase.io import read, write
 
-import calphy.lattice as pl
 import pyscal3.core as pc
 from pyscal3.trajectory import Trajectory
 

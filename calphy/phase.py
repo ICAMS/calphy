@@ -31,7 +31,6 @@ import copy
 
 import pyscal3.traj_process as ptp
 from calphy.integrators import *
-import calphy.lattice as pl
 import calphy.helpers as ph
 from calphy.errors import *
 

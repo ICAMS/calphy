@@ -25,7 +25,6 @@ import numpy as np
 import yaml
 
 from calphy.integrators import *
-import calphy.lattice as pl
 import calphy.helpers as ph
 import calphy.phase as cph
 
