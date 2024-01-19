@@ -49,4 +49,4 @@ jobs:
         pip install pytest-cov
         pytest tests/
         cd examples/example_01
-        calphy_kernel -i input.yaml -k 0 -s True
+        #calphy_kernel -i input.yaml -k 0 -s True

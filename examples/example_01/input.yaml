@@ -18,13 +18,13 @@ calculations:
   queue:
     commands:
     - conda activate calphy
-    cores: 1
+    cores: 4
     scheduler: local
   reference_phase: solid
   repeat:
-  - 3
-  - 3
-  - 3
+  - 5
+  - 5
+  - 5
   temperature: 100.0
   tolerance:
-    pressure: 100
+    pressure: 1
