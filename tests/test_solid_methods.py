@@ -1,6 +1,5 @@
 import pytest                                                                                                        
 from calphy.input import read_inputfile                                                                              
-import calphy.lattice as pl                                                                                          
 from calphy.solid import Solid
 from calphy.liquid import Liquid                                                                                       
 import os                                                                                                            
