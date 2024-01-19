@@ -428,9 +428,6 @@ class Calculation(BaseModel, title='Main input class'):
             self.lattice = structure_filename
         
         if self.mode == 'composition_scaling':
-            aseobj = read(self.lattice, format='lammps-data', style='atomic')
-            structure = System(aseobj, format='ase')
-
             #we also should check if actual contents are present
             input_chem_comp = {}
             for key, val in self._element_dict.items():
@@ -444,7 +441,7 @@ class Calculation(BaseModel, title='Main input class'):
 
             natoms1 = np.sum([val for key, val in self.composition_scaling._input_chemical_composition.items()])
             natoms2 = np.sum([val for key, val in self.composition_scaling.output_chemical_composition.items()])
-            if not (natoms1==natoms2==structure.natoms):
+            if not (natoms1==natoms2):
                 raise ValueError(f"Input and output number of atoms are not conserved! Input {self.dict_to_string(self.input_chemical_composition)}, output {self.dict_to_string(self.output_chemical_composition)}, total atoms in structure {structure.natoms}")
         return self
 
