@@ -351,16 +351,16 @@ class Calculation(BaseModel, title='Main input class'):
                 lattice_constant=self.lattice_constant,
                 repetitions=self.repeat,
                 element=self.element)
+            structure = structure.write.ase()
             
             #extract composition
-            typelist = structure.atoms.species
-            types, typecounts = np.unique(typelist, return_counts=True)
+            types, typecounts = np.unique(structure.get_chemical_symbols(), return_counts=True)
 
             for c, t in enumerate(types):
                 self._element_dict[t]['count'] = typecounts[c]
                 self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
 
-            self._natoms = structure.natoms
+            self._natoms = len(structure)
             self._original_lattice = self.lattice.lower()
             write_structure_file = True
 
