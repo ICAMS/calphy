@@ -58,6 +58,27 @@ def _check_equal(val):
         return False
     return True
 
+def to_list(v: Any) -> List[Any]:
+    return np.atleast_1d(v)
+
+def _to_str(val):
+    if np.isscalar(val):
+        return str(val)
+    else:
+        return [str(x) for x in val] 
+
+def _to_int(val):
+    if np.isscalar(val):
+        return int(val)
+    else:
+        return [int(x) for x in val] 
+
+def _to_float(val):
+    if np.isscalar(val):
+        return float(val)
+    else:
+        return [float(x) for x in val] 
+        
 class CompositionScaling(BaseModel, title='Composition scaling input options'):
     _input_chemical_composition: PrivateAttr(default=None)
     output_chemical_composition: Annotated[dict, Field(default=None, required=False)]
