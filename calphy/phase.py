@@ -669,35 +669,6 @@ class Phase:
         lmp.command("unfix            1")
         lmp.command("unfix            2")
 
-    def process_traj(self, filename, outfilename):
-        """
-        Process the out trajectory after averaging cycle and 
-        extract a configuration to run integration
-
-        Will be phased out...
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-        
-        """
-        trajfile = os.path.join(self.simfolder, filename)
-        files = ptp.split_trajectory(trajfile)
-        conf = os.path.join(self.simfolder, outfilename)
-
-        ph.reset_timestep(conf, os.path.join(self.simfolder, "current.data"), 
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode)
-
-        os.remove(trajfile)
-        for file in files:
-            os.remove(file)
-
-
     def submit_report(self, extra_dict=None):
         """
         Submit final report containing results
