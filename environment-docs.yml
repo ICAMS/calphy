@@ -9,7 +9,7 @@ dependencies:
   - openmpi 
   - mpi4py
   - pylammpsmpi >=0.0.9
-  - pyscal
+  - pyscal3
   - matplotlib
   - tqdm
   - uncertainties

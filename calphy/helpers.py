@@ -22,16 +22,18 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 """
 
 import os
-from pylammpsmpi import LammpsLibrary
+import shutil
+import warnings
 import logging
 import numpy as np
+
+from pylammpsmpi import LammpsLibrary
 from lammps import lammps
-import calphy.lattice as pl
-import shutil
-import pyscal.core as pc
 from ase.io import read, write
-from pyscal.trajectory import Trajectory
-import warnings
+
+import calphy.lattice as pl
+import pyscal3.core as pc
+from pyscal3.trajectory import Trajectory
 
 class LammpsScript:
     def __init__(self):
@@ -329,15 +331,15 @@ PYSCAL helper routines
 
 
 def find_solid_fraction(file):
-    sys = pc.System()
-    sys.read_inputfile(file)
+    sys = pc.System(file)
     try:
-        sys.find_neighbors(method="cutoff", cutoff=0)
+        sys.find.neighbors(method="cutoff", cutoff=0)
     except RuntimeError:
-        sys.find_neighbors(
+        sys.find.neighbors(
             method="cutoff", cutoff=5.0
         )  # Maybe add value as convergence param?
-    solids = sys.find_solids()
+    sys.find.solids()
+    solids = np.sum(sys.atoms.solid)
     return solids
 
 

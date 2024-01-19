@@ -3,10 +3,9 @@ calculations:
   lattice: FCC
   lattice_constant: 0.0
   mass: 63.546
+  #equilibration_control: berendsen
   md:
-    barostat_damping: 0.1
     n_small_steps: 1000
-    thermostat_damping: 0.1
     timestep: 0.001
   mode: ts
   n_equilibration_steps: 1000

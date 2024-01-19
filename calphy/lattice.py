@@ -25,7 +25,7 @@ from mendeleev import element
 import os
 from pylammpsmpi import LammpsLibrary
 import numpy as np
-import pyscal.core as pc
+import pyscal3.core as pc
 from ase.io import read
 
 """
@@ -88,8 +88,7 @@ def get_lattice(symbol, lat):
 def check_dump_file(infile):
     try:
         #now use pyscal to read it in,
-        sys = pc.System()
-        sys.read_inputfile(infile)
+        sys = pc.System(infile)
         atoms = sys.atoms
         natoms = len(atoms)
         types = [atom.type for atom in atoms]
@@ -122,8 +121,7 @@ def check_data_file(infile, script_mode=False):
             trajfile = read(infile, format='lammps-data', style='atomic')
             format = 'ase'
         #now use pyscal to read it in,
-        sys = pc.System()
-        sys.read_inputfile(trajfile, format=format)
+        sys = pc.System(trajfile, format=format)
         atoms = sys.atoms
         types = [atom.type for atom in atoms]
         xx, xxcounts = np.unique(types, return_counts=True)

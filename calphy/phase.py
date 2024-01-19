@@ -29,7 +29,7 @@ import numpy as np
 import yaml
 import copy
 
-import pyscal.traj_process as ptp
+import pyscal3.traj_process as ptp
 from calphy.integrators import *
 import calphy.lattice as pl
 import calphy.helpers as ph
