@@ -213,7 +213,7 @@ def find_solid_fraction(file):
         sys.find.neighbors(
             method="cutoff", cutoff=5.0
         )  # Maybe add value as convergence param?
-    sys.find.solids()
+    sys.find.solids(cluster=False)
     solids = np.sum(sys.atoms.solid)
     return solids
 
