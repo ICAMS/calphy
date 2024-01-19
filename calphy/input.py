@@ -424,7 +424,7 @@ class Calculation(BaseModel, title='Main input class'):
         if write_structure_file:
             structure_filename = ".".join([self.create_identifier(), str(self.kernel), "data"])
             structure_filename = os.path.join(os.getcwd(), structure_filename)
-            structure.write.file(structure_filename, format='lammps-data')
+            write(structure_filename, structure, format='lammps-data')
             self.lattice = structure_filename
         
         if self.mode == 'composition_scaling':
