@@ -27,7 +27,6 @@ import copy
 import sys
 
 from calphy.integrators import *
-import calphy.lattice as pl
 import calphy.helpers as ph
 import calphy.phase as cph
 from calphy.errors import *

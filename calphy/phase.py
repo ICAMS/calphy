@@ -31,7 +31,6 @@ import copy
 
 import pyscal3.traj_process as ptp
 from calphy.integrators import *
-import calphy.lattice as pl
 import calphy.helpers as ph
 from calphy.errors import *
 
@@ -134,9 +133,6 @@ class Phase:
         self.l = self.calc.lattice
         self.alat = self.calc.lattice_constant
         self.vol = None
-        #self.concentration = self.calc._composition
-        #self.dumpfile = False
-        self.prepare_lattice()
 
         #other properties
         self.cores = self.calc.queue.cores
@@ -196,39 +192,6 @@ class Phase:
                 self._from_dict(org_dict[key], val)
             else:
                 org_dict[key] = val        
-
-    def prepare_lattice(self):
-        """
-        Prepare the lattice for the simulation
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        Calculates the lattic, lattice constant, number of atoms per unit cell
-        and concentration of the input system.
-        """
-        #l, alat, apc, conc, dumpfile = pl.prepare_lattice(self.calc)
-        #self.l = l
-        #self.alat = alat
-        #self.apc = apc
-        #self.concentration = self.calc.composition
-        #self.dumpfile = dumpfile
-        #self.logger.info("Lattice: %s with a=%f"%(self.l, self.alat))
-        #self.logger.info("%d atoms in the unit cell"%self.apc)
-        #self.logger.info("concentration:")
-        #self.logger.info(self.concentration)
-        #if self.l == "file":
-        #    if self.dumpfile:
-        #        self.logger.info("Input structure is read in from a LAMMPS dump file")
-        #    else:
-        #        self.logger.info("Input structure is read in from a LAMMPS data file")
                 
     def dump_current_snapshot(self, lmp, filename):
         """
@@ -668,35 +631,6 @@ class Phase:
 
         lmp.command("unfix            1")
         lmp.command("unfix            2")
-
-    def process_traj(self, filename, outfilename):
-        """
-        Process the out trajectory after averaging cycle and 
-        extract a configuration to run integration
-
-        Will be phased out...
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-        
-        """
-        trajfile = os.path.join(self.simfolder, filename)
-        files = ptp.split_trajectory(trajfile)
-        conf = os.path.join(self.simfolder, outfilename)
-
-        ph.reset_timestep(conf, os.path.join(self.simfolder, "current.data"), 
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode)
-
-        os.remove(trajfile)
-        for file in files:
-            os.remove(file)
-
 
     def submit_report(self, extra_dict=None):
         """

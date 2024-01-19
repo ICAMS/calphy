@@ -58,10 +58,27 @@ def _check_equal(val):
         return False
     return True
 
-
 def to_list(v: Any) -> List[Any]:
     return np.atleast_1d(v)
 
+def _to_str(val):
+    if np.isscalar(val):
+        return str(val)
+    else:
+        return [str(x) for x in val] 
+
+def _to_int(val):
+    if np.isscalar(val):
+        return int(val)
+    else:
+        return [int(x) for x in val] 
+
+def _to_float(val):
+    if np.isscalar(val):
+        return float(val)
+    else:
+        return [float(x) for x in val] 
+        
 class CompositionScaling(BaseModel, title='Composition scaling input options'):
     _input_chemical_composition: PrivateAttr(default=None)
     output_chemical_composition: Annotated[dict, Field(default=None, required=False)]
@@ -517,13 +534,6 @@ def load_job(filename):
     job = np.load(filename, allow_pickle=True).flatten()[0]
     return job
 
-def check_dict(indict, key, retval=None):
-    if key in indict.items():
-        return indict[key]
-    else:
-        return retval
-
-
 def read_inputfile(file):
     if not os.path.exists(file):
         raise FileNotFoundError(f'Input file {file} not found.')
@@ -646,22 +656,3 @@ def _convert_legacy_inputfile(file, return_calcs=False):
         with open(outfile, 'w') as fout:
             yaml.safe_dump(newdata, fout)
         return outfile
-
-
-def _to_str(val):
-    if np.isscalar(val):
-        return str(val)
-    else:
-        return [str(x) for x in val] 
-
-def _to_int(val):
-    if np.isscalar(val):
-        return int(val)
-    else:
-        return [int(x) for x in val] 
-
-def _to_float(val):
-    if np.isscalar(val):
-        return float(val)
-    else:
-        return [float(x) for x in val] 

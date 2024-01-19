@@ -443,6 +443,11 @@ def routine_composition_scaling(job):
     job.logger.info("Update pair coefficients")
     job.logger.info(f"pair coeff 1: {job.calc.pair_coeff[0]}")
     job.logger.info(f"pair coeff 2: {job.calc.pair_coeff[1]}")
+    job.calc._pair_style_names.append(job.calc._pair_style_names[0])
+    job.logger.info("Update pair styles")
+    job.logger.info(f"pair style 1: {job.calc._pair_style_names[0]}")
+    job.logger.info(f"pair style 2: {job.calc._pair_style_names[1]}")
+
     backup_element = job.calc.element.copy()
     job.calc.element = comp.pair_list_old
     #job.calc._ghost_element_count = len(comp.new_atomtype) - len()

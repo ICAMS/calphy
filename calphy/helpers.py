@@ -31,7 +31,6 @@ from pylammpsmpi import LammpsLibrary
 from lammps import lammps
 from ase.io import read, write
 
-import calphy.lattice as pl
 import pyscal3.core as pc
 from pyscal3.trajectory import Trajectory
 
@@ -154,45 +153,9 @@ def set_potential(lmp, options, ghost_elements=0):
 
     return lmp
 
-
-def read_dump(lmp, file, species=1):
-    # Read atoms positions, velocities and box parameters.
-    lmp.command("lattice          fcc 4.0")
-    lmp.command("region           box block 0 2 0 2 0 2")
-    lmp.command("create_box       %d box" % species)
-    lmp.command(
-        "read_dump        %s 0 x y z vx vy vz scaled no box yes add keep" % file
-    )
-    lmp.command("change_box       all triclinic")
-    return lmp
-
-
 def read_data(lmp, file):
     lmp.command(f"read_data {file}")
     return lmp
-
-
-def convert_to_data_file(inputfile, outputfile, ghost_elements=0):
-    atoms = read(inputfile, format="lammps-dump-text")
-    write(outputfile, atoms, format="lammps-data")
-
-    if ghost_elements > 0:
-        lines = []
-        with open(outputfile, "r") as fin:
-            for line in fin:
-                raw = line.strip().split()
-                if (len(raw) == 3) and (raw[2] == "types"):
-                    raw[0] = "%d" % ghost_elements
-                    raw.append("\n")
-                    rline = " ".join(raw)
-                    lines.append(rline)
-                else:
-                    lines.append(line)
-
-        with open(outputfile, "w") as fout:
-            for line in lines:
-                fout.write(line)
-
 
 def get_structures(file, species, index=None):
     traj = Trajectory(file)
@@ -201,94 +164,6 @@ def get_structures(file, species, index=None):
     else:
         aseobjs = traj[index].to_ase(species=species)
     return aseobjs
-
-
-def set_hybrid_potential(lmp, options, eps, ghost_elements=0):
-    pc = options.pair_coeff[0]
-    pcraw = pc.split()
-    pcnew = " ".join(
-        [
-            *pcraw[:2],
-            *[
-                options._pair_style_names[0],
-            ],
-            *pcraw[2:],
-        ]
-    )
-
-    lmp.command(
-        "pair_style       hybrid/overlay %s ufm 7.5"
-        % options._pair_style_with_options[0]
-    )
-    lmp.command("pair_coeff       %s" % pcnew)
-    lmp.command("pair_coeff       * * ufm %f 1.5" % eps)
-
-    lmp = set_mass(lmp, options, ghost_elements=ghost_elements)
-
-    return lmp
-
-
-def set_double_hybrid_potential(lmp, options, ghost_elements=0):
-
-    pc1 = options.pair_coeff[0]
-    pcraw1 = pc1.split()
-
-    pc2 = options.pair_coeff[1]
-    pcraw2 = pc2.split()
-
-    if options.pair_style[0] == options.pair_style[1]:
-        pcnew1 = " ".join(
-            [
-                *pcraw1[:2],
-                *[
-                    options._pair_style_names[0],
-                ],
-                "1",
-                *pcraw1[2:],
-            ]
-        )
-        pcnew2 = " ".join(
-            [
-                *pcraw2[:2],
-                *[
-                    options._pair_style_names[1],
-                ],
-                "2",
-                *pcraw2[2:],
-            ]
-        )
-    else:
-        pcnew1 = " ".join(
-            [
-                *pcraw1[:2],
-                *[
-                    options._pair_style_names[0],
-                ],
-                *pcraw1[2:],
-            ]
-        )
-        pcnew2 = " ".join(
-            [
-                *pcraw2[:2],
-                *[
-                    options._pair_style_names[1],
-                ],
-                *pcraw2[2:],
-            ]
-        )
-
-    lmp.command(
-        "pair_style       hybrid/overlay %s %s"
-        % (options._pair_style_with_options[0], options._pair_style_with_options[1])
-    )
-
-    lmp.command("pair_coeff       %s" % pcnew1)
-    lmp.command("pair_coeff       %s" % pcnew2)
-
-    lmp = set_mass(lmp, options, ghost_elements=ghost_elements)
-
-    return lmp
-
 
 def remap_box(lmp, x, y, z):
     lmp.command("run 0")
@@ -338,7 +213,7 @@ def find_solid_fraction(file):
         sys.find.neighbors(
             method="cutoff", cutoff=5.0
         )  # Maybe add value as convergence param?
-    sys.find.solids()
+    sys.find.solids(cluster=False)
     solids = np.sum(sys.atoms.solid)
     return solids
 
@@ -346,49 +221,6 @@ def find_solid_fraction(file):
 def write_data(lmp, file):
     lmp.command(f"write_data {file}")
     return lmp
-
-
-def reset_timestep(conf, file="current.data", init_commands=None):
-    lmp = create_object(
-        cores=1,
-        directory=os.path.dirname(file),
-        timestep=0,
-        cmdargs=None,
-        init_commands=init_commands,
-    )
-    lmp = read_data(lmp, file)
-    lmp = write_data(lmp, conf)
-    return lmp
-
-    # with open(file, "r") as f:
-    #    with open(conf, "w") as c:
-    #        zero = False
-    #        for l in f:
-    #            if zero:
-    #                c.write("0\n")
-    #                zero = False
-    #                continue
-    #            elif l.startswith("ITEM: TIMESTEP"):
-    #                zero = True
-    #            c.write(l)
-
-    # lmp = create_object(
-    #    cores=1,
-    #    directory = os.path.dirname(file),
-    #    timestep=0,
-    #    cmdargs=None,
-    # )
-    # lmp.command("dump              2 all custom 1 %s id type mass x y z vx vy vz"%(file))+
-    # lmp.command("reset_timestep     0")
-    # lmp.command("run               0")
-    # lmp.command("undump            2")
-
-
-"""
-NOrmal helper routines
----------------------------------------------------------------------
-"""
-
 
 def prepare_log(file, screen=False):
     logger = logging.getLogger(__name__)
