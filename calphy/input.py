@@ -329,6 +329,7 @@ class Calculation(BaseModel, title='Main input class'):
             self._element_dict[element]['mass'] = self.mass[count]
             self._element_dict[element]['count'] = 0
             self._element_dict[element]['composition'] = 0.0
+            self._element_dict[element]['atomic_number'] = mendeleev.element(element).atomic_number
 
         #generate temporary filename if needed
         write_structure_file = False
@@ -336,7 +337,7 @@ class Calculation(BaseModel, title='Main input class'):
         if self.lattice == "":
             #fetch from dict
             if len(self.element) > 1:
-                raise ValueError("Cannot create lattice for more than one element")
+                raise ValueError("Cannot create lattice for more than one element, provide a lammps-data file explicitly")
             if self.element[0] in element_dict.keys():
                 self.lattice = element_dict[self.element[0]]['structure']
                 self.lattice_constant = element_dict[self.element[0]]['lattice_constant']
@@ -364,6 +365,9 @@ class Calculation(BaseModel, title='Main input class'):
             write_structure_file = True
 
         elif self.lattice.lower() in structure_dict.keys():
+            if len(self.element) > 1:
+                raise ValueError("Cannot create lattice for more than one element, provide a lammps-data file explicitly")
+
             #this is a valid structure
             if self.lattice_constant == 0:
                 #we try try to get lattice_constant
@@ -398,20 +402,21 @@ class Calculation(BaseModel, title='Main input class'):
             if not os.path.exists(self.lattice):
                 raise ValueError(f'File {self.lattice} could not be found')
             if self.file_format == 'lammps-data':
-                aseobj = read(self.lattice, format='lammps-data', style='atomic')
-                structure = System(aseobj, format='ase')
+                #create atomic numbers for proper reading
+                Z_of_type = dict([(count+1, self._element_dict[element]['atomic_number']) for count, element in enumerate(self.element)])
+                structure = read(self.lattice, format='lammps-data', style='atomic', Z_of_type=Z_of_type)
+                #structure = System(aseobj, format='ase')
             else:
                 raise TypeError('Only lammps-data files are supported!')                
 
             #extract composition
-            typelist = structure.atoms.types
-            #convert to species
-            typelist = [self.element[x-1] for x in typelist]
-            types, typecounts = np.unique(typelist, return_counts=True)
+            #this is the types read in from the file
+            types, typecounts = np.unique(structure.get_chemical_symbols(), return_counts=True)
             for c, t in enumerate(types):
                 self._element_dict[t]['count'] = typecounts[c]
                 self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
-            self._natoms = structure.natoms
+            
+            self._natoms = len(structure)
             self._original_lattice = os.path.basename(self.lattice)
             self.lattice = os.path.abspath(self.lattice)
 
