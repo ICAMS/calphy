@@ -34,8 +34,8 @@ The gallery of examples below cover different ways in which calphy can be used t
 ```
 
 ```{grid-item-card} Calculation of specific heat of Cu
-:img-top: example05.png
-:link: examples/example_05/analysis
+:img-top: example12.png
+:link: examples/example_12/analysis
 :link-type: doc
 ```
 
