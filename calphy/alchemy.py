@@ -77,11 +77,13 @@ class Alchemy(cph.Phase):
         lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, 
             self.calc.md.cmdargs, self.calc.md.init_commands)
 
+        lmp.command(f'pair_style {self.calc._pair_style_with_options[0]}')
+
         #set up structure
         lmp = ph.create_structure(lmp, self.calc)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
 
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -143,6 +145,8 @@ class Alchemy(cph.Phase):
         # Adiabatic switching parameters.
         lmp.command("variable        li       equal   1.0")
         lmp.command("variable        lf       equal   0.0")
+
+        lmp.command(f'pair_style {self.calc._pair_style_with_options[0]}')
         
         #read dump file
         #conf = os.path.join(self.simfolder, "conf.equilibration.dump")
@@ -151,7 +155,7 @@ class Alchemy(cph.Phase):
 
         #set up hybrid potential
         #here we only need to set one potential
-        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
         #lmp = ph.set_double_hybrid_potential(lmp, self.options, self.calc._pressureair_style, self.calc._pressureair_coeff)
 
         #remap the box to get the correct pressure
