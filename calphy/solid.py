@@ -222,6 +222,7 @@ class Solid(cph.Phase):
             lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
         else:
             lmp.command("include %s"%self.calc.potential_file)
+        lmp = ph.set_mass(lmp, self.calc, ghost_elements==self.calc._ghost_element_count)
 
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -300,6 +301,7 @@ class Solid(cph.Phase):
             lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
         else:
             lmp.command("include %s"%self.calc.potential_file)
+        lmp = ph.set_mass(lmp, self.calc, ghost_elements==self.calc._ghost_element_count)
 
 
         #add some computes
@@ -382,6 +384,7 @@ class Solid(cph.Phase):
             lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
         else:
             lmp.command("include %s"%self.calc.potential_file)
+        lmp = ph.set_mass(lmp, self.calc, ghost_elements==self.calc._ghost_element_count)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
