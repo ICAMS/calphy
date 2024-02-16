@@ -737,7 +737,7 @@ class Phase:
 
         #set up potential
         lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements==self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -928,7 +928,7 @@ class Phase:
 
         #set up potential
         lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements==self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -1020,7 +1020,7 @@ class Phase:
 
         #set up potential
         lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements==self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
