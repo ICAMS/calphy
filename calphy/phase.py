@@ -918,13 +918,15 @@ class Phase:
         lmp.command("variable          li equal %f"%li)
         lmp.command("variable          lf equal %f"%lf)
 
+        lmp.command(f'pair_style {self.calc._pair_style_with_options[0]}')
+
         #read in conf
         #conf = os.path.join(self.simfolder, "conf.equilibration.dump")
         conf = os.path.join(self.simfolder, "conf.equilibration.data")
         lmp = ph.read_data(lmp, conf)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -1007,13 +1009,15 @@ class Phase:
         lmp.command("variable          p0 equal %f"%p0)
         lmp.command("variable          pf equal %f"%pf)
 
+        lmp.command(f'pair_style {self.calc._pair_style_with_options[0]}')
+
         #read in conf
         #conf = os.path.join(self.simfolder, "conf.dump")
         conf = os.path.join(self.simfolder, "conf.equilibration.data")
         lmp = ph.read_data(lmp, conf)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
