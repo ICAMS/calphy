@@ -113,11 +113,13 @@ class Liquid(cph.Phase):
         lmp = ph.create_object(self.cores, self.simfolder, self.calc.md.timestep, 
             self.calc.md.cmdargs, self.calc.md.init_commands)
 
+        lmp.command(f'pair_style {self.calc._pair_style_with_options[0]}')
+
         #set up structure
         lmp = ph.create_structure(lmp, self.calc)
 
         #set up potential
-        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
 
         #Melt regime for the liquid
         lmp.velocity("all create", self.calc._temperature_high, np.random.randint(1, 10000))
@@ -175,6 +177,9 @@ class Liquid(cph.Phase):
         lmp.command("variable        li       equal   1.0")
         lmp.command("variable        lf       equal   0.0")
 
+
+        lmp.command(f'pair_style {self.calc._pair_style_with_options[0]}')
+
         #read in the conf file
         #conf = os.path.join(self.simfolder, "conf.equilibration.dump")
         conf = os.path.join(self.simfolder, "conf.equilibration.data")
@@ -182,7 +187,7 @@ class Liquid(cph.Phase):
 
         #set hybrid ufm and normal potential
         #lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
-        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
