@@ -211,14 +211,18 @@ class Solid(cph.Phase):
             init_commands=self.calc.md.init_commands,
             script_mode=self.calc.script_mode)
 
+        #set up potential
+        if self.calc.potential_file is None:
+            lmp.command(f'pair_style {self.calc._pair_style_with_options[0]}')
+
         #set up structure
         lmp = ph.create_structure(lmp, self.calc)
 
-        #set up potential
         if self.calc.potential_file is None:
-            lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+            lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
         else:
             lmp.command("include %s"%self.calc.potential_file)
+        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -286,14 +290,19 @@ class Solid(cph.Phase):
             init_commands=self.calc.md.init_commands,
             script_mode=self.calc.script_mode)
 
+        #set up potential
+        if self.calc.potential_file is None:
+            lmp.command(f'pair_style {self.calc._pair_style_with_options[0]}')
+
         #set up structure
         lmp = ph.create_structure(lmp, self.calc, species=self.calc.n_elements+self.calc._ghost_element_count)
 
-        #set up potential
         if self.calc.potential_file is None:
-            lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+            lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
         else:
             lmp.command("include %s"%self.calc.potential_file)
+        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+
 
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -362,16 +371,20 @@ class Solid(cph.Phase):
             init_commands=self.calc.md.init_commands,
             script_mode=self.calc.script_mode)
 
+        #set up potential
+        if self.calc.potential_file is None:
+            lmp.command(f'pair_style {self.calc._pair_style_with_options[0]}')
+        
         #read in the conf file
         #conf = os.path.join(self.simfolder, "conf.equilibration.dump")
         conf = os.path.join(self.simfolder, "conf.equilibration.data")
         lmp = ph.read_data(lmp, conf)
 
-        #set up potential
         if self.calc.potential_file is None:
-            lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+            lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
         else:
             lmp.command("include %s"%self.calc.potential_file)
+        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
