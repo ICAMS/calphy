@@ -33,6 +33,12 @@ The gallery of examples below cover different ways in which calphy can be used t
 :link-type: doc
 ```
 
+```{grid-item-card} Calculation of specific heat of Cu
+:img-top: example12.png
+:link: examples/example_12/analysis
+:link-type: doc
+```
+
 ```{grid-item-card} Running calphy from jupyter notebooks
 :img-top: example06.jpg
 :link: examples/example_06/analysis
