@@ -56,11 +56,6 @@ class Phase:
         logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile, screen=log_to_screen)
 
-        self.logger.info("---------------input file----------------")
-        self.logger.info("commented out as causes crash when we're expanding the T range after a fail run")
-       # self.logger.info(yaml.safe_dump(self.calc.to_dict()))
-        self.logger.info("------------end of input file------------")
-
         if self.calc._pressure is None:
             pressure_string = "None"
         else:
@@ -737,7 +732,7 @@ class Phase:
 
         #set up potential
         lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -826,7 +821,7 @@ class Phase:
             else:
                 self.check_if_solidfied(lmp, "traj.temp.dat")
 
-        lmp = ph.set_potential(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp = ph.set_potential(lmp, self.calc)
 
         #reverse scaling
         lmp.command("variable         flambda equal ramp(${li},${lf})")
@@ -928,7 +923,7 @@ class Phase:
 
         #set up potential
         lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -1020,7 +1015,7 @@ class Phase:
 
         #set up potential
         lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)

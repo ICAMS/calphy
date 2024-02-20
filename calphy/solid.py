@@ -109,9 +109,13 @@ class Solid(cph.Phase):
         k_std = []
         for i in range(self.calc.n_elements):
             quant = np.loadtxt(file, usecols=(i+1, ), unpack=True)[-ncount+1:]
-            quant = 3*kb*self.calc._temperature/quant
-            k_mean.append(np.round(np.mean(quant), decimals=2))
-            k_std.append(np.round(np.std(quant), decimals=2))
+            mean_quant = np.round(np.mean(quant), decimals=2)
+            std_quant = np.round(np.std(quant), decimals=2)
+            if mean_quant == 0:
+                mean_quant = 1.00
+            mean_quant = 3*kb*self.calc._temperature/mean_quant
+            k_mean.append(mean_quant)
+            k_std.append(std_quant)
         return k_mean, k_std
         
 
@@ -222,7 +226,7 @@ class Solid(cph.Phase):
             lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
         else:
             lmp.command("include %s"%self.calc.potential_file)
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc)
 
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -301,7 +305,7 @@ class Solid(cph.Phase):
             lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
         else:
             lmp.command("include %s"%self.calc.potential_file)
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc)
 
 
         #add some computes
@@ -384,7 +388,7 @@ class Solid(cph.Phase):
             lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
         else:
             lmp.command("include %s"%self.calc.potential_file)
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -419,7 +423,7 @@ class Solid(cph.Phase):
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU1      equal pe/atoms")
         for i in range(self.calc.n_elements):
-            lmp.command("variable          dU%d      equal f_ff%d/v_count%d"%(i+2, i+1, i+1))
+            lmp.command("variable          dU%d      equal f_ff%d"%(i+2, i+1))
         
         lmp.command("variable          lambda  equal f_ff1[1]")
 
@@ -443,6 +447,7 @@ class Solid(cph.Phase):
         str2 = []
         for i in range(self.calc.n_elements):
             str2.append("${dU%d}"%(i+2))
+
         str2.append("${lambda}\"")
         str2 = " ".join(str2)
         str3 = " screen no file forward_%d.dat"%iteration
@@ -468,6 +473,7 @@ class Solid(cph.Phase):
         str2 = []
         for i in range(self.calc.n_elements):
             str2.append("${dU%d}"%(i+2))
+
         str2.append("${lambda}\"")
         str2 = " ".join(str2)
         str3 = " screen no file backward_%d.dat"%iteration
@@ -510,13 +516,15 @@ class Solid(cph.Phase):
         Calculates the final work, energy dissipation and free energy by
         matching with Einstein crystal
         """
-        f1 = get_einstein_crystal_fe(self.calc._temperature, 
-            self.natoms, [val['mass'] for key, val in self.calc._element_dict.items()], 
-            self.vol, self.k, [val['composition'] for key, val in self.calc._element_dict.items()])
+        f1 = get_einstein_crystal_fe(
+            self.calc,  
+            self.vol, 
+            self.k)
+        
         w, q, qerr = find_w(self.simfolder, 
-            nelements=self.calc.n_elements, 
-            concentration=[val['composition'] for key, val in self.calc._element_dict.items()], nsims=self.calc.n_iterations, 
-            full=True, solid=True)
+            self.calc,
+            full=True, 
+            solid=True)
         
         self.fref = f1
         self.w = w

@@ -202,7 +202,6 @@ class Calculation(BaseModel, title='Main input class'):
 
     #add second level options; for example spring constants
     spring_constants: Annotated[List[float], Field(default = None)]
-    _ghost_element_count: int = PrivateAttr(default=0)
 
     #structure items
     _structure: Any = PrivateAttr(default=None)
@@ -329,6 +328,7 @@ class Calculation(BaseModel, title='Main input class'):
             self._element_dict[element]['mass'] = self.mass[count]
             self._element_dict[element]['count'] = 0
             self._element_dict[element]['composition'] = 0.0
+            self._element_dict[element]['atomic_number'] = mendeleev.element(element).atomic_number
 
         #generate temporary filename if needed
         write_structure_file = False
@@ -336,7 +336,7 @@ class Calculation(BaseModel, title='Main input class'):
         if self.lattice == "":
             #fetch from dict
             if len(self.element) > 1:
-                raise ValueError("Cannot create lattice for more than one element")
+                raise ValueError("Cannot create lattice for more than one element, provide a lammps-data file explicitly")
             if self.element[0] in element_dict.keys():
                 self.lattice = element_dict[self.element[0]]['structure']
                 self.lattice_constant = element_dict[self.element[0]]['lattice_constant']
@@ -350,20 +350,23 @@ class Calculation(BaseModel, title='Main input class'):
                 lattice_constant=self.lattice_constant,
                 repetitions=self.repeat,
                 element=self.element)
+            structure = structure.write.ase()
             
             #extract composition
-            typelist = structure.atoms.species
-            types, typecounts = np.unique(typelist, return_counts=True)
+            types, typecounts = np.unique(structure.get_chemical_symbols(), return_counts=True)
 
             for c, t in enumerate(types):
                 self._element_dict[t]['count'] = typecounts[c]
                 self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
 
-            self._natoms = structure.natoms
+            self._natoms = len(structure)
             self._original_lattice = self.lattice.lower()
             write_structure_file = True
 
         elif self.lattice.lower() in structure_dict.keys():
+            if len(self.element) > 1:
+                raise ValueError("Cannot create lattice for more than one element, provide a lammps-data file explicitly")
+
             #this is a valid structure
             if self.lattice_constant == 0:
                 #we try try to get lattice_constant
@@ -376,10 +379,10 @@ class Calculation(BaseModel, title='Main input class'):
                 lattice_constant=self.lattice_constant,
                 repetitions=self.repeat,
                 element=self.element)
+            structure = structure.write.ase()
             
             #extract composition
-            typelist = structure.atoms.species
-            types, typecounts = np.unique(typelist, return_counts=True)
+            types, typecounts = np.unique(structure.get_chemical_symbols(), return_counts=True)
 
             for c, t in enumerate(types):
                 self._element_dict[t]['count'] = typecounts[c]
@@ -389,7 +392,7 @@ class Calculation(BaseModel, title='Main input class'):
             #concdict_frac = {str(t): typecounts[c]/np.sum(typecounts) for c, t in enumerate(types)}
             #self._composition = concdict_frac
             #self._composition_counts = concdict_counts
-            self._natoms = structure.natoms
+            self._natoms = len(structure)
             self._original_lattice = self.lattice.lower()
             write_structure_file = True
             
@@ -398,20 +401,21 @@ class Calculation(BaseModel, title='Main input class'):
             if not os.path.exists(self.lattice):
                 raise ValueError(f'File {self.lattice} could not be found')
             if self.file_format == 'lammps-data':
-                aseobj = read(self.lattice, format='lammps-data', style='atomic')
-                structure = System(aseobj, format='ase')
+                #create atomic numbers for proper reading
+                Z_of_type = dict([(count+1, self._element_dict[element]['atomic_number']) for count, element in enumerate(self.element)])
+                structure = read(self.lattice, format='lammps-data', style='atomic', Z_of_type=Z_of_type)
+                #structure = System(aseobj, format='ase')
             else:
                 raise TypeError('Only lammps-data files are supported!')                
 
             #extract composition
-            typelist = structure.atoms.types
-            #convert to species
-            typelist = [self.element[x-1] for x in typelist]
-            types, typecounts = np.unique(typelist, return_counts=True)
+            #this is the types read in from the file
+            types, typecounts = np.unique(structure.get_chemical_symbols(), return_counts=True)
             for c, t in enumerate(types):
                 self._element_dict[t]['count'] = typecounts[c]
                 self._element_dict[t]['composition'] = typecounts[c]/np.sum(typecounts)
-            self._natoms = structure.natoms
+            
+            self._natoms = len(structure)
             self._original_lattice = os.path.basename(self.lattice)
             self.lattice = os.path.abspath(self.lattice)
 
@@ -419,13 +423,10 @@ class Calculation(BaseModel, title='Main input class'):
         if write_structure_file:
             structure_filename = ".".join([self.create_identifier(), str(self.kernel), "data"])
             structure_filename = os.path.join(os.getcwd(), structure_filename)
-            structure.write.file(structure_filename, format='lammps-data')
+            write(structure_filename, structure, format='lammps-data')
             self.lattice = structure_filename
         
         if self.mode == 'composition_scaling':
-            aseobj = read(self.lattice, format='lammps-data', style='atomic')
-            structure = System(aseobj, format='ase')
-
             #we also should check if actual contents are present
             input_chem_comp = {}
             for key, val in self._element_dict.items():
@@ -439,7 +440,7 @@ class Calculation(BaseModel, title='Main input class'):
 
             natoms1 = np.sum([val for key, val in self.composition_scaling._input_chemical_composition.items()])
             natoms2 = np.sum([val for key, val in self.composition_scaling.output_chemical_composition.items()])
-            if not (natoms1==natoms2==structure.natoms):
+            if not (natoms1==natoms2):
                 raise ValueError(f"Input and output number of atoms are not conserved! Input {self.dict_to_string(self.input_chemical_composition)}, output {self.dict_to_string(self.output_chemical_composition)}, total atoms in structure {structure.natoms}")
         return self
 

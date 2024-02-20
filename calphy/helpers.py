@@ -118,19 +118,13 @@ def create_structure(lmp, calc):
     return lmp
 
 
-def set_mass(lmp, options, ghost_elements=0):
-    count = 1
+def set_mass(lmp, options):
     for i in range(options.n_elements):
         lmp.command(f'mass {i+1} {options.mass[i]}')
-        count += 1
-
-    for i in range(ghost_elements):
-        lmp.command(f'mass {count+i} 1.00')
-
     return lmp
 
 
-def set_potential(lmp, options, ghost_elements=0):
+def set_potential(lmp, options):
     """
     Set the interatomic potential
 
@@ -149,7 +143,7 @@ def set_potential(lmp, options, ghost_elements=0):
     lmp.command(f'pair_style {options._pair_style_with_options[0]}')
     lmp.command(f'pair_coeff {options.pair_coeff[0]}')
 
-    lmp = set_mass(lmp, options, ghost_elements=ghost_elements)
+    lmp = set_mass(lmp, options)
 
     return lmp
 

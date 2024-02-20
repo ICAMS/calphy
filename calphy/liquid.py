@@ -120,7 +120,7 @@ class Liquid(cph.Phase):
 
         #set up potential
         lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc)
 
         #Melt regime for the liquid
         lmp.velocity("all create", self.calc._temperature_high, np.random.randint(1, 10000))
@@ -189,7 +189,7 @@ class Liquid(cph.Phase):
         #set hybrid ufm and normal potential
         #lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
         lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc)
 
         #remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -331,7 +331,8 @@ class Liquid(cph.Phase):
             self.rho, 50, 1.5)
 
         #Get ideal gas fe
-        f2 = get_ideal_gas_fe(self.calc._temperature, self.rho, 
+        f2 = get_ideal_gas_fe(self.calc._temperature, 
+            self.rho, 
             self.natoms, 
             [val['mass'] for key, val in self.calc._element_dict.items()], 
             [val['composition'] for key, val in self.calc._element_dict.items()])
