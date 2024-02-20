@@ -56,11 +56,6 @@ class Phase:
         logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile, screen=log_to_screen)
 
-        self.logger.info("---------------input file----------------")
-        self.logger.info("commented out as causes crash when we're expanding the T range after a fail run")
-       # self.logger.info(yaml.safe_dump(self.calc.to_dict()))
-        self.logger.info("------------end of input file------------")
-
         if self.calc._pressure is None:
             pressure_string = "None"
         else:
