@@ -423,7 +423,7 @@ class Solid(cph.Phase):
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU1      equal pe/atoms")
         for i in range(self.calc.n_elements):
-            lmp.command("variable          dU%d      equal f_ff%d/v_count%d"%(i+2, i+1, i+1))
+            lmp.command("variable          dU%d      equal f_ff%d"%(i+2, i+1))
         
         lmp.command("variable          lambda  equal f_ff1[1]")
 
@@ -447,6 +447,9 @@ class Solid(cph.Phase):
         str2 = []
         for i in range(self.calc.n_elements):
             str2.append("${dU%d}"%(i+2))
+        for i in range(self.calc.n_elements):
+            str2.append("${count%d}"%(i+1))
+
         str2.append("${lambda}\"")
         str2 = " ".join(str2)
         str3 = " screen no file forward_%d.dat"%iteration
@@ -472,6 +475,9 @@ class Solid(cph.Phase):
         str2 = []
         for i in range(self.calc.n_elements):
             str2.append("${dU%d}"%(i+2))
+        for i in range(self.calc.n_elements):
+            str2.append("${count%d}"%(i+1))
+
         str2.append("${lambda}\"")
         str2 = " ".join(str2)
         str3 = " screen no file backward_%d.dat"%iteration
