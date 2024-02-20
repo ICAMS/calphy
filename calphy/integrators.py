@@ -87,8 +87,9 @@ def integrate_path(calc,
         bdur = np.zeros(len(bdui))
 
         for i in range(calc.n_elements):
-            fdur += concentration[i]*fdata[i+1]/natoms[i]
-            bdur += concentration[i]*bdata[i+1]/natoms[i]
+            if natoms[i] > 0:
+                fdur += concentration[i]*fdata[i+1]/natoms[i]
+                bdur += concentration[i]*bdata[i+1]/natoms[i]
 
         flambda = fdata[calc.n_elements+1]
         blambda = bdata[calc.n_elements+1]
