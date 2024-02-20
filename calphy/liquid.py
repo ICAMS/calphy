@@ -331,7 +331,8 @@ class Liquid(cph.Phase):
             self.rho, 50, 1.5)
 
         #Get ideal gas fe
-        f2 = get_ideal_gas_fe(self.calc._temperature, self.rho, 
+        f2 = get_ideal_gas_fe(self.calc._temperature, 
+            self.rho, 
             self.natoms, 
             [val['mass'] for key, val in self.calc._element_dict.items()], 
             [val['composition'] for key, val in self.calc._element_dict.items()])
