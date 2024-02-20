@@ -84,7 +84,7 @@ class Alchemy(cph.Phase):
 
         #set up potential
         lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc)
 
         #add some computes
         lmp.command("variable         mvol equal vol")
@@ -157,7 +157,7 @@ class Alchemy(cph.Phase):
         #set up hybrid potential
         #here we only need to set one potential
         lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
-        lmp = ph.set_mass(lmp, self.calc, ghost_elements=self.calc._ghost_element_count)
+        lmp = ph.set_mass(lmp, self.calc)
 
         #lmp = ph.set_double_hybrid_potential(lmp, self.options, self.calc._pressureair_style, self.calc._pressureair_coeff)
 
