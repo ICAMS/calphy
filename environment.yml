@@ -9,8 +9,8 @@ dependencies:
   - lammps >=2023.03.28
   - openmpi
   - numpy
-  - mpi4py =3.1.4
-  - pylammpsmpi =0.2.3
+  - mpi4py
+  - pylammpsmpi =0.2.13
   - matplotlib
   - tqdm
   - uncertainties
