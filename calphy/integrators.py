@@ -515,9 +515,10 @@ def get_einstein_crystal_fe(
     F_cm = 0
 
     for count, om in enumerate(omega):
-        F_harm += concentration[count]*np.log((hbar*om)/(kb*calc._temperature))
-        if cm_correction:
-            F_cm += np.log((natoms*concentration[count]/vol)*(2*np.pi*kbJ*calc._temperature/(natoms*concentration[count]*k[count]))**1.5)
+        if concentration[count] > 0:
+            F_harm += concentration[count]*np.log((hbar*om)/(kb*calc._temperature))
+            if cm_correction:
+                F_cm += np.log((natoms*concentration[count]/vol)*(2*np.pi*kbJ*calc._temperature/(natoms*concentration[count]*k[count]))**1.5)
             #F_cm = 0
     F_harm = 3*kb*calc._temperature*F_harm
     F_cm = (kb*calc._temperature/natoms)*F_cm
