@@ -109,9 +109,13 @@ class Solid(cph.Phase):
         k_std = []
         for i in range(self.calc.n_elements):
             quant = np.loadtxt(file, usecols=(i+1, ), unpack=True)[-ncount+1:]
-            quant = 3*kb*self.calc._temperature/quant
-            k_mean.append(np.round(np.mean(quant), decimals=2))
-            k_std.append(np.round(np.std(quant), decimals=2))
+            mean_quant = np.round(np.mean(quant), decimals=2)
+            std_quant = np.round(np.std(quant), decimals=2)
+            if mean_quant == 0:
+                mean_quant = 1.00
+            mean_quant = 3*kb*self.calc._temperature/mean_quant
+            k_mean.append(mean_quant)
+            k_std.append(std_quant)
         return k_mean, k_std
         
 
