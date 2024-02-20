@@ -447,8 +447,6 @@ class Solid(cph.Phase):
         str2 = []
         for i in range(self.calc.n_elements):
             str2.append("${dU%d}"%(i+2))
-        for i in range(self.calc.n_elements):
-            str2.append("${count%d}"%(i+1))
 
         str2.append("${lambda}\"")
         str2 = " ".join(str2)
@@ -475,8 +473,6 @@ class Solid(cph.Phase):
         str2 = []
         for i in range(self.calc.n_elements):
             str2.append("${dU%d}"%(i+2))
-        for i in range(self.calc.n_elements):
-            str2.append("${count%d}"%(i+1))
 
         str2.append("${lambda}\"")
         str2 = " ".join(str2)
@@ -520,13 +516,15 @@ class Solid(cph.Phase):
         Calculates the final work, energy dissipation and free energy by
         matching with Einstein crystal
         """
-        f1 = get_einstein_crystal_fe(self.calc._temperature, 
-            self.natoms, [val['mass'] for key, val in self.calc._element_dict.items()], 
-            self.vol, self.k, [val['composition'] for key, val in self.calc._element_dict.items()])
+        f1 = get_einstein_crystal_fe(
+            self.calc,  
+            self.vol, 
+            self.k)
+        
         w, q, qerr = find_w(self.simfolder, 
-            nelements=self.calc.n_elements, 
-            concentration=[val['composition'] for key, val in self.calc._element_dict.items()], nsims=self.calc.n_iterations, 
-            full=True, solid=True)
+            self.calc,
+            full=True, 
+            solid=True)
         
         self.fref = f1
         self.w = w

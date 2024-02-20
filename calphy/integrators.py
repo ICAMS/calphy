@@ -46,10 +46,12 @@ eV2J = const.eV
 #             TI PATH INTEGRATION ROUTINES
 #--------------------------------------------------------------------
 
-def integrate_path(fwdfilename, bkdfilename, 
-    nelements=1, concentration=[1,], 
-    usecols=(0, 1, 2), solid=True,
-    alchemy=False, composition_integration=False):
+def integrate_path(calc,
+    fwdfilename, 
+    bkdfilename,  
+    solid=True,
+    alchemy=False, 
+    composition_integration=False):
     """
     Get a filename with columns du and dlambda and integrate
 
@@ -72,23 +74,35 @@ def integrate_path(fwdfilename, bkdfilename,
     q : float
         heat dissipation during switching of system
     """
+    natoms = np.array([calc._element_dict[x]['count'] for x in calc.element])
+    concentration = np.array([calc._element_dict[x]['composition'] for x in calc.element])
+    fdata = np.loadtxt(fwdfilename, unpack=True, comments="#")
+    bdata = np.loadtxt(bkdfilename, unpack=True, comments="#")
+
     if solid:
-        fdui = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(0,))
-        bdui = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(0,))
+        fdui = fdata[0]
+        bdui = bdata[0]
 
         fdur = np.zeros(len(fdui))
         bdur = np.zeros(len(bdui))
 
-        for i in range(nelements):
-            fdur += concentration[i]*np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(i+1,))
-            bdur += concentration[i]*np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(i+1,))
+        for i in range(calc.n_elements):
+            fdur += concentration[i]*fdata[i+1]/natoms[i]
+            bdur += concentration[i]*bdata[i+1]/natoms[i]
 
-        flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=(nelements+1,))
-        blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=(nelements+1,))
+        flambda = fdata[calc.n_elements+1]
+        blambda = bdata[calc.n_elements+1]
 
     else:
-        fdui, fdur, flambda = np.loadtxt(fwdfilename, unpack=True, comments="#", usecols=usecols)
-        bdui, bdur, blambda = np.loadtxt(bkdfilename, unpack=True, comments="#", usecols=usecols)
+        fdui = fdata[0]
+        bdui = bdata[0]
+
+        fdur = fdata[1]
+        bdur = bdata[1]
+
+        flambda = fdata[2]
+        blambda = bdata[2]
+
 
     fdu = fdui - fdur
     bdu = bdui - bdur
@@ -106,11 +120,12 @@ def integrate_path(fwdfilename, bkdfilename,
     return w, q, flambda
 
 
-def find_w(mainfolder, nelements=1, 
-    concentration=[1,], nsims=5, 
-    full=False, usecols=(0,1,2), 
+def find_w(mainfolder,
+    calc, 
+    full=False, 
     solid=True,
-    alchemy=False, composition_integration=False):
+    alchemy=False, 
+    composition_integration=False):
     """
     Integrate the irreversible work and dissipation for independent simulations
 
@@ -142,15 +157,20 @@ def find_w(mainfolder, nelements=1,
     ws = []
     qs = []
 
-    for i in range(nsims):
+    for i in range(calc.n_iterations):
         fwdfilestring = 'forward_%d.dat' % (i+1)
         fwdfilename = os.path.join(mainfolder,fwdfilestring)
+        
         bkdfilestring = 'backward_%d.dat' % (i+1)
         bkdfilename = os.path.join(mainfolder,bkdfilestring)
-        w, q, flambda = integrate_path(fwdfilename, bkdfilename, 
-            nelements=nelements, concentration=concentration, 
-            usecols=usecols, solid=solid,
-            alchemy=alchemy, composition_integration=composition_integration)
+        
+        w, q, flambda = integrate_path(calc,
+            fwdfilename, 
+            bkdfilename, 
+            solid=solid,
+            alchemy=alchemy, 
+            composition_integration=composition_integration)
+        
         ws.append(w)
         qs.append(q)
     
@@ -444,7 +464,11 @@ def integrate_dcc(folder1, folder2, nsims=1, scale_energy=True,
 #             REF. STATE ROUTINES: SOLID
 #--------------------------------------------------------------------
 
-def get_einstein_crystal_fe(temp, natoms, mass, vol, k, concentration, cm_correction=True):
+def get_einstein_crystal_fe(
+    calc,
+    vol, 
+    k, 
+    cm_correction=True):
     """
     Get the free energy of einstein crystal
 
@@ -475,7 +499,10 @@ def get_einstein_crystal_fe(temp, natoms, mass, vol, k, concentration, cm_correc
 
     """
     #convert mass first for single particle in kg
-    mass = (np.array(mass)/Na)*1E-3
+    mass = np.array([calc._element_dict[x]['mass'] for x in calc.element])
+    mass = (mass/Na)*1E-3
+    natoms = np.sum([calc._element_dict[x]['count'] for x in calc.element])
+    concentration = np.array([calc._element_dict[x]['composition'] for x in calc.element])
 
     #convert k from ev/A2 to J/m2
     k = np.array(k)*(eV2J/1E-20)
