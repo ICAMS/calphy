@@ -81,7 +81,7 @@ def _to_float(val):
         
 class CompositionScaling(BaseModel, title='Composition scaling input options'):
     _input_chemical_composition: PrivateAttr(default=None)
-    output_chemical_composition: Annotated[dict, Field(default=None, required=False)]
+    output_chemical_composition: Annotated[dict, Field(default={}, required=False)]
     restrictions: Annotated[List[str], BeforeValidator(to_list),
                                             Field(default=[], required=False)]
 
@@ -95,8 +95,8 @@ class MD(BaseModel, title='MD specific input options'):
     n_cycles: Annotated[int, Field(default=100, gt=0)]
     thermostat_damping: Annotated[Union[float, conlist(float, min_length=2, max_length=2)], Field(default=0.1, gt=0)]
     barostat_damping: Annotated[Union[float, conlist(float, min_length=2, max_length=2)], Field(default=0.1, gt=0)]
-    cmdargs: Annotated[str, Field(default=None)]
-    init_commands: Annotated[str, Field(default=None)]
+    cmdargs: Annotated[Union[None, str], Field(default=None)]
+    init_commands: Annotated[Union[None, List[str]], Field(default=None)]
 
 
 class NoseHoover(BaseModel, title='Specific input options for Nose-Hoover thermostat'):
@@ -111,12 +111,12 @@ class Queue(BaseModel, title='Options for configuring queue'):
     scheduler: Annotated[str, Field(default='local')]
     cores: Annotated[int, Field(default=1, gt=0)]
     jobname: Annotated[str, Field(default='calphy')]
-    walltime: Annotated[str, Field(default=None)]
-    queuename: Annotated[str, Field(default=None)]
+    walltime: Annotated[Union[str, None], Field(default=None)]
+    queuename: Annotated[Union[str,None], Field(default=None)]
     memory: Annotated[str, Field(default="3GB")]
-    commands: Annotated[List[str], Field(default=None)]
-    options: Annotated[List[str], Field(default=None)]
-    modules: Annotated[List[str], Field(default=None)]
+    commands: Annotated[Union[List[str],None], Field(default=None)]
+    options: Annotated[Union[List[str],None], Field(default=None)]
+    modules: Annotated[Union[List[str],None], Field(default=None)]
 
 class Tolerance(BaseModel, title='Tolerance settings for convergence'):
     lattice_constant: Annotated[float, Field(default=0.0002, ge=0)]
@@ -126,7 +126,7 @@ class Tolerance(BaseModel, title='Tolerance settings for convergence'):
     pressure: Annotated[float, Field(default=0.5, ge=0)]
 
 class MeltingTemperature(BaseModel, title='Input options for melting temperature mode'):
-    guess: Annotated[float, Field(default=None, gt=0)]
+    guess: Annotated[Union[float, None], Field(default=None, gt=0)]
     step: Annotated[int, Field(default=200, ge=20)]
     attempts: Annotated[int, Field(default=5, ge=1)]
 
@@ -147,7 +147,7 @@ class Calculation(BaseModel, title='Main input class'):
     kernel: Annotated[int, Field(default=0)]
     inputfile: Annotated[str, Field(default='')]
 
-    mode: Annotated[str, Field(default=None)]
+    mode: Annotated[Union[str, None], Field(default=None)]
     lattice: Annotated[str, Field(default="")]
     file_format: Annotated[str, Field(default='lammps-data')]
     
@@ -172,13 +172,13 @@ class Calculation(BaseModel, title='Main input class'):
     
     melting_cycle: Annotated[ bool, Field(default=True)]
     
-    pair_style: Annotated[ List[str], BeforeValidator(to_list),
+    pair_style: Annotated[ Union[List[str], None], BeforeValidator(to_list),
                             Field(default=None)]
-    pair_coeff: Annotated[ List[str], BeforeValidator(to_list),
+    pair_coeff: Annotated[ Union[List[str], None], BeforeValidator(to_list),
                             Field(default=None)]
-    potential_file: Annotated[ str, Field(default=None)]
+    potential_file: Annotated[ Union[str,None], Field(default=None)]
     fix_potential_path: Annotated[bool, Field(default=True)]
-    _pair_style_with_options: float = PrivateAttr(default=None)
+    _pair_style_with_options: List[str] = PrivateAttr(default=None)
     
     
     reference_phase: Annotated[ str, Field(default = "")]
@@ -187,8 +187,8 @@ class Calculation(BaseModel, title='Main input class'):
                             Field(default=[1,1,1])]
     
     script_mode: Annotated[ bool, Field(default = False)]
-    lammps_executable: Annotated[ str, Field(default = None)]
-    mpi_executable: Annotated[ str, Field(default = None)]
+    lammps_executable: Annotated[ Union[str,None], Field(default = None)]
+    mpi_executable: Annotated[ Union[str,None], Field(default = None)]
     
     npt: Annotated[ bool, Field(default = True)]
     n_equilibration_steps: Annotated[ int, Field(default = 25000)]
@@ -197,11 +197,11 @@ class Calculation(BaseModel, title='Main input class'):
     _n_sweep_steps: int = PrivateAttr(default=50000)
     n_print_steps: Annotated[int, Field(default = 0)]
     n_iterations: Annotated[int, Field(default = 1)]
-    equilibration_control: Annotated[str, Field(default = None)]
-    folder_prefix: Annotated[str, Field(default = None)]
+    equilibration_control: Annotated[Union[str,None], Field(default = None)]
+    folder_prefix: Annotated[Union[str,None], Field(default = None)]
 
     #add second level options; for example spring constants
-    spring_constants: Annotated[List[float], Field(default = None)]
+    spring_constants: Annotated[Union[List[float],None], Field(default = None)]
 
     #structure items
     _structure: Any = PrivateAttr(default=None)
