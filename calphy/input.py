@@ -202,7 +202,6 @@ class Calculation(BaseModel, title='Main input class'):
 
     #add second level options; for example spring constants
     spring_constants: Annotated[List[float], Field(default = None)]
-    _ghost_element_count: int = PrivateAttr(default=0)
 
     #structure items
     _structure: Any = PrivateAttr(default=None)
