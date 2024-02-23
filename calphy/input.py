@@ -95,8 +95,8 @@ class MD(BaseModel, title='MD specific input options'):
     n_cycles: Annotated[int, Field(default=100, gt=0)]
     thermostat_damping: Annotated[Union[float, conlist(float, min_length=2, max_length=2)], Field(default=0.1, gt=0)]
     barostat_damping: Annotated[Union[float, conlist(float, min_length=2, max_length=2)], Field(default=0.1, gt=0)]
-    cmdargs: Annotated[Union[None, str], Field(default=None)]
-    init_commands: Annotated[Union[None, List[str]], Field(default=None)]
+    cmdargs: Annotated[str, Field(default="")]
+    init_commands: Annotated[List[], Field(default=[])]
 
 
 class NoseHoover(BaseModel, title='Specific input options for Nose-Hoover thermostat'):
@@ -111,12 +111,12 @@ class Queue(BaseModel, title='Options for configuring queue'):
     scheduler: Annotated[str, Field(default='local')]
     cores: Annotated[int, Field(default=1, gt=0)]
     jobname: Annotated[str, Field(default='calphy')]
-    walltime: Annotated[Union[str, None], Field(default=None)]
-    queuename: Annotated[Union[str,None], Field(default=None)]
+    walltime: Annotated[str, Field(default="23:59:00")]
+    queuename: Annotated[str, Field(default="")]
     memory: Annotated[str, Field(default="3GB")]
-    commands: Annotated[Union[List[str],None], Field(default=None)]
-    options: Annotated[Union[List[str],None], Field(default=None)]
-    modules: Annotated[Union[List[str],None], Field(default=None)]
+    commands: Annotated[List, Field(default=[])]
+    options: Annotated[List, Field(default=[])]
+    modules: Annotated[List, Field(default=[])]
 
 class Tolerance(BaseModel, title='Tolerance settings for convergence'):
     lattice_constant: Annotated[float, Field(default=0.0002, ge=0)]

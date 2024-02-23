@@ -32,7 +32,6 @@ class Local:
     def __init__(self, options, cores=1, directory=os.getcwd()):
         self.queueoptions = {"scheduler": "local",
                              "jobname": "tis",
-                             "walltime": None,
                              "queuename": None,
                              "memory": None,
                              "cores": cores,
@@ -92,7 +91,6 @@ class SLURM:
         self.queueoptions = {"scheduler": "slurm",
                              "jobname": "tis",
                              "walltime": "23:59:00",
-                             "queuename": "shorttime",
                              "memory": "3GB",
                              "cores": cores,
                              "hint": "nomultithread",
@@ -108,7 +106,8 @@ class SLURM:
         for (key, val) in options.items():
             if key in self.queueoptions.keys():
                 if val is not None:
-                    self.queueoptions[key] = val
+                    if val is not "":
+                        self.queueoptions[key] = val
         self.maincommand = ""
 
 
