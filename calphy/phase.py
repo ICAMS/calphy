@@ -28,6 +28,8 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 import numpy as np
 import yaml
 import copy
+import os
+import shutil
 
 import pyscal3.traj_process as ptp
 from calphy.integrators import *
@@ -50,6 +52,15 @@ class Phase:
     def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
 
         self.calc = copy.deepcopy(calculation)
+        
+        #serialise input
+        indict = {"calculations": [self.calc.dict()]}
+        with open(os.path.join(simfolder, 'input_file.yml'), 'w') as fout:
+            yaml.safe_dump(indict, fout)
+
+        #serialise input configuration
+        shutil.copy(self.calc.lattice, os.path.join(simfolder, 'input_configuration.data'))
+
         self.simfolder = simfolder
         self.log_to_screen = log_to_screen
         
