@@ -46,8 +46,8 @@ class LammpsScript:
             for line in self.script:
                 fout.write(f'{line}\n')
 
-def create_object(cores, directory, timestep, cmdargs=None, 
-    init_commands=None, script_mode=False):
+def create_object(cores, directory, timestep, cmdargs="", 
+    init_commands=(), script_mode=False):
     """
     Create LAMMPS object
 
@@ -69,6 +69,8 @@ def create_object(cores, directory, timestep, cmdargs=None,
     if script_mode:
         lmp = LammpsScript()
     else:
+        if cmdargs == "":
+            cmdargs = None
         lmp = LammpsLibrary(
             cores=cores, working_directory=directory, cmdargs=cmdargs
         )
@@ -79,7 +81,7 @@ def create_object(cores, directory, timestep, cmdargs=None,
     ["timestep", str(timestep)],
     ["box", "tilt large"]]
 
-    if init_commands is not None:
+    if len(init_commands) > 0:
         #we need to replace some initial commands
         for rc in init_commands:
             #split the command
