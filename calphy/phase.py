@@ -35,6 +35,7 @@ import pyscal3.traj_process as ptp
 from calphy.integrators import *
 import calphy.helpers as ph
 from calphy.errors import *
+from calphy.input import generate_metadata
 
 class Phase:
     """
@@ -55,11 +56,16 @@ class Phase:
         
         #serialise input
         indict = {"calculations": [self.calc.dict()]}
-        with open(os.path.join(simfolder, 'input_file.yml'), 'w') as fout:
+        with open(os.path.join(simfolder, 'input_file.yaml'), 'w') as fout:
             yaml.safe_dump(indict, fout)
 
         #serialise input configuration
         shutil.copy(self.calc.lattice, os.path.join(simfolder, 'input_configuration.data'))
+
+        #write simple metadata
+        with open(os.path.join(simfolder, 'metadata.yaml'), 'w') as fout:
+            yaml.safe_dump(generate_metadata(), fout)
+        
 
         self.simfolder = simfolder
         self.log_to_screen = log_to_screen

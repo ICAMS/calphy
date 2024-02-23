@@ -39,7 +39,7 @@ from pyscal3 import System
 from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
-
+from calphy import __version__ as calphy_version
 
 def read_report(folder):
     """
@@ -657,3 +657,20 @@ def _convert_legacy_inputfile(file, return_calcs=False):
         with open(outfile, 'w') as fout:
             yaml.safe_dump(newdata, fout)
         return outfile
+
+
+def generate_metadata():
+    metadata = {}
+    metadata["software"] = {}
+    metadata["software"]["name"] = "calphy"
+    metadata["software"]["doi"] = "10.5281/zenodo.10527452"
+    metadata["software"]["version"] = calphy_version
+    metadata["software"]["repository"] = "https://github.com/ICAMS/calphy"
+    metadata["software"]["webpage"] = "https://calphy.org/"
+
+    metadata["files"] = {}
+    metadata["files"]["input_file.yml"] = "input file"
+    metadata["files"]["report.yaml"] = "results after thermodynamic integration"
+    metadata["files"]["input_configuration.data"] = "input atomic configuration"
+
+    return metadata
