@@ -55,6 +55,7 @@ def create_job_from_inputfile(pr, inputfile, potential, kernel=None):
             pr.db.item_update({"ChemicalFormula": job.structure.get_chemical_formula()}, job._job_id)
 
             #collect output
+            job.input.mode = calc.mode
             job.status.collect = True
             job.collect_output()
 
