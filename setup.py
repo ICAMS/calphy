@@ -53,7 +53,7 @@ setup(
     packages=find_packages(include=['calphy', 'calphy.*']),
     test_suite='tests',
     url='https://github.com/ICAMS/calphy',
-    version='1.3.2',
+    version='1.3.3',
     zip_safe=False,
     entry_points={
         'console_scripts': [
