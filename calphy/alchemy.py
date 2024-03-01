@@ -314,9 +314,7 @@ class Alchemy(cph.Phase):
         Calculates the final work, energy dissipation; In alchemical mode, there is reference system,
         the calculated free energy is the same as the work.
         """
-        w, q, qerr = find_w(self.simfolder, nelements=self.calc.n_elements, 
-            concentration=[val['composition'] for key, val in self.calc._element_dict.items()], 
-            nsims=self.calc.n_iterations, 
+        w, q, qerr = find_w(self.simfolder, self.calc,
             full=True, solid=False, alchemy=True)
 
         self.w = w
@@ -324,9 +322,7 @@ class Alchemy(cph.Phase):
         self.fe = self.w
         
         if self.calc.mode == "composition_scaling":
-            w_arr, q_arr, qerr_arr, flambda_arr = find_w(self.simfolder, nelements=self.calc.n_elements, 
-                concentration=[val['composition'] for key, val in self.calc._element_dict.items()], 
-                nsims=self.calc.n_iterations, 
+            w_arr, q_arr, qerr_arr, flambda_arr = find_w(self.simfolder, self.calc,
                 full=True, solid=False, alchemy=True, composition_integration=True)
 
             #now we need to process the comp scaling
