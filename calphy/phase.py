@@ -238,7 +238,7 @@ class Phase:
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if (solids/lmp.natoms < self.calc.tolerance.solid_fraction):
             lmp.close()
-            raise MeltedError("System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting conv:\n solid_frac: 0")
+            raise MeltedError("System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting:\n tolerance.solid_fraction: 0")
 
     def check_if_solidfied(self, lmp, filename):
         """
