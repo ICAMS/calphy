@@ -50,7 +50,6 @@ def integrate_path(calc,
     fwdfilename, 
     bkdfilename,  
     solid=True,
-    alchemy=False, 
     composition_integration=False):
     """
     Get a filename with columns du and dlambda and integrate
@@ -125,7 +124,6 @@ def find_w(mainfolder,
     calc, 
     full=False, 
     solid=True,
-    alchemy=False, 
     composition_integration=False):
     """
     Integrate the irreversible work and dissipation for independent simulations
@@ -169,7 +167,6 @@ def find_w(mainfolder,
             fwdfilename, 
             bkdfilename, 
             solid=solid,
-            alchemy=alchemy, 
             composition_integration=composition_integration)
         
         ws.append(w)
