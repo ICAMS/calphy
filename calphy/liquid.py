@@ -323,10 +323,9 @@ class Liquid(cph.Phase):
         Calculates the final work, energy dissipation and free energy by
         matching with UFM model
         """
-        w, q, qerr = find_w(self.simfolder, nsims=self.calc.n_iterations, 
-            full=True, solid=False)  
-        
-        #TODO: Hardcoded UFM parameters - enable option to change          
+        w, q, qerr = find_w(self.simfolder, self.calc, full=True, solid=False)
+
+        #TODO: Hardcoded UFM parameters - enable option to change
         f1 = get_uhlenbeck_ford_fe(self.calc._temperature, 
             self.rho, 50, 1.5)
 
