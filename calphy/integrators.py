@@ -576,7 +576,8 @@ def get_ideal_gas_fe(temp, rho, natoms, mass, concentration):
 
     fe = 0
     for count, conc in enumerate(concentration):
-        fe += conc*(3*np.log(omega[count]) + np.log(rho) -1 + np.log(conc))
+        if concentration[count] > 0:
+            fe += conc*(3*np.log(omega[count]) + np.log(rho) -1 + np.log(conc))
 
     #return prefactor*(ta + tb + (1/(2*natoms))*np.log(2*np.pi*natoms))
     return prefactor*fe
