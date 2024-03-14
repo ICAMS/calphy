@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import warnings
 import itertools
+import math
 
 from calphy.integrators import kb
 
@@ -17,14 +18,24 @@ colors = ['#a6cee3','#1f78b4','#b2df8a',
 
 
 def _get_temp_arg(tarr, temp, threshold=1E-1):
+    if tarr is None:
+        return None
     arg = np.argsort(np.abs(tarr-temp))[0]
+
     th = np.abs(tarr-temp)[arg] 
     if th > threshold:
         arg = None
     return arg
 
 def _get_fe_at_args(arr, args):
-    fes = [arr[count][x] for count, x in enumerate(args)]
+    fes = []
+    for count, x in enumerate(args):
+        if x is not None:
+            if math.isnan(x):
+                print('nana')
+            fes.append(arr[count][int(x)])
+        else:
+            fes.append(None)
     return fes
 
 def _calculate_configurational_entropy(x, correction=0):
@@ -125,6 +136,7 @@ def get_phase_free_energy(df, phase, temp,
     To be added
     """
     df_phase = df.loc[df['phase']==phase]
+    #drop Nones
     df_phase = df_phase.sort_values(by="composition")
     df_phase = df_phase[(df_phase['composition'] >= composition_interval[0]) & (df_phase['composition'] <= composition_interval[1])]
     
@@ -177,7 +189,7 @@ def get_free_energy_mixing(dict_list, threshold=1E-3):
     End members are chosen automatically.
     """
     dict_list = np.atleast_1d(dict_list)
-    
+
     #we have to get min_comp from all possible values
     min_comp = np.min([np.min(d["composition"]) for d in dict_list])
     max_comp = np.max([np.max(d["composition"]) for d in dict_list])

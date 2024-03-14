@@ -69,6 +69,10 @@ def create_job_from_inputfile(pr, inputfile, potential, kernel=None):
                 job.to_hdf()
                 job.status.finished = True    
             except:
+                #delete job
+                pr.remove_job(basedir.replace('-', '_'))
                 print(f'parsing {basedir_path} failed, skipping')
         else:
             print(f'could not find {basedir_path}, skipping')
+
+
