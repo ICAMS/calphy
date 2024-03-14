@@ -4,6 +4,7 @@ from ase.io import read
 import numpy as np
 from tqdm.notebook import trange
 import os
+import re
 
 try:
     from pyiron_atomistics import Project
