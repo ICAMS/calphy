@@ -176,6 +176,8 @@ def get_free_energy_mixing(dict_list, threshold=1E-3):
     Get free energy of mixing by subtracting end member values.
     End members are chosen automatically.
     """
+    dict_list = np.atleast_1d(dict_list)
+    
     #we have to get min_comp from all possible values
     min_comp = np.min([np.min(d["composition"]) for d in dict_list])
     max_comp = np.max([np.max(d["composition"]) for d in dict_list])
