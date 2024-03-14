@@ -81,7 +81,7 @@ def create_job_from_inputfile(pr, inputfile, potential, kernel=None):
             print(f'could not find {basedir_path}, skipping')
 
 
-def get_energy_free(job):
+def get_free_energy(job):
     return job["output/energy_free"]
 
 def get_temperature(job):
