@@ -10,41 +10,35 @@ from calphy.integrators import kb
 from scipy.spatial import ConvexHull
 from scipy.interpolate import splrep, splev
 
-colors = ['#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a','#ffff99','#b15928']
+colors = ['#a6cee3','#1f78b4','#b2df8a',
+'#33a02c','#fb9a99','#e31a1c',
+'#fdbf6f','#ff7f00','#cab2d6',
+'#6a3d9a','#ffff99','#b15928']
 
-def get_free_energy_at(d, phase, comp, temp, threshold=1E-1):
-    """
-    Extract free energy at given temperature
-    """
-    tarr = np.array(d[phase]["%.2f"%comp]["temperature"])
+
+def _get_temp_arg(tarr, temp, threshold=1E-1):
     arg = np.argsort(np.abs(tarr-temp))[0]
     th = np.abs(tarr-temp)[arg] 
     if th > threshold:
-        val = None
-    else:
-        val = d[phase]["%.2f"%comp]["free_energy"][arg] 
-    return val
-    
-def calculate_configurational_entropy(x, correction=0):
-    """
-    Calculate configurational entropy
-    """
+        arg = None
+    return arg
+
+def _get_fe_at_args(arr, args):
+    fes = [arr[count][x] for count, x in enumerate(args)]
+    return fes
+
+def _calculate_configurational_entropy(x, correction=0):
     if correction == 0:
         s = np.array([(c*np.log(c) + (1-c)*np.log(1-c)) if 1 > c > 0 else 0 for c in x])
     else:
         arg = np.argsort(np.abs(x-correction))[0]
         left_side = x[:arg+1]
         right_side = x[arg:]
-        #print(len(left_side))
-        #print(left_side)
-        #print(len(right_side))
-        #print(right_side)
 
         if len(left_side)>0:
             left_side = left_side/left_side[-1]
             s_left = np.array([(c*np.log(c) + (1-c)*np.log(1-c)) if 1 > c > 0 else 0 for c in left_side])
-            
-        #correct to zero
+        
         if len(right_side)>0:
             right_side = right_side - right_side[0]
             right_side = right_side/right_side[-1]
@@ -56,81 +50,120 @@ def calculate_configurational_entropy(x, correction=0):
             return s_left
         else:
             return np.concatenate((s_left, s_right[1:]))
-        
-        
     return -s
 
-#def get_free_energy_splines(composition, free_energy, k=3):
-#    """
-#    Create splines for free energy, and return them
-#    """
-#    return splrep(comp, fes, k=3)
-
-def get_free_energy_fit(composition, free_energy, fit_order=5):
+def _get_free_energy_fit(composition, 
+                        free_energy, 
+                        fit_order=5,
+                        end_weight=3,
+                        end_indices=4):
     """
     Create splines for free energy, and return them
     """
     weights = np.ones_like(free_energy)
-    weights[0:4] = 3
-    weights[-4:] = 3
+    weights[0:end_indices] = end_weight
+    weights[-end_indices:] = end_weight
     fit = np.polyfit(composition, free_energy, fit_order, w=weights)
     return fit
 
-
-def get_phase_free_energy(data, phase, temp, 
+def get_phase_free_energy(df, phase, temp, 
+                          composition_interval=(0, 1),
                           ideal_configurational_entropy=False,
                           entropy_correction=0.0,
-                          composition_grid=10000,
                           fit_order=5,
-                          plot=False,
-                          composition_interval=(0, 1),
+                          composition_grid=10000,
                           composition_cutoff=None,
-                          reset_value=1):
+                          reset_value=1,
+                          plot=False):
     """
-    Extract free energy for given phase
+    Get the free energy of a phase as a function of composition.
+
+    Parameters
+    ----------
+    df: Pandas dataframe
+        Dataframe consisting of values from simulation. Should contain at least columns composition, phase, `free_energy` and `temperature`.
+        `energy_free` and `temperature` should be arrays of equal length, generally an output from reversible scaling calculation.
+
+    phase: str
+        phase for which calculation is to be done. Should be present in `df`.
+
+    temp: float
+        temperature at which the free energy curves are to be calculated.
+
+    composition_interval: tuple, optional
+        If provided, this composition interval is considered. Default (0, 1)
+
+    ideal_configuration_entropy: bool, optional\
+        If True, add the ideal configurational entropy. See Notes. Default False.
+
+    entropy_correction: float, optional.
+        The composition of the ordered phase. See Notes. Default None.
+
+    fit_order: int, optional
+        Order of the polynomial fit used for fitting free energy as a function of composition. Default 5.
+
+    composition_grid: int, optional
+        Number of composition points to be used for fitting. Default 10000.
+
+    composition_cutoff: float, optional
+        term for correcting incomplete data. If two consecutive composition values are separated by more than `composition_cutoff`,
+        it is reset to `reset_value`. Default None.
+
+    reset_value: float, optional
+        see above. Default 1.
+
+    plot: bool, optional
+        If True, plot the calculated free energy curves.
+
+    Returns
+    -------
+    result_dict: dict
+        contains keys: "phase", "temperature", "composition", "free_energy", and "entropy".
+
+    Notes
+    -----
+    To be added
     """
-    comporg = list(data[phase]["composition"])
-    fes = []
-    comp = []
+    df_phase = df.loc[df['phase']==phase]
+    df_phase = df_phase.sort_values(by="composition")
+    df_phase = df_phase[(df_phase['composition'] >= composition_interval[0]) & (df_phase['composition'] <= composition_interval[1])]
     
-    for c in comporg:
-        if (composition_interval[0] <= c <= composition_interval[1]):
-            f = get_free_energy_at(data, phase, float(c), temp)
-            if f is not None:
-                fes.append(f)
-                comp.append(c)
+    composition = df_phase['composition'].values
+    args = df_phase["temperature"].apply(_get_temp_arg, args=(temp,))
+    fes = _get_fe_at_args(df["free_energy"], args)
     
-    fes = np.array(fes)
-    comp = np.array(comp)
-    
+    #filter out None values
+    composition = np.array([composition[count] for count, x in enumerate(fes) if x is not None])
+    fes = np.array([x for x in fes if x is not None])
+
     if (len(fes)==0) or (fes is None):
         warnings.warn("Some temperatures could not be found!")
-    else:  
+    else:
         if ideal_configurational_entropy:
-            entropy_term = kb*temp*calculate_configurational_entropy(comp, correction=entropy_correction) 
+            entropy_term = kb*temp*_calculate_configurational_entropy(composition, 
+                                                                     correction=entropy_correction) 
             fes = fes - entropy_term
         else:
             entropy_term = []
 
-        fe_fit = get_free_energy_fit(comp, fes, fit_order=fit_order)
+        fe_fit = _get_free_energy_fit(composition, fes, fit_order=fit_order)
         compfine = np.linspace(np.min(comp), np.max(comp), composition_grid)
-
-        fe = np.polyval(fe_fit, compfine)
         
-        #fix missing values; assign +0.01 to all values which are not within vicinity
+        #now fit on the comp grid again
+        fe = np.polyval(fe_fit, compfine)
+
         if composition_cutoff is not None:
-            #so we go along composition, see if there are points with no adjacent comp values, ignore them
-            distances = [np.min(np.abs(c-comp)) for c in compfine]
+            distances = [np.min(np.abs(c-composition)) for c in compfine]
             filters = [x for x in range(len(distances)) if distances[x] > composition_cutoff]
             fe[filters] = reset_value
-            
+
         if plot:
-            plt.scatter(comp, fes, s=4, label=f'{phase}-calc.', color=colors[np.random.randint(len(colors))])
-            plt.plot(compfine, fe, label=f'{phase}-fit', color=colors[np.random.randint(len(colors))])
+            plt.scatter(comp, fes, s=4, label=f'{phase}-calc.', color="#e57373")
+            plt.plot(compfine, fe, label=f'{phase}-fit', color="#b71c1c")
             plt.xlabel("x")
             plt.ylabel("F (eV/atom)")
             plt.legend()
-            #plt.ylim(top=0.0)
+        
         return {"phase":phase, "temperature": temp, "composition": compfine, 
                 "free_energy": fe, "entropy": entropy_term}
     return None
@@ -139,6 +172,9 @@ def get_phase_free_energy(data, phase, temp,
 def get_free_energy_mixing(dict_list, threshold=1E-3):
     """
     Input is a list of dictionaries
+
+    Get free energy of mixing by subtracting end member values.
+    End members are chosen automatically.
     """
     #we have to get min_comp from all possible values
     min_comp = np.min([np.min(d["composition"]) for d in dict_list])
@@ -236,13 +272,17 @@ def get_tangent_type(dict_list, tangent, energy):
     return phase_str
             
     
-def get_common_tangents(dict_list, peak_cutoff=0.01, plot=False, 
+def get_common_tangents(dict_list, 
+                        peak_cutoff=0.01, 
+                        plot=False, 
                         remove_self_tangents_for=[],
                         color_dict=None):
     """
     Get common tangent constructions using convex hull method
     """
-    points = np.vstack([np.column_stack((d["composition"], d["free_energy_mix"])) for d in dict_list]) 
+    points = np.vstack([np.column_stack((d["composition"], 
+        d["free_energy_mix"])) for d in dict_list]) 
+    
     if color_dict is None:
         color_dict = create_color_list(dict_list) 
     
@@ -283,5 +323,28 @@ def get_common_tangents(dict_list, peak_cutoff=0.01, plot=False,
         for t, e in zip(tangents, energies):
             plt.plot(t, e, color="black", ls="dashed")
         plt.ylim(top=0.0)
-    return np.array(tangents), np.array(energies), np.array(tangent_colors), color_dict
+    return np.array(tangents), 
+            np.array(energies), 
+            np.array(tangent_colors), 
+            color_dict
+
+
+def plot_phase_diagram(tangents, temperature,
+    colors,
+    edgecolor="#37474f",
+    linewidth=1,
+    linestyle='-'):
+    
+    fig, ax = plt.subplots(edgecolor=edgecolor)
+
+    for count, x in enumerate(tangents):
+        for c, a in enumerate(x):
+            ax.plot(np.array(a), 
+                     [temperature[count], temperature[count]], 
+                     linestyle,
+                     lw=linewidth,
+                     c=colors[count][c],
+                     )
+    return fig
+
 
