@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import warnings
 import itertools
+import math
 
 from calphy.integrators import kb
 
@@ -17,14 +18,30 @@ colors = ['#a6cee3','#1f78b4','#b2df8a',
 
 
 def _get_temp_arg(tarr, temp, threshold=1E-1):
+    if tarr is None:
+        return None
     arg = np.argsort(np.abs(tarr-temp))[0]
+
     th = np.abs(tarr-temp)[arg] 
     if th > threshold:
         arg = None
     return arg
 
+def _is_val_ok(val):
+    if val is None:
+        return False
+    elif math.isnan(val):
+        return False
+    else:
+        return True
+
 def _get_fe_at_args(arr, args):
-    fes = [arr[count][x] for count, x in enumerate(args)]
+    fes = []
+    for count, x in enumerate(args):
+        if _is_val_ok(x):
+            fes.append(arr[count][int(x)])
+        else:
+            fes.append(None)
     return fes
 
 def _calculate_configurational_entropy(x, correction=0):
@@ -125,13 +142,15 @@ def get_phase_free_energy(df, phase, temp,
     To be added
     """
     df_phase = df.loc[df['phase']==phase]
+    #drop Nones
     df_phase = df_phase.sort_values(by="composition")
     df_phase = df_phase[(df_phase['composition'] >= composition_interval[0]) & (df_phase['composition'] <= composition_interval[1])]
     
     composition = df_phase['composition'].values
     args = df_phase["temperature"].apply(_get_temp_arg, args=(temp,))
-    fes = _get_fe_at_args(df["free_energy"], args)
+    fes = _get_fe_at_args(df_phase["free_energy"].values, args)
     
+    #print(fes)
     #filter out None values
     composition = np.array([composition[count] for count, x in enumerate(fes) if x is not None])
     fes = np.array([x for x in fes if x is not None])
@@ -147,7 +166,7 @@ def get_phase_free_energy(df, phase, temp,
             entropy_term = []
 
         fe_fit = _get_free_energy_fit(composition, fes, fit_order=fit_order)
-        compfine = np.linspace(np.min(comp), np.max(comp), composition_grid)
+        compfine = np.linspace(np.min(composition), np.max(composition), composition_grid)
         
         #now fit on the comp grid again
         fe = np.polyval(fe_fit, compfine)
@@ -158,7 +177,7 @@ def get_phase_free_energy(df, phase, temp,
             fe[filters] = reset_value
 
         if plot:
-            plt.scatter(comp, fes, s=4, label=f'{phase}-calc.', color="#e57373")
+            plt.scatter(composition, fes, s=4, label=f'{phase}-calc.', color="#e57373")
             plt.plot(compfine, fe, label=f'{phase}-fit', color="#b71c1c")
             plt.xlabel("x")
             plt.ylabel("F (eV/atom)")
@@ -176,6 +195,8 @@ def get_free_energy_mixing(dict_list, threshold=1E-3):
     Get free energy of mixing by subtracting end member values.
     End members are chosen automatically.
     """
+    dict_list = np.atleast_1d(dict_list)
+
     #we have to get min_comp from all possible values
     min_comp = np.min([np.min(d["composition"]) for d in dict_list])
     max_comp = np.max([np.max(d["composition"]) for d in dict_list])
