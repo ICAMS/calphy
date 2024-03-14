@@ -197,6 +197,8 @@ def get_free_energy_mixing(dict_list, threshold=1E-3):
     """
     dict_list = np.atleast_1d(dict_list)
 
+    dict_list = np.array([dct for dct in dict_list if dct is not None])
+
     #we have to get min_comp from all possible values
     min_comp = np.min([np.min(d["composition"]) for d in dict_list])
     max_comp = np.max([np.max(d["composition"]) for d in dict_list])
@@ -365,5 +367,4 @@ def plot_phase_diagram(tangents, temperature,
                      c=colors[count][c],
                      )
     return fig
-
 
