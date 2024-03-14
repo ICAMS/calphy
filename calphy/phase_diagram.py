@@ -27,12 +27,18 @@ def _get_temp_arg(tarr, temp, threshold=1E-1):
         arg = None
     return arg
 
+def _is_val_ok(val):
+    if val is None:
+        return False
+    elif math.isnan(val):
+        return False
+    else:
+        return True
+
 def _get_fe_at_args(arr, args):
     fes = []
     for count, x in enumerate(args):
-        if x is not None:
-            if math.isnan(x):
-                print('nana')
+        if _is_val_ok(x):
             fes.append(arr[count][int(x)])
         else:
             fes.append(None)
@@ -142,8 +148,9 @@ def get_phase_free_energy(df, phase, temp,
     
     composition = df_phase['composition'].values
     args = df_phase["temperature"].apply(_get_temp_arg, args=(temp,))
-    fes = _get_fe_at_args(df["free_energy"], args)
+    fes = _get_fe_at_args(df_phase["free_energy"].values, args)
     
+    #print(fes)
     #filter out None values
     composition = np.array([composition[count] for count, x in enumerate(fes) if x is not None])
     fes = np.array([x for x in fes if x is not None])
