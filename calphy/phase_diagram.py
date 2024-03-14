@@ -323,10 +323,8 @@ def get_common_tangents(dict_list,
         for t, e in zip(tangents, energies):
             plt.plot(t, e, color="black", ls="dashed")
         plt.ylim(top=0.0)
-    return np.array(tangents), 
-            np.array(energies), 
-            np.array(tangent_colors), 
-            color_dict
+    
+    return np.array(tangents), np.array(energies), np.array(tangent_colors), color_dict
 
 
 def plot_phase_diagram(tangents, temperature,
