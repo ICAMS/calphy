@@ -147,7 +147,7 @@ def get_phase_free_energy(df, phase, temp,
             entropy_term = []
 
         fe_fit = _get_free_energy_fit(composition, fes, fit_order=fit_order)
-        compfine = np.linspace(np.min(comp), np.max(comp), composition_grid)
+        compfine = np.linspace(np.min(composition), np.max(composition), composition_grid)
         
         #now fit on the comp grid again
         fe = np.polyval(fe_fit, compfine)
@@ -158,7 +158,7 @@ def get_phase_free_energy(df, phase, temp,
             fe[filters] = reset_value
 
         if plot:
-            plt.scatter(comp, fes, s=4, label=f'{phase}-calc.', color="#e57373")
+            plt.scatter(composition, fes, s=4, label=f'{phase}-calc.', color="#e57373")
             plt.plot(compfine, fe, label=f'{phase}-fit', color="#b71c1c")
             plt.xlabel("x")
             plt.ylabel("F (eV/atom)")
