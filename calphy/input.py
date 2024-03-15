@@ -40,7 +40,7 @@ from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
-__version__ = "1.3.6"
+__version__ = "1.3.7"
 
 def read_report(folder):
     """
