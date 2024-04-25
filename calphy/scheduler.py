@@ -106,7 +106,7 @@ class SLURM:
         for (key, val) in options.items():
             if key in self.queueoptions.keys():
                 if val is not None:
-                    if val is not "":
+                    if val != "":
                         self.queueoptions[key] = val
         self.maincommand = ""
 
