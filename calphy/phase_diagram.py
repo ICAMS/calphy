@@ -329,6 +329,7 @@ def get_common_tangents(dict_list,
     tangents = []
     energies = []    
     tangent_colors = []
+    phases = []
     
     for d in dist:
         t = [convex_x[sargs][d], convex_x[sargs][d+1]]
@@ -339,6 +340,7 @@ def get_common_tangents(dict_list,
             tangents.append(t)
             energies.append(e)
             tangent_colors.append(color_dict[phase_str])
+            phases.append(phase_str.split("-"))
     
     if plot:
         for d in dict_list:
@@ -347,7 +349,7 @@ def get_common_tangents(dict_list,
             plt.plot(t, e, color="black", ls="dashed")
         plt.ylim(top=0.0)
     
-    return np.array(tangents), np.array(energies), np.array(tangent_colors), color_dict
+    return np.array(tangents), np.array(energies), np.array(tangent_colors), color_dict, np.array(phases)
 
 
 def plot_phase_diagram(tangents, temperature,
