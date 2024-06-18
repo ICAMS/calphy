@@ -10,7 +10,7 @@ dependencies:
   - openmpi
   - numpy
   - mpi4py
-  - pylammpsmpi =0.2.13
+  - pylammpsmpi >=0.2.13,<=0.2.19
   - matplotlib
   - tqdm
   - uncertainties
