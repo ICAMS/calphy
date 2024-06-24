@@ -77,6 +77,7 @@ def _to_int(val):
 def _to_none(val):
     if val in ['none', 'None',]:
         return None 
+    return val
 
 def _to_float(val):
     if np.isscalar(val):
