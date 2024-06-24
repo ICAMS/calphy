@@ -622,6 +622,7 @@ class Phase:
         self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
         self.volatom = volatom
         self.vol = self.lx*self.ly*self.lz
+        self.rho = self.natoms/(self.lx*self.ly*self.lz)
         self.logger.info("finalized vol/atom %f at pressure %f"%(self.volatom, mean))
         self.logger.info("Avg box dimensions x: %f, y: %f, z:%f"%(self.lx, self.ly, self.lz))
 

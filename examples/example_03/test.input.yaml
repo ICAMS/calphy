@@ -1,8 +1,7 @@
 calculations:
 - element: Cu
-  lattice: fcc
-  lattice_constant: 3.61
-  melting_cycle: True
+  lattice: conf.lqd
+  melting_cycle: False
   mass: 63.546
   md:
     timestep: 0.001
@@ -12,7 +11,7 @@ calculations:
   n_switching_steps: 25000
   pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
   pair_style: eam/alloy
-  pressure: [200]
+  pressure: None
   npt: False
   queue:
     commands:
