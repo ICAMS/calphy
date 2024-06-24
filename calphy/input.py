@@ -72,7 +72,11 @@ def _to_int(val):
     if np.isscalar(val):
         return int(val)
     else:
-        return [int(x) for x in val] 
+        return [int(x) for x in val]
+
+def _to_none(val):
+    if val in ['none', 'None',]:
+        return None 
 
 def _to_float(val):
     if np.isscalar(val):
@@ -558,6 +562,8 @@ def _read_inputfile(file):
     for count, calc in enumerate(data['calculations']):
         calc['kernel'] = count
         calc['inputfile'] = file
+        if 'pressure' in calc.keys():
+            calc['pressure'] = _to_none(calc['pressure'])
         calculations.append(Calculation(**calc))
     return calculations
 

@@ -3,7 +3,6 @@ calculations:
   lattice: fcc
   lattice_constant: 3.61
   mass: 63.546
-  equilibration_control: berendsen
   md:
     timestep: 0.001
   mode: ts
@@ -12,14 +11,14 @@ calculations:
   n_switching_steps: 25000
   pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
   pair_style: eam/alloy
-  pressure: 0.0
+  pressure: None
   npt: False
   queue:
     commands:
     - conda activate calphy-dev
     cores: 4
     scheduler: local
-  reference_phase: solid
+  reference_phase: liquid
   repeat:
   - 5
   - 5
