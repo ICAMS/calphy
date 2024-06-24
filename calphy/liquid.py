@@ -58,10 +58,10 @@ class Liquid(cph.Phase):
         """
         """        
         melted = False
-        
+
         #this is the multiplier for thigh to try melting routines
         for thmult in np.arange(1.0, 2.0, 0.1):
-            
+
             trajfile = os.path.join(self.simfolder, "traj.melt")
             if os.path.exists(trajfile):
                 os.remove(trajfile)
@@ -69,10 +69,12 @@ class Liquid(cph.Phase):
             self.logger.info("Starting melting cycle with thigh temp %f, factor %f"%(self.calc._temperature_high, thmult))
             factor = (self.calc._temperature_high/self.calc._temperature)*thmult
             lmp.velocity("all create", self.calc._temperature*factor, np.random.randint(1, 10000))
-            self.fix_nose_hoover(lmp, temp_start_factor=factor, temp_end_factor=factor)
+            if self.calc._pressure is not None:
+                self.fix_nose_hoover(lmp, temp_start_factor=factor, temp_end_factor=factor)
             lmp.run(int(self.calc.md.n_small_steps))
-            self.unfix_nose_hoover(lmp)
-            
+            if self.calc._pressure is not None:
+                self.unfix_nose_hoover(lmp)
+
             self.dump_current_snapshot(lmp, "traj.melt")
 
             #we have to check if the structure melted
@@ -81,7 +83,7 @@ class Liquid(cph.Phase):
             if (solids/self.natoms < self.calc.tolerance.liquid_fraction):
                 melted = True
                 break
-        
+
         #if melting cycle is over and still not melted, raise error
         if not melted:
             lmp.close()
