@@ -1,0 +1,81 @@
+calculations:
+- berendsen:
+    barostat_damping: 100.0
+    thermostat_damping: 100.0
+  composition_scaling:
+    output_chemical_composition: {}
+    restrictions: []
+  element:
+  - Cu
+  equilibration_control: berendsen
+  file_format: lammps-data
+  fix_potential_path: true
+  folder_prefix: null
+  inputfile: test.input.yaml
+  kernel: 0
+  lammps_executable: null
+  lattice: /mnt/c/Users/menon/Documents/repos/projects-calphy/calphy/examples/example_03/ts-fcc-solid-1200-0.0.data
+  lattice_constant: 3.61
+  mass:
+  - 63.546
+  md:
+    barostat_damping: 0.1
+    cmdargs: ''
+    init_commands: []
+    n_cycles: 100
+    n_every_steps: 10
+    n_repeat_steps: 10
+    n_small_steps: 10000
+    thermostat_damping: 0.1
+    timestep: 0.001
+  melting_cycle: true
+  melting_temperature:
+    attempts: 5
+    guess: null
+    step: 200
+  mode: ts
+  mpi_executable: null
+  n_elements: 1
+  n_equilibration_steps: 10000
+  n_iterations: 1
+  n_print_steps: 0
+  n_switching_steps: 25000
+  nose_hoover:
+    barostat_damping: 0.1
+    thermostat_damping: 0.1
+  npt: false
+  pair_coeff:
+  - '* * /mnt/c/Users/menon/Documents/repos/projects-calphy/calphy/examples/potentials/Cu01.eam.alloy
+    Cu'
+  pair_style:
+  - eam/alloy
+  potential_file: null
+  pressure: 0.0
+  queue:
+    commands:
+    - conda activate calphy-dev
+    cores: 4
+    jobname: calphy
+    memory: 3GB
+    modules: []
+    options: []
+    queuename: ''
+    scheduler: local
+    walltime: '23:59:00'
+  reference_phase: solid
+  repeat:
+  - 5
+  - 5
+  - 5
+  script_mode: false
+  spring_constants: null
+  temperature:
+  - 1200.0
+  - 1400.0
+  temperature_high: 0.0
+  tolerance:
+    lattice_constant: 0.0002
+    liquid_fraction: 0.05
+    pressure: 0.5
+    solid_fraction: 0.7
+    spring_constant: 0.1

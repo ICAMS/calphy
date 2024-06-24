@@ -1,0 +1,64 @@
+calculations:
+- element: Mo
+  lattice: bcc
+  lattice_constant: 3.158
+  mass: 95.95
+  equilibration_control: berendsen
+  md:
+    timestep: 0.002
+    n_cycles: 2000
+  mode: ts
+  n_equilibration_steps: 10000
+  n_iterations: 1
+  n_switching_steps: 25000
+  pair_coeff: '* * mo.fs.eam.alloy Mo'
+  pair_style: eam/alloy
+  pressure: 0.0
+  queue:
+    commands:
+    - conda activate calphy2
+    cores: 4
+    scheduler: local
+  reference_phase: solid
+  repeat:
+  - 10
+  - 10
+  - 10
+  temperature:
+  - 2700.0
+  - 3100.0
+  tolerance:
+    pressure: 0.5
+
+- element: Mo
+  lattice: bcc
+  lattice_constant: 3.158
+  mass: 95.95
+  md:
+    barostat_damping: 0.1
+    thermostat_damping: 0.1
+    timestep: 0.002
+    n_cycles: 2000
+  mode: ts
+  n_equilibration_steps: 10000
+  n_iterations: 1
+  n_switching_steps: 25000
+  pair_coeff: '* * mo.fs.eam.alloy Mo'
+  pair_style: eam/alloy
+  pressure: 0.0
+  queue:
+    commands:
+    - conda activate calphy2
+    cores: 4
+    scheduler: local
+  reference_phase: liquid
+  repeat:
+  - 10
+  - 10
+  - 10
+  temperature:
+  - 2700.0
+  - 3100.0
+  tolerance:
+    pressure: 0.5
+
