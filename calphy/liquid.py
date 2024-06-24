@@ -56,7 +56,11 @@ class Liquid(cph.Phase):
 
     def melt_structure(self, lmp):
         """
-        """        
+        """
+        if self.calc._fix_lattice and self.calc.melting_cycle:
+            raise ValueError("Cannot fix lattice and melt structure (set to False) at the same time")
+            
+
         melted = False
         
         #this is the multiplier for thigh to try melting routines
