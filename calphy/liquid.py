@@ -56,7 +56,12 @@ class Liquid(cph.Phase):
 
     def melt_structure(self, lmp):
         """
-        """        
+        """
+        if self.calc._fix_lattice and self.calc.melting_cycle:
+            
+            raise ValueError("Cannot fix lattice and melt structure (set to False) at the same time")
+            
+
         melted = False
         
         #this is the multiplier for thigh to try melting routines
@@ -136,11 +141,14 @@ class Liquid(cph.Phase):
         if self.calc.melting_cycle:
             self.melt_structure(lmp)
 
-        #now assign correct temperature and equilibrate
-        self.run_zero_pressure_equilibration(lmp)
+        if not self.calc._fix_lattice:
+            #now assign correct temperature and equilibrate
+            self.run_zero_pressure_equilibration(lmp)
 
-        #converge pressure
-        self.run_pressure_convergence(lmp)
+            #converge pressure
+            self.run_pressure_convergence(lmp)
+        else:
+            self.run_constrained_pressure_convergence(lmp)
 
         #check melted error
         self.dump_current_snapshot(lmp, "traj.equilibration_stage1.dat")
