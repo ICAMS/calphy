@@ -28,7 +28,10 @@ import math
 import os
 import warnings
 from calphy.splines import splines, sum_spline1, sum_spline25, sum_spline50, sum_spline75, sum_spline100
-from scipy.integrate import cumtrapz
+try:
+    from scipy.integrate import cumtrapz
+except ImportError:
+    from scipy.integrate import cumulative_trapezoid as cumtrapz
 from tqdm import tqdm
 import pyscal3.core as pc
 from ase.io import read
