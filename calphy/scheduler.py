@@ -90,6 +90,7 @@ class SLURM:
         """
         self.queueoptions = {"scheduler": "slurm",
                              "jobname": "tis",
+                             "queuename": None,
                              "walltime": "23:59:00",
                              "memory": "3GB",
                              "cores": cores,
@@ -125,7 +126,8 @@ class SLURM:
             #write the main header options
             fout.write("#SBATCH --job-name=%s\n" %self.queueoptions["jobname"])
             fout.write("#SBATCH --time=%s\n"     %self.queueoptions["walltime"])
-            fout.write("#SBATCH --partition=%s\n"%self.queueoptions["queuename"])
+            if self.queueoptions["queuename"] is not None:
+                fout.write("#SBATCH --partition=%s\n"%self.queueoptions["queuename"])
             fout.write("#SBATCH --ntasks=%s\n"   %str(self.queueoptions["cores"]))
             fout.write("#SBATCH --mem-per-cpu=%s\n"%self.queueoptions["memory"])
             fout.write("#SBATCH --hint=%s\n"     %self.queueoptions["hint"])
