@@ -1,0 +1,71 @@
+BootStrap: library
+From: ubuntu:22.04
+
+%labels
+    Author: Sebastian Havens
+    Image for a calphy container
+%environment
+    export PATH=/scripts:$PATH
+    export OMP_NUM_THREADS=1
+    . /singularity-venv/bin/activate
+    source /singularity-venv/bin/activate 
+
+%post
+    # Update package lists and install necessary packages
+    export DEBIAN_FRONTEND=noninteractive
+    echo . /singularity-venv/bin/activate
+
+    apt-get update -y
+    apt-get install -y build-essential libopenmpi-dev libmpich-dev vim emacs htop \
+                       mpi-default-bin mpi-default-dev mpich libjpeg-dev libpng-dev git \
+                       fftw3 fftw3-dev software-properties-common
+
+    # Add repository and install Python 3.8
+    add-apt-repository ppa:deadsnakes/ppa
+    apt-get update -y
+    apt-get install -y python3.8-dev python3.8-venv
+   
+   # Setup Python virtual environment
+    python3.8 -m venv /singularity-venv
+    . /singularity-venv/bin/activate
+
+    # Install packages
+    pip install numpy==1.24.4 ase==3.23.0 mpi4py==3.1.5
+    pip install mendeleev==0.17.0 pylammpsmpi==0.2.16 pyscal==0.12 pyyaml==6.0.2 scipy==1.10.1 tqdm==4.66.2
+    pip install calphy
+
+        # Clone lammps source and make
+    git clone https://github.com/lammps/lammps.git --branch patch_2Aug2023_update3
+    cd /lammps/src/
+    sed -i '35s/.*/LMP_INC = -DLAMMPS_GZIP -DLAMMPS_JPEG -DLAMMPS_PNG -DLAMMPS_FFMPEG -DLAMMPS_EXCEPTIONS/' MAKE/MACHINES/Makefile.ubuntu
+    make yes-manybody
+    make yes-meam
+    make yes-EXTRA-FIX
+    make yes-EXTRA-PAIR
+    make -j 8 ubuntu mode=shlib
+    make install-python
+    cp liblammps_ubuntu.so  /singularity-venv/lib/python3.8/site-packages/lammps
+    cd ../../
+%runscript
+
+    echo "Input file: $1"
+    echo "Calculation starting"
+    calphy_kernel -i $1 -k 0
+    exec echo "Calculation finished"
+
+
+
+%help
+    This is a container for carrying out calphy calculations which perform free energy calculations.
+    The container is designed to run locally or on HPC machines.
+
+    The calphy calcualtion can be initiated via the container with the following command:
+    singularity exec --bind $PWD --pwd $PWD {location_of_.sif_image} calphy_kernel -i {input_file} -k 0
+    This line can be contained within a slurm script
+
+    The scheduler used in the calphy input file should be 'local'.
+    On HPC machines the singularity executable can usually be loaded via 'module load singularity' or it will already be within your
+    path.
+
+    In the calphy input file, the scheduler should be set to local.
+    The OpenMPI version on the host system must be at least 4.1.2, which will need to be loaded if you are using a HPC machine.
