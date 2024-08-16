@@ -148,7 +148,8 @@ class Calculation(BaseModel, title='Main input class'):
     berendsen: Optional[Berendsen] = Berendsen()
     queue: Optional[Queue] = Queue()
     tolerance: Optional[Tolerance] = Tolerance() 
-    melting_temperature: Optional[MeltingTemperature] = MeltingTemperature() 
+    melting_temperature: Optional[MeltingTemperature] = MeltingTemperature()
+    transformation_temperature: Optional[TransformationTemperature] = TransformationTemperature()
     element: Annotated[List[str], BeforeValidator(to_list),
                                       Field(default=[])]
     n_elements: Annotated[int, Field(default=0)]

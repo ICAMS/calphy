@@ -341,8 +341,8 @@ class TransformTemp:
         self.calc = calculation
         self.simfolder = simfolder
         self.log_to_screen = log_to_screen
-        self.dtemp = self.calc.melting_temperature.step
-        self.maxattempts = self.calc.melting_temperature.attempts
+        self.dtemp = self.calc.transformation_temperature.step
+        self.maxattempts = self.calc.transformation_temperature.attempts
         self.attempts = 0
         self.calculations = []
 
@@ -386,7 +386,7 @@ class TransformTemp:
         
         calc["mode"] = "ts"
         calc["temperature"] = [int(self.tmin), int(self.tmax)]
-        calc["reference_phase"] = 'liquid'
+        calc["reference_phase"] = 'solid'
         calculations["calculations"].append(calc)
 
         outfile = f'{self.calc.create_identifier()}.{self.attempts}.yaml'
