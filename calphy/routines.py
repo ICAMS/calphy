@@ -320,6 +320,273 @@ class MeltingTemp:
             self.logger.info('Experimental melting temperature = %.2f K '%(self.calc._melting_temperature))
         self.logger.info('STATE: Tm = %.2f K +/- %.2f K'%(tm, tmerr))
 
+
+class TransformTemp:
+    """
+    Class for automated solid phase transformation temperature calculation.
+
+    Parameters
+    ----------
+    options : dict
+        dict of input options
+    
+    kernel : int
+        the index of the calculation that should be run from
+        the list of calculations in the input file
+
+    simfolder : string
+        base folder for running calculations
+    """
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
+        self.calc = calculation
+        self.simfolder = simfolder
+        self.log_to_screen = log_to_screen
+        self.dtemp = self.calc.melting_temperature.step
+        self.maxattempts = self.calc.melting_temperature.attempts
+        self.attempts = 0
+        self.calculations = []
+
+        self.get_trange()
+        self.arg = None
+        
+
+        logfile = os.path.join(os.getcwd(), f'{self.calc.create_identifier()}.log')
+        self.logger = ph.prepare_log(logfile, screen=log_to_screen)
+    
+    def prepare_calcs(self):
+        """
+        Prepare calculations list from given object
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None 
+        """
+
+        #here, we need to prepare a new calculation
+        #protocol, read in, modify, write a output
+        #read input again
+        calculations = {"calculations": []}
+        
+        with open(self.calc.inputfile, 'r') as fin:
+            data = yaml.safe_load(fin)
+        calc = data["calculations"][int(self.calc.kernel)]
+
+        calc["mode"] = "ts"
+        calc["temperature"] = [int(self.tmin), int(self.tmax)]
+        calc["reference_phase"] = 'solid'
+        calculations["calculations"].append(calc)
+
+        with open(self.calc.inputfile, 'r') as fin:
+            data = yaml.safe_load(fin)
+        calc = data["calculations"][int(self.calc.kernel)]
+        
+        calc["mode"] = "ts"
+        calc["temperature"] = [int(self.tmin), int(self.tmax)]
+        calc["reference_phase"] = 'liquid'
+        calculations["calculations"].append(calc)
+
+        outfile = f'{self.calc.create_identifier()}.{self.attempts}.yaml'
+        with open(outfile, "w") as fout:
+            yaml.safe_dump(calculations, fout)
+
+        #now read in again, which would allow for checking and so on
+        #one could do this smartly, and simply create from here.
+        self.calculations = read_inputfile(outfile)
+        
+                
+    def get_trange(self):
+        """
+        Get temperature range for calculations
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        tmin = self.calc._temperature - self.dtemp
+        if tmin < 0:
+            tmin = 10
+        tmax = self.calc._temperature + self.dtemp
+        self.tmax = tmax
+        self.tmin = tmin
+        
+        
+    def run_jobs(self):
+        """
+        Run calculations
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+
+        self.prepare_calcs()
+
+        self.soljob = Solid(calculation=self.calculations[0], 
+            simfolder=self.calculations[0].create_folders())
+        self.lqdjob = Liquid(calculation=self.calculations[1], 
+            simfolder=self.calculations[1].create_folders())
+        
+        self.logger.info("Free energy of %s and %s phases will be calculated"%(self.soljob.calc.lattice, self.lqdjob.calc.lattice))
+        self.logger.info("Temperature range of %f-%f"%(self.tmin, self.tmax))
+        self.logger.info("STATE: Temperature range of %f-%f K"%(self.tmin, self.tmax))
+        self.logger.info('Starting Phase 1 fe calculation')
+        
+        self.soljob = routine_fe(self.soljob)
+        
+        self.logger.info('Starting Phase 1 reversible scaling run')
+        for i in range(self.soljob.calc.n_iterations): 
+            
+            self.soljob.reversible_scaling(iteration=(i+1))
+            
+            self.solres = self.soljob.integrate_reversible_scaling(scale_energy=True,
+                                           return_values=True)
+        
+        self.logger.info('Starting Phase 2 fe calculation')
+        self.lqdjob = routine_fe(self.lqdjob)
+
+        self.logger.info('Starting Phase 2 reversible scaling calculation')
+        for i in range(self.lqdjob.calc.n_iterations):
+            self.lqdjob.reversible_scaling(iteration=(i+1))
+
+        self.lqdres = self.lqdjob.integrate_reversible_scaling(scale_energy=True,
+                                           return_values=True)
+    
+    def start_calculation(self):
+        """
+        Start calculation
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+
+        for i in range(100):
+            returncode = self.run_jobs()
+        
+            if returncode == 3:
+                self.tmin = self.tmin + self.dtemp
+                self.tmax = self.tmax + self.dtemp
+
+            elif returncode == 2:
+                self.tmin = self.tmin - self.dtemp
+                if self.tmin < 0:
+                    self.tmin = 0
+                self.tmax = self.tmax - self.dtemp
+                
+            else:
+                return True
+            
+            self.attempts += 1
+            if (self.attempts > self.maxattempts):
+                raise ValueError('Maximum number of tries reached')
+
+
+    def extrapolate_tf(self, arg):
+        """
+        Extrapolate transformation temperature
+        """
+        solfit = np.polyfit(self.solres[0], self.solres[1], 1)
+        lqdfit = np.polyfit(self.lqdres[0], self.lqdres[1], 1)
+
+        found = False
+
+        for i in range(100):
+            if arg==0:
+                self.tmin = self.tmin-self.dtemp
+                if self.tmin < 0:
+                    self.tmin = 0
+                new_t = np.linspace(self.tmin, self.tmax, 1000)
+            elif arg==999:
+                self.tmax = self.tmax + self.dtemp
+                new_t = np.linspace(self.tmin, self.tmax, 1000)
+            else:
+                break
+            #evaluate in new range
+            new_solfe = np.polyval(solfit, new_t)
+            new_lqdfe = np.polyval(lqdfit, new_t)
+    
+            arg = np.argsort(np.abs(new_solfe-new_lqdfe))[0]
+            tpred = new_t[arg]
+        else:
+            raise ValueError('failed to extrapolate melting temperature')
+        
+        self.logger.info("Predicted transformation temperature from extrapolation: %f"%tpred)
+        self.logger.info("STATE: Predicted Tf from extrapolation: %f K"%tpred)
+        return tpred    
+                
+        
+    def find_tf(self):
+        """
+        Find melting temperature
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        for i in range(100):
+            arg = np.argsort(np.abs(self.solres[1]-self.lqdres[1]))[0]
+            self.arg = arg
+        
+            if ((arg==0) or (arg==len(self.solres[1])-1)):
+                self.logger.info('From calculation, transformation temperature is not within the selected range.')
+                self.logger.info('STATE: From calculation, Tm is not within range.')
+                if arg==len(self.solres[1])-1:
+                    arg = 999
+                #the above is just a trick to extrapolate
+                #now here we need to find a guess value;
+                tpred = self.extrapolate_tm(arg)
+                #now we have to run calcs again
+                self.tmin = tpred - self.dtemp
+                if self.tmin < 0:
+                    self.tmin = 0
+                self.tmax = tpred + self.dtemp
+                self.logger.info('Restarting calculation with predicted transformation temperature +/- %f'%self.dtemp)
+                #self.logger.info('STATE: Restarting calculation with predicted melting temperature +/- %f'%self.dtemp)
+                self.start_calculation()
+                
+            else:
+                self.calc_tm = self.solres[0][arg]
+                #get errors
+                suberr = np.sqrt(self.solres[2][arg]**2 + self.lqdres[2][arg]**2)
+                sol_slope = (self.solres[1][arg+50]-self.solres[1][arg-50])/(self.solres[0][arg+50]-self.solres[0][arg-50])
+                lqd_slope = (self.lqdres[1][arg+50]-self.lqdres[1][arg-50])/(self.lqdres[0][arg+50]-self.lqdres[0][arg-50])
+                slope_diff = sol_slope-lqd_slope
+                tmerr = suberr/slope_diff
+                self.tmerr = tmerr
+                return self.calc_tm, self.tmerr
+            
+            self.attempts += 1
+            self.logger.info('Attempt incremented to %d'%self.attempts)
+            if self.attempts>self.maxattempts:
+                raise ValueError('Maximum number of tries reached')
+    
+    def calculate_tf(self):
+        #do a first round of calculation
+        self.start_calculation()
+        tm, tmerr = self.find_tm()
+        self.logger.info('Found transformation temperature = %.2f +/- %.2f K '%(tm, tmerr))
+    
+
 def routine_fe(job):
     """
     Perform an FE calculation routine
