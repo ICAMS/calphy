@@ -136,6 +136,11 @@ class MeltingTemperature(BaseModel, title='Input options for melting temperature
     step: Annotated[int, Field(default=200, ge=20)]
     attempts: Annotated[int, Field(default=5, ge=1)]
 
+class TransformationTemperature(BaseModel, title='Input options for transformation temperature mode'):
+    guess: Annotated[Union[float, None], Field(default=None, gt=0)]
+    step: Annotated[int, Field(default=200, ge=20)]
+    attempts: Annotated[int, Field(default=5, ge=1)]
+
 class Calculation(BaseModel, title='Main input class'):
     composition_scaling: Optional[CompositionScaling] = CompositionScaling()
     md: Optional[MD] = MD()
