@@ -22,23 +22,33 @@
 ```
 
 ```{tab} Singularity
-A singularity containter can also be used for running calphy locally or on HPC machines.
+A singularity containter can be used for running calphy locally or on HPC machines.
 The containerised environment contains all of the packages required to run calphy.
 
-The containerised environemnt can be pulled from the repository with:
-'singularity pull --arch amd64 library://sebastianhavens/calphy/calphy:latest'
-(https://cloud.sylabs.io/library/sebastianhavens/calphy/calphy)
+### Downloading the container
+
+The containerised environemnt can be pulled from the repository with:       
+`singularity pull --arch amd64 library://sebastianhavens/calphy/calphy:latest`
+
+
+[Calphy image repository](https://cloud.sylabs.io/library/sebastianhavens/calphy/calphy)
+
+### Ruinning jobs using the container
 
 On HPC machines you can usually load the singularity module with:
-'module load singularity' if it is not already available.
+`module load singularity` if it is not already available.
 
 You can initiate calculations using this container with the following line:
-'singularity exec --bind $PWD --pwd $PWD {location_of_.sif_image} calphy_kernel -i {input_file} -k 0'
-where {location_of_.sif_image} is the file location of the containerlised environment you just pulled and {input_file} is the name of your input file.
+
+`singularity exec --bind $PWD --pwd $PWD {location_of_.sif_image} calphy_kernel -i {input_file} -k 0`
+
+where `{location_of_.sif_image}` is the file location of the containerlised environment you just pulled and `{input_file}` is the name of your input file.
 This line can be placed within a slurm script.
 
-In the calphy input file, the scheduler should be set to local.
+In the calphy input file, the scheduler should be set to local.<br>
 For parallel calculations to run effectively, the OpenMPI module on the host system must be at least 4.1.2.
+
+---
 ```
 
 
