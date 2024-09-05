@@ -148,15 +148,8 @@ class Alchemy(cph.Phase):
             self.calc.md.cmdargs, self.calc.md.init_commands)
         
         # Adiabatic switching parameters.
-        if self.calc.composition_scaling.fixed_coupling_parameter == 0:
-            self.logger.info('coupling parameter will be varied between 0 and 1')
-            lmp.command("variable        li       equal   1.0")
-            lmp.command("variable        lf       equal   0.0")
-        else:
-            self.logger.info(f'coupling parameter is fixed at {self.calc.composition_scaling.fixed_coupling_parameter}')
-            lmp.command("variable        li       equal   %f"%self.calc.composition_scaling.fixed_coupling_parameter)
-            lmp.command("variable        lf       equal   %f"%self.calc.composition_scaling.fixed_coupling_parameter)
-
+        lmp.command("variable        li       equal   1.0")
+        lmp.command("variable        lf       equal   0.0")
 
         lmp.command(f'pair_style {self.calc._pair_style_with_options[0]}')
         

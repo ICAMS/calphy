@@ -94,7 +94,6 @@ class CompositionScaling(BaseModel, title='Composition scaling input options'):
     output_chemical_composition: Annotated[dict, Field(default={}, required=False)]
     restrictions: Annotated[List[str], BeforeValidator(to_list),
                                             Field(default=[], required=False)]
-    fixed_coupling_parameter: Annotated[float, Field(default=0, required=False, gt=0)]
 
 class MD(BaseModel, title='MD specific input options'):
     timestep: Annotated[float, Field(default=0.001, 
