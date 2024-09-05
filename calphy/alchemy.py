@@ -148,8 +148,15 @@ class Alchemy(cph.Phase):
             self.calc.md.cmdargs, self.calc.md.init_commands)
         
         # Adiabatic switching parameters.
-        lmp.command("variable        li       equal   1.0")
-        lmp.command("variable        lf       equal   0.0")
+        if self.calc.composition_scaling.fixed_coupling_parameter == 0:
+            self.logger.info('coupling parameter will be varied between 0 and 1')
+            lmp.command("variable        li       equal   1.0")
+            lmp.command("variable        lf       equal   0.0")
+        else:
+            self.logger.info(f'coupling parameter is fixed at {self.calc.composition_scaling.fixed_coupling_parameter}')
+            lmp.command("variable        li       equal   %f"%self.calc.composition_scaling.fixed_coupling_parameter)
+            lmp.command("variable        lf       equal   %f"%self.calc.composition_scaling.fixed_coupling_parameter)
+
 
         lmp.command(f'pair_style {self.calc._pair_style_with_options[0]}')
         
@@ -238,6 +245,7 @@ class Alchemy(cph.Phase):
 
         #add swaps if n_swap is > 0
         if self.calc.monte_carlo.n_swaps > 0:
+            self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
             lmp.command("fix  swap all atom/swap %d %d %d %f ke no types 1 2"%(self.calc.monte_carlo.n_steps,
                                                                                 self.calc.monte_carlo.n_swaps,
                                                                                 np.random.randint(1, 10000),
@@ -306,6 +314,7 @@ class Alchemy(cph.Phase):
 
         #add swaps if n_swap is > 0
         if self.calc.monte_carlo.n_swaps > 0:
+            self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 2 and 1 every {self.calc.monte_carlo.n_steps}')
             lmp.command("fix  swap all atom/swap %d %d %d %f ke no types 2 1"%(self.calc.monte_carlo.n_steps,
                                                                                 self.calc.monte_carlo.n_swaps,
                                                                                 np.random.randint(1, 10000),
