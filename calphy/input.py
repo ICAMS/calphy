@@ -86,7 +86,7 @@ def _to_float(val):
         return [float(x) for x in val] 
 
 class MonteCarlo(BaseModel, title='Options for Monte Carlo moves during particle swap moves'):
-    n_steps: Annotated[int, Field(default=1, gt=1, description='perform swap moves every n_step')]
+    n_steps: Annotated[int, Field(default=1, gt=0, description='perform swap moves every n_step')]
     n_swaps: Annotated[int, Field(default=0, gt=0, description='number of swap moves to perform')]
 
 class CompositionScaling(BaseModel, title='Composition scaling input options'):
