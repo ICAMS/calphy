@@ -245,6 +245,7 @@ class Alchemy(cph.Phase):
                                                                                 self.calc._temperature))
             lmp.command("variable a equal f_swap[1]")
             lmp.command("variable b equal f_swap[2]")
+            lmp.command("fix             swap2 all print 1 \"${a} ${b} ${flambda}\" screen no file swap.forward_%d.dat"%iteration)
 
         # Thermo output.
         if self.calc.monte_carlo.n_swaps > 0:
@@ -256,8 +257,7 @@ class Alchemy(cph.Phase):
         
         #save the necessary items to a file: first step
         lmp.command("fix             f2 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file forward_%d.dat"%iteration)
-        lmp.command("run             %d"%self.calc._n_switching_steps)
-
+        lmp.command("run             %d"%self.calc._n_switching_steps)            
 
         #now equilibrate at the second potential
         lmp.command("unfix           f2")
@@ -267,6 +267,7 @@ class Alchemy(cph.Phase):
         #NEW SWAP
         if self.calc.monte_carlo.n_swaps > 0:
             lmp.command("unfix swap")
+            lmp.command("unfix swap2")
 
 
         lmp.command("pair_style      %s"%self.calc._pair_style_with_options[1])
@@ -314,6 +315,7 @@ class Alchemy(cph.Phase):
                                                                                 self.calc._temperature))
             lmp.command("variable a equal f_swap[1]")
             lmp.command("variable b equal f_swap[2]")
+            lmp.command("fix             swap2 all print 1 \"${a} ${b} ${blambda}\" screen no file swap.backward_%d.dat"%iteration)
 
         # Thermo output.
         if self.calc.monte_carlo.n_swaps > 0:

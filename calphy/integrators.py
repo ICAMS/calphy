@@ -53,8 +53,7 @@ def integrate_path(calc,
     fwdfilename, 
     bkdfilename,  
     solid=True,
-    composition_integration=False,
-    simple_average=False):
+    composition_integration=False):
     """
     Get a filename with columns du and dlambda and integrate
 
@@ -112,11 +111,8 @@ def integrate_path(calc,
     bdu = bdui - bdur
     
     if composition_integration:
-        if simple_average:
-            pass
-        else:
-            fw = cumtrapz(fdu, flambda, initial=0)
-            bw = cumtrapz(bdu, blambda, initial=0)
+        fw = cumtrapz(fdu, flambda, initial=0)
+        bw = cumtrapz(bdu, blambda, initial=0)
     else:
         fw = np.trapz(fdu, flambda)
         bw = np.trapz(bdu, blambda)
