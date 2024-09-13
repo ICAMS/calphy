@@ -1,6 +1,5 @@
 import os
 import numpy as np
-import pandas as pd
 
 def read_report(folder):
     """
@@ -39,6 +38,11 @@ def gather_results(mainfolder):
     df: pandas DataFrame
         DataFrame with results
     """
+    try:
+        import pandas as pd
+    except ImportError:
+        raise ImportError('Please install pandas to use this function')
+     
     datadict = {}
     datadict['mode'] = []
     datadict['status'] = []

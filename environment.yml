@@ -16,4 +16,3 @@ dependencies:
   - uncertainties
   - pydantic >=2.3.0
   - pyscal3
-  - pandas
