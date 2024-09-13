@@ -25,6 +25,19 @@ def read_report(folder):
         data = yaml.safe_load(fin)
     return data
 
+def _extract_error(errfile):
+    error_code = None
+    if os.path.exists(errfile):
+        with open(errfile, 'r') as fin:
+            for line in fin:
+                if 'calphy.errors' in line:
+                    break
+            try:
+                error_code = line.split(':')[0].split('.')[-1]
+            except:
+                pass
+    return error_code
+    
 def gather_results(mainfolder):
     """
     Gather results from all subfolders in a given folder into a Pandas DataFrame
@@ -88,16 +101,7 @@ def gather_results(mainfolder):
             datadict['free_energy'].append(np.NaN)
             #check if error file is found
             errfile = os.path.join(os.getcwd(), mainfolder, folder+'.sub.err')
-            if os.path.exists(errfile):
-                with open(errfile, 'r') as fin:
-                    for line in fin:
-                        if 'calphy.errors' in line:
-                            break
-                    try:
-                        error_code = line.split(':')[0].split('.')[-1]
-                        datadict['error_code'][-1] = error_code
-                    except:
-                        pass
+            datadict['error_code'][-1] = _extract_error(errfile)
             continue;
     
         if mode in ['fe', 'alchemy', 'composition_scaling']:
@@ -111,10 +115,16 @@ def gather_results(mainfolder):
     
         #parse extra info
         if mode in ['ts', 'tscale']:
-            datafile = os.path.join(os.getcwd(), folder, 'temperature_sweep.dat')
-            t, f = np.loadtxt(datafile, unpack=True, usecols=(0,1))
-            datadict['temperature'][-1] = t
-            datadict['free_energy'][-1] = f
-            
+            datafile = os.path.join(os.getcwd(), mainfolder, folder, 'temperature_sweep.dat')
+            if os.path.exists(datafile):
+                datadict['status'].append('True')
+                t, f = np.loadtxt(datafile, unpack=True, usecols=(0,1))
+                datadict['temperature'][-1] = t
+                datadict['free_energy'][-1] = f
+            else:
+                datadict['status'].append('False')
+                errfile = os.path.join(os.getcwd(), mainfolder, folder+'.sub.err')
+                datadict['error_code'][-1] = _extract_error(errfile)
+
     df = pd.DataFrame(data=datadict)
     return df
