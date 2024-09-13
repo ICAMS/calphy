@@ -65,6 +65,7 @@ def gather_results(mainfolder):
     datadict['free_energy'] = []
     datadict['reference_phase'] = []
     datadict['error_code'] = []
+    datadict['composition'] = []
     
     folders = next(os.walk(mainfolder))[1]
     for folder in folders:
@@ -90,6 +91,7 @@ def gather_results(mainfolder):
         datadict['temperature'].append(inp['temperature'])
         datadict['pressure'].append(inp['pressure'])
         datadict['reference_phase'].append(inp['reference_phase'])
+        datadict['composition'].append(None)
     
         #check output file
         outfile = os.path.join(mainfolder, folder, 'report.yaml')
@@ -112,7 +114,18 @@ def gather_results(mainfolder):
             out = yaml.safe_load(fin)
     
         datadict['free_energy'].append(out['results']['free_energy'])
-    
+        
+        composition = {x:y for x,y in zip(out['input']['element'], out['input']['concentration'])}
+        datadict['composition'].append(composition)
+
+        if mode == 'composition_scaling':
+            #we need to update composition
+            compdict = inp['composition_scaling']['output_chemical_composition']
+            maxatoms = np.sum([val for key, val in compdict.items()])
+            for key, val in compdict.items():
+                compdict[key] = val/maxatoms
+            datadict['composition'][-1] = compdict
+
         #parse extra info
         if mode in ['ts', 'tscale']:
             datafile = os.path.join(os.getcwd(), mainfolder, folder, 'temperature_sweep.dat')
