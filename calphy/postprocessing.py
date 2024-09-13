@@ -112,7 +112,7 @@ def gather_results(mainfolder):
         #parse extra info
         if mode in ['ts', 'tscale']:
             datafile = os.path.join(os.getcwd(), folder, 'temperature_sweep.dat')
-            t, f = np.unpack(datafile, unpack=True, usecols=(0,1))
+            t, f = np.loadtxt(datafile, unpack=True, usecols=(0,1))
             datadict['temperature'][-1] = t
             datadict['free_energy'][-1] = f
             
