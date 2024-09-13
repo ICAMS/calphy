@@ -43,7 +43,7 @@ setup(
     description="free energy calculation for python",
     install_requires=['matplotlib', 'pytest',
     'pyyaml', 'mendeleev', 
-    'tqdm', 'scipy', 'pydantic', 'pyscal3'],
+    'tqdm', 'scipy', 'pydantic', 'pyscal3', 'pandas'],
     license="GNU General Public License v3",
     long_description=readme,
     long_description_content_type='text/markdown',
