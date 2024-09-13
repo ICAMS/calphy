@@ -42,18 +42,6 @@ import shutil
 
 __version__ = "1.3.10"
 
-def read_report(folder):
-    """
-    Read the finished calculation report
-    """
-    repfile = os.path.join(folder, "report.yaml")
-    if not os.path.exists(repfile):
-        raise FileNotFoundError(f"file {repfile} not found")
-
-    with open(repfile, 'r') as fin:
-        data = yaml.safe_load(fin)
-    return data
-
 def _check_equal(val):
     if not (val[0]==val[1]==val[2]):
         return False
