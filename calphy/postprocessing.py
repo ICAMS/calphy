@@ -115,8 +115,9 @@ def gather_results(mainfolder):
     
         datadict['free_energy'].append(out['results']['free_energy'])
         
+        #add normal composition
         composition = {x:y for x,y in zip(out['input']['element'], out['input']['concentration'])}
-        datadict['composition'].append(composition)
+        datadict['composition'][-1] = composition
 
         if mode == 'composition_scaling':
             #we need to update composition
