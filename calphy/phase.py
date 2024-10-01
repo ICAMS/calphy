@@ -813,6 +813,19 @@ class Phase:
 
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${flambda}\" screen no file ts.forward_%d.dat"%iteration)
 
+        #add swaps if n_swap is > 0
+        if self.calc.monte_carlo.n_swaps > 0:
+            self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
+            lmp.command("fix  swap all atom/swap %d %d %d %f ke no types 1 2"%(self.calc.monte_carlo.n_steps,
+                                                                                self.calc.monte_carlo.n_swaps,
+                                                                                np.random.randint(1, 10000),
+                                                                                self.calc._temperature))
+
+            lmp.command("variable a equal f_swap[1]")
+            lmp.command("variable b equal f_swap[2]")
+            lmp.command("fix             swap2 all print 1 \"${a} ${b} ${blambda}\" screen no file swap.rs.forward_%d.dat"%iteration)
+
+
         if self.calc.n_print_steps > 0:
             lmp.command("dump              d1 all custom %d traj.ts.forward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
@@ -820,6 +833,10 @@ class Phase:
         self.logger.info(f'Started forward sweep: {iteration}')
         lmp.command("run               %d"%self.calc._n_sweep_steps)
         self.logger.info(f'Finished forward sweep: {iteration}')
+
+        if self.calc.monte_carlo.n_swaps > 0:
+            lmp.command("unfix swap")
+            lmp.command("unfix swap2")
 
         #unfix
         lmp.command("unfix             f3")
@@ -859,10 +876,28 @@ class Phase:
             lmp.command("dump              d1 all custom %d traj.ts.backward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 
+        #add swaps if n_swap is > 0
+        if self.calc.monte_carlo.n_swaps > 0:
+            self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
+            lmp.command("fix  swap all atom/swap %d %d %d %f ke no types 2 1"%(self.calc.monte_carlo.n_steps,
+                                                                                self.calc.monte_carlo.n_swaps,
+                                                                                np.random.randint(1, 10000),
+                                                                                self.calc._temperature))
+
+            lmp.command("variable a equal f_swap[1]")
+            lmp.command("variable b equal f_swap[2]")
+            lmp.command("fix             swap2 all print 1 \"${a} ${b} ${blambda}\" screen no file swap.rs.backward_%d.dat"%iteration)
+
+
+
         self.logger.info(f'Started backward sweep: {iteration}')
         lmp.command("run               %d"%self.calc._n_sweep_steps)
         self.logger.info(f'Finished backward sweep: {iteration}')
-        
+
+        if self.calc.monte_carlo.n_swaps > 0:
+            lmp.command("unfix swap")
+            lmp.command("unfix swap2")
+
         lmp.command("unfix             f3")
 
         if self.calc.n_print_steps > 0:
