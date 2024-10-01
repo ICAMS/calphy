@@ -800,6 +800,8 @@ class Phase:
         lmp.command("variable         fscale equal v_flambda-1.0")
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
+        lmp.command(f"variable        ftemp equal v_flamba*{self.calc._temperature}")
+        lmp.command(f"variable        btemp equal v_blamba*{self.calc._temperature_stop}")
 
         #set up potential
         pc =  self.calc.pair_coeff[0]
@@ -816,14 +818,13 @@ class Phase:
         #add swaps if n_swap is > 0
         if self.calc.monte_carlo.n_swaps > 0:
             self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
-            lmp.command("fix  swap all atom/swap %d %d %d %f ke no types 1 2"%(self.calc.monte_carlo.n_steps,
+            lmp.command("fix  swap all atom/swap %d %d %d ${ftemp} ke no types 1 2"%(self.calc.monte_carlo.n_steps,
                                                                                 self.calc.monte_carlo.n_swaps,
-                                                                                np.random.randint(1, 10000),
-                                                                                self.calc._temperature))
+                                                                                np.random.randint(1, 10000)))
 
             lmp.command("variable a equal f_swap[1]")
             lmp.command("variable b equal f_swap[2]")
-            lmp.command("fix             swap2 all print 1 \"${a} ${b} ${blambda}\" screen no file swap.rs.forward_%d.dat"%iteration)
+            lmp.command("fix             swap2 all print 1 \"${a} ${b} ${ftemp}\" screen no file swap.rs.forward_%d.dat"%iteration)
 
 
         if self.calc.n_print_steps > 0:
@@ -879,14 +880,13 @@ class Phase:
         #add swaps if n_swap is > 0
         if self.calc.monte_carlo.n_swaps > 0:
             self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
-            lmp.command("fix  swap all atom/swap %d %d %d %f ke no types 2 1"%(self.calc.monte_carlo.n_steps,
+            lmp.command("fix  swap all atom/swap %d %d %d ${btemp} ke no types 2 1"%(self.calc.monte_carlo.n_steps,
                                                                                 self.calc.monte_carlo.n_swaps,
-                                                                                np.random.randint(1, 10000),
-                                                                                self.calc._temperature))
+                                                                                np.random.randint(1, 10000)))
 
             lmp.command("variable a equal f_swap[1]")
             lmp.command("variable b equal f_swap[2]")
-            lmp.command("fix             swap2 all print 1 \"${a} ${b} ${blambda}\" screen no file swap.rs.backward_%d.dat"%iteration)
+            lmp.command("fix             swap2 all print 1 \"${a} ${b} ${btemp}\" screen no file swap.rs.backward_%d.dat"%iteration)
 
 
 
