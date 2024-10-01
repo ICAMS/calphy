@@ -800,8 +800,8 @@ class Phase:
         lmp.command("variable         fscale equal v_flambda-1.0")
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
-        lmp.command(f"variable        ftemp equal v_flambda*{self.calc._temperature_stop}")
-        lmp.command(f"variable        btemp equal v_blambda*{self.calc._temperature}")
+        lmp.command(f"variable        ftemp equal v_blambda*{self.calc._temperature_stop}")
+        lmp.command(f"variable        btemp equal v_flambda*{self.calc._temperature_stop}")
 
         #set up potential
         pc =  self.calc.pair_coeff[0]
@@ -865,6 +865,8 @@ class Phase:
         lmp.command("variable         fscale equal v_flambda-1.0")
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
+        lmp.command(f"variable        ftemp equal v_blambda*{self.calc._temperature_stop}")
+        lmp.command(f"variable        btemp equal v_flambda*{self.calc._temperature_stop}")
 
         lmp.command("pair_style       hybrid/scaled v_one %s v_bscale %s"%(self.calc._pair_style_with_options[0], self.calc._pair_style_with_options[0]))
         lmp.command("pair_coeff       %s"%pcnew1)
