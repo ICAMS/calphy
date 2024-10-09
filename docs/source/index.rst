@@ -47,6 +47,7 @@ publication <https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMateri
    Using calphy <running_calphy/running_calphy>
    inputfile
    examples
+   research
    calphy
    faqs
    prologue/extending
