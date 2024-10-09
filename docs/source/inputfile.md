@@ -546,6 +546,59 @@ folder_prefix: set1
 
 Prefix string to be added to folder names for calculation. Folders for calculations in calphy are named as `mode-lattice-temperature-pressure`. Therefore, if more than one calculation is run with the same parameters, they will be overwritten. To prevent this, `folder_prefix` can be used. If `folder_prefix` is provided, the folders will be named as `folder_prefix-mode-lattice-temperature-pressure`.
 
+
+---
+
+(script_mode)=
+#### `script_mode`        
+
+_type_: bool \
+_default_: False \
+_example_:
+```
+script_mode: False
+```  
+
+If True, a LAMMPS executable script is written and executed instead of the library interface of LAMMPS.
+Works only with `reference_phase: solid`, and `mode: fe`.
+Needs specification of [`lammps_executable`](lammps_executable) and [`mpi_executable`](mpi_executable).
+
+
+---
+
+(lammps_executable)=
+#### `lammps_executable`        
+
+_type_: string \
+_default_: None \
+_example_:
+```
+lammps_executable: lmp_mpi
+```  
+
+LAMMPS executable to run the calculations with.
+Works only with `reference_phase: solid`, and `mode: fe`.
+Works only if [`script_mode`](script_mode) is `True`.
+
+
+
+---
+
+(mpi_executable)=
+#### `mpi_executable`        
+
+_type_: string \
+_default_: None \
+_example_:
+```
+mpi_executable: mpiexec
+```  
+
+MPI executable to run the LAMMPS with.
+Works only with `reference_phase: solid`, and `mode: fe`.
+Works only if [`script_mode`](script_mode) is `True`.
+
+
 ---
 ---
 
