@@ -160,7 +160,8 @@ class Calculation(BaseModel, title='Main input class'):
     inputfile: Annotated[str, Field(default='')]
 
     mode: Annotated[Union[str, None], Field(default=None)]
-    lattice: Annotated[str, Field(default="")]
+    lattice: Annotated[Union[str, List[str]], Field(default="")]
+    _second_lattice: str = PrivateAttr(default="")
     file_format: Annotated[str, Field(default='lammps-data')]
     
     #pressure properties
@@ -342,6 +343,11 @@ class Calculation(BaseModel, title='Main input class'):
             self._element_dict[element]['composition'] = 0.0
             self._element_dict[element]['atomic_number'] = mendeleev.element(element).atomic_number
 
+        #first prep lattice
+        if isinstance(self.lattice, list):
+            self.lattice = self.lattice[0]
+            self._second_lattice = self.lattice[1]
+        
         #generate temporary filename if needed
         write_structure_file = False
 
@@ -438,6 +444,30 @@ class Calculation(BaseModel, title='Main input class'):
             write(structure_filename, structure, format='lammps-data')
             self.lattice = structure_filename
         
+        if self.mode == 'transformation_temperature':
+            #we need to make sure now second lattice is written out; and a filename is available
+            if self._second_lattice == "":
+                raise ValueError("Please provide second lattice for transformation temperature mode")
+            #we should probably make sure that LAMMPS data files are provided for the second lattice
+            #the reason for this is that the lattice constant is going to be really bad otherwise
+            elif self._second_lattice.lower() in structure_dict.keys():
+                raise ValueError("Please provide LAMMPS data files for the second lattices")
+            else:
+                #this is a file
+                if not os.path.exists(self._second_lattice):
+                    raise ValueError(f'File {self._second_lattice} could not be found')
+                if self.file_format == 'lammps-data':
+                    #create atomic numbers for proper reading
+                    Z_of_type = dict([(count+1, self._element_dict[element]['atomic_number']) for count, element in enumerate(self.element)])
+                    structure = read(self._second_lattice, format='lammps-data', style='atomic', Z_of_type=Z_of_type)
+                    #structure = System(aseobj, format='ase')
+                else:
+                    raise TypeError('Only lammps-data files are supported!')                
+                structure_filename = ".".join([self.create_identifier(), str(self.kernel), "second", "data"])
+                structure_filename = os.path.join(os.getcwd(), structure_filename)
+                write(structure_filename, structure, format='lammps-data')
+                self._second_lattice = structure_filename
+
         if self.mode == 'composition_scaling':
             #we also should check if actual contents are present
             input_chem_comp = {}
