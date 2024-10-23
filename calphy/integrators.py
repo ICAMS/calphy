@@ -43,7 +43,7 @@ kb = const.physical_constants["Boltzmann constant in eV/K"][0]
 kbJ = const.physical_constants["Boltzmann constant"][0]
 Na = const.physical_constants["Avogadro constant"][0]
 eV2J = const.eV
-
+J2eV = 6.242E18
 
 #--------------------------------------------------------------------
 #             TI PATH INTEGRATION ROUTINES
@@ -499,34 +499,55 @@ def get_einstein_crystal_fe(
         free energy of Einstein crystal
 
     """
-    #convert mass first for single particle in kg
-    mass = np.array([calc._element_dict[x]['mass'] for x in calc.element])
-    mass = (mass/Na)*1E-3
+    #natoms
     natoms = np.sum([calc._element_dict[x]['count'] for x in calc.element])
-    concentration = np.array([calc._element_dict[x]['composition'] for x in calc.element])
-
-    #convert k from ev/A2 to J/m2
-    k = np.array(k)*(eV2J/1E-20)
-    omega = np.sqrt(k/mass)
 
     #convert a to m3
     vol = vol*1E-30
 
-    F_harm = 0
-    F_cm = 0
+    #whats the beta
+    beta = (1/(kb*temp))
+    beta = beta*eV2J
 
-    for count, om in enumerate(omega):
-        if concentration[count] > 0:
-            F_harm += concentration[count]*np.log((hbar*om)/(kb*calc._temperature))
-            if cm_correction:
-                F_cm += np.log((natoms*concentration[count]/vol)*(2*np.pi*kbJ*calc._temperature/(natoms*concentration[count]*k[count]))**1.5)
-            #F_cm = 0
-    F_harm = 3*kb*calc._temperature*F_harm
-    F_cm = (kb*calc._temperature/natoms)*F_cm
+    #create an array of mass
+    mass = []
+    for x in calc.element:
+        for count in range(calc._element_dict[x]['count']):
+            mass.append(calc._element_dict[x]['mass'])
+    mass = np.array(mass)
+    #convert mass to kg
+    mass = (mass/Na)*1E-3
 
-    F_harm = F_harm + F_cm
+    #create an array of k as well
+    karr = []
+    for c, x in enumerate(calc.element):
+        for count in range(calc._element_dict[x]['count']):
+            karr.append(k[c])
+    k = np.array(karr)
+    #convert k from ev/A2 to J/m2
+    k = k*(eV2J/1E-20)
 
-    return F_harm
+    #evaluate DeBroglie wavelength of each atom
+    gamma_sqrd = (beta*h**2)/(2*np.pi*mass)
+
+    #fe of Einstein crystal
+    F_e =  np.log(((beta*k*gamma_sqrd)/(2*np.pi))**1.5)
+    F_e = np.sum(F_e)*J2eV #convert back to eV
+
+    #now get the cm correction
+    if cm_correction:
+        mass_sum = np.sum(mass)
+        mu = mass/mass_sum
+        mu2_over_k = mu**2/k
+        mu2_over_k_sum = np.sum(mu2_over_k) 
+        prefactor = vol/natoms
+        F_cm = np.log(prefactor*(beta/(2*np.pi*mu2_over_k_sum))**1.5)
+        F_cm = F_cm*J2eV #convert to eV
+    else:
+        F_cm = 0
+    
+    F_tot = F_e - F_cm
+    return F_tot
 
 #--------------------------------------------------------------------
 #             REF. STATE ROUTINES: LIQUID
