@@ -38,6 +38,7 @@ from ase.io import read
 
 #Constants
 h = const.physical_constants["Planck constant in eV/Hz"][0]
+hJ = const.physical_constants["Planck constant"][0]
 hbar = h/(2*np.pi)
 kb = const.physical_constants["Boltzmann constant in eV/K"][0]
 kbJ = const.physical_constants["Boltzmann constant"][0]
@@ -506,8 +507,7 @@ def get_einstein_crystal_fe(
     vol = vol*1E-30
 
     #whats the beta
-    beta = (1/(kb*temp))
-    beta = beta*eV2J
+    beta = (1/(kbJ*temp))   
 
     #create an array of mass
     mass = []
@@ -515,6 +515,7 @@ def get_einstein_crystal_fe(
         for count in range(calc._element_dict[x]['count']):
             mass.append(calc._element_dict[x]['mass'])
     mass = np.array(mass)
+    
     #convert mass to kg
     mass = (mass/Na)*1E-3
 
@@ -531,8 +532,9 @@ def get_einstein_crystal_fe(
     gamma_sqrd = (beta*h**2)/(2*np.pi*mass)
 
     #fe of Einstein crystal
-    F_e =  np.log(((beta*k*gamma_sqrd)/(2*np.pi))**1.5)
-    F_e = np.sum(F_e)*J2eV #convert back to eV
+    Z_e = ((beta**2*k*h**2)/(4*np.pi**2*mass))**1.5
+    F_e = np.log(Z_e)
+    F_e = kb*temp*np.sum(F_e)/natoms #*J2eV #convert back to eV
 
     #now get the cm correction
     if cm_correction:
@@ -540,9 +542,9 @@ def get_einstein_crystal_fe(
         mu = mass/mass_sum
         mu2_over_k = mu**2/k
         mu2_over_k_sum = np.sum(mu2_over_k) 
-        prefactor = vol/natoms
+        prefactor = vol
         F_cm = np.log(prefactor*(beta/(2*np.pi*mu2_over_k_sum))**1.5)
-        F_cm = F_cm*J2eV #convert to eV
+        F_cm = kb*temp*F_cm/natoms #convert to eV
     else:
         F_cm = 0
     
