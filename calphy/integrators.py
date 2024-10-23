@@ -470,7 +470,8 @@ def get_einstein_crystal_fe(
     calc,
     vol, 
     k, 
-    cm_correction=True):
+    cm_correction=True,
+    return_contributions=False):
     """
     Get the free energy of einstein crystal
 
@@ -549,6 +550,8 @@ def get_einstein_crystal_fe(
         F_cm = 0
     
     F_tot = F_e - F_cm
+    if return_contributions:
+        return F_e, -F_cm
     return F_tot
 
 #--------------------------------------------------------------------
