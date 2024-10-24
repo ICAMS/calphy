@@ -532,11 +532,8 @@ def get_einstein_crystal_fe(
     #convert k from ev/A2 to J/m2
     k = k*(eV2J/1E-20)
 
-    #evaluate DeBroglie wavelength of each atom
-    gamma_sqrd = (beta*h**2)/(2*np.pi*mass)
-
     #fe of Einstein crystal
-    Z_e = ((beta**2*k*h**2)/(4*np.pi**2*mass))**1.5
+    Z_e = ((beta**2*k*hJ**2)/(4*np.pi**2*mass))**1.5
     F_e = np.log(Z_e)
     F_e = kb*temp*np.sum(F_e)/natoms #*J2eV #convert back to eV
 
