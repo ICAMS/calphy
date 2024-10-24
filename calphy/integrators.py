@@ -477,17 +477,11 @@ def get_einstein_crystal_fe(
 
     Parameters
     ----------
-    temp : temperature, float
-        units - K
+    calc : Calculation object
+        contains all input parameters
 
-    natoms : int
-        no of atoms in the system
-
-    mass : float
-        units - g/mol
-
-    a : lattice constant, float
-        units - Angstrom
+    vol : float
+        converged volume per atom
 
     k : spring constant, float
         units - eV/Angstrom^2
@@ -495,10 +489,23 @@ def get_einstein_crystal_fe(
     cm_correction : bool, optional, default - True
         add the centre of mass correction to free energy
 
+    return_contributions: bool, optional, default - True
+        If True, return individual contributions to the reference free energy.
+
     Returns
     -------
-    fe : float
-        free energy of Einstein crystal
+    F_tot : float
+        total free energy of reference crystal
+
+    F_e : float
+        Free energy of Einstein crystal without centre of mass correction. Only if `return_contributions` is True.
+
+    F_cm : float
+        centre of mass correction. Only if `return_contributions` is True.
+
+    Notes
+    -----
+    The equations for free energy of Einstein crystal and centre of mass correction are from https://doi.org/10.1063/5.0044833.
 
     """
     #temperature
