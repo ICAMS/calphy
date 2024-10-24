@@ -516,17 +516,20 @@ class Solid(cph.Phase):
         Calculates the final work, energy dissipation and free energy by
         matching with Einstein crystal
         """
-        f1 = get_einstein_crystal_fe(
+        fe, fcm = get_einstein_crystal_fe(
             self.calc,  
             self.vol, 
-            self.k)
+            self.k,
+            return_contributions=True)
         
         w, q, qerr = find_w(self.simfolder, 
             self.calc,
             full=True, 
             solid=True)
         
-        self.fref = f1
+        self.fref = fe + fcm
+        self.feinstein = fe
+        self.fcm = fcm
         self.w = w
         self.ferr = qerr
 

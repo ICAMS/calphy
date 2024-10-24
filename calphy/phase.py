@@ -163,6 +163,8 @@ class Phase:
 
         self.ferr = 0
         self.fref = 0
+        self.feinstein = 0
+        self.fcm = 0
         self.fideal = 0
         
         self.w = 0
@@ -682,6 +684,8 @@ class Phase:
         report["results"]["free_energy"] = float(self.fe)
         report["results"]["error"] = float(self.ferr)
         report["results"]["reference_system"] = float(self.fref)
+        report["results"]["einstein_crystal"] = float(self.feinstein)
+        report["results"]["com_correction"] = float(self.fcm)
         report["results"]["work"] = float(self.w)
         report["results"]["pv"] = float(self.pv)
         report["results"]["unit"] = "eV/atom"

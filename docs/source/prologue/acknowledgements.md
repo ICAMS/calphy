@@ -24,6 +24,11 @@ We acknowledge the following people for their contribution to calphy:
 
 - Abril Azócar Guzmán for the design of calphy logo
 
+- Marvin Poul for numerous fixes, improvements, and for the help in fixing centre of mass corrections for multiple species
+
+- Sebastian Havens for the singularity recipe
+
+
 The development of this module was started at the [Interdisciplinary Centre for Advanced
 Materials Simulation](http://www.icams.de/content), at the [Ruhr
 University Bochum](https://www.ruhr-uni-bochum.de/en), Germany. Current development is carried out at the [Max-Planck-Institut für Eisenforschung GmbH](https://www.mpie.de/).
