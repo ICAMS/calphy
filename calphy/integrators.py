@@ -501,6 +501,9 @@ def get_einstein_crystal_fe(
         free energy of Einstein crystal
 
     """
+    #temperature
+    temp = calc._temperature
+
     #natoms
     natoms = np.sum([calc._element_dict[x]['count'] for x in calc.element])
 
