@@ -38,12 +38,13 @@ from ase.io import read
 
 #Constants
 h = const.physical_constants["Planck constant in eV/Hz"][0]
+hJ = const.physical_constants["Planck constant"][0]
 hbar = h/(2*np.pi)
 kb = const.physical_constants["Boltzmann constant in eV/K"][0]
 kbJ = const.physical_constants["Boltzmann constant"][0]
 Na = const.physical_constants["Avogadro constant"][0]
 eV2J = const.eV
-
+J2eV = 6.242E18
 
 #--------------------------------------------------------------------
 #             TI PATH INTEGRATION ROUTINES
@@ -469,23 +470,18 @@ def get_einstein_crystal_fe(
     calc,
     vol, 
     k, 
-    cm_correction=True):
+    cm_correction=True,
+    return_contributions=False):
     """
     Get the free energy of einstein crystal
 
     Parameters
     ----------
-    temp : temperature, float
-        units - K
+    calc : Calculation object
+        contains all input parameters
 
-    natoms : int
-        no of atoms in the system
-
-    mass : float
-        units - g/mol
-
-    a : lattice constant, float
-        units - Angstrom
+    vol : float
+        converged volume per atom
 
     k : spring constant, float
         units - eV/Angstrom^2
@@ -493,40 +489,77 @@ def get_einstein_crystal_fe(
     cm_correction : bool, optional, default - True
         add the centre of mass correction to free energy
 
+    return_contributions: bool, optional, default - True
+        If True, return individual contributions to the reference free energy.
+
     Returns
     -------
-    fe : float
-        free energy of Einstein crystal
+    F_tot : float
+        total free energy of reference crystal
+
+    F_e : float
+        Free energy of Einstein crystal without centre of mass correction. Only if `return_contributions` is True.
+
+    F_cm : float
+        centre of mass correction. Only if `return_contributions` is True.
+
+    Notes
+    -----
+    The equations for free energy of Einstein crystal and centre of mass correction are from https://doi.org/10.1063/5.0044833.
 
     """
-    #convert mass first for single particle in kg
-    mass = np.array([calc._element_dict[x]['mass'] for x in calc.element])
-    mass = (mass/Na)*1E-3
-    natoms = np.sum([calc._element_dict[x]['count'] for x in calc.element])
-    concentration = np.array([calc._element_dict[x]['composition'] for x in calc.element])
+    #temperature
+    temp = calc._temperature
 
-    #convert k from ev/A2 to J/m2
-    k = np.array(k)*(eV2J/1E-20)
-    omega = np.sqrt(k/mass)
+    #natoms
+    natoms = np.sum([calc._element_dict[x]['count'] for x in calc.element])
 
     #convert a to m3
     vol = vol*1E-30
 
-    F_harm = 0
-    F_cm = 0
+    #whats the beta
+    beta = (1/(kbJ*temp))   
 
-    for count, om in enumerate(omega):
-        if concentration[count] > 0:
-            F_harm += concentration[count]*np.log((hbar*om)/(kb*calc._temperature))
-            if cm_correction:
-                F_cm += np.log((natoms*concentration[count]/vol)*(2*np.pi*kbJ*calc._temperature/(natoms*concentration[count]*k[count]))**1.5)
-            #F_cm = 0
-    F_harm = 3*kb*calc._temperature*F_harm
-    F_cm = (kb*calc._temperature/natoms)*F_cm
+    #create an array of mass
+    mass = []
+    for x in calc.element:
+        for count in range(calc._element_dict[x]['count']):
+            mass.append(calc._element_dict[x]['mass'])
+    mass = np.array(mass)
+    
+    #convert mass to kg
+    mass = (mass/Na)*1E-3
 
-    F_harm = F_harm + F_cm
+    #create an array of k as well
+    karr = []
+    for c, x in enumerate(calc.element):
+        for count in range(calc._element_dict[x]['count']):
+            karr.append(k[c])
+    k = np.array(karr)
+    #convert k from ev/A2 to J/m2
+    k = k*(eV2J/1E-20)
 
-    return F_harm
+    #fe of Einstein crystal
+    Z_e = ((beta**2*k*hJ**2)/(4*np.pi**2*mass))**1.5
+    F_e = np.log(Z_e)
+    F_e = kb*temp*np.sum(F_e)/natoms #*J2eV #convert back to eV
+
+    #now get the cm correction
+    if cm_correction:
+        mass_sum = np.sum(mass)
+        mu = mass/mass_sum
+        mu2_over_k = mu**2/k
+        mu2_over_k_sum = np.sum(mu2_over_k) 
+        prefactor = vol
+        F_cm = np.log(prefactor*(beta/(2*np.pi*mu2_over_k_sum))**1.5)
+        F_cm = kb*temp*F_cm/natoms #convert to eV
+    else:
+        F_cm = 0
+    
+    F_tot = F_e - F_cm
+    if return_contributions:
+        return F_e, -F_cm
+    return F_tot
 
 #--------------------------------------------------------------------
 #             REF. STATE ROUTINES: LIQUID
