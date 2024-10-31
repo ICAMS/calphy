@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import yaml
+import matplotlib.pyplot as plt
+import warnings
 
 def read_report(folder):
     """
@@ -146,3 +148,82 @@ def gather_results(mainfolder):
 
     df = pd.DataFrame(data=datadict)
     return df
+
+def find_transition_temperature(folder1, folder2, fit_order=4, plot=True):
+    """
+    Find transition temperature where free energy of two phases are equal.
+
+    Parameters
+    ----------
+    folder1: string
+        directory with temperature scale calculation
+
+    folder2: string
+        directory with temperature scale calculation
+
+    fit_order: int, optional
+        default 4. Order for polynomial fit of temperature vs free energy
+    
+    plot: bool, optional
+        default True. Plot the results.
+    """
+    file1 = os.path.join(folder1, 'temperature_sweep.dat')
+    file2 = os.path.join(folder2, 'temperature_sweep.dat')
+    if not os.path.exists(file1):
+        raise FileNotFoundError(f'{file1} does not exist')
+    if not os.path.exists(file2):
+        raise FileNotFoundError(f'{file2} does not exist')
+
+    t1, f1 = np.loadtxt(file1, unpack=True, usecols=(0,1))
+    t2, f2 = np.loadtxt(file2, unpack=True, usecols=(0,1))
+
+    #do some fitting to determine temps
+    t1min = np.min(t1)
+    t2min = np.min(t2)
+    t1max = np.max(t1)
+    t2max = np.max(t2)
+
+    tmin = np.min([t1min, t2min])
+    tmax = np.max([t1max, t2max])
+
+    #warn about extrapolation
+    if not t1min == t2min:
+        warnings.warn(f'free energy is being extrapolated!')
+    if not t1max == t2max:
+        warnings.warn(f'free energy is being extrapolated!')
+
+    #now fit
+    f1fit = np.polyfit(t1, f1, fit_order)
+    f2fit = np.polyfit(t2, f2, fit_order)
+
+    #reevaluate over the new range
+    fit_t = np.arange(tmin, tmax+1, 1)
+    fit_f1 = np.polyval(f1fit, fit_t)
+    fit_f2 = np.polyval(f2fit, fit_t)
+
+    #now evaluate the intersection temp
+    arg = np.argsort(np.abs(fit_f1-fit_f2))[0]
+    transition_temp = fit_t[arg]
+
+    #warn if the temperature is shady
+    if np.abs(transition_temp-tmin) < 1E-3:
+        warnings.warn('It is likely there is no intersection of free energies')
+    elif np.abs(transition_temp-tmax) < 1E-3:
+        warnings.warn('It is likely there is no intersection of free energies')
+
+    #plot
+    if plot:
+        c1lo = '#ef9a9a'
+        c1hi = '#b71c1c'
+        c2lo = '#90caf9'
+        c2hi = '#0d47a1'
+
+        plt.plot(fit_t, fit_f1, color=c1lo, label=f'{folder1} fit')
+        plt.plot(fit_t, fit_f2, color=c2lo, label=f'{folder2} fit')
+        plt.plot(t1, f1, color=c1hi, label=folder1, ls='dashed')
+        plt.plot(t2, f2, color=c2hi, label=folder2, ls='dashed')
+        plt.axvline(transition_temp, ls='dashed', c='#37474f')
+        plt.ylabel('Free energy (eV/atom)')
+        plt.xlabel('Temperature (K)')
+        plt.legend(frameon=False)
+    return transition_temp
