@@ -431,7 +431,7 @@ class Calculation(BaseModel, title='Main input class'):
         if rename_structure_file:
             structure_filename = ".".join([self.create_identifier(), str(self.kernel), "data"])
             structure_filename = os.path.join(os.getcwd(), structure_filename)
-            shutil.copy(self.calc.lattice, structure_filename)
+            shutil.copy(self.lattice, structure_filename)
             self.lattice = structure_filename
         
         if self.mode == 'composition_scaling':
