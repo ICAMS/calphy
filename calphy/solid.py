@@ -459,15 +459,16 @@ class Solid(cph.Phase):
                 iteration))
 
         #turn on swap moves
-        if self.calc.monte_carlo.n_swaps > 0:
-            self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
-            lmp.command("fix  swap all atom/swap %d %d %d ${ftemp} ke yes types 1 2"%(self.calc.monte_carlo.n_steps,
-                                                                                self.calc.monte_carlo.n_swaps,
-                                                                                np.random.randint(1, 10000)))
-
-            lmp.command("variable a equal f_swap[1]")
-            lmp.command("variable b equal f_swap[2]")
-            lmp.command("fix             swap2 all print 1 \"${a} ${b}\" screen no file swap.fe.forward_%d.dat"%iteration)
+        #if self.calc.monte_carlo.n_swaps > 0:
+        #    self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
+        #    lmp.command("fix  swap all atom/swap %d %d %d %d ke yes types 1 2"%(self.calc.monte_carlo.n_steps,
+        #                                                                        self.calc.monte_carlo.n_swaps,
+        #                                                                        np.random.randint(1, 10000),
+        #                                                                        self.calc._temperature))
+        #
+        #    lmp.command("variable a equal f_swap[1]")
+        #    lmp.command("variable b equal f_swap[2]")
+        #    lmp.command("fix             swap2 all print 1 \"${a} ${b}\" screen no file swap.fe.forward_%d.dat"%iteration)
 
 
         #Forward switching over ts steps
@@ -477,9 +478,9 @@ class Solid(cph.Phase):
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
 
-        if self.calc.monte_carlo.n_swaps > 0:
-            lmp.command("unfix swap")
-            lmp.command("unfix swap2")
+        #if self.calc.monte_carlo.n_swaps > 0:
+        #    lmp.command("unfix swap")
+        #    lmp.command("unfix swap2")
 
         #Equilibriate
         lmp.command("run               %d"%self.calc.n_equilibration_steps)
@@ -501,15 +502,16 @@ class Solid(cph.Phase):
                 iteration))
 
         #add swaps if n_swap is > 0
-        if self.calc.monte_carlo.n_swaps > 0:
-            self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
-            lmp.command("fix  swap all atom/swap %d %d %d ${btemp} ke yes types 2 1"%(self.calc.monte_carlo.n_steps,
-                                                                                self.calc.monte_carlo.n_swaps,
-                                                                                np.random.randint(1, 10000)))
-
-            lmp.command("variable a equal f_swap[1]")
-            lmp.command("variable b equal f_swap[2]")
-            lmp.command("fix             swap2 all print 1 \"${a} ${b}\" screen no file swap.fe.backward_%d.dat"%iteration)
+        #if self.calc.monte_carlo.n_swaps > 0:
+        #    self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
+        #    lmp.command("fix  swap all atom/swap %d %d %d %d ke yes types 2 1"%(self.calc.monte_carlo.n_steps,
+        #                                                                        self.calc.monte_carlo.n_swaps,
+        #                                                                        np.random.randint(1, 10000),
+        #                                                                        self.calc._temperature))
+        #
+        #    lmp.command("variable a equal f_swap[1]")
+        #    lmp.command("variable b equal f_swap[2]")
+        #    lmp.command("fix             swap2 all print 1 \"${a} ${b}\" screen no file swap.fe.backward_%d.dat"%iteration)
 
 
 
@@ -520,9 +522,9 @@ class Solid(cph.Phase):
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
 
-        if self.calc.monte_carlo.n_swaps > 0:
-            lmp.command("unfix swap")
-            lmp.command("unfix swap2")
+        #if self.calc.monte_carlo.n_swaps > 0:
+        #    lmp.command("unfix swap")
+        #    lmp.command("unfix swap2")
 
         #close object
         if not self.calc.script_mode:
