@@ -332,6 +332,7 @@ class Calculation(BaseModel, title='Main input class'):
 
         #generate temporary filename if needed
         write_structure_file = False
+        rename_structure_file = False
 
         if self.lattice == "":
             #fetch from dict
@@ -405,6 +406,7 @@ class Calculation(BaseModel, title='Main input class'):
                 Z_of_type = dict([(count+1, self._element_dict[element]['atomic_number']) for count, element in enumerate(self.element)])
                 structure = read(self.lattice, format='lammps-data', style='atomic', Z_of_type=Z_of_type)
                 #structure = System(aseobj, format='ase')
+                rename_structure_file = True
             else:
                 raise TypeError('Only lammps-data files are supported!')                
 
@@ -424,6 +426,12 @@ class Calculation(BaseModel, title='Main input class'):
             structure_filename = ".".join([self.create_identifier(), str(self.kernel), "data"])
             structure_filename = os.path.join(os.getcwd(), structure_filename)
             write(structure_filename, structure, format='lammps-data')
+            self.lattice = structure_filename
+        
+        if rename_structure_file:
+            structure_filename = ".".join([self.create_identifier(), str(self.kernel), "data"])
+            structure_filename = os.path.join(os.getcwd(), structure_filename)
+            shutil.copy(self.calc.lattice, structure_filename)
             self.lattice = structure_filename
         
         if self.mode == 'composition_scaling':
