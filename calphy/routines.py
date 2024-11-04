@@ -453,7 +453,7 @@ def routine_composition_scaling(job):
     #job.calc._ghost_element_count = len(comp.new_atomtype) - len()
 
     #write new file out and update lattice
-    outfilename = ".".join([job.calc.lattice, "comp", "dump"])
+    outfilename = ".".join([job.calc.lattice, "comp", "data"])
     comp.write_structure(outfilename)
     job.calc.lattice = outfilename
     job.logger.info(f"Modified lattice written to {outfilename}")
