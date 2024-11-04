@@ -58,13 +58,6 @@ class Phase:
         indict = {"calculations": [self.calc.dict()]}
         with open(os.path.join(simfolder, 'input_file.yaml'), 'w') as fout:
             yaml.safe_dump(indict, fout)
-
-        #serialise input configuration
-        shutil.copy(self.calc.lattice, os.path.join(simfolder, 'input_configuration.data'))
-
-        #write simple metadata
-        with open(os.path.join(simfolder, 'metadata.yaml'), 'w') as fout:
-            yaml.safe_dump(generate_metadata(), fout)
         
 
         self.simfolder = simfolder
@@ -1143,3 +1136,15 @@ class Phase:
 
         if return_values:
             return res
+
+    def clean_up(self):
+        """
+        Run a clean up job
+        """
+        #serialise input configuration
+        shutil.copy(self.calc.lattice, os.path.join(self.simfolder, 'input_configuration.data'))
+
+        #write simple metadata
+        with open(os.path.join(self.simfolder, 'metadata.yaml'), 'w') as fout:
+            yaml.safe_dump(generate_metadata(), fout)
+
