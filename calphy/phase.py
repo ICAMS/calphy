@@ -62,6 +62,7 @@ class Phase:
 
         self.simfolder = simfolder
         self.log_to_screen = log_to_screen
+        self.publications = []
         
         logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile, screen=log_to_screen)
@@ -697,13 +698,17 @@ class Phase:
         #now we have to write out the results
         self.logger.info("Please cite the following publications:")
         self.logger.info("- 10.1103/PhysRevMaterials.5.103801")
+        self.publications.append("10.1103/PhysRevMaterials.5.103801")
 
         if self.calc.mode == "fe":
             if self.calc.reference_phase == "solid":
                 self.logger.info("- 10.1016/j.commatsci.2015.10.050")
+                self.publications.append("10.1016/j.commatsci.2015.10.050")
             else:
                 self.logger.info("- 10.1016/j.commatsci.2018.12.029")
                 self.logger.info("- 10.1063/1.4967775")
+                self.publications.append("10.1016/j.commatsci.2018.12.029")
+                self.publications.append("10.1063/1.4967775")
 
     def reversible_scaling(self, iteration=1):
         """
@@ -908,8 +913,10 @@ class Phase:
         self.logger.info("Please cite the following publications:")
         if self.calc.mode == "mts":
             self.logger.info("- 10.1063/1.1420486")
+            self.publications.append("10.1063/1.1420486")
         else:
             self.logger.info("- 10.1103/PhysRevLett.83.3973")
+            self.publications.append("10.1103/PhysRevLett.83.3973")
 
     def integrate_reversible_scaling(self, scale_energy=True, return_values=False):
         """
@@ -1112,6 +1119,7 @@ class Phase:
 
         self.logger.info("Please cite the following publications:")
         self.logger.info("- 10.1016/j.commatsci.2022.111275")
+        self.publications.append("10.1016/j.commatsci.2022.111275")
     
     
     def integrate_pressure_scaling(self, return_values=False):
@@ -1145,6 +1153,9 @@ class Phase:
         shutil.copy(self.calc.lattice, os.path.join(self.simfolder, 'input_configuration.data'))
 
         #write simple metadata
+        metadata = generate_metadata()
+        metadata['publications'] = self.publications
+
         with open(os.path.join(self.simfolder, 'metadata.yaml'), 'w') as fout:
-            yaml.safe_dump(generate_metadata(), fout)
+            yaml.safe_dump(metadata, fout)
 
