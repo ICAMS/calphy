@@ -353,7 +353,7 @@ class CompositionTransformation:
                 first_swap_type = self.mappingdict[first_map]
                 second_swap_type = self.mappingdict[second_map]
 
-                swap_list.append((first_swap_type, second_swap_type))
+                swap_list.append([first_swap_type, second_swap_type])
         return swap_list
             
     

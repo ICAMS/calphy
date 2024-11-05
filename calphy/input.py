@@ -77,6 +77,8 @@ class MonteCarlo(BaseModel, title='Options for Monte Carlo moves during particle
     n_steps: Annotated[int, Field(default=1, gt=0, description='perform swap moves every n_step')]
     n_swaps: Annotated[int, Field(default=0, gt=0, description='number of swap moves to perform')]
     reverse_swap: Annotated[ bool, Field(default=True)]
+    swap_types: Annotated[conlist(int, min_length=2, max_length=2), Field(default=[1,2], 
+                description='which atoms to swap between')]
 
 class CompositionScaling(BaseModel, title='Composition scaling input options'):
     _input_chemical_composition: PrivateAttr(default=None)
