@@ -239,10 +239,12 @@ class Alchemy(cph.Phase):
         #add swaps if n_swap is > 0
         if self.calc.monte_carlo.n_swaps > 0:
             self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
-            lmp.command("fix  swap all atom/swap %d %d %d %f ke no types 1 2"%(self.calc.monte_carlo.n_steps,
+            lmp.command("fix  swap all atom/swap %d %d %d %f ke no types %d %d"%(self.calc.monte_carlo.n_steps,
                                                                                 self.calc.monte_carlo.n_swaps,
                                                                                 np.random.randint(1, 10000),
-                                                                                self.calc._temperature))
+                                                                                self.calc._temperature,
+                                                                                self.calc.swap_types[0],
+                                                                                self.calc.swap_types[1]))
             lmp.command("variable a equal f_swap[1]")
             lmp.command("variable b equal f_swap[2]")
             lmp.command("fix             swap2 all print 1 \"${a} ${b} ${flambda}\" screen no file swap.forward_%d.dat"%iteration)
@@ -310,17 +312,21 @@ class Alchemy(cph.Phase):
         if self.calc.monte_carlo.n_swaps > 0:
             if self.calc.monte_carlo.reverse_swap:
                 self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 2 and 1 every {self.calc.monte_carlo.n_steps}')
-                lmp.command("fix  swap all atom/swap %d %d %d %f ke no types 2 1"%(self.calc.monte_carlo.n_steps,
+                lmp.command("fix  swap all atom/swap %d %d %d %f ke no types %d %d"%(self.calc.monte_carlo.n_steps,
                                                                                     self.calc.monte_carlo.n_swaps,
                                                                                     np.random.randint(1, 10000),
-                                                                                    self.calc._temperature))
+                                                                                    self.calc._temperature,
+                                                                                    self.calc.swap_types[1],
+                                                                                    self.calc.swap_types[0]))
             else:
                 self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
                 self.logger.info('note that swaps are not reversed')
-                lmp.command("fix  swap all atom/swap %d %d %d %f ke no types 1 2"%(self.calc.monte_carlo.n_steps,
+                lmp.command("fix  swap all atom/swap %d %d %d %f ke no types %d %d"%(self.calc.monte_carlo.n_steps,
                                                                                     self.calc.monte_carlo.n_swaps,
                                                                                     np.random.randint(1, 10000),
-                                                                                    self.calc._temperature))
+                                                                                    self.calc._temperature,
+                                                                                    self.calc.swap_types[0],
+                                                                                    self.calc.swap_types[1]))
 
             lmp.command("variable a equal f_swap[1]")
             lmp.command("variable b equal f_swap[2]")

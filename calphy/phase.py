@@ -820,9 +820,11 @@ class Phase:
         #add swaps if n_swap is > 0
         if self.calc.monte_carlo.n_swaps > 0:
             self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
-            lmp.command("fix  swap all atom/swap %d %d %d ${ftemp} ke yes types 1 2"%(self.calc.monte_carlo.n_steps,
+            lmp.command("fix  swap all atom/swap %d %d %d ${ftemp} ke yes types %d %d"%(self.calc.monte_carlo.n_steps,
                                                                                 self.calc.monte_carlo.n_swaps,
-                                                                                np.random.randint(1, 10000)))
+                                                                                np.random.randint(1, 10000),
+                                                                                self.calc.swap_types[0],
+                                                                                self.calc.swap_types[1]))
 
             lmp.command("variable a equal f_swap[1]")
             lmp.command("variable b equal f_swap[2]")
@@ -884,9 +886,11 @@ class Phase:
         #add swaps if n_swap is > 0
         if self.calc.monte_carlo.n_swaps > 0:
             self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between 1 and 2 every {self.calc.monte_carlo.n_steps}')
-            lmp.command("fix  swap all atom/swap %d %d %d ${btemp} ke yes types 2 1"%(self.calc.monte_carlo.n_steps,
+            lmp.command("fix  swap all atom/swap %d %d %d ${btemp} ke yes types %d %d"%(self.calc.monte_carlo.n_steps,
                                                                                 self.calc.monte_carlo.n_swaps,
-                                                                                np.random.randint(1, 10000)))
+                                                                                np.random.randint(1, 10000),
+                                                                                self.calc.swap_types[1],
+                                                                                self.calc.swap_types[0]))
 
             lmp.command("variable a equal f_swap[1]")
             lmp.command("variable b equal f_swap[2]")
