@@ -124,7 +124,9 @@ def run_jobs(inputfile):
                 scheduler = pq.SGE(calc.queue.__dict__, cores=calc.queue.cores)
             else:
                 raise ValueError("Unknown scheduler")
-
+            
+            scheduler.queueoptions['jobname'] = ''.join(e for e in identistring if e.isalnum())
+            
             #for lattice just provide the number of position
             scheduler.maincommand = "calphy_kernel -i %s -k %d"%(inputfile, 
                 count)
