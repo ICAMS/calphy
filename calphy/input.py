@@ -208,6 +208,9 @@ class Calculation(BaseModel, title='Main input class'):
     #structure items
     _structure: Any = PrivateAttr(default=None)
 
+    #just check for nlements in compscale
+    _totalelements = PrivateAttr(default=0)
+
     @model_validator(mode='after')
     def _validate_all(self) -> 'Input':
 
