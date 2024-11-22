@@ -40,7 +40,7 @@ def _extract_error(errfile):
                 pass
     return error_code
     
-def gather_results(mainfolder):
+def gather_results(mainfolder, reduce_composition=True):
     """
     Gather results from all subfolders in a given folder into a Pandas DataFrame
 
@@ -48,6 +48,10 @@ def gather_results(mainfolder):
     ----------
     mainfolder: string
         folder where calculations are stored
+    
+    reduce_composition: bool
+        If True, per species composition arrays are added.
+        Might be redundant.
     
     Returns
     -------
@@ -58,7 +62,8 @@ def gather_results(mainfolder):
         import pandas as pd
     except ImportError:
         raise ImportError('Please install pandas to use this function')
-     
+
+    unique_elements = []
     datadict = {}
     datadict['mode'] = []
     datadict['status'] = []
@@ -132,6 +137,11 @@ def gather_results(mainfolder):
             for key, val in compdict.items():
                 compdict[key] = val/maxatoms
             datadict['composition'][-1] = compdict
+            el_arr = list(compdict.keys())
+
+        for el in el_arr:
+            if el not in unique_elements:
+                unique_elements.append(el)
 
         #parse extra info
         if mode in ['ts', 'tscale']:
@@ -146,7 +156,92 @@ def gather_results(mainfolder):
                 errfile = os.path.join(os.getcwd(), mainfolder, folder+'.sub.err')
                 datadict['error_code'][-1] = _extract_error(errfile)
 
+    if reduce_composition:
+        unique_element_dict = {x: [] for x in unique_elements}
+        for x in datadict['composition']:
+            if x is None:
+                for key in unique_element_dict.keys():
+                    unique_element_dict[key].append(0)
+            else:
+                for el in unique_elements:
+                    if el in x.keys():
+                        unique_element_dict[el].append(x[el])
+                    else:
+                        unique_element_dict[el].append(0)
+        #add the keys to datadict
+        for key, val in unique_element_dict.items():
+            datadict[key] = val
+
     df = pd.DataFrame(data=datadict)
+    return df
+
+def clean_df(df, phase_name, reference_element, combine_direct_calculations=False, fit_order=2):
+    """
+    Clean a parsed dataframe and drop unnecessary columns. This gets it ready for further processing
+    Note that `gather_results` should be run with `reduce_composition` for this to work.
+
+    Parameters
+    ----------
+    df: DataFrame
+        dataframe parsed by `gather_results` with `reduce_composition=True`.
+    
+    phase_name: string
+        phase_name that needs to be added as a column
+    
+    reference_element: str
+        reference element from the compositions, which will be renamed to `composition`
+    
+    combine_direct_calculations: bool, optional
+        If True, combine direct calculations by fitting to produce temperature and free energy arrays
+        If used, an extra column `error` with mean square error of the fitting is also created
+    
+    fit_order: int, optional
+        If `combine_direct_calculations` is used, this argument is used for fitting order.
+
+    Returns
+    -------
+    df: DataFrame
+        combined, finished DataFrame
+    """
+    df = df.loc[df.status=='True']
+    df = df.drop(labels=['mode', 'status', 'pressure', 'reference_phase', 
+                 'error_code', 'composition', 'calculation'], axis='columns')
+
+    if combine_direct_calculations:
+        gb = df.groupby(by=reference_element)
+        gbs = [gb.get_group(x) for x in gb.groups]
+
+        fes = []
+        tes = []
+        errors = []
+        comps = []
+        
+        for exdf in gbs:
+            temps = np.array(exdf.temperature.values)
+            fe = np.array(exdf.free_energy.values)
+            
+            args = np.argsort(temps)
+            temps = temps[args]
+            fe = fe[args]            
+            
+            fit = np.polyfit(temps, fe, fit_order)
+            temp_arr = np.arange(temps.min(), temps.max()+1, 1)
+            
+            #estimate error
+            fe_eval = np.polyval(fit, temps)
+            error = np.sum((fe_eval-fe)**2)
+            
+            fe_arr = np.polyval(fit, temp_arr)
+            fes.append(fe_arr)
+            tes.append(temp_arr)
+            errors.append(error)
+            comps.append(float(exdf[reference_element].values[0]))
+        
+        #replace df
+        df = pd.DataFrame(data={'temperature':tes, 'free_energy': fes, 'error':errors, reference_element:comps})
+    
+    df['phase'] = [phase_name for x in range(len(df))]
+    df = df.rename(columns={reference_element:'composition'})
     return df
 
 def find_transition_temperature(folder1, folder2, fit_order=4, plot=True):

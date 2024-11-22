@@ -354,7 +354,7 @@ class CompositionTransformation:
                 second_swap_type = self.mappingdict[second_map]
 
                 swap_list.append([first_swap_type, second_swap_type])
-        return swap_list
+        return swap_list[0]
             
     
     def write_structure(self, outfilename):
