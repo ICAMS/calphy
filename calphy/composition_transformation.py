@@ -30,6 +30,7 @@ from mendeleev import element
 from ase.io import read, write
 from ase.atoms import Atoms
 from pyscal3.core import element_dict
+from calphy.integrators import kb
 
 class CompositionTransformation:
     """
@@ -133,8 +134,28 @@ class CompositionTransformation:
             strlst.append(str(key))
             strlst.append(str(val))
         return "".join(strlst)
-    
-    
+
+    @property
+    def entropy_contribution(self):
+        """
+        Find the entropy entribution of the transformation. To get
+        free energies, multiply by -T.
+        """
+        ents = []
+        for key, val in self.output_chemical_composition.items():
+            if key in self.input_chemical_composition.keys():
+                t1 = self.input_chemical_composition[key]/self.natoms
+                t2 = self.output_chemical_composition[key]/self.natoms
+                cont =  t1*np.log(t1) - t2*np.log(t2)
+            else:
+                t1 = 0
+                t2 = self.output_chemical_composition[key]/self.natoms
+                cont =  0 - t2*np.log(t2)
+            ents.append(cont)
+        entropy_term = -kb*np.sum(ents)
+        return entropy_term
+        
+
     def convert_to_pyscal(self):
         """
         Convert a given system to pyscal and give a dict of type mappings
