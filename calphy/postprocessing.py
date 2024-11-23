@@ -3,6 +3,7 @@ import numpy as np
 import yaml
 import matplotlib.pyplot as plt
 import warnings
+import pandas as pd
 
 def read_report(folder):
     """
