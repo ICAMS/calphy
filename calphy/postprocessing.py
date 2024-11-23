@@ -74,6 +74,7 @@ def gather_results(mainfolder, reduce_composition=True):
     datadict['error_code'] = []
     datadict['composition'] = []
     datadict['calculation'] = []
+    datadict['entropy'] = []
     
     folders = next(os.walk(mainfolder))[1]
     for folder in folders:
@@ -100,6 +101,7 @@ def gather_results(mainfolder, reduce_composition=True):
         datadict['pressure'].append(inp['pressure'])
         datadict['reference_phase'].append(inp['reference_phase'])
         datadict['composition'].append(None)
+        datadict['entropy'].append(0)
         datadict['calculation'].append(folder)
     
         #check output file
@@ -138,6 +140,10 @@ def gather_results(mainfolder, reduce_composition=True):
                 compdict[key] = val/maxatoms
             datadict['composition'][-1] = compdict
             el_arr = list(compdict.keys())
+
+            #we also need to update entropy
+            if 'entropy' in out['results'].keys():
+                datadict['entropy'][-1] = out['results']['entropy']
 
         for el in el_arr:
             if el not in unique_elements:
