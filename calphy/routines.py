@@ -495,7 +495,7 @@ def routine_composition_scaling(job):
     job.logger.info(f"Temporarily replacing mass: {job.calc.mass}")
 
     #update fict elements if needed
-    job.calc._totalelements = comp.maxtype
+    #job.calc._totalelements = comp.maxtype
 
     #now start cycle
     ts = time.time()
