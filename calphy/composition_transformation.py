@@ -146,13 +146,13 @@ class CompositionTransformation:
             if key in self.input_chemical_composition.keys():
                 t1 = self.input_chemical_composition[key]/self.natoms
                 t2 = self.output_chemical_composition[key]/self.natoms
-                cont =  t1*np.log(t1) - t2*np.log(t2)
+                cont = t2*np.log(t2) - t1*np.log(t1)
             else:
                 t1 = 0
                 t2 = self.output_chemical_composition[key]/self.natoms
-                cont =  0 - t2*np.log(t2)
+                cont =  t2*np.log(t2) - 0
             ents.append(cont)
-        entropy_term = -kb*np.sum(ents)
+        entropy_term = kb*np.sum(ents)
         return entropy_term
         
 
