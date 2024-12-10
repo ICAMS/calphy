@@ -598,8 +598,12 @@ class Phase:
         
         #now we can check if it converted
         file = os.path.join(self.simfolder, "avg.dat")
-        lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
-        lxpc = ipress
+        #we have to clean the data, so as just the last block is selected
+        lx, ly, lz, lxpc = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
+        lx = lx[-ncount+1:]
+        ly = ly[-ncount+1:]
+        lz = lx[-ncount+1:]
+        lxpc = lxpc[-ncount+1:]
         mean = np.mean(lxpc)
         std = np.std(lxpc)
         volatom = np.mean((lx*ly*lz)/self.natoms)
@@ -612,16 +616,20 @@ class Phase:
             ncount = int(self.calc.md.n_small_steps)//int(self.calc.md.n_every_steps*self.calc.md.n_repeat_steps)
 
         file = os.path.join(self.simfolder, "avg.dat")
-        lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)        
-        lxpc = ipress
+        lx, ly, lz, lxpc = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)        
+        lx = lx[-ncount+1:]
+        ly = ly[-ncount+1:]
+        lz = lx[-ncount+1:]
+        lxpc = lxpc[-ncount+1:]
+
         mean = np.mean(lxpc)
         std = np.std(lxpc)
         volatom = np.mean((lx*ly*lz)/self.natoms)
 
         self.calc._pressure = mean
-        self.lx = np.round(np.mean(lx[-ncount+1:]), decimals=3)
-        self.ly = np.round(np.mean(ly[-ncount+1:]), decimals=3)
-        self.lz = np.round(np.mean(lz[-ncount+1:]), decimals=3)
+        self.lx = np.round(np.mean(lx), decimals=3)
+        self.ly = np.round(np.mean(ly), decimals=3)
+        self.lz = np.round(np.mean(lz), decimals=3)
         self.volatom = volatom
         self.vol = self.lx*self.ly*self.lz
         self.rho = self.natoms/(self.lx*self.ly*self.lz)
