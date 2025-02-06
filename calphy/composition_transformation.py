@@ -155,7 +155,6 @@ class CompositionTransformation:
         entropy_term = kb*np.sum(ents)
         return entropy_term
         
-
     def convert_to_pyscal(self):
         """
         Convert a given system to pyscal and give a dict of type mappings
@@ -180,7 +179,6 @@ class CompositionTransformation:
         self.new_species = len(self.output_chemical_composition) - len(self.typedict)
         self.maxtype = self.actual_species + 1 #+ self.new_species
         #print(self.typedict)            
-
 
     def get_composition_transformation(self):
         """
@@ -214,9 +212,10 @@ class CompositionTransformation:
     def mark_atoms(self):
         for i in range(self.natoms):
             self.atom_mark.append(False)
-            self.atom_type = self.pyscal_structure.atoms.types
-            self.mappings = [f"{x}-{x}" for x in self.atom_type]
-            
+        
+        self.atom_type = self.pyscal_structure.atoms.types
+        self.mappings = [f"{x}-{x}" for x in self.atom_type]
+     
     def update_mark_atoms(self):
         self.marked_atoms = []
         for key, val in self.to_remove.items():
@@ -303,7 +302,7 @@ class CompositionTransformation:
         self.update_typedicts()
         self.compute_possible_mappings()
         self.update_mappings()
-        
+    
     def prepare_pair_lists(self):
         self.pair_list_old = []
         self.pair_list_new = []
@@ -322,8 +321,12 @@ class CompositionTransformation:
     def update_types(self):
         for x in range(len(self.atom_type)):
             self.atom_type[x] = self.mappingdict[self.mappings[x]]
-        for count in range(len(self.pyscal_structure.atoms.types)):
-            self.pyscal_structure.atoms.types[count] = self.atom_type[count]
+        
+        #smartify these loops
+        #npyscal = len(self.pyscal_structure.atoms.types)
+        self.pyscal_structure.atoms.types = self.atom_type
+        #for count in range(npyscal)):
+        #    self.pyscal_structure.atoms.types[count] = self.atom_type[count]
             
     def iselement(self, symbol):
         try:
