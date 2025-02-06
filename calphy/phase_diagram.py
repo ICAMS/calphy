@@ -79,13 +79,31 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
         phase_name = phase['phase_name']
 
         comps = phase['composition']
-        ncomps = int((comps['range'][-1]-comps['range'][0])/comps['interval'])+1
-        comp_arr = np.linspace(comps['range'][0], comps['range'][-1], ncomps, endpoint=True)
-        is_reference = comp_arr==comps['reference']
+        #convert to list if scalar
+        if not isinstance(comps['range'], list):
+            comps["range"] = [comps["range"]]
+        if len(comps["range"]) == 2: 
+            ncomps = int((comps['range'][-1]-comps['range'][0])/comps['interval'])+1
+            comp_arr = np.linspace(comps['range'][0], comps['range'][-1], ncomps, endpoint=True)
+            is_reference = comp_arr==comps['reference']
+        elif len(comps["range"]) == 1:
+            ncomps = 1
+            comp_arr = [comps["range"][0]]
+            is_reference = [True]
+        else:
+            raise ValueError("Composition range should be scalar of list of two values!")
 
         temps = phase["temperature"]
-        ntemps = int((temps['range'][-1]-temps['range'][0])/temps['interval'])+1
-        temp_arr = np.linspace(temps['range'][0], temps['range'][-1], ntemps, endpoint=True)
+        if not isinstance(temps['range'], list):
+            temps["range"] = [temps["range"]]
+        if len(temps["range"]) == 2: 
+            ntemps = int((temps['range'][-1]-temps['range'][0])/temps['interval'])+1
+            temp_arr = np.linspace(temps['range'][0], temps['range'][-1], ntemps, endpoint=True)
+        elif len(temps["range"]) == 1:
+            ntemps = 1
+            temp_arr = [temps["range"][0]]
+        else:
+            raise ValueError("Temperature range should be scalar of list of two values!")
 
         all_calculations = []
 
