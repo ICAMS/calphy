@@ -126,7 +126,8 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                 n_species_b = int(np.round(comp*n_atoms, decimals=0))
                 n_species_a = int(n_atoms-n_species_b)
                 out_natoms = [n_species_a, n_species_b]
-                
+                if n_species_a == 0:
+                    raise ValueError("Please add pure phase as a new entry!")
                 #create input comp dict and output comp dict
                 input_chemical_composition = {element:number for element, number in zip(calc['element'],
                                                                     calc['composition']['number_of_atoms'])}
