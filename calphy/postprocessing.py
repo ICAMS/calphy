@@ -71,7 +71,7 @@ def gather_results(mainfolder, reduce_composition=True,
 
     unique_elements = []
     datadict = {}
-    datadict['mode'] = []
+    datadict['calculation_mode'] = []
     datadict['status'] = []
     datadict['temperature'] = []
     datadict['pressure'] = []
