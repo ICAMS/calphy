@@ -229,7 +229,7 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
     phases = df.groupby(df.phase_name)
     phases = [phases.get_group(x) for x in phases.groups]
 
-    df_list = []
+    df_dict = {}
     
     for phase in phases:
         if combine_direct_calculations:
@@ -272,8 +272,8 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
             df = pd.DataFrame(data={'temperature':tes, 'free_energy': fes, 'error':errors, reference_element:comps})
         
         df = df.rename(columns={reference_element:'composition'})
-        df_list.append(df)
-    return df_list
+        df_dict[phase_name] = df
+    return df_dict
 
 def find_transition_temperature(folder1, folder2, fit_order=4, plot=True):
     """
