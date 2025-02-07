@@ -192,7 +192,7 @@ def gather_results(mainfolder, reduce_composition=True,
     df = pd.DataFrame(data=datadict)
     return df
 
-def clean_df(df, reference_element, combine_direct_calculations=False, fit_order=2):
+def clean_df(df, reference_element, combine_direct_calculations=False, fit_order=0):
     """
     Clean a parsed dataframe and drop unnecessary columns. This gets it ready for further processing
     Note that `gather_results` should be run with `reduce_composition` and `extract_phase_name` for this to work.
@@ -223,7 +223,7 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
         raise ValueError("phase_name key is not found, maybe add it?")
 
     df = df.loc[df.status=='True']
-    df = df.drop(labels=['mode', 'status', 'pressure', 'reference_phase', 
+    df = df.drop(labels=['status', 'pressure', 'reference_phase', 
                  'error_code', 'composition', 'calculation'], axis='columns')
 
     phases = df.groupby(df.phase_name)
@@ -244,7 +244,13 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
             for exdf in gbs:
                 temps = np.array(exdf.temperature.values)
                 fe = np.array(exdf.free_energy.values)
-                
+                modes = np.array(exdf.mode.values)
+
+                unique_modes = np.unique(modes)
+                if len(unique_modes)>1:
+                    warnings.warn("mixing calculations from more than one mode!")
+                unique_mode = unique_modes[0]
+
                 args = np.argsort(temps)
                 temps = temps[args]
                 fe = fe[args]            
@@ -269,10 +275,13 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
                 comps.append(float(exdf[reference_element].values[0]))
             
             #replace df
-            df = pd.DataFrame(data={'temperature':tes, 'free_energy': fes, 'error':errors, reference_element:comps})
+            modelist = [unique_mode for x in range(len(tes))]
+            df = pd.DataFrame(data={'temperature':tes, 'free_energy': fes, 
+                'error':errors, reference_element:comps,
+                'mode': modelist})
         
         df = df.rename(columns={reference_element:'composition'})
-        df_dict[phase_name] = df
+        df_dict[phase.phase_name.values[0]] = df
     return df_dict
 
 def find_transition_temperature(folder1, folder2, fit_order=4, plot=True):
