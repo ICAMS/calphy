@@ -240,7 +240,8 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
             tes = []
             errors = []
             comps = []
-            
+            mode_list = []
+
             for exdf in gbs:
                 temps = np.array(exdf.temperature.values)
                 fe = np.array(exdf.free_energy.values)
@@ -273,12 +274,12 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
                 tes.append(temp_arr)
                 errors.append(error)
                 comps.append(float(exdf[reference_element].values[0]))
+                mode_list.append(unique_mode)
             
             #replace df
-            modelist = [unique_mode for x in range(len(tes))]
             df = pd.DataFrame(data={'temperature':tes, 'free_energy': fes, 
                 'error':errors, reference_element:comps,
-                'calculation_mode': modelist})
+                'calculation_mode': mode_list})
         
         df = df.rename(columns={reference_element:'composition'})
         df_dict[phase.phase_name.values[0]] = df
