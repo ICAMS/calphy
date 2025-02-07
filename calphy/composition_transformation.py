@@ -141,16 +141,21 @@ class CompositionTransformation:
         Find the entropy entribution of the transformation. To get
         free energies, multiply by -T.
         """
+        def _log(val):
+            if val == 0:
+                return 0
+            else:
+                return np.log(val)
         ents = []
         for key, val in self.output_chemical_composition.items():
             if key in self.input_chemical_composition.keys():
                 t1 = self.input_chemical_composition[key]/self.natoms
                 t2 = self.output_chemical_composition[key]/self.natoms
-                cont = t2*np.log(t2) - t1*np.log(t1)
+                cont = t2*_log(t2) - t1*_log(t1)
             else:
                 t1 = 0
                 t2 = self.output_chemical_composition[key]/self.natoms
-                cont =  t2*np.log(t2) - 0
+                cont =  t2*_log(t2) - 0
             ents.append(cont)
         entropy_term = kb*np.sum(ents)
         return entropy_term
