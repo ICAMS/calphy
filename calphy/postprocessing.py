@@ -103,7 +103,7 @@ def gather_results(mainfolder, reduce_composition=True,
         inp = inp['calculations'][0]
         #mode
         mode = inp['mode']
-        datadict['mode'].append(mode)
+        datadict['calculation_mode'].append(mode)
         datadict['temperature'].append(inp['temperature'])
         datadict['pressure'].append(inp['pressure'])
         datadict['reference_phase'].append(inp['reference_phase'])
@@ -244,7 +244,7 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
             for exdf in gbs:
                 temps = np.array(exdf.temperature.values)
                 fe = np.array(exdf.free_energy.values)
-                modes = np.array(exdf.mode.values)
+                modes = np.array(exdf.calculation_mode.values)
 
                 unique_modes = np.unique(modes)
                 if len(unique_modes)>1:
@@ -278,7 +278,7 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
             modelist = [unique_mode for x in range(len(tes))]
             df = pd.DataFrame(data={'temperature':tes, 'free_energy': fes, 
                 'error':errors, reference_element:comps,
-                'mode': modelist})
+                'calculation_mode': modelist})
         
         df = df.rename(columns={reference_element:'composition'})
         df_dict[phase.phase_name.values[0]] = df
