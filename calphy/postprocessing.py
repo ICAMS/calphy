@@ -195,15 +195,13 @@ def gather_results(mainfolder, reduce_composition=True,
 def clean_df(df, reference_element, combine_direct_calculations=False, fit_order=2):
     """
     Clean a parsed dataframe and drop unnecessary columns. This gets it ready for further processing
-    Note that `gather_results` should be run with `reduce_composition` for this to work.
+    Note that `gather_results` should be run with `reduce_composition` and `extract_phase_name` for this to work.
+
 
     Parameters
     ----------
     df: DataFrame
         dataframe parsed by `gather_results` with `reduce_composition=True`.
-    
-    phase_name: string
-        phase_name that needs to be added as a column
     
     reference_element: str
         reference element from the compositions, which will be renamed to `composition`
@@ -220,45 +218,62 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
     df: DataFrame
         combined, finished DataFrame
     """
+
+    if "phase_name" not in df.keys():
+        raise ValueError("phase_name key is not found, maybe add it?")
+
     df = df.loc[df.status=='True']
     df = df.drop(labels=['mode', 'status', 'pressure', 'reference_phase', 
                  'error_code', 'composition', 'calculation'], axis='columns')
 
-    if combine_direct_calculations:
-        gb = df.groupby(by=reference_element)
-        gbs = [gb.get_group(x) for x in gb.groups]
+    phases = df.groupby(df.phase_name)
+    phases = [phases.get_group(x) for x in phases.groups]
 
-        fes = []
-        tes = []
-        errors = []
-        comps = []
-        
-        for exdf in gbs:
-            temps = np.array(exdf.temperature.values)
-            fe = np.array(exdf.free_energy.values)
-            
-            args = np.argsort(temps)
-            temps = temps[args]
-            fe = fe[args]            
-            
-            fit = np.polyfit(temps, fe, fit_order)
-            temp_arr = np.arange(temps.min(), temps.max()+1, 1)
-            
-            #estimate error
-            fe_eval = np.polyval(fit, temps)
-            error = np.sum((fe_eval-fe)**2)
-            
-            fe_arr = np.polyval(fit, temp_arr)
-            fes.append(fe_arr)
-            tes.append(temp_arr)
-            errors.append(error)
-            comps.append(float(exdf[reference_element].values[0]))
-        
-        #replace df
-        df = pd.DataFrame(data={'temperature':tes, 'free_energy': fes, 'error':errors, reference_element:comps})
+    df_list = []
     
-    df = df.rename(columns={reference_element:'composition'})
-    return df
+    for phase in phases:
+        if combine_direct_calculations:
+            gb = phase.groupby(by=reference_element)
+            gbs = [gb.get_group(x) for x in gb.groups]
+
+            fes = []
+            tes = []
+            errors = []
+            comps = []
+            
+            for exdf in gbs:
+                temps = np.array(exdf.temperature.values)
+                fe = np.array(exdf.free_energy.values)
+                
+                args = np.argsort(temps)
+                temps = temps[args]
+                fe = fe[args]            
+                
+                if fit_order > 0:
+                    fit = np.polyfit(temps, fe, fit_order)
+                    temp_arr = np.arange(temps.min(), temps.max()+1, 1)
+                
+                    #estimate error
+                    fe_eval = np.polyval(fit, temps)
+                    error = np.sum((fe_eval-fe)**2)
+                
+                    fe_arr = np.polyval(fit, temp_arr)
+                else:
+                    fe_arr = fe
+                    temp_arr = temps
+                    error = 0
+
+                fes.append(fe_arr)
+                tes.append(temp_arr)
+                errors.append(error)
+                comps.append(float(exdf[reference_element].values[0]))
+            
+            #replace df
+            df = pd.DataFrame(data={'temperature':tes, 'free_energy': fes, 'error':errors, reference_element:comps})
+        
+        df = df.rename(columns={reference_element:'composition'})
+        df_list.append(df)
+    return df_list
 
 def find_transition_temperature(folder1, folder2, fit_order=4, plot=True):
     """
