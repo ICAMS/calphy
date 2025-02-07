@@ -41,7 +41,8 @@ def _extract_error(errfile):
                 pass
     return error_code
     
-def gather_results(mainfolder, reduce_composition=True):
+def gather_results(mainfolder, reduce_composition=True, 
+    extract_phase_prefix=False):
     """
     Gather results from all subfolders in a given folder into a Pandas DataFrame
 
@@ -53,6 +54,10 @@ def gather_results(mainfolder, reduce_composition=True):
     reduce_composition: bool
         If True, per species composition arrays are added.
         Might be redundant.
+    
+    extract_phase_prefix: bool
+        Should be used in conjuction with phase diagram mode. 
+        Extracts the prefix and add it as a phase_name column.
     
     Returns
     -------
@@ -76,6 +81,7 @@ def gather_results(mainfolder, reduce_composition=True):
     datadict['composition'] = []
     datadict['calculation'] = []
     datadict['entropy'] = []
+    datadict['phase_name'] = []
     
     folders = next(os.walk(mainfolder))[1]
     for folder in folders:
@@ -104,6 +110,7 @@ def gather_results(mainfolder, reduce_composition=True):
         datadict['composition'].append(None)
         datadict['entropy'].append(0)
         datadict['calculation'].append(folder)
+        datadict['phase_name'].append(folder.split('-')[0])
     
         #check output file
         outfile = os.path.join(mainfolder, folder, 'report.yaml')
@@ -178,11 +185,14 @@ def gather_results(mainfolder, reduce_composition=True):
         #add the keys to datadict
         for key, val in unique_element_dict.items():
             datadict[key] = val
+    
+    if not extract_phase_prefix:
+        del datadict['phase_name']
 
     df = pd.DataFrame(data=datadict)
     return df
 
-def clean_df(df, phase_name, reference_element, combine_direct_calculations=False, fit_order=2):
+def clean_df(df, reference_element, combine_direct_calculations=False, fit_order=2):
     """
     Clean a parsed dataframe and drop unnecessary columns. This gets it ready for further processing
     Note that `gather_results` should be run with `reduce_composition` for this to work.
@@ -247,7 +257,6 @@ def clean_df(df, phase_name, reference_element, combine_direct_calculations=Fals
         #replace df
         df = pd.DataFrame(data={'temperature':tes, 'free_energy': fes, 'error':errors, reference_element:comps})
     
-    df['phase'] = [phase_name for x in range(len(df))]
     df = df.rename(columns={reference_element:'composition'})
     return df
 
