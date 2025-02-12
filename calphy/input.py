@@ -205,6 +205,10 @@ class Calculation(BaseModel, title='Main input class'):
     #add second level options; for example spring constants
     spring_constants: Annotated[Union[List[float],None], Field(default = None)]
 
+    #some input keywords that will be used for the phase diagram mode
+    phase_name: Annotated[str, Field(default="")]
+    reference_composition: Annotated[float, Field(default=0.00)]
+
     #structure items
     _structure: Any = PrivateAttr(default=None)
 

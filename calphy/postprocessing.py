@@ -192,6 +192,21 @@ def gather_results(mainfolder, reduce_composition=True,
     df = pd.DataFrame(data=datadict)
     return df
 
+def _entropy(compC, comp_init=[1, 0]):
+    """
+    l1: initial concentration [Au, Cu]
+    l2: final concentration [Au, Cu]
+    """
+    compA = 1 - compC
+    def _log(val):
+        if val == 0:
+            return 0
+        else:
+            return np.log(val)
+    dA = compA*_log(compA) - comp_init[0]*_log(comp_init[0])
+    dC = compC*_log(compC) - comp_init[1]*_log(comp_init[1])
+    return kb*(dA+dC)
+    
 def clean_df(df, reference_element, combine_direct_calculations=False, fit_order=0):
     """
     Clean a parsed dataframe and drop unnecessary columns. This gets it ready for further processing
