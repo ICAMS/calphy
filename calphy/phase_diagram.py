@@ -114,7 +114,8 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                 calc = copy.deepcopy(phase)
 
                 #pop extra keys which are not needed
-                extra_keys = ['phase_name', 'composition', 'monte_carlo']
+                #we dont kick out phase_name
+                extra_keys = ['composition', 'monte_carlo']
                 for key in extra_keys:
                     _ = calc.pop(key, None)
                 
@@ -123,6 +124,7 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                 
                 #add ref phase, needed
                 calc['reference_phase'] = str(phase_reference_state)
+                calc['reference_composition'] = comps['reference']
                 calc['mode'] = str('fe')
                 calc['folder_prefix'] = f'{phase_name}-{comp:.2f}'
                 calc['lattice'] = str(outfile)
@@ -154,12 +156,14 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
 
                 #good, now we need to write such a structure out; likely better to use working directory for that
                 folder_prefix = f'{phase_name}-{comp:.2f}'
-
+                calc['reference_composition'] = comps['reference']
+                
                 #if solid, its very easy; kinda
                 if calc['reference_phase'] == 'solid':
 
                     #pop extra keys which are not needed
-                    extra_keys = ['phase_name', 'composition', 'reference_phase']
+                    #we dont kick out phase_name
+                    extra_keys = ['composition', 'reference_phase']
                     for key in extra_keys:
                         _ = calc.pop(key, None)
                     
