@@ -80,7 +80,7 @@ def gather_results(mainfolder, reduce_composition=True,
     datadict['error_code'] = []
     datadict['composition'] = []
     datadict['calculation'] = []
-    datadict['entropy'] = []
+    datadict['ideal_entropy'] = []
     datadict['phase_name'] = []
     datadict['reference_composition'] = []
     
