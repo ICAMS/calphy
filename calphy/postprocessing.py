@@ -111,7 +111,7 @@ def gather_results(mainfolder, reduce_composition=True,
         datadict['phase_name'].append(inp['phase_name'])
         datadict['reference_composition'].append(inp['reference_composition'])
         datadict['composition'].append(None)
-        datadict['entropy'].append(0)
+        datadict['ideal_entropy'].append(0)
         datadict['calculation'].append(folder)
     
         #check output file
@@ -153,7 +153,7 @@ def gather_results(mainfolder, reduce_composition=True,
 
             #we also need to update entropy
             if 'entropy_contribution' in out['results'].keys():
-                datadict['entropy'][-1] = out['results']['entropy_contribution']
+                datadict['ideal_entropy'][-1] = out['results']['entropy_contribution']
 
         for el in el_arr:
             if el not in unique_elements:
@@ -258,6 +258,7 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
             errors = []
             comps = []
             mode_list = []
+            entropies = []
 
             for exdf in gbs:
                 temps = np.array(exdf.temperature.values)
@@ -270,9 +271,13 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
                     warnings.warn("mixing calculations from more than one mode!")
                 unique_mode = unique_modes[0]
 
+                #REMEMBER TO SORT EVERYTHING
                 args = np.argsort(temps)
                 temps = temps[args]
-                fe = fe[args]            
+                fe = fe[args] 
+                entropy = entropy[args]        
+                #print(fe, entropy)
+                #print(len(fe), len(entropy))    
                 
                 if fit_order > 0:
                     fit = np.polyfit(temps, fe, fit_order)
@@ -291,12 +296,13 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
                 fes.append(fe_arr)
                 tes.append(temp_arr)
                 errors.append(error)
+                entropies.append(entropy[0])
                 comps.append(float(exdf[reference_element].values[0]))
                 mode_list.append(unique_mode)
             
             #replace df
             df = pd.DataFrame(data={'temperature':tes, 'free_energy': fes, 
-                'error':errors, reference_element:comps,
+                'error':errors, reference_element:comps, 'ideal_entropy': entropies,
                 'calculation_mode': mode_list})
         
         df = df.rename(columns={reference_element:'composition'})
