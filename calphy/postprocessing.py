@@ -153,7 +153,7 @@ def gather_results(mainfolder, reduce_composition=True,
 
             #we also need to update entropy
             if 'entropy_contribution' in out['results'].keys():
-                datadict['entropy'][-1] = out['results']['entropyentropy_contribution']
+                datadict['entropy'][-1] = out['results']['entropy_contribution']
 
         for el in el_arr:
             if el not in unique_elements:
