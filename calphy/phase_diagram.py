@@ -189,7 +189,8 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                     compsc.write_structure(outfile)
             
                     #pop extra keys which are not needed
-                    extra_keys = ['phase_name', 'composition']
+                    #we dont kick out phase name
+                    extra_keys = ['composition']
                     for key in extra_keys:
                         _ = calc.pop(key, None)
 

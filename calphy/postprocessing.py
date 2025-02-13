@@ -108,7 +108,7 @@ def gather_results(mainfolder, reduce_composition=True,
         datadict['temperature'].append(inp['temperature'])
         datadict['pressure'].append(inp['pressure'])
         datadict['reference_phase'].append(inp['reference_phase'])
-        datadict['reference_phase'].append(inp['phase_name'])
+        datadict['phase_name'].append(inp['phase_name'])
         datadict['reference_composition'].append(inp['reference_composition'])
         datadict['composition'].append(None)
         datadict['entropy'].append(0)
