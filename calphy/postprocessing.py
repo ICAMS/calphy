@@ -259,12 +259,14 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
             comps = []
             mode_list = []
             entropies = []
+            is_refs = []
 
             for exdf in gbs:
                 temps = np.array(exdf.temperature.values)
                 fe = np.array(exdf.free_energy.values)
                 modes = np.array(exdf.calculation_mode.values)
-                entropy = np.array(exdf.entropy.values)
+                entropy = np.array(exdf.ideal_entropy.values)
+                comp_ref = np.array(exdf.reference_composition.values)
 
                 unique_modes = np.unique(modes)
                 if len(unique_modes)>1:
@@ -275,7 +277,7 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
                 args = np.argsort(temps)
                 temps = temps[args]
                 fe = fe[args] 
-                entropy = entropy[args]        
+                #entropy = entropy[args]        
                 #print(fe, entropy)
                 #print(len(fe), len(entropy))    
                 
@@ -298,16 +300,34 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
                 errors.append(error)
                 entropies.append(entropy[0])
                 comps.append(float(exdf[reference_element].values[0]))
+                is_refs.append(np.abs(float(exdf[reference_element].values[0])-comp_ref[0])<1E-5)
+
                 mode_list.append(unique_mode)
             
             #replace df
             df = pd.DataFrame(data={'temperature':tes, 'free_energy': fes, 
                 'error':errors, reference_element:comps, 'ideal_entropy': entropies,
-                'calculation_mode': mode_list})
+                'calculation_mode': mode_list, "is_reference":is_refs})
         
         df = df.rename(columns={reference_element:'composition'})
         df_dict[phase.phase_name.values[0]] = df
     return df_dict
+
+def fix_composition_scaling(dfdict, fit_order=2):
+    #NOTE: at the moment, the temperature ranges have to be same! but that should be fixed with fitting
+    #there could be calculations that failed, no?
+    #lets just fit, maybe a 2d?
+    for key, val in dfdict.items():
+        x=val
+        ref_fe = x.loc[x.is_reference==True].free_energy.values[0]
+        ref_temp = x.loc[x.is_reference==True].temperature.values[0]
+        ref_fe_fit = np.polyfit(ref_temp, ref_fe, fit_order)
+
+        for index, row in x.iterrows():
+            if (not row.is_reference) and (row.calculation_mode == 'composition_scaling'):
+                x.at[index, 'free_energy'] = row.free_energy - row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
+        dfdict[key] = x
+    return dfdict        
 
 def find_transition_temperature(folder1, folder2, fit_order=4, plot=True):
     """
