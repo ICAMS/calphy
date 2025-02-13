@@ -82,6 +82,7 @@ def gather_results(mainfolder, reduce_composition=True,
     datadict['calculation'] = []
     datadict['entropy'] = []
     datadict['phase_name'] = []
+    datadict['reference_composition'] = []
     
     folders = next(os.walk(mainfolder))[1]
     for folder in folders:
@@ -107,10 +108,11 @@ def gather_results(mainfolder, reduce_composition=True,
         datadict['temperature'].append(inp['temperature'])
         datadict['pressure'].append(inp['pressure'])
         datadict['reference_phase'].append(inp['reference_phase'])
+        datadict['reference_phase'].append(inp['phase_name'])
+        datadict['reference_composition'].append(inp['reference_composition'])
         datadict['composition'].append(None)
         datadict['entropy'].append(0)
         datadict['calculation'].append(folder)
-        datadict['phase_name'].append(folder.split('-')[0])
     
         #check output file
         outfile = os.path.join(mainfolder, folder, 'report.yaml')
@@ -150,8 +152,8 @@ def gather_results(mainfolder, reduce_composition=True,
             el_arr = list(compdict.keys())
 
             #we also need to update entropy
-            if 'entropy' in out['results'].keys():
-                datadict['entropy'][-1] = out['results']['entropy']
+            if 'entropy_contribution' in out['results'].keys():
+                datadict['entropy'][-1] = out['results']['entropyentropy_contribution']
 
         for el in el_arr:
             if el not in unique_elements:
@@ -261,6 +263,7 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
                 temps = np.array(exdf.temperature.values)
                 fe = np.array(exdf.free_energy.values)
                 modes = np.array(exdf.calculation_mode.values)
+                entropy = np.array(exdf.entropy.values)
 
                 unique_modes = np.unique(modes)
                 if len(unique_modes)>1:
