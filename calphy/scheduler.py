@@ -154,6 +154,8 @@ class SLURM:
         """
         cmd = ['sbatch', self.script]
         proc = sub.Popen(cmd, stdin=sub.PIPE,stdout=sub.PIPE,stderr=sub.PIPE)
+        print(f'submitting {self.queueoptions["jobname"]}')
+        proc.communicate()
         return proc
 
 

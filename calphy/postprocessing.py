@@ -313,7 +313,7 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
         df_dict[phase.phase_name.values[0]] = df
     return df_dict
 
-def fix_composition_scaling(dfdict, fit_order=2):
+def fix_composition_scaling(dfdict, fit_order=4):
     #NOTE: at the moment, the temperature ranges have to be same! but that should be fixed with fitting
     #there could be calculations that failed, no?
     #lets just fit, maybe a 2d?

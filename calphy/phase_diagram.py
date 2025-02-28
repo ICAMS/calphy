@@ -83,8 +83,11 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
         if not isinstance(comps['range'], list):
             comps["range"] = [comps["range"]]
         if len(comps["range"]) == 2: 
-            ncomps = int((comps['range'][-1]-comps['range'][0])/comps['interval'])+1
-            comp_arr = np.linspace(comps['range'][0], comps['range'][-1], ncomps, endpoint=True)
+            comp_arr = np.arange(comps['range'][0], comps['range'][-1], comps['interval'])
+            last_val = comps['range'][-1]
+            if last_val not in comp_arr:
+                comp_arr = np.append(comp_arr, last_val)
+            ncomps = len(comp_arr)
             is_reference = comp_arr==comps['reference']
         elif len(comps["range"]) == 1:
             ncomps = 1

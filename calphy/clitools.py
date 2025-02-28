@@ -11,6 +11,7 @@ from calphy.input import read_inputfile, load_job, save_job, _convert_legacy_inp
 from calphy.liquid import Liquid
 from calphy.solid import Solid
 from calphy.alchemy import Alchemy
+from calphy.phase_diagram import prepare_inputs_for_phase_diagram
 
 def _generate_job(calc, simfolder):
     if calc.mode == "alchemy" or calc.mode == "composition_scaling":
@@ -120,3 +121,8 @@ def convert_legacy_inputfile():
             yaml.safe_dump(data, fout)
 
 
+def phase_diagram():
+    arg = ap.ArgumentParser()
+    arg.add_argument("-i", "--input", required=True, type=str,
+    help="name of the input file")
+    prepare_inputs_for_phase_diagram(args['input'])

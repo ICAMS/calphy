@@ -64,6 +64,7 @@ setup(
             'calphy_run_integration = calphy.clitools:run_integration',
             'calphy_process_integration = calphy.clitools:process_integration',
             'calphy_convert_input = calphy.clitools:convert_legacy_inputfile',
+            'calphy_phase_diagram = calphy.clitools:phase_diagram',
         ],
     }
 )
