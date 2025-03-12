@@ -325,7 +325,8 @@ def fix_composition_scaling(dfdict, fit_order=4):
 
         for index, row in x.iterrows():
             if (not row.is_reference) and (row.calculation_mode == 'composition_scaling'):
-                x.at[index, 'free_energy'] = row.free_energy - row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
+                x.at[index, 'free_energy'] = row.free_energy + row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
+                #x.at[index, 'free_energy'] = row.free_energy + np.polyval(ref_fe_fit, row.temperature)
         dfdict[key] = x
     return dfdict        
 
