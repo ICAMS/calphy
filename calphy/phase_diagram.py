@@ -313,6 +313,11 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
         phase_name = phase['phase_name']
 
         comps = phase['composition']
+        reference_element = comps["reference_element"]
+        other_element_list = copy.deepcopy(phase['element'])
+        other_element_list.remove(reference_element)
+        other_element = other_element_list[0]
+
         #convert to list if scalar
         if not isinstance(comps['range'], list):
             comps["range"] = [comps["range"]]
@@ -379,17 +384,20 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                 #first thing first, we need to calculate the number of atoms
                 #we follow the convention that composition is always given with the second species
                 n_atoms = np.sum(calc['composition']['number_of_atoms'])
+                
                 #find number of atoms of second species
+                output_chemical_composition = {}
                 n_species_b = int(np.round(comp*n_atoms, decimals=0))
+                output_chemical_composition[reference_element] = n_species_b
+
                 n_species_a = int(n_atoms-n_species_b)
-                out_natoms = [n_species_a, n_species_b]
+                output_chemical_composition[other_element] = n_species_a
+
                 if n_species_a == 0:
                     raise ValueError("Please add pure phase as a new entry!")
                 #create input comp dict and output comp dict
                 input_chemical_composition = {element:number for element, number in zip(calc['element'],
                                                                     calc['composition']['number_of_atoms'])}
-                output_chemical_composition = {element:number for element, number in zip(calc['element'],
-                                                                    out_natoms)}
 
                 #good, now we need to write such a structure out; likely better to use working directory for that
                 folder_prefix = f'{phase_name}-{comp:.2f}'
