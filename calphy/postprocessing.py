@@ -153,7 +153,7 @@ def gather_results(mainfolder, reduce_composition=True,
 
             #we also need to update entropy
             if 'entropy_contribution' in out['results'].keys():
-                datadict['ideal_entropy'][-1] = out['results']['entropy_contribution']
+                datadict['ideal_entropy'][-1] = -1*out['results']['entropy_contribution']
 
         for el in el_arr:
             if el not in unique_elements:
@@ -313,7 +313,7 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
         df_dict[phase.phase_name.values[0]] = df
     return df_dict
 
-def fix_composition_scaling(dfdict, fit_order=4):
+def fix_composition_scaling(dfdict, fit_order=4, correct_entropy=True, add_ideal_entropy=False):
     #NOTE: at the moment, the temperature ranges have to be same! but that should be fixed with fitting
     #there could be calculations that failed, no?
     #lets just fit, maybe a 2d?
@@ -325,7 +325,14 @@ def fix_composition_scaling(dfdict, fit_order=4):
 
         for index, row in x.iterrows():
             if (not row.is_reference) and (row.calculation_mode == 'composition_scaling'):
-                x.at[index, 'free_energy'] = row.free_energy + row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
+                if correct_entropy:
+                    #note that we need a factor of 2, because the first one is directly coming in from the equations
+                    if add_ideal_entropy:
+                        x.at[index, 'free_energy'] =  row.free_energy - 2*row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
+                    else:
+                        x.at[index, 'free_energy'] =  row.free_energy - row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
+                else:
+                    x.at[index, 'free_energy'] = row.free_energy + np.polyval(ref_fe_fit, row.temperature)
                 #x.at[index, 'free_energy'] = row.free_energy + np.polyval(ref_fe_fit, row.temperature)
         dfdict[key] = x
     return dfdict        

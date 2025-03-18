@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field, ValidationError, model_validator, conlist
 from pydantic.functional_validators import AfterValidator, BeforeValidator
 from annotated_types import Len
 import mendeleev
+from tqdm import tqdm
 
 import yaml
 import numpy as np
@@ -571,7 +572,7 @@ def _read_inputfile(file):
     with open(file, 'r') as fin:
         data = yaml.safe_load(fin)
     calculations = []
-    for count, calc in enumerate(data['calculations']):
+    for count, calc in enumerate(tqdm(data['calculations'])):
         calc['kernel'] = count
         calc['inputfile'] = file
         if 'pressure' in calc.keys():

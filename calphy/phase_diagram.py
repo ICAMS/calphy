@@ -314,6 +314,10 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
 
         comps = phase['composition']
         reference_element = comps["reference_element"]
+        use_composition_scaling = bool(comps["use_composition_scaling"])
+        if str(phase_reference_state) == 'liquid':
+            use_composition_scaling = False
+
         other_element_list = copy.deepcopy(phase['element'])
         other_element_list.remove(reference_element)
         other_element = other_element_list[0]
@@ -403,8 +407,9 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                 folder_prefix = f'{phase_name}-{comp:.2f}'
                 calc['reference_composition'] = comps['reference']
                 #if solid, its very easy; kinda
-                if calc['reference_phase'] == 'solid':
-
+                #if calc['reference_phase'] == 'solid':
+                if use_composition_scaling:
+                    #this is solid , and comp scale is turned on
                     #pop extra keys which are not needed
                     #we dont kick out phase_name
                     extra_keys = ['composition', 'reference_phase']
