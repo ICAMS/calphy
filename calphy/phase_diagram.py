@@ -4,17 +4,465 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import warnings
 import itertools
+from itertools import combinations
 import math
+import copy
+import os
+from calphy.composition_transformation import CompositionTransformation
+import yaml
+import matplotlib.patches as mpatches
 
 from calphy.integrators import kb
 
 from scipy.spatial import ConvexHull
 from scipy.interpolate import splrep, splev
+from scipy.optimize import curve_fit
+
 
 colors = ['#a6cee3','#1f78b4','#b2df8a',
 '#33a02c','#fb9a99','#e31a1c',
 '#fdbf6f','#ff7f00','#cab2d6',
 '#6a3d9a','#ffff99','#b15928']
+
+matcolors = {
+	"amber": {
+		50 : '#fff8e1',
+		100 : '#ffecb3',
+		200 : '#ffe082',
+		300 : '#ffd54f',
+		400 : '#ffca28',
+		500 : '#ffc107',
+		600 : '#ffb300',
+		700 : '#ffa000',
+		800 : '#ff8f00',
+		900 : '#ff6f00',
+	},
+	"blue_grey": {
+		50 : '#ECEFF1',
+		100 : '#CFD8DC',
+		200 : '#B0BEC5',
+		300 : '#90A4AE',
+		400 : '#78909C',
+		500 : '#607D8B',
+		600 : '#546E7A',
+		700 : '#455A64',
+		800 : '#37474F',
+		900 : '#263238',
+	},
+	"blue": {
+		50 : '#E3F2FD',
+		100 : '#BBDEFB',
+		200 : '#90CAF9',
+		300 : '#64B5F6',
+		400 : '#42A5F5',
+		500 : '#2196F3',
+		600 : '#1E88E5',
+		700 : '#1976D2',
+		800 : '#1565C0',
+		900 : '#0D47A1',
+	},
+	"brown": {
+		50 : '#EFEBE9',
+		100 : '#D7CCC8',
+		200 : '#BCAAA4',
+		300 : '#A1887F',
+		400 : '#8D6E63',
+		500 : '#795548',
+		600 : '#6D4C41',
+		700 : '#5D4037',
+		800 : '#4E342E',
+		900 : '#3E2723',
+	},
+	"cyan": {
+		50 : '#E0F7FA',
+		100 : '#B2EBF2',
+		200 : '#80DEEA',
+		300 : '#4DD0E1',
+		400 : '#26C6DA',
+		500 : '#00BCD4',
+		600 : '#00ACC1',
+		700 : '#0097A7',
+		800 : '#00838F',
+		900 : '#006064',
+	},
+	"deep_orange": {
+		50 : '#FBE9E7',
+		100 : '#FFCCBC',
+		200 : '#FFAB91',
+		300 : '#FF8A65',
+		400 : '#FF7043',
+		500 : '#FF5722',
+		600 : '#F4511E',
+		700 : '#E64A19',
+		800 : '#D84315',
+		900 : '#BF360C',
+	},
+	"deep_purple": {
+		50 : '#EDE7F6',
+		100 : '#D1C4E9',
+		200 : '#B39DDB',
+		300 : '#9575CD',
+		400 : '#7E57C2',
+		500 : '#673AB7',
+		600 : '#5E35B1',
+		700 : '#512DA8',
+		800 : '#4527A0',
+		900 : '#311B92',
+	},
+	"green": {
+		50 : '#E8F5E9',
+		100 : '#C8E6C9',
+		200 : '#A5D6A7',
+		300 : '#81C784',
+		400 : '#66BB6A',
+		500 : '#4CAF50',
+		600 : '#43A047',
+		700 : '#388E3C',
+		800 : '#2E7D32',
+		900 : '#1B5E20',
+	},
+	"grey": {
+		50 : '#FAFAFA',
+		100 : '#F5F5F5',
+		200 : '#EEEEEE',
+		300 : '#E0E0E0',
+		400 : '#BDBDBD',
+		500 : '#9E9E9E',
+		600 : '#757575',
+		700 : '#616161',
+		800 : '#424242',
+		900 : '#212121',
+	},
+	"indigo": {
+		50 : '#E8EAF6',
+		100 : '#C5CAE9',
+		200 : '#9FA8DA',
+		300 : '#7986CB',
+		400 : '#5C6BC0',
+		500 : '#3F51B5',
+		600 : '#3949AB',
+		700 : '#303F9F',
+		800 : '#283593',
+		900 : '#1A237E',
+	},
+	"light_blue": {
+		50 : '#E1F5FE',
+		100 : '#B3E5FC',
+		200 : '#81D4FA',
+		300 : '#4FC3F7',
+		400 : '#29B6F6',
+		500 : '#03A9F4',
+		600 : '#039BE5',
+		700 : '#0288D1',
+		800 : '#0277BD',
+		900 : '#01579B',
+	},
+	"light_green": {
+		50 : '#F1F8E9',
+		100 : '#DCEDC8',
+		200 : '#C5E1A5',
+		300 : '#AED581',
+		400 : '#9CCC65',
+		500 : '#8BC34A',
+		600 : '#7CB342',
+		700 : '#689F38',
+		800 : '#558B2F',
+		900 : '#33691E',
+	},
+	"lime": {
+		50 : '#F9FBE7',
+		100 : '#F0F4C3',
+		200 : '#E6EE9C',
+		300 : '#DCE775',
+		400 : '#D4E157',
+		500 : '#CDDC39',
+		600 : '#C0CA33',
+		700 : '#AFB42B',
+		800 : '#9E9D24',
+		900 : '#827717',
+	},
+	"orange": {
+		50 : '#FFF3E0',
+		100 : '#FFE0B2',
+		200 : '#FFCC80',
+		300 : '#FFB74D',
+		400 : '#FFA726',
+		500 : '#FF9800',
+		600 : '#FB8C00',
+		700 : '#F57C00',
+		800 : '#EF6C00',
+		900 : '#E65100',
+	},
+	"pink": {
+		50 : '#FCE4EC',
+		100 : '#F8BBD0',
+		200 : '#F48FB1',
+		300 : '#F06292',
+		400 : '#EC407A',
+		500 : '#E91E63',
+		600 : '#D81B60',
+		700 : '#C2185B',
+		800 : '#AD1457',
+		900 : '#880E4F',
+	},
+	"purple": {
+		50 : '#F3E5F5',
+		100 : '#E1BEE7',
+		200 : '#CE93D8',
+		300 : '#BA68C8',
+		400 : '#AB47BC',
+		500 : '#9C27B0',
+		600 : '#8E24AA',
+		700 : '#7B1FA2',
+		800 : '#6A1B9A',
+		900 : '#4A148C',
+	},
+	"red": {
+		50 : '#FFEBEE',
+		100 : '#FFCDD2',
+		200 : '#EF9A9A',
+		300 : '#E57373',
+		500 : '#F44336',
+		600 : '#E53935',
+		700 : '#D32F2F',
+		800 : '#C62828',
+		900 : '#B71C1C',
+	},
+	"teal": {
+		50 : '#E0F2F1',
+		100 : '#B2DFDB',
+		200 : '#80CBC4',
+		300 : '#4DB6AC',
+		400 : '#26A69A',
+		500 : '#009688',
+		600 : '#00897B',
+		700 : '#00796B',
+		800 : '#00695C',
+		900 : '#004D40',
+	},
+	"yellow": {
+		50 : '#FFFDE7',
+		100 : '#FFF9C4',
+		200 : '#FFF59D',
+		300 : '#FFF176',
+		400 : '#FFEE58',
+		500 : '#FFEB3B',
+		600 : '#FDD835',
+		700 : '#FBC02D',
+		800 : '#F9A825',
+		900 : '#F57F17',
+	}
+}
+
+def fix_data_file(datafile, nelements):
+    """
+    Change the atom types keyword in the structure file
+    """
+    lines = []
+    with open(datafile, 'r') as fin:
+        for line in fin:
+            if 'atom types' in line:
+                lines.append(f'{nelements} atom types\n')
+            else:
+                lines.append(line)
+    outfile = datafile + 'mod.data'
+    with open(outfile, 'w') as fout:
+        for line in lines:
+            fout.write(line)
+    return outfile
+
+class CScale:
+    def __init__(self):
+        self._input_chemical_composition = None
+        self._output_chemical_composition = None
+        self.restrictions = []
+
+    @property
+    def input_chemical_composition(self):
+        return self._input_chemical_composition
+
+    @property
+    def output_chemical_composition(self):
+        return self._output_chemical_composition
+
+
+class SimpleCalculation:
+    """
+    Simple calc class 
+    """
+    def __init__(self, lattice,
+                element,
+                input_chemical_composition,
+                output_chemical_composition):
+        self.lattice = lattice
+        self.element = element
+        self.composition_scaling = CScale()
+        self.composition_scaling._input_chemical_composition = input_chemical_composition
+        self.composition_scaling._output_chemical_composition = output_chemical_composition
+
+
+def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
+    with open(inputyamlfile, 'r') as fin:
+        data = yaml.safe_load(fin)
+
+    if calculation_base_name is None:
+        calculation_base_name = inputyamlfile    
+    
+    for phase in data['phases']:
+        phase_reference_state = phase['reference_phase']
+        phase_name = phase['phase_name']
+
+        comps = phase['composition']
+        reference_element = comps["reference_element"]
+        use_composition_scaling = bool(comps["use_composition_scaling"])
+        if str(phase_reference_state) == 'liquid':
+            use_composition_scaling = False
+
+        other_element_list = copy.deepcopy(phase['element'])
+        other_element_list.remove(reference_element)
+        other_element = other_element_list[0]
+
+        #convert to list if scalar
+        if not isinstance(comps['range'], list):
+            comps["range"] = [comps["range"]]
+        if len(comps["range"]) == 2: 
+            comp_arr = np.arange(comps['range'][0], comps['range'][-1], comps['interval'])
+            last_val = comps['range'][-1]
+            if last_val not in comp_arr:
+                comp_arr = np.append(comp_arr, last_val)
+            ncomps = len(comp_arr)
+            is_reference = np.abs(comp_arr-comps['reference']) < 1E-5
+        elif len(comps["range"]) == 1:
+            ncomps = 1
+            comp_arr = [comps["range"][0]]
+            is_reference = [True]
+        else:
+            raise ValueError("Composition range should be scalar of list of two values!")
+
+        temps = phase["temperature"]
+        if not isinstance(temps['range'], list):
+            temps["range"] = [temps["range"]]
+        if len(temps["range"]) == 2: 
+            ntemps = int((temps['range'][-1]-temps['range'][0])/temps['interval'])+1
+            temp_arr = np.linspace(temps['range'][0], temps['range'][-1], ntemps, endpoint=True)
+        elif len(temps["range"]) == 1:
+            ntemps = 1
+            temp_arr = [temps["range"][0]]
+        else:
+            raise ValueError("Temperature range should be scalar of list of two values!")
+
+        all_calculations = []
+
+        for count, comp in enumerate(comp_arr):
+            #check if ref comp equals given comp
+            if is_reference[count]:
+                #copy the dict
+                calc = copy.deepcopy(phase)
+
+                #pop extra keys which are not needed
+                #we dont kick out phase_name
+                extra_keys = ['composition', 'monte_carlo']
+                for key in extra_keys:
+                    _ = calc.pop(key, None)
+                
+                #update file if needed
+                outfile = fix_data_file(calc['lattice'], len(calc['element']))
+                
+                #add ref phase, needed
+                calc['reference_phase'] = str(phase_reference_state)
+                calc['reference_composition'] = comps['reference']
+                calc['mode'] = str('fe')
+                calc['folder_prefix'] = f'{phase_name}-{comp:.2f}'
+                calc['lattice'] = str(outfile)
+                
+                #now we need to run this for different temp
+                for temp in temp_arr:
+                    calc_for_temp = copy.deepcopy(calc)
+                    calc_for_temp['temperature'] = int(temp)
+                    all_calculations.append(calc_for_temp)
+            else:
+                #off stoichiometric
+                #copy the dict
+                calc = copy.deepcopy(phase)
+
+                #first thing first, we need to calculate the number of atoms
+                #we follow the convention that composition is always given with the second species
+                n_atoms = np.sum(calc['composition']['number_of_atoms'])
+                
+                #find number of atoms of second species
+                output_chemical_composition = {}
+                n_species_b = int(np.round(comp*n_atoms, decimals=0))
+                output_chemical_composition[reference_element] = n_species_b
+
+                n_species_a = int(n_atoms-n_species_b)
+                output_chemical_composition[other_element] = n_species_a
+
+                if n_species_a == 0:
+                    raise ValueError("Please add pure phase as a new entry!")
+                #create input comp dict and output comp dict
+                input_chemical_composition = {element:number for element, number in zip(calc['element'],
+                                                                    calc['composition']['number_of_atoms'])}
+
+                #good, now we need to write such a structure out; likely better to use working directory for that
+                folder_prefix = f'{phase_name}-{comp:.2f}'
+                calc['reference_composition'] = comps['reference']
+                #if solid, its very easy; kinda
+                #if calc['reference_phase'] == 'solid':
+                if use_composition_scaling:
+                    #this is solid , and comp scale is turned on
+                    #pop extra keys which are not needed
+                    #we dont kick out phase_name
+                    extra_keys = ['composition', 'reference_phase']
+                    for key in extra_keys:
+                        _ = calc.pop(key, None)
+                    
+                    #just submit comp scales
+                    #add ref phase, needed
+                    calc['mode'] = str('composition_scaling')
+                    calc['folder_prefix'] = folder_prefix
+                    calc['composition_scaling'] = {}
+                    calc['composition_scaling']['output_chemical_composition'] = output_chemical_composition
+                    
+                else:
+                    #manually create a mixed structure - not that the pair style is always ok :)
+                    
+                    outfile = os.path.join(os.getcwd(), os.path.basename(calc['lattice'])+folder_prefix+'.comp.mod')
+                    #print(f'finding comp trf from {input_chemical_composition} to {output_chemical_composition}')
+                    #write_structure(calc['lattice'], input_chemical_composition, output_chemical_composition, outfile)
+            
+                    simplecalc = SimpleCalculation(calc['lattice'], 
+                                    calc["element"],
+                                    input_chemical_composition,
+                                    output_chemical_composition)
+                    compsc = CompositionTransformation(simplecalc)
+                    compsc.write_structure(outfile)
+            
+                    #pop extra keys which are not needed
+                    #we dont kick out phase name
+                    extra_keys = ['composition']
+                    for key in extra_keys:
+                        _ = calc.pop(key, None)
+
+                    #add ref phase, needed
+                    calc['mode'] = str('fe')
+                    calc['folder_prefix'] = folder_prefix
+                    calc['lattice'] = str(outfile)
+            
+            #now we need to run this for different temp
+            for temp in temp_arr:
+                calc_for_temp = copy.deepcopy(calc)
+                calc_for_temp['temperature'] = int(temp)
+                all_calculations.append(calc_for_temp)       
+            
+        #finish and write up the file
+        output_data = {"calculations": all_calculations}
+        for rep in ['.yml', '.yaml']:
+            calculation_base_name = calculation_base_name.replace(rep, '')
+
+        outfile_phase = phase_name + '_' + calculation_base_name + ".yaml"
+        with open(outfile_phase, 'w') as fout:
+            yaml.safe_dump(output_data, fout)
+        print(f'Total {len(all_calculations)} calculations found for phase {phase_name}, written to {outfile_phase}')
 
 
 def _get_temp_arg(tarr, temp, threshold=1E-1):
@@ -91,7 +539,9 @@ def get_phase_free_energy(df, phase, temp,
                           composition_grid=10000,
                           composition_cutoff=None,
                           reset_value=1,
-                          plot=False):
+                          plot=False,
+                          end_weight=3,
+                          end_indices=4):
     """
     Get the free energy of a phase as a function of composition.
 
@@ -165,7 +615,9 @@ def get_phase_free_energy(df, phase, temp,
         else:
             entropy_term = []
 
-        fe_fit = _get_free_energy_fit(composition, fes, fit_order=fit_order)
+        fe_fit = _get_free_energy_fit(composition, fes, fit_order=fit_order,
+                                            end_weight=end_weight,
+                                            end_indices=end_indices)
         compfine = np.linspace(np.min(composition), np.max(composition), composition_grid)
         
         #now fit on the comp grid again
@@ -234,21 +686,25 @@ def get_free_energy_mixing(dict_list, threshold=1E-3):
         d["free_energy_mix"] = ref
     return dict_list    
 
-def create_color_list(dict_list, color_list=None):
-    if color_list is None:
-        color_list = colors
-    
-    phase_list = [d["phase"] for d in dict_list]
-    combinations = list(itertools.combinations_with_replacement(phase_list, 2))
-    
-    if len(combinations) > len(color_list):
-        raise ValueError(f'need {len(combinations)} colors, please provide using color_list=')
-    
+def create_color_list(phases):    
+    combinations_list = ['-'.join(pair) for pair in combinations(phases, 2)]
+    same_element_pairs = ['-'.join([item, item]) for item in phases]
+    final_combinations = same_element_pairs + combinations_list
+
     color_dict = {}
-    for count, combo in enumerate(combinations):
-        color_dict[f'{combo[0]}-{combo[1]}'] = color_list[count]
-        #add reverse just in case
-        color_dict[f'{combo[1]}-{combo[0]}'] = color_list[count]
+
+    color_keys = list(matcolors.keys())
+    int_keys = list(matcolors['red'].keys())
+
+    for count, combination in enumerate(final_combinations):
+        index = count%len(color_keys)
+        second_index = -1
+        color_hex = matcolors[color_keys[int(index)]][int_keys[second_index]]
+        color_dict[combination] = color_hex
+        raw = combination.split('-')
+        if raw[0] != raw[1]:
+            reversecombo = f'{raw[1]}-{raw[0]}'
+            color_dict[reversecombo] = color_hex
     return color_dict
 
 def get_tangent_type(dict_list, tangent, energy):
@@ -298,16 +754,15 @@ def get_tangent_type(dict_list, tangent, energy):
 def get_common_tangents(dict_list, 
                         peak_cutoff=0.01, 
                         plot=False, 
-                        remove_self_tangents_for=[],
-                        color_dict=None):
+                        remove_self_tangents_for=[]):
     """
     Get common tangent constructions using convex hull method
     """
     points = np.vstack([np.column_stack((d["composition"], 
         d["free_energy_mix"])) for d in dict_list]) 
     
-    if color_dict is None:
-        color_dict = create_color_list(dict_list) 
+    #if color_dict is None:
+    #    color_dict = create_color_list(dict_list) 
     
     #make common tangent constructions
     #term checks if two different phases are stable at the end points, then common tangent is needed
@@ -328,7 +783,7 @@ def get_common_tangents(dict_list,
 
     tangents = []
     energies = []    
-    tangent_colors = []
+    tangent_types = []
     phases = []
     
     for d in dist:
@@ -336,10 +791,16 @@ def get_common_tangents(dict_list,
         e = [convex_points[sargs][d], convex_points[sargs][d+1]]
         phase_str = get_tangent_type(dict_list, t, e)
         
-        if phase_str not in remove_self_tangents_for:
+        remove = False
+        ps = phase_str.split('-')
+        if ps[0] == ps[1]:
+            if ps[0] in remove_self_tangents_for:
+                remove = True
+
+        if not remove:
             tangents.append(t)
             energies.append(e)
-            tangent_colors.append(color_dict[phase_str])
+            tangent_types.append(phase_str)
             phases.append(phase_str.split("-"))
     
     if plot:
@@ -349,15 +810,27 @@ def get_common_tangents(dict_list,
             plt.plot(t, e, color="black", ls="dashed")
         plt.ylim(top=0.0)
     
-    return np.array(tangents), np.array(energies), np.array(tangent_colors), color_dict, np.array(phases)
+    return np.array(tangents), np.array(energies), np.array(tangent_types), np.array(phases)
 
 
 def plot_phase_diagram(tangents, temperature,
-    colors,
+    tangent_types,
+    phases,
     edgecolor="#37474f",
     linewidth=1,
     linestyle='-'):
     
+    #get a phase list
+    color_dict = create_color_list(phases) 
+    minimal_color_dict = {}
+    color_list = []
+    for key, val in color_dict.items():
+        if val not in color_list:
+            color_list.append(val)
+            minimal_color_dict[key] = val
+
+    legend_patches = [mpatches.Patch(color=color, label=label) for label, color in minimal_color_dict.items()]
+
     fig, ax = plt.subplots(edgecolor=edgecolor)
 
     for count, x in enumerate(tangents):
@@ -366,7 +839,8 @@ def plot_phase_diagram(tangents, temperature,
                      [temperature[count], temperature[count]], 
                      linestyle,
                      lw=linewidth,
-                     c=colors[count][c],
+                     c=color_dict[tangent_types[count][c]],
                      )
+    ax.legend(handles=legend_patches, loc='center left', bbox_to_anchor=(1, 0.5))
     return fig
 

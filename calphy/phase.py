@@ -58,17 +58,11 @@ class Phase:
         indict = {"calculations": [self.calc.dict()]}
         with open(os.path.join(simfolder, 'input_file.yaml'), 'w') as fout:
             yaml.safe_dump(indict, fout)
-
-        #serialise input configuration
-        shutil.copy(self.calc.lattice, os.path.join(simfolder, 'input_configuration.data'))
-
-        #write simple metadata
-        with open(os.path.join(simfolder, 'metadata.yaml'), 'w') as fout:
-            yaml.safe_dump(generate_metadata(), fout)
         
 
         self.simfolder = simfolder
         self.log_to_screen = log_to_screen
+        self.publications = []
         
         logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile, screen=log_to_screen)
@@ -712,13 +706,17 @@ class Phase:
         #now we have to write out the results
         self.logger.info("Please cite the following publications:")
         self.logger.info("- 10.1103/PhysRevMaterials.5.103801")
+        self.publications.append("10.1103/PhysRevMaterials.5.103801")
 
         if self.calc.mode == "fe":
             if self.calc.reference_phase == "solid":
                 self.logger.info("- 10.1016/j.commatsci.2015.10.050")
+                self.publications.append("10.1016/j.commatsci.2015.10.050")
             else:
                 self.logger.info("- 10.1016/j.commatsci.2018.12.029")
                 self.logger.info("- 10.1063/1.4967775")
+                self.publications.append("10.1016/j.commatsci.2018.12.029")
+                self.publications.append("10.1063/1.4967775")
 
     def reversible_scaling(self, iteration=1):
         """
@@ -812,6 +810,8 @@ class Phase:
         lmp.command("variable         fscale equal v_flambda-1.0")
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
+        lmp.command(f"variable        ftemp equal v_blambda*{self.calc._temperature_stop}")
+        lmp.command(f"variable        btemp equal v_flambda*{self.calc._temperature_stop}")
 
         #set up potential
         pc =  self.calc.pair_coeff[0]
@@ -825,6 +825,20 @@ class Phase:
 
         lmp.command("fix               f3 all print 1 \"${dU} $(press) $(vol) ${flambda}\" screen no file ts.forward_%d.dat"%iteration)
 
+        #add swaps if n_swap is > 0
+        if self.calc.monte_carlo.n_swaps > 0:
+            self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between {self.calc.monte_carlo.swap_types[0]} and {self.calc.monte_carlo.swap_types[1]} every {self.calc.monte_carlo.n_steps}')
+            lmp.command("fix  swap all atom/swap %d %d %d ${ftemp} ke yes types %d %d"%(self.calc.monte_carlo.n_steps,
+                                                                                self.calc.monte_carlo.n_swaps,
+                                                                                np.random.randint(1, 10000),
+                                                                                self.calc.monte_carlo.swap_types[0],
+                                                                                self.calc.monte_carlo.swap_types[1]))
+
+            lmp.command("variable a equal f_swap[1]")
+            lmp.command("variable b equal f_swap[2]")
+            lmp.command("fix             swap2 all print 1 \"${a} ${b} ${ftemp}\" screen no file swap.rs.forward_%d.dat"%iteration)
+
+
         if self.calc.n_print_steps > 0:
             lmp.command("dump              d1 all custom %d traj.ts.forward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
@@ -832,6 +846,10 @@ class Phase:
         self.logger.info(f'Started forward sweep: {iteration}')
         lmp.command("run               %d"%self.calc._n_sweep_steps)
         self.logger.info(f'Finished forward sweep: {iteration}')
+
+        if self.calc.monte_carlo.n_swaps > 0:
+            lmp.command("unfix swap")
+            lmp.command("unfix swap2")
 
         #unfix
         lmp.command("unfix             f3")
@@ -859,6 +877,8 @@ class Phase:
         lmp.command("variable         fscale equal v_flambda-1.0")
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
+        lmp.command(f"variable        ftemp equal v_blambda*{self.calc._temperature_stop}")
+        lmp.command(f"variable        btemp equal v_flambda*{self.calc._temperature_stop}")
 
         lmp.command("pair_style       hybrid/scaled v_one %s v_bscale %s"%(self.calc._pair_style_with_options[0], self.calc._pair_style_with_options[0]))
         lmp.command("pair_coeff       %s"%pcnew1)
@@ -871,10 +891,29 @@ class Phase:
             lmp.command("dump              d1 all custom %d traj.ts.backward_%d.dat id type mass x y z vx vy vz"%(self.calc.n_print_steps,
                 iteration))
 
+        #add swaps if n_swap is > 0
+        if self.calc.monte_carlo.n_swaps > 0:
+            self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between {self.calc.monte_carlo.swap_types[1]} and {self.calc.monte_carlo.swap_types[0]} every {self.calc.monte_carlo.n_steps}')
+            lmp.command("fix  swap all atom/swap %d %d %d ${btemp} ke yes types %d %d"%(self.calc.monte_carlo.n_steps,
+                                                                                self.calc.monte_carlo.n_swaps,
+                                                                                np.random.randint(1, 10000),
+                                                                                self.calc.monte_carlo.swap_types[1],
+                                                                                self.calc.monte_carlo.swap_types[0]))
+
+            lmp.command("variable a equal f_swap[1]")
+            lmp.command("variable b equal f_swap[2]")
+            lmp.command("fix             swap2 all print 1 \"${a} ${b} ${btemp}\" screen no file swap.rs.backward_%d.dat"%iteration)
+
+
+
         self.logger.info(f'Started backward sweep: {iteration}')
         lmp.command("run               %d"%self.calc._n_sweep_steps)
         self.logger.info(f'Finished backward sweep: {iteration}')
-        
+
+        if self.calc.monte_carlo.n_swaps > 0:
+            lmp.command("unfix swap")
+            lmp.command("unfix swap2")
+
         lmp.command("unfix             f3")
 
         if self.calc.n_print_steps > 0:
@@ -886,8 +925,10 @@ class Phase:
         self.logger.info("Please cite the following publications:")
         if self.calc.mode == "mts":
             self.logger.info("- 10.1063/1.1420486")
+            self.publications.append("10.1063/1.1420486")
         else:
             self.logger.info("- 10.1103/PhysRevLett.83.3973")
+            self.publications.append("10.1103/PhysRevLett.83.3973")
 
     def integrate_reversible_scaling(self, scale_energy=True, return_values=False):
         """
@@ -1090,6 +1131,7 @@ class Phase:
 
         self.logger.info("Please cite the following publications:")
         self.logger.info("- 10.1016/j.commatsci.2022.111275")
+        self.publications.append("10.1016/j.commatsci.2022.111275")
     
     
     def integrate_pressure_scaling(self, return_values=False):
@@ -1114,3 +1156,18 @@ class Phase:
 
         if return_values:
             return res
+
+    def clean_up(self):
+        """
+        Run a clean up job
+        """
+        #serialise input configuration
+        shutil.copy(self.calc.lattice, os.path.join(self.simfolder, 'input_configuration.data'))
+
+        #write simple metadata
+        metadata = generate_metadata()
+        metadata['publications'] = self.publications
+
+        with open(os.path.join(self.simfolder, 'metadata.yaml'), 'w') as fout:
+            yaml.safe_dump(metadata, fout)
+

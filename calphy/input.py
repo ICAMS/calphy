@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field, ValidationError, model_validator, conlist
 from pydantic.functional_validators import AfterValidator, BeforeValidator
 from annotated_types import Len
 import mendeleev
+from tqdm import tqdm
 
 import yaml
 import numpy as np
@@ -72,7 +73,14 @@ def _to_float(val):
         return float(val)
     else:
         return [float(x) for x in val] 
-        
+
+class MonteCarlo(BaseModel, title='Options for Monte Carlo moves during particle swap moves'):
+    n_steps: Annotated[int, Field(default=1, gt=0, description='perform swap moves every n_step')]
+    n_swaps: Annotated[int, Field(default=0, ge=0, description='number of swap moves to perform')]
+    reverse_swap: Annotated[ bool, Field(default=True)]
+    swap_types: Annotated[conlist(int, min_length=2, max_length=2), Field(default=[1,2], 
+                description='which atoms to swap between')]
+
 class CompositionScaling(BaseModel, title='Composition scaling input options'):
     _input_chemical_composition: PrivateAttr(default=None)
     output_chemical_composition: Annotated[dict, Field(default={}, required=False)]
@@ -125,6 +133,7 @@ class MeltingTemperature(BaseModel, title='Input options for melting temperature
     attempts: Annotated[int, Field(default=5, ge=1)]
 
 class Calculation(BaseModel, title='Main input class'):
+    monte_carlo: Optional[MonteCarlo] = MonteCarlo()
     composition_scaling: Optional[CompositionScaling] = CompositionScaling()
     md: Optional[MD] = MD()
     nose_hoover: Optional[NoseHoover] = NoseHoover()
@@ -197,8 +206,15 @@ class Calculation(BaseModel, title='Main input class'):
     #add second level options; for example spring constants
     spring_constants: Annotated[Union[List[float],None], Field(default = None)]
 
+    #some input keywords that will be used for the phase diagram mode
+    phase_name: Annotated[str, Field(default="")]
+    reference_composition: Annotated[float, Field(default=0.00)]
+
     #structure items
     _structure: Any = PrivateAttr(default=None)
+
+    #just check for nlements in compscale
+    _totalelements = PrivateAttr(default=0)
 
     @model_validator(mode='after')
     def _validate_all(self) -> 'Input':
@@ -326,6 +342,7 @@ class Calculation(BaseModel, title='Main input class'):
 
         #generate temporary filename if needed
         write_structure_file = False
+        rename_structure_file = False
 
         if self.lattice == "":
             #fetch from dict
@@ -399,6 +416,7 @@ class Calculation(BaseModel, title='Main input class'):
                 Z_of_type = dict([(count+1, self._element_dict[element]['atomic_number']) for count, element in enumerate(self.element)])
                 structure = read(self.lattice, format='lammps-data', style='atomic', Z_of_type=Z_of_type)
                 #structure = System(aseobj, format='ase')
+                rename_structure_file = True
             else:
                 raise TypeError('Only lammps-data files are supported!')                
 
@@ -418,6 +436,12 @@ class Calculation(BaseModel, title='Main input class'):
             structure_filename = ".".join([self.create_identifier(), str(self.kernel), "data"])
             structure_filename = os.path.join(os.getcwd(), structure_filename)
             write(structure_filename, structure, format='lammps-data')
+            self.lattice = structure_filename
+        
+        if rename_structure_file:
+            structure_filename = ".".join([self.create_identifier(), str(self.kernel), "data"])
+            structure_filename = os.path.join(os.getcwd(), structure_filename)
+            shutil.copy(self.lattice, structure_filename)
             self.lattice = structure_filename
         
         if self.mode == 'composition_scaling':
@@ -548,7 +572,7 @@ def _read_inputfile(file):
     with open(file, 'r') as fin:
         data = yaml.safe_load(fin)
     calculations = []
-    for count, calc in enumerate(data['calculations']):
+    for count, calc in enumerate(tqdm(data['calculations'])):
         calc['kernel'] = count
         calc['inputfile'] = file
         if 'pressure' in calc.keys():

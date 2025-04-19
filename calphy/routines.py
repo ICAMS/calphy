@@ -338,6 +338,7 @@ def routine_fe(job):
 
     job.thermodynamic_integration()
     job.submit_report()
+    job.clean_up()
     return job
 
 def routine_ts(job):
@@ -354,6 +355,7 @@ def routine_ts(job):
         job.logger.info("TS integration cycle %d finished in %f s"%(i+1, te))
     
     job.integrate_reversible_scaling(scale_energy=True)
+    job.clean_up()
     return job
 
 
@@ -387,6 +389,7 @@ def routine_tscale(job):
         job.logger.info("Temperature scaling cycle %d finished in %f s"%(i+1, te))
     
     job.integrate_reversible_scaling(scale_energy=False)
+    job.clean_up()
     return job
 
 def routine_pscale(job):
@@ -403,6 +406,7 @@ def routine_pscale(job):
         job.logger.info("Pressure scaling cycle %d finished in %f s"%(i+1, te))
     
     job.integrate_pressure_scaling()
+    job.clean_up()
     return job
 
 def routine_alchemy(job):
@@ -423,6 +427,7 @@ def routine_alchemy(job):
 
     job.thermodynamic_integration()
     job.submit_report()
+    job.clean_up()
     return job 
 
 
@@ -433,6 +438,8 @@ def routine_composition_scaling(job):
     #we set up comp scaling first
     job.logger.info("Calculating composition scaling")
     comp = CompositionTransformation(job.calc)
+    swap_list = comp.get_swap_types()
+    job.calc.monte_carlo.swap_types = swap_list
 
     #update pair styles
     res = comp.update_pair_coeff(job.calc.pair_coeff[0])
@@ -453,7 +460,7 @@ def routine_composition_scaling(job):
     #job.calc._ghost_element_count = len(comp.new_atomtype) - len()
 
     #write new file out and update lattice
-    outfilename = ".".join([job.calc.lattice, "comp", "dump"])
+    outfilename = ".".join([job.calc.lattice, "comp", "data"])
     comp.write_structure(outfilename)
     job.calc.lattice = outfilename
     job.logger.info(f"Modified lattice written to {outfilename}")
@@ -487,6 +494,8 @@ def routine_composition_scaling(job):
     job.calc.mass = [ref_mass for x in range(len(job.calc.element))] 
     job.logger.info(f"Temporarily replacing mass: {job.calc.mass}")
 
+    #update fict elements if needed
+    #job.calc._totalelements = comp.maxtype
 
     #now start cycle
     ts = time.time()
@@ -512,10 +521,12 @@ def routine_composition_scaling(job):
     netfe = w_arr - mcorrarr
 
     job.fe = job.fe - mcorsum
-    job.submit_report(extra_dict = {"results":{"mass_correction": float(mcorsum)}})
+    job.submit_report(extra_dict = {"results":{"mass_correction": float(mcorsum),
+                                               "entropy_contribution": float(comp.entropy_contribution)}})
 
     outfile = os.path.join(job.simfolder, "composition_sweep.dat")
     np.savetxt(outfile, np.column_stack((flambda_arr, netfe, w_arr, mcorrarr)))
 
     job.logger.info('Composition scaling does not include free energy of mixing!')
+    job.clean_up()
     return job

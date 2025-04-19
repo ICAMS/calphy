@@ -3,6 +3,7 @@ import numpy as np
 import yaml
 import matplotlib.pyplot as plt
 import warnings
+import pandas as pd
 
 def read_report(folder):
     """
@@ -40,7 +41,8 @@ def _extract_error(errfile):
                 pass
     return error_code
     
-def gather_results(mainfolder):
+def gather_results(mainfolder, reduce_composition=True, 
+    extract_phase_prefix=False):
     """
     Gather results from all subfolders in a given folder into a Pandas DataFrame
 
@@ -48,6 +50,14 @@ def gather_results(mainfolder):
     ----------
     mainfolder: string
         folder where calculations are stored
+    
+    reduce_composition: bool
+        If True, per species composition arrays are added.
+        Might be redundant.
+    
+    extract_phase_prefix: bool
+        Should be used in conjuction with phase diagram mode. 
+        Extracts the prefix and add it as a phase_name column.
     
     Returns
     -------
@@ -58,9 +68,10 @@ def gather_results(mainfolder):
         import pandas as pd
     except ImportError:
         raise ImportError('Please install pandas to use this function')
-     
+
+    unique_elements = []
     datadict = {}
-    datadict['mode'] = []
+    datadict['calculation_mode'] = []
     datadict['status'] = []
     datadict['temperature'] = []
     datadict['pressure'] = []
@@ -69,6 +80,9 @@ def gather_results(mainfolder):
     datadict['error_code'] = []
     datadict['composition'] = []
     datadict['calculation'] = []
+    datadict['ideal_entropy'] = []
+    datadict['phase_name'] = []
+    datadict['reference_composition'] = []
     
     folders = next(os.walk(mainfolder))[1]
     for folder in folders:
@@ -90,11 +104,14 @@ def gather_results(mainfolder):
         inp = inp['calculations'][0]
         #mode
         mode = inp['mode']
-        datadict['mode'].append(mode)
+        datadict['calculation_mode'].append(mode)
         datadict['temperature'].append(inp['temperature'])
         datadict['pressure'].append(inp['pressure'])
         datadict['reference_phase'].append(inp['reference_phase'])
+        datadict['phase_name'].append(inp['phase_name'])
+        datadict['reference_composition'].append(inp['reference_composition'])
         datadict['composition'].append(None)
+        datadict['ideal_entropy'].append(0)
         datadict['calculation'].append(folder)
     
         #check output file
@@ -132,6 +149,15 @@ def gather_results(mainfolder):
             for key, val in compdict.items():
                 compdict[key] = val/maxatoms
             datadict['composition'][-1] = compdict
+            el_arr = list(compdict.keys())
+
+            #we also need to update entropy
+            if 'entropy_contribution' in out['results'].keys():
+                datadict['ideal_entropy'][-1] = -1*out['results']['entropy_contribution']
+
+        for el in el_arr:
+            if el not in unique_elements:
+                unique_elements.append(el)
 
         #parse extra info
         if mode in ['ts', 'tscale']:
@@ -146,8 +172,170 @@ def gather_results(mainfolder):
                 errfile = os.path.join(os.getcwd(), mainfolder, folder+'.sub.err')
                 datadict['error_code'][-1] = _extract_error(errfile)
 
+    if reduce_composition:
+        unique_element_dict = {x: [] for x in unique_elements}
+        for x in datadict['composition']:
+            if x is None:
+                for key in unique_element_dict.keys():
+                    unique_element_dict[key].append(0)
+            else:
+                for el in unique_elements:
+                    if el in x.keys():
+                        unique_element_dict[el].append(x[el])
+                    else:
+                        unique_element_dict[el].append(0)
+        #add the keys to datadict
+        for key, val in unique_element_dict.items():
+            datadict[key] = val
+    
+    if not extract_phase_prefix:
+        del datadict['phase_name']
+
     df = pd.DataFrame(data=datadict)
     return df
+
+def _entropy(compC, comp_init=[1, 0]):
+    """
+    l1: initial concentration [Au, Cu]
+    l2: final concentration [Au, Cu]
+    """
+    compA = 1 - compC
+    def _log(val):
+        if val == 0:
+            return 0
+        else:
+            return np.log(val)
+    dA = compA*_log(compA) - comp_init[0]*_log(comp_init[0])
+    dC = compC*_log(compC) - comp_init[1]*_log(comp_init[1])
+    return kb*(dA+dC)
+    
+def clean_df(df, reference_element, combine_direct_calculations=False, fit_order=0):
+    """
+    Clean a parsed dataframe and drop unnecessary columns. This gets it ready for further processing
+    Note that `gather_results` should be run with `reduce_composition` and `extract_phase_name` for this to work.
+
+
+    Parameters
+    ----------
+    df: DataFrame
+        dataframe parsed by `gather_results` with `reduce_composition=True`.
+    
+    reference_element: str
+        reference element from the compositions, which will be renamed to `composition`
+    
+    combine_direct_calculations: bool, optional
+        If True, combine direct calculations by fitting to produce temperature and free energy arrays
+        If used, an extra column `error` with mean square error of the fitting is also created
+    
+    fit_order: int, optional
+        If `combine_direct_calculations` is used, this argument is used for fitting order.
+
+    Returns
+    -------
+    df: DataFrame
+        combined, finished DataFrame
+    """
+
+    if "phase_name" not in df.keys():
+        raise ValueError("phase_name key is not found, maybe add it?")
+
+    df = df.loc[df.status=='True']
+    df = df.drop(labels=['status', 'pressure', 'reference_phase', 
+                 'error_code', 'composition', 'calculation'], axis='columns')
+
+    phases = df.groupby(df.phase_name)
+    phases = [phases.get_group(x) for x in phases.groups]
+
+    df_dict = {}
+    
+    for phase in phases:
+        if combine_direct_calculations:
+            gb = phase.groupby(by=reference_element)
+            gbs = [gb.get_group(x) for x in gb.groups]
+
+            fes = []
+            tes = []
+            errors = []
+            comps = []
+            mode_list = []
+            entropies = []
+            is_refs = []
+
+            for exdf in gbs:
+                temps = np.array(exdf.temperature.values)
+                fe = np.array(exdf.free_energy.values)
+                modes = np.array(exdf.calculation_mode.values)
+                entropy = np.array(exdf.ideal_entropy.values)
+                comp_ref = np.array(exdf.reference_composition.values)
+
+                unique_modes = np.unique(modes)
+                if len(unique_modes)>1:
+                    warnings.warn("mixing calculations from more than one mode!")
+                unique_mode = unique_modes[0]
+
+                #REMEMBER TO SORT EVERYTHING
+                args = np.argsort(temps)
+                temps = temps[args]
+                fe = fe[args] 
+                #entropy = entropy[args]        
+                #print(fe, entropy)
+                #print(len(fe), len(entropy))    
+                
+                if fit_order > 0:
+                    fit = np.polyfit(temps, fe, fit_order)
+                    temp_arr = np.arange(temps.min(), temps.max()+1, 1)
+                
+                    #estimate error
+                    fe_eval = np.polyval(fit, temps)
+                    error = np.sum((fe_eval-fe)**2)
+                
+                    fe_arr = np.polyval(fit, temp_arr)
+                else:
+                    fe_arr = fe
+                    temp_arr = temps
+                    error = 0
+
+                fes.append(fe_arr)
+                tes.append(temp_arr)
+                errors.append(error)
+                entropies.append(entropy[0])
+                comps.append(float(exdf[reference_element].values[0]))
+                is_refs.append(np.abs(float(exdf[reference_element].values[0])-comp_ref[0])<1E-5)
+
+                mode_list.append(unique_mode)
+            
+            #replace df
+            df = pd.DataFrame(data={'temperature':tes, 'free_energy': fes, 
+                'error':errors, reference_element:comps, 'ideal_entropy': entropies,
+                'calculation_mode': mode_list, "is_reference":is_refs})
+        
+        df = df.rename(columns={reference_element:'composition'})
+        df_dict[phase.phase_name.values[0]] = df
+    return df_dict
+
+def fix_composition_scaling(dfdict, fit_order=4, correct_entropy=True, add_ideal_entropy=False):
+    #NOTE: at the moment, the temperature ranges have to be same! but that should be fixed with fitting
+    #there could be calculations that failed, no?
+    #lets just fit, maybe a 2d?
+    for key, val in dfdict.items():
+        x=val
+        ref_fe = x.loc[x.is_reference==True].free_energy.values[0]
+        ref_temp = x.loc[x.is_reference==True].temperature.values[0]
+        ref_fe_fit = np.polyfit(ref_temp, ref_fe, fit_order)
+
+        for index, row in x.iterrows():
+            if (not row.is_reference) and (row.calculation_mode == 'composition_scaling'):
+                if correct_entropy:
+                    #note that we need a factor of 2, because the first one is directly coming in from the equations
+                    if add_ideal_entropy:
+                        x.at[index, 'free_energy'] =  row.free_energy - row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
+                    else:
+                        x.at[index, 'free_energy'] =  row.free_energy - row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
+                else:
+                    x.at[index, 'free_energy'] = row.free_energy + np.polyval(ref_fe_fit, row.temperature)
+                #x.at[index, 'free_energy'] = row.free_energy + np.polyval(ref_fe_fit, row.temperature)
+        dfdict[key] = x
+    return dfdict        
 
 def find_transition_temperature(folder1, folder2, fit_order=4, plot=True):
     """

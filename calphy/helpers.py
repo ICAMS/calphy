@@ -121,8 +121,12 @@ def create_structure(lmp, calc):
 
 
 def set_mass(lmp, options):
-    for i in range(options.n_elements):
-        lmp.command(f'mass {i+1} {options.mass[i]}')
+    if options.mode == 'composition_scaling':
+        lmp.command(f'mass * {options.mass[-1]}')
+
+    else:
+        for i in range(options.n_elements):
+            lmp.command(f'mass {i+1} {options.mass[i]}')
     return lmp
 
 

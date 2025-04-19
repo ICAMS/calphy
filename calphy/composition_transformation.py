@@ -30,6 +30,7 @@ from mendeleev import element
 from ase.io import read, write
 from ase.atoms import Atoms
 from pyscal3.core import element_dict
+from calphy.integrators import kb
 
 class CompositionTransformation:
     """
@@ -124,6 +125,7 @@ class CompositionTransformation:
         self.atom_species = None
         self.mappings = None
         self.unique_mappings = None
+        self.mappingdict = None
         self.prepare_mappings()
     
     def dict_to_string(self, inputdict):
@@ -132,8 +134,32 @@ class CompositionTransformation:
             strlst.append(str(key))
             strlst.append(str(val))
         return "".join(strlst)
-    
-    
+
+    @property
+    def entropy_contribution(self):
+        """
+        Find the entropy entribution of the transformation. To get
+        free energies, multiply by -T.
+        """
+        def _log(val):
+            if val == 0:
+                return 0
+            else:
+                return np.log(val)
+        ents = []
+        for key, val in self.output_chemical_composition.items():
+            if key in self.input_chemical_composition.keys():
+                t1 = self.input_chemical_composition[key]/self.natoms
+                t2 = self.output_chemical_composition[key]/self.natoms
+                cont = t2*_log(t2) - t1*_log(t1)
+            else:
+                t1 = 0
+                t2 = self.output_chemical_composition[key]/self.natoms
+                cont =  t2*_log(t2) - 0
+            ents.append(cont)
+        entropy_term = kb*np.sum(ents)
+        return entropy_term
+        
     def convert_to_pyscal(self):
         """
         Convert a given system to pyscal and give a dict of type mappings
@@ -158,7 +184,6 @@ class CompositionTransformation:
         self.new_species = len(self.output_chemical_composition) - len(self.typedict)
         self.maxtype = self.actual_species + 1 #+ self.new_species
         #print(self.typedict)            
-
 
     def get_composition_transformation(self):
         """
@@ -192,9 +217,10 @@ class CompositionTransformation:
     def mark_atoms(self):
         for i in range(self.natoms):
             self.atom_mark.append(False)
-            self.atom_type = self.pyscal_structure.atoms.types
-            self.mappings = [f"{x}-{x}" for x in self.atom_type]
-            
+        
+        self.atom_type = self.pyscal_structure.atoms.types
+        self.mappings = [f"{x}-{x}" for x in self.atom_type]
+     
     def update_mark_atoms(self):
         self.marked_atoms = []
         for key, val in self.to_remove.items():
@@ -281,7 +307,7 @@ class CompositionTransformation:
         self.update_typedicts()
         self.compute_possible_mappings()
         self.update_mappings()
-        
+    
     def prepare_pair_lists(self):
         self.pair_list_old = []
         self.pair_list_new = []
@@ -300,8 +326,12 @@ class CompositionTransformation:
     def update_types(self):
         for x in range(len(self.atom_type)):
             self.atom_type[x] = self.mappingdict[self.mappings[x]]
-        for count in range(len(self.pyscal_structure.atoms.types)):
-            self.pyscal_structure.atoms.types[count] = self.atom_type[count]
+        
+        #smartify these loops
+        #npyscal = len(self.pyscal_structure.atoms.types)
+        self.pyscal_structure.atoms.types = self.atom_type
+        #for count in range(npyscal)):
+        #    self.pyscal_structure.atoms.types[count] = self.atom_type[count]
             
     def iselement(self, symbol):
         try:
@@ -331,6 +361,30 @@ class CompositionTransformation:
         pc_old = " ".join([*pc_before, *self.pair_list_old, *pc_after])
         pc_new = " ".join([*pc_before, *self.pair_list_new, *pc_after])
         return pc_old, pc_new
+
+    def get_swap_types(self):
+        """
+        Get swapping types
+        """
+        swap_list = []
+        for mapping in self.unique_mappings:
+            map_split = mapping.split("-")
+            #conserved atom
+            if (map_split[0]==map_split[1]):
+                pass
+            else:
+                first_type = map_split[0]
+                second_type = map_split[1]
+                first_map = f'{first_type}-{first_type}'
+                second_map = mapping
+
+                #get the numbers from dict
+                first_swap_type = self.mappingdict[first_map]
+                second_swap_type = self.mappingdict[second_map]
+
+                swap_list.append([first_swap_type, second_swap_type])
+        return swap_list[0]
+            
     
     def write_structure(self, outfilename):
         #create some species dict

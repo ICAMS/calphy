@@ -19,6 +19,10 @@ DOI: 10.1103/PhysRevMaterials.5.103801
 
 For more information contact:
 sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
+
+Notes
+-----
+- swapping is strictly only performed between types 1 and 2 at the moment; this needs to be refined further
 """
 
 import numpy as np
@@ -159,6 +163,9 @@ class Alchemy(cph.Phase):
         lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
         lmp = ph.set_mass(lmp, self.calc)
 
+        #NEW ADDED
+        lmp.command("group g1 type 1")
+        lmp.command("group g2 type 2")
         #lmp = ph.set_double_hybrid_potential(lmp, self.options, self.calc._pressureair_style, self.calc._pressureair_coeff)
 
         #remap the box to get the correct pressure
@@ -173,9 +180,12 @@ class Alchemy(cph.Phase):
             lmp.command("fix             f1 all nvt temp %f %f %f"%(self.calc._temperature, self.calc._temperature, 
                 self.calc.md.thermostat_damping[1]))
 
+        
         lmp.command("thermo_style    custom step pe")
         lmp.command("thermo          1000")
         lmp.command("run             %d"%self.calc.n_equilibration_steps)
+        
+
         #equilibration run is over
         
         #---------------------------------------------------------------
@@ -226,20 +236,40 @@ class Alchemy(cph.Phase):
         lmp.command("variable        dU1 equal c_c1/atoms")             # Driving-force obtained from NEHI procedure.
         lmp.command("variable        dU2 equal c_c2/atoms")
 
+        #add swaps if n_swap is > 0
+        if self.calc.monte_carlo.n_swaps > 0:
+            self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between {self.calc.monte_carlo.swap_types[0]} and {self.calc.monte_carlo.swap_types[1]} every {self.calc.monte_carlo.n_steps}')
+            lmp.command("fix  swap all atom/swap %d %d %d %f ke no types %d %d"%(self.calc.monte_carlo.n_steps,
+                                                                                self.calc.monte_carlo.n_swaps,
+                                                                                np.random.randint(1, 10000),
+                                                                                self.calc._temperature,
+                                                                                self.calc.monte_carlo.swap_types[0],
+                                                                                self.calc.monte_carlo.swap_types[1]))
+            lmp.command("variable a equal f_swap[1]")
+            lmp.command("variable b equal f_swap[2]")
+            lmp.command("fix             swap2 all print 1 \"${a} ${b} ${flambda}\" screen no file swap.forward_%d.dat"%iteration)
+
         # Thermo output.
-        lmp.command("thermo_style    custom step v_dU1 v_dU2")
+        if self.calc.monte_carlo.n_swaps > 0:
+            lmp.command("thermo_style    custom step v_dU1 v_dU2 v_a v_b")
+        else:
+            lmp.command("thermo_style    custom step v_dU1 v_dU2")
         lmp.command("thermo          1000")
 
-
+        
         #save the necessary items to a file: first step
         lmp.command("fix             f2 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file forward_%d.dat"%iteration)
-        lmp.command("run             %d"%self.calc._n_switching_steps)
-
+        lmp.command("run             %d"%self.calc._n_switching_steps)            
 
         #now equilibrate at the second potential
         lmp.command("unfix           f2")
         lmp.command("uncompute       c1")
         lmp.command("uncompute       c2")
+
+        #NEW SWAP
+        if self.calc.monte_carlo.n_swaps > 0:
+            lmp.command("unfix swap")
+            lmp.command("unfix swap2")
 
 
         lmp.command("pair_style      %s"%self.calc._pair_style_with_options[1])
@@ -248,7 +278,7 @@ class Alchemy(cph.Phase):
         # Thermo output.
         lmp.command("thermo_style    custom step pe")
         lmp.command("thermo          1000")
-
+        
         #run eqbrm run
         lmp.command("run             %d"%self.calc.n_equilibration_steps)
         
@@ -278,11 +308,39 @@ class Alchemy(cph.Phase):
         lmp.command("variable        dU1 equal c_c1/atoms")             # Driving-force obtained from NEHI procedure.
         lmp.command("variable        dU2 equal c_c2/atoms")
 
+        #add swaps if n_swap is > 0
+        if self.calc.monte_carlo.n_swaps > 0:
+            if self.calc.monte_carlo.reverse_swap:
+                self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between {self.calc.monte_carlo.swap_types[1]} and {self.calc.monte_carlo.swap_types[0]} every {self.calc.monte_carlo.n_steps}')
+                lmp.command("fix  swap all atom/swap %d %d %d %f ke no types %d %d"%(self.calc.monte_carlo.n_steps,
+                                                                                    self.calc.monte_carlo.n_swaps,
+                                                                                    np.random.randint(1, 10000),
+                                                                                    self.calc._temperature,
+                                                                                    self.calc.monte_carlo.swap_types[1],
+                                                                                    self.calc.monte_carlo.swap_types[0]))
+            else:
+                self.logger.info(f'{self.calc.monte_carlo.n_swaps} swap moves are performed between {self.calc.monte_carlo.swap_types[0]} and {self.calc.monte_carlo.swap_types[1]} every {self.calc.monte_carlo.n_steps}')
+                self.logger.info('note that swaps are not reversed')
+                lmp.command("fix  swap all atom/swap %d %d %d %f ke no types %d %d"%(self.calc.monte_carlo.n_steps,
+                                                                                    self.calc.monte_carlo.n_swaps,
+                                                                                    np.random.randint(1, 10000),
+                                                                                    self.calc._temperature,
+                                                                                    self.calc.monte_carlo.swap_types[0],
+                                                                                    self.calc.monte_carlo.swap_types[1]))
+
+            lmp.command("variable a equal f_swap[1]")
+            lmp.command("variable b equal f_swap[2]")
+            lmp.command("fix             swap2 all print 1 \"${a} ${b} ${blambda}\" screen no file swap.backward_%d.dat"%iteration)
+
         # Thermo output.
-        lmp.command("thermo_style    custom step v_dU1 v_dU2")
+        if self.calc.monte_carlo.n_swaps > 0:
+            lmp.command("thermo_style    custom step v_dU1 v_dU2 v_a v_b")
+        else:        
+            lmp.command("thermo_style    custom step v_dU1 v_dU2")
         lmp.command("thermo          1000")
 
 
+        
         #save the necessary items to a file: first step
         lmp.command("fix             f2 all print 1 \"${dU1} ${dU2} ${flambda}\" screen no file backward_%d.dat"%iteration)
         lmp.command("run             %d"%self.calc._n_switching_steps)
@@ -293,6 +351,8 @@ class Alchemy(cph.Phase):
         lmp.command("uncompute       c1")
         lmp.command("uncompute       c2")
 
+        if self.calc.monte_carlo.n_swaps > 0:
+            lmp.command("unfix  swap")
         lmp.close()
 
 
@@ -327,8 +387,6 @@ class Alchemy(cph.Phase):
 
             #now we need to process the comp scaling
             return flambda_arr, w_arr, q_arr, qerr_arr
-
-
 
 
     def mass_integration(self, flambda, ref_mass, target_masses, target_counts):
