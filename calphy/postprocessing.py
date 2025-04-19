@@ -328,7 +328,7 @@ def fix_composition_scaling(dfdict, fit_order=4, correct_entropy=True, add_ideal
                 if correct_entropy:
                     #note that we need a factor of 2, because the first one is directly coming in from the equations
                     if add_ideal_entropy:
-                        x.at[index, 'free_energy'] =  row.free_energy - 2*row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
+                        x.at[index, 'free_energy'] =  row.free_energy - row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
                     else:
                         x.at[index, 'free_energy'] =  row.free_energy - row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
                 else:
