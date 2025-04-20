@@ -101,16 +101,7 @@ class Phase:
             self.logger.info(
                 "Thermostat/Barostat combo for equilibration cycle can be specified using keyword equilibration_control"
             )
-            if self.calc.reference_phase == "liquid":
-                self.logger.info(
-                    "Reference phase is liquid, setting Nose-Hoover thermostat for equilibration"
-                )
-                self.calc.equilibration_control = "nose-hoover"
-            else:
-                self.logger.info(
-                    "Reference phase is solid, setting Nose-Hoover thermostat for equilibration"
-                )
-                self.calc.equilibration_control = "nose-hoover"
+            self.calc.equilibration_control = "nose-hoover"
         else:
             self.logger.info(
                 "Equilibration stage is done using %s barostat/thermostat"
