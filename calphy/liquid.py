@@ -412,7 +412,7 @@ class Liquid(cph.Phase):
             self.calc._temperature,
             self.rho,
             self.calc.uhlenbeck_ford_model.p,
-            self.uhlenbeck_ford_model.sigma,
+            self.calc.uhlenbeck_ford_model.sigma,
         )
 
         # Get ideal gas fe
