@@ -244,8 +244,8 @@ class Liquid(cph.Phase):
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
         lmp.command(
-            "pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"
-            % self.calc._pair_style_with_options[0]
+            "pair_style       hybrid/scaled v_flambda %s v_blambda ufm %f"
+            % (self.calc._pair_style_with_options[0], self.ufm_cutoff)
         )
 
         pc = self.calc.pair_coeff[0]
@@ -261,7 +261,10 @@ class Liquid(cph.Phase):
         )
 
         lmp.command("pair_coeff       %s" % pcnew)
-        lmp.command("pair_coeff       * * ufm %f 1.5" % self.eps)
+        lmp.command(
+            "pair_coeff       * * ufm %f %f"
+            % (self.eps, self.calc.uhlenbeck_ford_model.sigma)
+        )
 
         lmp.command("compute          c1 all pair %s" % self.calc._pair_style_names[0])
         lmp.command("compute          c2 all pair ufm")
@@ -341,8 +344,8 @@ class Liquid(cph.Phase):
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
         lmp.command(
-            "pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"
-            % self.calc._pair_style_with_options[0]
+            "pair_style       hybrid/scaled v_flambda %s v_blambda ufm %f"
+            % (self.calc._pair_style_with_options[0], self.ufm_cutoff)
         )
 
         lmp.command("pair_coeff       %s" % pcnew)
