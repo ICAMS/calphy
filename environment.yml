@@ -2,15 +2,16 @@ name: calphy
 channels:
   - conda-forge
 dependencies:
+  - python =3.12
   - pytest
   - scipy
   - pyyaml
   - mendeleev
-  - lammps >=2023.03.28
+  - lammps =2024.08.29=*_openmpi_*
   - openmpi
   - numpy
   - mpi4py
-  - pylammpsmpi >=0.2.13,<=0.2.19
+  - pylammpsmpi >=0.2.13,<=0.2.35
   - matplotlib
   - tqdm
   - uncertainties
