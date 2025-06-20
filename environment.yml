@@ -2,7 +2,7 @@ name: calphy
 channels:
   - conda-forge
 dependencies:
-  - python =3.12
+  - python
   - pytest
   - scipy
   - pyyaml
