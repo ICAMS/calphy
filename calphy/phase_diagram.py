@@ -314,7 +314,10 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
 
         comps = phase['composition']
         reference_element = comps["reference_element"]
-        use_composition_scaling = bool(comps["use_composition_scaling"])
+        if "use_composition_scaling" in comps.keys():
+            use_composition_scaling = bool(comps["use_composition_scaling"])
+        else:
+            use_composition_scaling = True
         if str(phase_reference_state) == 'liquid':
             use_composition_scaling = False
 
