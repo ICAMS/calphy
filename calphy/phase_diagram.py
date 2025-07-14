@@ -437,7 +437,7 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                                     calc["element"],
                                     input_chemical_composition,
                                     output_chemical_composition)
-                    compsc = CompositionTransformation(simplecalc)
+                    compsc = CompositionTransformation(simplecalc, keep_types=True)
                     compsc.write_structure(outfile)
             
                     #pop extra keys which are not needed
