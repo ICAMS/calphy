@@ -354,7 +354,53 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
         else:
             raise ValueError("Temperature range should be scalar of list of two values!")
 
+
+        #we do a first round - create lattices
+        created_lattices = []
+        created_comp_dicts = []
+
+        for count, comp in enumerate(comp_arr):
+            calc = copy.deepcopy(phase)
+            n_atoms = np.sum(calc['composition']['number_of_atoms'])
+            
+            if is_reference[count]:
+                outfile = fix_data_file(calc['lattice'], len(calc['element']))
+                input_chemical_composition = {element:number for element, number in zip(calc['element'],
+                                                                    calc['composition']['number_of_atoms'])}
+                created_lattices.append(outfile)
+                created_comp_dicts.append(input_chemical_composition)
+
+            else:
+                #write out the file
+                output_chemical_composition = {}
+                n_species_b = int(np.round(comp*n_atoms, decimals=0))
+                output_chemical_composition[reference_element] = n_species_b
+
+                n_species_a = int(n_atoms-n_species_b)
+                output_chemical_composition[other_element] = n_species_a
+
+                if n_species_a == 0:
+                    raise ValueError("Please add pure phase as a new entry!")
+
+                #create input comp dict - this works
+                input_chemical_composition = {element:number for element, number in zip(calc['element'],
+                                                                    calc['composition']['number_of_atoms'])}                   
+
+                folder_prefix = f'{phase_name}-{comp:.2f}'
+                outfile = os.path.join(os.getcwd(), os.path.basename(calc['lattice'])+folder_prefix+'.comp.mod')
+                
+                simplecalc = SimpleCalculation(calc['lattice'], 
+                                calc["element"],
+                                input_chemical_composition,
+                                output_chemical_composition)
+                compsc = CompositionTransformation(simplecalc, keep_types=True)
+                compsc.write_structure(outfile)
+                created_lattices.append(outfile)
+                created_comp_dicts.append(input_chemical_composition)
+            
+        #now the actual run, where we prepare calculations
         all_calculations = []
+        is_ref_count = np.argmax(is_reference)
 
         for count, comp in enumerate(comp_arr):
             #check if ref comp equals given comp
@@ -367,16 +413,13 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                 extra_keys = ['composition', 'monte_carlo']
                 for key in extra_keys:
                     _ = calc.pop(key, None)
-                
-                #update file if needed
-                outfile = fix_data_file(calc['lattice'], len(calc['element']))
-                
+                                
                 #add ref phase, needed
                 calc['reference_phase'] = str(phase_reference_state)
                 calc['reference_composition'] = comps['reference']
                 calc['mode'] = str('fe')
                 calc['folder_prefix'] = f'{phase_name}-{comp:.2f}'
-                calc['lattice'] = str(outfile)
+                calc['lattice'] = str(created_lattices[count])
                 
                 #now we need to run this for different temp
                 for temp in temp_arr:
@@ -387,9 +430,6 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                 #off stoichiometric
                 #copy the dict
                 calc = copy.deepcopy(phase)
-
-                #first thing first, we need to calculate the number of atoms
-                #we follow the convention that composition is always given with the second species
                 n_atoms = np.sum(calc['composition']['number_of_atoms'])
                 
                 #find number of atoms of second species
@@ -400,21 +440,23 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                 n_species_a = int(n_atoms-n_species_b)
                 output_chemical_composition[other_element] = n_species_a
 
-                if n_species_a == 0:
-                    raise ValueError("Please add pure phase as a new entry!")
+                #now we find temp ref composition
+                if count > is_ref_count:
+                    temp_ref_count = count - 1
+                    temp_ref_comp = comp_arr[count-1]
+                elif count < is_ref_count:
+                    temp_ref_count = count + 1
+                    temp_ref_comp = comp_arr[count+1] 
+
                 #create input comp dict and output comp dict
-                input_chemical_composition = {element:number for element, number in zip(calc['element'],
-                                                                    calc['composition']['number_of_atoms'])}
+                #now this depends on the previous composition
+
+                input_chemical_composition = created_comp_dicts[temp_ref_count]
 
                 #good, now we need to write such a structure out; likely better to use working directory for that
                 folder_prefix = f'{phase_name}-{comp:.2f}'
-                calc['reference_composition'] = comps['reference']
-                #if solid, its very easy; kinda
-                #if calc['reference_phase'] == 'solid':
+                calc['reference_composition'] = float(temp_ref_comp)
                 if use_composition_scaling:
-                    #this is solid , and comp scale is turned on
-                    #pop extra keys which are not needed
-                    #we dont kick out phase_name
                     extra_keys = ['composition', 'reference_phase']
                     for key in extra_keys:
                         _ = calc.pop(key, None)
@@ -423,25 +465,11 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                     #add ref phase, needed
                     calc['mode'] = str('composition_scaling')
                     calc['folder_prefix'] = folder_prefix
+                    calc['lattice'] = str(created_lattices[temp_ref_count])
                     calc['composition_scaling'] = {}
                     calc['composition_scaling']['output_chemical_composition'] = output_chemical_composition
                     
                 else:
-                    #manually create a mixed structure - not that the pair style is always ok :)
-                    
-                    outfile = os.path.join(os.getcwd(), os.path.basename(calc['lattice'])+folder_prefix+'.comp.mod')
-                    #print(f'finding comp trf from {input_chemical_composition} to {output_chemical_composition}')
-                    #write_structure(calc['lattice'], input_chemical_composition, output_chemical_composition, outfile)
-            
-                    simplecalc = SimpleCalculation(calc['lattice'], 
-                                    calc["element"],
-                                    input_chemical_composition,
-                                    output_chemical_composition)
-                    compsc = CompositionTransformation(simplecalc, keep_types=True)
-                    compsc.write_structure(outfile)
-            
-                    #pop extra keys which are not needed
-                    #we dont kick out phase name
                     extra_keys = ['composition']
                     for key in extra_keys:
                         _ = calc.pop(key, None)
@@ -449,13 +477,13 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                     #add ref phase, needed
                     calc['mode'] = str('fe')
                     calc['folder_prefix'] = folder_prefix
-                    calc['lattice'] = str(outfile)
+                    calc['lattice'] = created_lattices[count]
             
-            #now we need to run this for different temp
-            for temp in temp_arr:
-                calc_for_temp = copy.deepcopy(calc)
-                calc_for_temp['temperature'] = int(temp)
-                all_calculations.append(calc_for_temp)       
+                #now we need to run this for different temp
+                for temp in temp_arr:
+                    calc_for_temp = copy.deepcopy(calc)
+                    calc_for_temp['temperature'] = int(temp)
+                    all_calculations.append(calc_for_temp)       
             
         #finish and write up the file
         output_data = {"calculations": all_calculations}

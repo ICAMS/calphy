@@ -336,7 +336,7 @@ class CompositionTransformation:
             self.new_atomtype = new_atomtype
         else: 
             self.new_atomtype = np.array(range(len(self.unique_mappings)))+1
-        print(new_atomtype)
+        #print(new_atomtype)
         self.mappingdict = dict(zip(self.unique_mappings, self.new_atomtype))
 
 
