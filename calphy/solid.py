@@ -299,7 +299,7 @@ class Solid(cph.Phase):
             lmp.command(f'pair_style {self.calc._pair_style_with_options[0]}')
 
         #set up structure
-        lmp = ph.create_structure(lmp, self.calc, species=self.calc.n_elements+self.calc._ghost_element_count)
+        lmp = ph.create_structure(lmp, self.calc)
 
         if self.calc.potential_file is None:
             lmp.command(f'pair_coeff {self.calc.pair_coeff[0]}')
