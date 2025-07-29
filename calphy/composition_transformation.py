@@ -112,8 +112,10 @@ class CompositionTransformation:
     ```
     The output is written in LAMMPS dump format.
     """
-    def __init__(self, calc):
-        
+    def __init__(self, calc, keep_types=False):
+        """
+        keep_types: Allows to not add a new type for transformations, useful when creating a structure of given composition.
+        """
         self.input_chemical_composition = calc.composition_scaling._input_chemical_composition
         self.output_chemical_composition = calc.composition_scaling.output_chemical_composition
         self.restrictions = calc.composition_scaling.restrictions
@@ -126,7 +128,7 @@ class CompositionTransformation:
         self.mappings = None
         self.unique_mappings = None
         self.mappingdict = None
-        self.prepare_mappings()
+        self.prepare_mappings(keep_types=keep_types)
     
     def dict_to_string(self, inputdict):
         strlst = []
@@ -160,7 +162,7 @@ class CompositionTransformation:
         entropy_term = kb*np.sum(ents)
         return entropy_term
         
-    def convert_to_pyscal(self):
+    def convert_to_pyscal(self, keep_types=False):
         """
         Convert a given system to pyscal and give a dict of type mappings
         """
@@ -182,7 +184,10 @@ class CompositionTransformation:
         
         self.actual_species = len(self.typedict)
         self.new_species = len(self.output_chemical_composition) - len(self.typedict)
-        self.maxtype = self.actual_species + 1 #+ self.new_species
+        if keep_types:
+            self.maxtype = self.actual_species + 1 #+ self.new_species\
+        else:
+            self.maxtype = self.actual_species
         #print(self.typedict)            
 
     def get_composition_transformation(self):
@@ -308,21 +313,33 @@ class CompositionTransformation:
         self.compute_possible_mappings()
         self.update_mappings()
     
-    def prepare_pair_lists(self):
+    def prepare_pair_lists(self, keep_types=False):
+        """
+        keep_types: If True, a new atom type will not be added. Existing types will be kept.
+        This is useful if one wants to simply create a new atomic configuration with the given composition.
+        """
         self.pair_list_old = []
         self.pair_list_new = []
+        new_atomtype = []
         for mapping in self.unique_mappings:
             map_split = mapping.split("-")
             #conserved atom
             if (map_split[0]==map_split[1]):
                 self.pair_list_old.append(self.reversetypedict[int(map_split[0])])
                 self.pair_list_new.append(self.reversetypedict[int(map_split[0])])
+                new_atomtype.append(int(map_split[0]))
             else:
                 self.pair_list_old.append(self.reversetypedict[int(map_split[0])])
-                self.pair_list_new.append(self.reversetypedict[int(map_split[1])]) 
-        self.new_atomtype = np.array(range(len(self.unique_mappings)))+1
+                self.pair_list_new.append(self.reversetypedict[int(map_split[1])])
+                new_atomtype.append(int(map_split[1]))
+        if keep_types:
+            self.new_atomtype = new_atomtype
+        else: 
+            self.new_atomtype = np.array(range(len(self.unique_mappings)))+1
+        #print(new_atomtype)
         self.mappingdict = dict(zip(self.unique_mappings, self.new_atomtype))
-    
+
+
     def update_types(self):
         for x in range(len(self.atom_type)):
             self.atom_type[x] = self.mappingdict[self.mappings[x]]
@@ -399,17 +416,17 @@ class CompositionTransformation:
 
         
         
-    def prepare_mappings(self):
+    def prepare_mappings(self, keep_types=False):
         self.atom_mark = []
         self.atom_species = []
         self.mappings = []
         self.unique_mappings = []
         
         self.get_composition_transformation()
-        self.convert_to_pyscal()
+        self.convert_to_pyscal(keep_types=keep_types)
 
         self.mark_atoms()
         self.update_mark_atoms()
         self.get_mappings()
-        self.prepare_pair_lists()
+        self.prepare_pair_lists(keep_types=keep_types)
         self.update_types()
