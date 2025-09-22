@@ -1217,6 +1217,7 @@ class Phase:
             return_values=return_values,
         )
 
+        self.logger.info(f'Maximum energy dissipation along the temperature scaling part: {ediss} eV/atom')
         if np.abs(ediss) > 1E-4:
             self.logger.warning(f'Found max energy dissipation of {ediss} along the temperature scaling path. Please ensure there are no structural changes!')
 
