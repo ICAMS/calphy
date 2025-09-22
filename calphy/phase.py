@@ -1206,7 +1206,7 @@ class Phase:
         res : list of lists of shape 1x3
             Only returned if `return_values` is True.
         """
-        res = integrate_rs(
+        res, ediss = integrate_rs(
             self.simfolder,
             self.fe,
             self.calc._temperature,
@@ -1216,6 +1216,10 @@ class Phase:
             scale_energy=scale_energy,
             return_values=return_values,
         )
+
+        if np.abs(ediss) > 1E-4:
+            self.logger.warning(f'Found max energy dissipation of {ediss} along the temperature scaling path. Please ensure there are no structural changes!')
+
 
         if return_values:
             return res
