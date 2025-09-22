@@ -261,7 +261,7 @@ def integrate_rs(simfolder, f0, t,
     if not return_values:
         outfile = os.path.join(simfolder, "temperature_sweep.dat")
         np.savetxt(outfile, np.column_stack((temp, f, werr)))
-        return e_diss
+        return None, e_diss
     else:
         return (temp, f, werr), e_diss
 
