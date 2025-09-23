@@ -226,6 +226,7 @@ def integrate_rs(simfolder, f0, t,
     
     """
     ws = []
+    es = []
     p = p/(10000*160.21766208)
     
     for i in range(1, nsims+1):
@@ -245,9 +246,12 @@ def integrate_rs(simfolder, f0, t,
         wf = cumtrapz(fdx, flambda,initial=0)
         wb = cumtrapz(bdx[::-1], blambda[::-1],initial=0)
         w = (wf + wb) / (2*flambda)
-        ws.append(w)
-    
+        e = np.max(np.abs((wf - wb)/(2*flambda)))
 
+        ws.append(w)
+        es.append(e)
+
+    e_diss = np.min(es)
     wmean = np.mean(ws, axis=0)
     werr = np.std(ws, axis=0)
     temp = t/flambda
@@ -257,8 +261,9 @@ def integrate_rs(simfolder, f0, t,
     if not return_values:
         outfile = os.path.join(simfolder, "temperature_sweep.dat")
         np.savetxt(outfile, np.column_stack((temp, f, werr)))
+        return None, e_diss
     else:
-        return (temp, f, werr)
+        return (temp, f, werr), e_diss
 
 
 def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1, 
