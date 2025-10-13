@@ -181,9 +181,18 @@ class MeltingTemperature(BaseModel, title="Input options for melting temperature
     attempts: Annotated[int, Field(default=5, ge=1)]
 
 class MaterialsProject(BaseModel, title='Input options for materials project'):
-    api_key: Annotated[str, Field(default="")]
+    api_key: Annotated[str, Field(default="MP_API_KEY")]
     conventional: Annotated[bool, Field(default=True)]
 
+    @field_validator("api_key", mode="after")
+    def resolve_api_key(cls, v: str) -> str:
+        value = os.getenv(v)
+        if not value:
+            raise ValueError(
+                f"Environment variable '{v}' not found or empty. "
+                f"Set it before running, e.g.:\n  export {v}='your_api_key_here'"
+            )
+        return value
 
 class Calculation(BaseModel, title="Main input class"):
     monte_carlo: Optional[MonteCarlo] = MonteCarlo()
