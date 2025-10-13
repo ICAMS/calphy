@@ -180,6 +180,10 @@ class MeltingTemperature(BaseModel, title="Input options for melting temperature
     step: Annotated[int, Field(default=200, ge=20)]
     attempts: Annotated[int, Field(default=5, ge=1)]
 
+class MaterialsProject(BaseModel, title='Input options for materials project'):
+    api_key: Annotated[str, Field(default="")]
+    conventional: Annotated[bool, Field(default=True)]
+
 
 class Calculation(BaseModel, title="Main input class"):
     monte_carlo: Optional[MonteCarlo] = MonteCarlo()
@@ -191,6 +195,8 @@ class Calculation(BaseModel, title="Main input class"):
     tolerance: Optional[Tolerance] = Tolerance()
     uhlenbeck_ford_model: Optional[UFMP] = UFMP()
     melting_temperature: Optional[MeltingTemperature] = MeltingTemperature()
+    materials_project: Optional[MaterialsProject] = MaterialsProject()
+
     element: Annotated[List[str], BeforeValidator(to_list), Field(default=[])]
     n_elements: Annotated[int, Field(default=0)]
     mass: Annotated[List[float], BeforeValidator(to_list), Field(default=[])]
