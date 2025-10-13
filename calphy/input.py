@@ -28,6 +28,7 @@ from pydantic import (
     Field,
     ValidationError,
     model_validator,
+    field_validator,
     conlist,
     PrivateAttr,
 )
