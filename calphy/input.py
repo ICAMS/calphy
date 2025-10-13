@@ -28,6 +28,7 @@ from pydantic import (
     Field,
     ValidationError,
     model_validator,
+    field_validator,
     conlist,
     PrivateAttr,
 )
@@ -180,6 +181,22 @@ class MeltingTemperature(BaseModel, title="Input options for melting temperature
     step: Annotated[int, Field(default=200, ge=20)]
     attempts: Annotated[int, Field(default=5, ge=1)]
 
+class MaterialsProject(BaseModel, title='Input options for materials project'):
+    api_key: Annotated[str, Field(default="", exclude=True)]
+    conventional: Annotated[bool, Field(default=True)]
+    target_natoms: Annotated[int, Field(default=1500, description='The structure parsed from materials project would be repeated to approximately this value')]
+
+    @field_validator("api_key", mode="after")
+    def resolve_api_key(cls, v: str) -> str:
+        if not v:
+            return v
+        value = os.getenv(v)
+        if not value:
+            raise ValueError(
+                f"Environment variable '{v}' not found or empty. "
+                f"Set it before running, e.g.:\n  export {v}='your_api_key_here'"
+            )
+        return value
 
 class Calculation(BaseModel, title="Main input class"):
     monte_carlo: Optional[MonteCarlo] = MonteCarlo()
@@ -191,6 +208,8 @@ class Calculation(BaseModel, title="Main input class"):
     tolerance: Optional[Tolerance] = Tolerance()
     uhlenbeck_ford_model: Optional[UFMP] = UFMP()
     melting_temperature: Optional[MeltingTemperature] = MeltingTemperature()
+    materials_project: Optional[MaterialsProject] = MaterialsProject()
+
     element: Annotated[List[str], BeforeValidator(to_list), Field(default=[])]
     n_elements: Annotated[int, Field(default=0)]
     mass: Annotated[List[float], BeforeValidator(to_list), Field(default=[])]
@@ -492,6 +511,44 @@ class Calculation(BaseModel, title="Main input class"):
             # concdict_frac = {str(t): typecounts[c]/np.sum(typecounts) for c, t in enumerate(types)}
             # self._composition = concdict_frac
             # self._composition_counts = concdict_counts
+            self._natoms = len(structure)
+            self._original_lattice = self.lattice.lower()
+            write_structure_file = True
+
+        elif self.lattice.split('-')[0] == 'mp':
+            #confirm here that API key exists
+            if not self.materials_project.api_key:
+                raise ValueError('could not find API KEY, pls set it.')
+            #now we need to fetch the structure
+            try:
+                from mp_api.client import MPRester
+            except ImportError:
+                raise ImportError('Could not import mp_api, make sure you install mp_api package!')
+            #now all good
+            rest = {
+                    "use_document_model": False,
+                    "include_user_agent": True,
+                    "api_key": self.materials_project.api_key, 
+                }
+            with MPRester(**rest) as mpr:
+                docs = mpr.materials.summary.search(material_ids=[self.lattice])
+
+            structures = []
+            for doc in docs:
+                struct = doc['structure']
+                if self.materials_project.conventional:
+                    aseatoms = struct.to_conventional().to_ase_atoms()
+                else:
+                    aseatoms = struct.to_primitive().to_ase_atoms()
+                structures.append(aseatoms)
+            structure = structures[0]
+            
+            if np.prod(self.repeat) == 1:
+                x = int(np.ceil((self.materials_project.target_natoms/len(structure))**(1/3)))
+                structure = structure.repeat(x)
+            else:
+                structure = structure.repeat(self.repeat)
+
             self._natoms = len(structure)
             self._original_lattice = self.lattice.lower()
             write_structure_file = True
