@@ -181,7 +181,7 @@ class MeltingTemperature(BaseModel, title="Input options for melting temperature
     attempts: Annotated[int, Field(default=5, ge=1)]
 
 class MaterialsProject(BaseModel, title='Input options for materials project'):
-    api_key: Annotated[str, Field(default="")]
+    api_key: Annotated[str, Field(default="", exclude=True)]
     conventional: Annotated[bool, Field(default=True)]
     target_natoms: Annotated[int, Field(default=1500, description='The structure parsed from materials project would be repeated to approximately this value')]
 
@@ -540,7 +540,14 @@ class Calculation(BaseModel, title="Main input class"):
                 else:
                     aseatoms = struct.to_primitive().to_ase_atoms()
                 structures.append(aseatoms)
-            structure = structures[0]          
+            structure = structures[0]
+            
+            if np.prod(self.repeat) == 1:
+                x = int(np.ceil((self.materials_project.target_natoms/len(structure))**(1/3)))
+                structure = structure.repeat(x)
+            else:
+                structure = structure.repeat(self.repeat)
+
             self._natoms = len(structure)
             self._original_lattice = self.lattice.lower()
             write_structure_file = True
