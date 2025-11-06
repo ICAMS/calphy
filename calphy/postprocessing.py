@@ -121,7 +121,7 @@ def gather_results(mainfolder, reduce_composition=True,
         #print(inpfile)
         if not os.path.exists(outfile):
             datadict['status'].append('False')
-            datadict['free_energy'].append(np.NaN)
+            datadict['free_energy'].append(np.nan)
             #check if error file is found
             errfile = os.path.join(os.getcwd(), mainfolder, folder+'.sub.err')
             datadict['error_code'][-1] = _extract_error(errfile)
