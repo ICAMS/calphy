@@ -30,15 +30,15 @@ def read_report(folder):
 
 def _extract_error(errfile):
     error_code = None
-    if os.path.exists(errfile):
-        with open(errfile, 'r') as fin:
-            for line in fin:
-                if 'calphy.errors' in line:
-                    break
-            try:
-                error_code = line.split(':')[0].split('.')[-1]
-            except:
-                pass
+    try:
+        if os.path.exists(errfile):
+            with open(errfile, 'r') as fin:
+                for line in fin:
+                    if 'calphy.errors' in line:
+                        break
+                    error_code = line.split(':')[0].split('.')[-1]
+    except:
+        pass
     return error_code
     
 def gather_results(mainfolder, reduce_composition=True, 
