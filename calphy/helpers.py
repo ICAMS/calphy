@@ -3,14 +3,14 @@ calphy: a Python library and command line interface for automated free
 energy calculations.
 
 Copyright 2021  (c) Sarath Menon^1, Yury Lysogorskiy^2, Ralf Drautz^2
-^1: Max Planck Institut für Eisenforschung, Dusseldorf, Germany 
+^1: Max Planck Institut für Eisenforschung, Dusseldorf, Germany
 ^2: Ruhr-University Bochum, Bochum, Germany
 
-calphy is published and distributed under the Academic Software License v1.0 (ASL). 
-calphy is distributed in the hope that it will be useful for non-commercial academic research, 
-but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+calphy is published and distributed under the Academic Software License v1.0 (ASL).
+calphy is distributed in the hope that it will be useful for non-commercial academic research,
+but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 calphy API is published and distributed under the BSD 3-Clause "New" or "Revised" License
-See the LICENSE FILE for more details. 
+See the LICENSE FILE for more details.
 
 More information about the program can be found in:
 Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz.
@@ -34,6 +34,7 @@ from ase.io import read, write
 import pyscal3.core as pc
 from pyscal3.trajectory import Trajectory
 
+
 class LammpsScript:
     def __init__(self):
         self.script = []
@@ -42,12 +43,14 @@ class LammpsScript:
         self.script.append(command_str)
 
     def write(self, infile):
-        with open(infile, 'w') as fout:
+        with open(infile, "w") as fout:
             for line in self.script:
-                fout.write(f'{line}\n')
+                fout.write(f"{line}\n")
 
-def create_object(cores, directory, timestep, cmdargs="", 
-    init_commands=(), script_mode=False):
+
+def create_object(
+    cores, directory, timestep, cmdargs="", init_commands=(), script_mode=False
+):
     """
     Create LAMMPS object
 
@@ -71,28 +74,28 @@ def create_object(cores, directory, timestep, cmdargs="",
     else:
         if cmdargs == "":
             cmdargs = None
-        lmp = LammpsLibrary(
-            cores=cores, working_directory=directory, cmdargs=cmdargs
-        )
+        lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
 
-    commands = [["units", "metal"], 
-    ["boundary", "p p p"],
-    ["atom_style", "atomic"],
-    ["timestep", str(timestep)],
-    ["box", "tilt large"]]
+    commands = [
+        ["units", "metal"],
+        ["boundary", "p p p"],
+        ["atom_style", "atomic"],
+        ["timestep", str(timestep)],
+        ["box", "tilt large"],
+    ]
 
     if len(init_commands) > 0:
-        #we need to replace some initial commands
+        # we need to replace some initial commands
         for rc in init_commands:
-            #split the command
+            # split the command
             raw = rc.split()
             for x in range(len(commands)):
                 if raw[0] == commands[x][0]:
-                    #we found a matching command
+                    # we found a matching command
                     commands[x] = [rc]
                     break
             else:
-                #its a new command, add it to the list
+                # its a new command, add it to the list
                 commands.append([rc])
 
     for command in commands:
@@ -121,12 +124,12 @@ def create_structure(lmp, calc):
 
 
 def set_mass(lmp, options):
-    if options.mode == 'composition_scaling':
-        lmp.command(f'mass * {options.mass[-1]}')
+    if options.mode == "composition_scaling":
+        lmp.command(f"mass * {options.mass[-1]}")
 
     else:
         for i in range(options.n_elements):
-            lmp.command(f'mass {i+1} {options.mass[i]}')
+            lmp.command(f"mass {i+1} {options.mass[i]}")
     return lmp
 
 
@@ -144,18 +147,20 @@ def set_potential(lmp, options):
     -------
     lmp : LammpsLibrary object
     """
-    #lmp.pair_style(options.pair_style_with_options[0])
-    #lmp.pair_coeff(options.pair_coeff[0])
-    lmp.command(f'pair_style {options._pair_style_with_options[0]}')
-    lmp.command(f'pair_coeff {options.pair_coeff[0]}')
+    # lmp.pair_style(options.pair_style_with_options[0])
+    # lmp.pair_coeff(options.pair_coeff[0])
+    lmp.command(f"pair_style {options._pair_style_with_options[0]}")
+    lmp.command(f"pair_coeff {options.pair_coeff[0]}")
 
     lmp = set_mass(lmp, options)
 
     return lmp
 
+
 def read_data(lmp, file):
     lmp.command(f"read_data {file}")
     return lmp
+
 
 def get_structures(file, species, index=None):
     traj = Trajectory(file)
@@ -164,6 +169,7 @@ def get_structures(file, species, index=None):
     else:
         aseobjs = traj[index].to_ase(species=species)
     return aseobjs
+
 
 def remap_box(lmp, x, y, z):
     lmp.command("run 0")
@@ -222,8 +228,15 @@ def write_data(lmp, file):
     lmp.command(f"write_data {file}")
     return lmp
 
+
 def prepare_log(file, screen=False):
     logger = logging.getLogger(__name__)
+
+    # Remove all existing handlers to prevent duplicate logging
+    for handler in logger.handlers[:]:
+        handler.close()
+        logger.removeHandler(handler)
+
     handler = logging.FileHandler(file)
     formatter = logging.Formatter("%(asctime)s %(name)-12s %(levelname)-8s %(message)s")
     handler.setFormatter(formatter)
@@ -237,6 +250,7 @@ def prepare_log(file, screen=False):
         scr.setFormatter(formatter)
         logger.addHandler(scr)
     return logger
+
 
 def check_if_any_is_none(data):
     """
