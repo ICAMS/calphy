@@ -254,6 +254,141 @@ matcolors = {
 	}
 }
 
+def read_structure_composition(lattice_file, element_list):
+    """
+    Read a LAMMPS data file and determine the input chemical composition.
+    
+    Parameters
+    ----------
+    lattice_file : str
+        Path to the LAMMPS data file
+    element_list : list
+        List of element symbols in order (element[0] = type 1, element[1] = type 2, etc.)
+    
+    Returns
+    -------
+    dict
+        Dictionary mapping element symbols to atom counts
+        Elements not present in the structure will have count 0
+    """
+    from ase.io import read
+    from collections import Counter
+    
+    # Read the structure file
+    structure = read(lattice_file, format='lammps-data', style='atomic')
+    
+    # Get the species/types from the structure
+    # ASE reads LAMMPS types as species strings ('1', '2', etc.)
+    if 'species' in structure.arrays:
+        types_in_structure = structure.arrays['species']
+    else:
+        # Fallback: get atomic numbers and convert to strings
+        types_in_structure = [str(x) for x in structure.get_atomic_numbers()]
+    
+    # Count atoms by type
+    type_counts = Counter(types_in_structure)
+    
+    # Build composition mapping element names to counts
+    # element[0] corresponds to LAMMPS type '1', element[1] to type '2', etc.
+    input_chemical_composition = {}
+    for idx, element in enumerate(element_list):
+        lammps_type = str(idx + 1)  # LAMMPS types are 1-indexed
+        input_chemical_composition[element] = type_counts.get(lammps_type, 0)
+    
+    return input_chemical_composition
+
+
+# Constants for phase diagram preparation
+COMPOSITION_TOLERANCE = 1E-5
+
+
+def _create_composition_array(comp_range, interval, reference):
+    """
+    Create composition array from range specification.
+    
+    Parameters
+    ----------
+    comp_range : list or scalar
+        Composition range [min, max] or single value
+    interval : float
+        Composition interval
+    reference : float
+        Reference composition value
+    
+    Returns
+    -------
+    tuple
+        (comp_arr, is_reference) - composition array and boolean array marking reference compositions
+    """
+    # Convert to list if scalar
+    if not isinstance(comp_range, list):
+        comp_range = [comp_range]
+    
+    if len(comp_range) == 2:
+        comp_arr = np.arange(comp_range[0], comp_range[-1], interval)
+        last_val = comp_range[-1]
+        if last_val not in comp_arr:
+            comp_arr = np.append(comp_arr, last_val)
+        is_reference = np.abs(comp_arr - reference) < COMPOSITION_TOLERANCE
+    elif len(comp_range) == 1:
+        comp_arr = [comp_range[0]]
+        is_reference = [True]
+    else:
+        raise ValueError("Composition range should be scalar or list of two values!")
+    
+    return comp_arr, is_reference
+
+
+def _create_temperature_array(temp_range, interval):
+    """
+    Create temperature array from range specification.
+    
+    Parameters
+    ----------
+    temp_range : list or scalar
+        Temperature range [min, max] or single value
+    interval : float
+        Temperature interval
+    
+    Returns
+    -------
+    ndarray
+        Temperature array
+    """
+    # Convert to list if scalar
+    if not isinstance(temp_range, list):
+        temp_range = [temp_range]
+    
+    if len(temp_range) == 2:
+        ntemps = int((temp_range[-1] - temp_range[0]) / interval) + 1
+        temp_arr = np.linspace(temp_range[0], temp_range[-1], ntemps, endpoint=True)
+    elif len(temp_range) == 1:
+        temp_arr = [temp_range[0]]
+    else:
+        raise ValueError("Temperature range should be scalar or list of two values!")
+    
+    return temp_arr
+
+
+def _add_temperature_calculations(calc_dict, temp_arr, all_calculations):
+    """
+    Helper to add calculations for each temperature point.
+    
+    Parameters
+    ----------
+    calc_dict : dict
+        Base calculation dictionary
+    temp_arr : array
+        Array of temperatures
+    all_calculations : list
+        List to append calculations to
+    """
+    for temp in temp_arr:
+        calc_for_temp = copy.deepcopy(calc_dict)
+        calc_for_temp['temperature'] = int(temp)
+        all_calculations.append(calc_for_temp)
+
+
 def fix_data_file(datafile, nelements):
     """
     Change the atom types keyword in the structure file
@@ -309,6 +444,31 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
         calculation_base_name = inputyamlfile    
     
     for phase in data['phases']:
+        # Validate binary system assumption
+        n_elements = len(phase['element'])
+        if n_elements != 2:
+            raise ValueError(
+                f"Phase diagram preparation currently supports only binary systems. "
+                f"Found {n_elements} elements: {phase['element']}"
+            )
+        
+        # Validate element ordering consistency with pair_coeff
+        # This ensures element[0] -> type 1, element[1] -> type 2
+        if 'pair_coeff' in phase:
+            from calphy.input import _extract_elements_from_pair_coeff
+            # pair_coeff can be a list or a string - handle both
+            pair_coeff = phase['pair_coeff']
+            if isinstance(pair_coeff, list):
+                pair_coeff = pair_coeff[0] if pair_coeff else None
+            pair_coeff_elements = _extract_elements_from_pair_coeff(pair_coeff)
+            if pair_coeff_elements != phase['element']:
+                raise ValueError(
+                    f"Element ordering mismatch for phase '{phase.get('phase_name', 'unnamed')}'!\n"
+                    f"Elements in 'element' field: {phase['element']}\n"
+                    f"Elements from pair_coeff: {pair_coeff_elements}\n"
+                    f"These must match exactly in order (element[0] -> LAMMPS type 1, element[1] -> type 2)."
+                )
+        
         phase_reference_state = phase['reference_phase']
         phase_name = phase['phase_name']
 
@@ -325,34 +485,18 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
         other_element_list.remove(reference_element)
         other_element = other_element_list[0]
 
-        #convert to list if scalar
-        if not isinstance(comps['range'], list):
-            comps["range"] = [comps["range"]]
-        if len(comps["range"]) == 2: 
-            comp_arr = np.arange(comps['range'][0], comps['range'][-1], comps['interval'])
-            last_val = comps['range'][-1]
-            if last_val not in comp_arr:
-                comp_arr = np.append(comp_arr, last_val)
-            ncomps = len(comp_arr)
-            is_reference = np.abs(comp_arr-comps['reference']) < 1E-5
-        elif len(comps["range"]) == 1:
-            ncomps = 1
-            comp_arr = [comps["range"][0]]
-            is_reference = [True]
-        else:
-            raise ValueError("Composition range should be scalar of list of two values!")
+        # Create composition array using helper function
+        comp_arr, is_reference = _create_composition_array(
+            comps['range'], 
+            comps['interval'], 
+            comps['reference']
+        )
+        ncomps = len(comp_arr)
 
+        # Create temperature array using helper function
         temps = phase["temperature"]
-        if not isinstance(temps['range'], list):
-            temps["range"] = [temps["range"]]
-        if len(temps["range"]) == 2: 
-            ntemps = int((temps['range'][-1]-temps['range'][0])/temps['interval'])+1
-            temp_arr = np.linspace(temps['range'][0], temps['range'][-1], ntemps, endpoint=True)
-        elif len(temps["range"]) == 1:
-            ntemps = 1
-            temp_arr = [temps["range"][0]]
-        else:
-            raise ValueError("Temperature range should be scalar of list of two values!")
+        temp_arr = _create_temperature_array(temps['range'], temps['interval'])
+        ntemps = len(temp_arr)
 
         all_calculations = []
 
@@ -372,27 +516,30 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                 outfile = fix_data_file(calc['lattice'], len(calc['element']))
                 
                 #add ref phase, needed
-                calc['reference_phase'] = str(phase_reference_state)
+                calc['reference_phase'] = phase_reference_state
                 calc['reference_composition'] = comps['reference']
-                calc['mode'] = str('fe')
+                calc['mode'] = 'fe'
                 calc['folder_prefix'] = f'{phase_name}-{comp:.2f}'
-                calc['lattice'] = str(outfile)
+                calc['lattice'] = outfile
                 
-                #now we need to run this for different temp
-                for temp in temp_arr:
-                    calc_for_temp = copy.deepcopy(calc)
-                    calc_for_temp['temperature'] = int(temp)
-                    all_calculations.append(calc_for_temp)
+                # Add calculations for each temperature
+                _add_temperature_calculations(calc, temp_arr, all_calculations)
             else:
                 #off stoichiometric
                 #copy the dict
                 calc = copy.deepcopy(phase)
 
-                #first thing first, we need to calculate the number of atoms
-                #we follow the convention that composition is always given with the second species
-                n_atoms = np.sum(calc['composition']['number_of_atoms'])
+                #read the structure file to determine input composition automatically
+                input_chemical_composition = read_structure_composition(calc['lattice'], calc['element'])
                 
-                #find number of atoms of second species
+                #calculate total number of atoms from structure
+                n_atoms = sum(input_chemical_composition.values())
+                
+                if n_atoms == 0:
+                    raise ValueError(f"No atoms found in structure file {calc['lattice']}")
+                
+                #find number of atoms of second species based on target composition
+                #we follow the convention that composition is always given with the reference element
                 output_chemical_composition = {}
                 n_species_b = int(np.round(comp*n_atoms, decimals=0))
                 output_chemical_composition[reference_element] = n_species_b
@@ -400,11 +547,8 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                 n_species_a = int(n_atoms-n_species_b)
                 output_chemical_composition[other_element] = n_species_a
 
-                if n_species_a == 0:
-                    raise ValueError("Please add pure phase as a new entry!")
-                #create input comp dict and output comp dict
-                input_chemical_composition = {element:number for element, number in zip(calc['element'],
-                                                                    calc['composition']['number_of_atoms'])}
+                # Note: Pure phases (n_species_a == 0 or n_species_b == 0) are allowed
+                # Composition transformation can handle 100% replacement
 
                 #good, now we need to write such a structure out; likely better to use working directory for that
                 folder_prefix = f'{phase_name}-{comp:.2f}'
@@ -421,7 +565,7 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                     
                     #just submit comp scales
                     #add ref phase, needed
-                    calc['mode'] = str('composition_scaling')
+                    calc['mode'] = 'composition_scaling'
                     calc['folder_prefix'] = folder_prefix
                     calc['composition_scaling'] = {}
                     calc['composition_scaling']['output_chemical_composition'] = output_chemical_composition
@@ -447,22 +591,20 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                         _ = calc.pop(key, None)
 
                     #add ref phase, needed
-                    calc['mode'] = str('fe')
+                    calc['mode'] = 'fe'
                     calc['folder_prefix'] = folder_prefix
-                    calc['lattice'] = str(outfile)
+                    calc['lattice'] = outfile
             
-            #now we need to run this for different temp
-            for temp in temp_arr:
-                calc_for_temp = copy.deepcopy(calc)
-                calc_for_temp['temperature'] = int(temp)
-                all_calculations.append(calc_for_temp)       
+                # Add calculations for each temperature
+                _add_temperature_calculations(calc, temp_arr, all_calculations)
             
         #finish and write up the file
         output_data = {"calculations": all_calculations}
+        base_name = os.path.basename(calculation_base_name)
         for rep in ['.yml', '.yaml']:
-            calculation_base_name = calculation_base_name.replace(rep, '')
+            base_name = base_name.replace(rep, '')
 
-        outfile_phase = phase_name + '_' + calculation_base_name + ".yaml"
+        outfile_phase = phase_name + '_' + base_name + ".yaml"
         with open(outfile_phase, 'w') as fout:
             yaml.safe_dump(output_data, fout)
         print(f'Total {len(all_calculations)} calculations found for phase {phase_name}, written to {outfile_phase}')
