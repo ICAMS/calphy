@@ -92,6 +92,49 @@ def _to_float(val):
         return [float(x) for x in val]
 
 
+def _extract_elements_from_pair_coeff(pair_coeff_string):
+    """
+    Extract element symbols from pair_coeff string.
+    Returns None if pair_coeff doesn't contain element specifications.
+    
+    Parameters
+    ----------
+    pair_coeff_string : str
+        The pair_coeff command string (e.g., "* * potential.eam.fs Cu Zr")
+    
+    Returns
+    -------
+    list or None
+        List of element symbols in order, or None if no elements found
+    """
+    if pair_coeff_string is None:
+        return None
+    
+    pcsplit = pair_coeff_string.strip().split()
+    elements = []
+    
+    # Start collecting after we find element symbols
+    # Elements are typically after the potential filename
+    started = False
+    
+    for p in pcsplit:
+        # Check if this looks like an element symbol
+        # Element symbols are 1-2 characters, start with uppercase
+        if len(p) <= 2 and p[0].isupper():
+            try:
+                # Verify it's a valid element using mendeleev
+                _ = mendeleev.element(p)
+                elements.append(p)
+                started = True
+            except:
+                # Not a valid element, might be done collecting
+                if started:
+                    # We already started collecting elements and hit a non-element
+                    break
+    
+    return elements if len(elements) > 0 else None
+
+
 class UFMP(BaseModel, title="UFM potential input options"):
     p: Annotated[float, Field(default=50.0)]
     sigma: Annotated[float, Field(default=1.5)]
@@ -313,6 +356,39 @@ class Calculation(BaseModel, title="Main input class"):
             raise ValueError("mass and elements should have same length")
 
         self.n_elements = len(self.element)
+        
+        # Validate element/mass/pair_coeff ordering consistency
+        # This is critical for multi-element systems where LAMMPS type numbers
+        # are assigned based on element order: element[0]=Type1, element[1]=Type2, etc.
+        if len(self.element) > 1 and self.pair_coeff is not None and len(self.pair_coeff) > 0:
+            extracted_elements = _extract_elements_from_pair_coeff(self.pair_coeff[0])
+            
+            if extracted_elements is not None:
+                # pair_coeff specifies elements - check ordering
+                if set(extracted_elements) != set(self.element):
+                    raise ValueError(
+                        f"Element mismatch between 'element' and 'pair_coeff'!\n"
+                        f"  element:    {self.element}\n"
+                        f"  pair_coeff: {extracted_elements}\n"
+                        f"The elements specified must be the same."
+                    )
+                
+                if list(extracted_elements) != list(self.element):
+                    raise ValueError(
+                        f"Element ordering mismatch detected!\n\n"
+                        f"  element:    {self.element}\n"
+                        f"  pair_coeff: {extracted_elements}\n"
+                        f"  mass:       {self.mass}\n\n"
+                        f"For multi-element systems, all three must be in the SAME order.\n\n"
+                        f"Why this matters:\n"
+                        f"  - Element order determines LAMMPS type numbers:\n"
+                        f"      element[0] → Type 1, element[1] → Type 2, etc.\n"
+                        f"  - The pair_coeff elements must match this type order\n"
+                        f"  - The mass values must correspond to the same order\n"
+                        f"  - Composition transformations depend on this ordering\n\n"
+                        f"Please reorder your input so element, mass, and pair_coeff\n"
+                        f"all use the same element ordering."
+                    )
 
         self._pressure_input = copy.copy(self.pressure)
         if self.pressure is None:
