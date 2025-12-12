@@ -254,6 +254,50 @@ matcolors = {
 	}
 }
 
+def read_structure_composition(lattice_file, element_list):
+    """
+    Read a LAMMPS data file and determine the input chemical composition.
+    
+    Parameters
+    ----------
+    lattice_file : str
+        Path to the LAMMPS data file
+    element_list : list
+        List of element symbols in order (element[0] = type 1, element[1] = type 2, etc.)
+    
+    Returns
+    -------
+    dict
+        Dictionary mapping element symbols to atom counts
+        Elements not present in the structure will have count 0
+    """
+    from ase.io import read
+    from collections import Counter
+    
+    # Read the structure file
+    structure = read(lattice_file, format='lammps-data', style='atomic')
+    
+    # Get the species/types from the structure
+    # ASE reads LAMMPS types as species strings ('1', '2', etc.)
+    if 'species' in structure.arrays:
+        types_in_structure = structure.arrays['species']
+    else:
+        # Fallback: get atomic numbers and convert to strings
+        types_in_structure = [str(x) for x in structure.get_atomic_numbers()]
+    
+    # Count atoms by type
+    type_counts = Counter(types_in_structure)
+    
+    # Build composition mapping element names to counts
+    # element[0] corresponds to LAMMPS type '1', element[1] to type '2', etc.
+    input_chemical_composition = {}
+    for idx, element in enumerate(element_list):
+        lammps_type = str(idx + 1)  # LAMMPS types are 1-indexed
+        input_chemical_composition[element] = type_counts.get(lammps_type, 0)
+    
+    return input_chemical_composition
+
+
 def fix_data_file(datafile, nelements):
     """
     Change the atom types keyword in the structure file
@@ -388,11 +432,17 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                 #copy the dict
                 calc = copy.deepcopy(phase)
 
-                #first thing first, we need to calculate the number of atoms
-                #we follow the convention that composition is always given with the second species
-                n_atoms = np.sum(calc['composition']['number_of_atoms'])
+                #read the structure file to determine input composition automatically
+                input_chemical_composition = read_structure_composition(calc['lattice'], calc['element'])
                 
-                #find number of atoms of second species
+                #calculate total number of atoms from structure
+                n_atoms = sum(input_chemical_composition.values())
+                
+                if n_atoms == 0:
+                    raise ValueError(f"No atoms found in structure file {calc['lattice']}")
+                
+                #find number of atoms of second species based on target composition
+                #we follow the convention that composition is always given with the reference element
                 output_chemical_composition = {}
                 n_species_b = int(np.round(comp*n_atoms, decimals=0))
                 output_chemical_composition[reference_element] = n_species_b
@@ -402,9 +452,6 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
 
                 if n_species_a == 0:
                     raise ValueError("Please add pure phase as a new entry!")
-                #create input comp dict and output comp dict
-                input_chemical_composition = {element:number for element, number in zip(calc['element'],
-                                                                    calc['composition']['number_of_atoms'])}
 
                 #good, now we need to write such a structure out; likely better to use working directory for that
                 folder_prefix = f'{phase_name}-{comp:.2f}'
