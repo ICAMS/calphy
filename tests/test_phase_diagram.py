@@ -105,3 +105,36 @@ def test_read_structure_composition_single_element_list():
     assert len(comp) == 1
     assert 'Cu' in comp
     assert comp['Cu'] > 0
+
+
+def test_composition_transformation_100_percent():
+    """Test that 100% composition transformation is allowed (pure phase endpoint)"""
+    from calphy.composition_transformation import CompositionTransformation
+    
+    # Create a test calculation that transforms all atoms from one element to another
+    class TestCalc:
+        def __init__(self):
+            self.lattice = 'tests/conf1.data'
+            self.element = ['Cu', 'Al']
+            self.composition_scaling = type('obj', (object,), {
+                '_input_chemical_composition': {'Cu': 500, 'Al': 0},
+                '_output_chemical_composition': {'Cu': 0, 'Al': 500},
+                'input_chemical_composition': property(lambda s: s._input_chemical_composition),
+                'output_chemical_composition': property(lambda s: s._output_chemical_composition),
+                'restrictions': []
+            })()
+    
+    calc = TestCalc()
+    
+    # Should not raise an error
+    comp = CompositionTransformation(calc)
+    
+    # Verify the transformation is set up correctly
+    assert 'Cu' in comp.to_remove
+    assert 'Al' in comp.to_add
+    assert comp.to_remove['Cu'] == 500
+    assert comp.to_add['Al'] == 500
+    assert len(comp.transformation_list) == 1
+    assert comp.transformation_list[0]['primary_element'] == 'Cu'
+    assert comp.transformation_list[0]['secondary_element'] == 'Al'
+    assert comp.transformation_list[0]['count'] == 500

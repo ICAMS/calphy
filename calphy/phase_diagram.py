@@ -450,8 +450,8 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                 n_species_a = int(n_atoms-n_species_b)
                 output_chemical_composition[other_element] = n_species_a
 
-                if n_species_a == 0:
-                    raise ValueError("Please add pure phase as a new entry!")
+                # Note: Pure phases (n_species_a == 0 or n_species_b == 0) are allowed
+                # Composition transformation can handle 100% replacement
 
                 #good, now we need to write such a structure out; likely better to use working directory for that
                 folder_prefix = f'{phase_name}-{comp:.2f}'
