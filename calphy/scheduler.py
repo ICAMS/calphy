@@ -190,6 +190,9 @@ class SGE:
         """
         Write the script file
         """
+        jobout = ".".join([outfile, "out"])
+        joberr = ".".join([outfile, "err"])
+
         with open(outfile, "w") as fout:
             fout.write(self.queueoptions["header"])
             fout.write("\n")
