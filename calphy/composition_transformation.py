@@ -3,14 +3,14 @@ calphy: a Python library and command line interface for automated free
 energy calculations.
 
 Copyright 2021  (c) Sarath Menon^1, Yury Lysogorskiy^2, Ralf Drautz^2
-^1: Max Planck Institut für Eisenforschung, Dusseldorf, Germany 
+^1: Max Planck Institut für Eisenforschung, Dusseldorf, Germany
 ^2: Ruhr-University Bochum, Bochum, Germany
 
-calphy is published and distributed under the Academic Software License v1.0 (ASL). 
-calphy is distributed in the hope that it will be useful for non-commercial academic research, 
-but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+calphy is published and distributed under the Academic Software License v1.0 (ASL).
+calphy is distributed in the hope that it will be useful for non-commercial academic research,
+but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 calphy API is published and distributed under the BSD 3-Clause "New" or "Revised" License
-See the LICENSE FILE for more details. 
+See the LICENSE FILE for more details.
 
 More information about the program can be found in:
 Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz.
@@ -32,9 +32,10 @@ from ase.atoms import Atoms
 from pyscal3.core import element_dict
 from calphy.integrators import kb
 
+
 class CompositionTransformation:
     """
-    Class for performing composition transformations and 
+    Class for performing composition transformations and
     generating necessary pair styles for such transformations.
 
     Parameters
@@ -43,11 +44,11 @@ class CompositionTransformation:
         input structure which is used for composition transformation
 
     input_chemical_formula: dict
-        dictionary of input chemical 
+        dictionary of input chemical
 
     output_chemical_formula: string
         the required chemical composition string
-    
+
     restrictions: list of strings, optional
         Can be used to specify restricted transformations
 
@@ -74,17 +75,17 @@ class CompositionTransformation:
     transformations should not take place. The code for this is:
 
     ```
-    comp = CompositionTransformation(filename, {"Al":500, "Li":5}, 
+    comp = CompositionTransformation(filename, {"Al":500, "Li":5},
         {"Al": 494, "Li": 2, "O": 3, "C":1}, restrictions=["Al-O"])
     ```
 
-    If the restrictions are not satisfiable, an error will be raised. 
+    If the restrictions are not satisfiable, an error will be raised.
 
     The LAMMPS data file or dump files do not contain any information about the species except the type numbers.
     In general the number of atoms are respected, for example if the file has 10 atoms of type 1, 5 of type 2,
     and 1 of type 3. If the `input_chemical_composition` is `{"Li": 5, "Al": 10, "O": 1}`, type 1 is assigned to Al,
     type 2 is assigned to Li and type 3 is assigned to O. This is done irrespective of the order in which
-    `input_chemical_composition` is specified. However, if there are equal number of atoms, the order is respected. 
+    `input_chemical_composition` is specified. However, if there are equal number of atoms, the order is respected.
     Therefore it is important to make sure that the `input_chemical_composition` is in the same order as that of
     types in structure file. For example, consider a NiAl structure of 10 Ni atoms and 10 Al atoms. Ni atoms are type 1 in LAMMPS terminology
     and Al atoms are type 2. In this case, to preserve the order, `input_chemical_composition` should be `{"Ni": 5, "Al": 10}`.
@@ -112,22 +113,27 @@ class CompositionTransformation:
     ```
     The output is written in LAMMPS dump format.
     """
+
     def __init__(self, calc):
-        
-        self.input_chemical_composition = calc.composition_scaling._input_chemical_composition
-        self.output_chemical_composition = calc.composition_scaling.output_chemical_composition
+
+        self.input_chemical_composition = (
+            calc.composition_scaling._input_chemical_composition
+        )
+        self.output_chemical_composition = (
+            calc.composition_scaling.output_chemical_composition
+        )
         self.restrictions = calc.composition_scaling.restrictions
         self.calc = calc
         self.actual_species = None
         self.new_species = None
-        self.maxtype = None        
+        self.maxtype = None
         self.atom_mark = None
         self.atom_species = None
         self.mappings = None
         self.unique_mappings = None
         self.mappingdict = None
         self.prepare_mappings()
-    
+
     def dict_to_string(self, inputdict):
         strlst = []
         for key, val in inputdict.items():
@@ -141,49 +147,51 @@ class CompositionTransformation:
         Find the entropy entribution of the transformation. To get
         free energies, multiply by -T.
         """
+
         def _log(val):
             if val == 0:
                 return 0
             else:
                 return np.log(val)
+
         ents = []
         for key, val in self.output_chemical_composition.items():
             if key in self.input_chemical_composition.keys():
-                t1 = self.input_chemical_composition[key]/self.natoms
-                t2 = self.output_chemical_composition[key]/self.natoms
-                cont = t2*_log(t2) - t1*_log(t1)
+                t1 = self.input_chemical_composition[key] / self.natoms
+                t2 = self.output_chemical_composition[key] / self.natoms
+                cont = t2 * _log(t2) - t1 * _log(t1)
             else:
                 t1 = 0
-                t2 = self.output_chemical_composition[key]/self.natoms
-                cont =  t2*_log(t2) - 0
+                t2 = self.output_chemical_composition[key] / self.natoms
+                cont = t2 * _log(t2) - 0
             ents.append(cont)
-        entropy_term = kb*np.sum(ents)
+        entropy_term = kb * np.sum(ents)
         return entropy_term
-        
+
     def convert_to_pyscal(self):
         """
         Convert a given system to pyscal and give a dict of type mappings
         """
-        aseobj = read(self.calc.lattice, format='lammps-data', style='atomic')
-        pstruct = pc.System(aseobj, format='ase')
-        
-        #here we have to validate the input composition dict; and map it
+        aseobj = read(self.calc.lattice, format="lammps-data", style="atomic")
+        pstruct = pc.System(aseobj, format="ase")
+
+        # here we have to validate the input composition dict; and map it
         typelist = pstruct.atoms.species
         types, typecounts = np.unique(typelist, return_counts=True)
         composition = {types[x]: typecounts[x] for x in range(len(types))}
 
         atomsymbols = self.calc.element
-        atomtypes = [x+1 for x in range(len(self.calc.element))]
-        
+        atomtypes = [x + 1 for x in range(len(self.calc.element))]
+
         self.pyscal_structure = pstruct
         self.typedict = dict(zip(atomsymbols, atomtypes))
         self.reversetypedict = dict(zip(atomtypes, atomsymbols))
         self.natoms = self.pyscal_structure.natoms
-        
+
         self.actual_species = len(self.typedict)
         self.new_species = len(self.output_chemical_composition) - len(self.typedict)
-        self.maxtype = self.actual_species + 1 #+ self.new_species
-        #print(self.typedict)            
+        self.maxtype = self.actual_species + 1  # + self.new_species
+        # print(self.typedict)
 
     def get_composition_transformation(self):
         """
@@ -203,7 +211,7 @@ class CompositionTransformation:
                 to_remove[key] = np.abs(val)
             else:
                 to_add[key] = val
-        
+
         self.to_remove = to_remove
         self.to_add = to_add
 
@@ -211,33 +219,33 @@ class CompositionTransformation:
         """
         Get a random index of a given species
         """
-        ids = [count for count, x in enumerate(self.atom_type) if x==species]
+        ids = [count for count, x in enumerate(self.atom_type) if x == species]
         return ids[np.random.randint(0, len(ids))]
-    
+
     def mark_atoms(self):
         for i in range(self.natoms):
             self.atom_mark.append(False)
-        
+
         self.atom_type = self.pyscal_structure.atoms.types
         self.mappings = [f"{x}-{x}" for x in self.atom_type]
-     
+
     def update_mark_atoms(self):
         self.marked_atoms = []
         for key, val in self.to_remove.items():
-            #print(f"Element {key}, count {val}")
+            # print(f"Element {key}, count {val}")
             for i in range(100000):
                 rint = self.get_random_index_of_species(self.typedict[key])
                 if rint not in self.marked_atoms:
                     self.atom_mark[rint] = True
                     self.marked_atoms.append(rint)
                     val -= 1
-                if (val <= 0):
-                    break 
-    
+                if val <= 0:
+                    break
+
     def update_typedicts(self):
-        #in a cycle add things to the typedict
+        # in a cycle add things to the typedict
         for key, val in self.to_add.items():
-            #print(f"Element {key}, count {val}")
+            # print(f"Element {key}, count {val}")
             if key in self.typedict.keys():
                 newtype = self.typedict[key]
             else:
@@ -245,61 +253,73 @@ class CompositionTransformation:
                 self.typedict[key] = self.maxtype
                 self.reversetypedict[self.maxtype] = key
                 self.maxtype += 1
-                #print(f"Element {key}, newtype {newtype}")
-    
+                # print(f"Element {key}, newtype {newtype}")
+
     def compute_possible_mappings(self):
         self.possible_mappings = []
-        #Now make a list of possible mappings
+        # Now make a list of possible mappings
         for key1, val1 in self.to_remove.items():
             for key2, val2 in self.to_add.items():
                 mapping = f"{key1}-{key2}"
                 if mapping not in self.restrictions:
-                    self.possible_mappings.append(f"{self.typedict[key1]}-{self.typedict[key2]}")
-    
+                    self.possible_mappings.append(
+                        f"{self.typedict[key1]}-{self.typedict[key2]}"
+                    )
+
     def update_mappings(self):
         marked_atoms = self.marked_atoms.copy()
         for key, val in self.to_add.items():
-            #now get all
-            
-            #we to see if we can get val number of atoms from marked ones
+            # now get all
+
+            # we to see if we can get val number of atoms from marked ones
             if val < len(marked_atoms):
-                raise ValueError(f'Not enough atoms to choose {val} from {len(marked_atoms)} not possible')
-            
-            #otherwise find atoms until we find enough
+                raise ValueError(
+                    f"Not enough atoms to choose {val} from {len(marked_atoms)} not possible"
+                )
+
+            # otherwise find atoms until we find enough
             for i in range(val):
-                #choose a number from marked atoms
+                # choose a number from marked atoms
                 found = False
                 to_del = []
                 for x in range(len(self.marked_atoms)):
                     random_choice = np.random.choice(marked_atoms)
-                    #find corresponding mappiong
+                    # find corresponding mappiong
                     mapping = f"{self.atom_type[random_choice]}-{self.typedict[key]}"
                     if mapping in self.possible_mappings:
-                        #this is a valid choice
+                        # this is a valid choice
                         self.mappings[random_choice] = mapping
                         found = True
                     if found:
-                        #finish up, change the array, and break
-                        #to_del.append(random_choice)
+                        # finish up, change the array, and break
+                        # to_del.append(random_choice)
                         marked_atoms.remove(random_choice)
                         break
-                #if it was not found, the loop finished, throw error
+                # if it was not found, the loop finished, throw error
                 if not found:
-                    raise ValueError("A possible transformation could not be found, please check the restrictions")
-                #otherwise modify our marked atoms, list, and move on
-                #for item in to_del:
+                    raise ValueError(
+                        "A possible transformation could not be found, please check the restrictions"
+                    )
+                # otherwise modify our marked atoms, list, and move on
+                # for item in to_del:
                 #    marked_atoms.remove(item)
-                 
-        self.unique_mappings, self.unique_mapping_counts = np.unique(self.mappings, return_counts=True)
 
-        #now make the transformation dict
+        self.unique_mappings, self.unique_mapping_counts = np.unique(
+            self.mappings, return_counts=True
+        )
+
+        # now make the transformation dict
         self.transformation_list = []
         for count, mapping in enumerate(self.unique_mappings):
             mapsplit = mapping.split("-")
             if not mapsplit[0] == mapsplit[1]:
                 transformation_dict = {}
-                transformation_dict["primary_element"] = self.reversetypedict[int(mapsplit[0])]
-                transformation_dict["secondary_element"] = self.reversetypedict[int(mapsplit[1])]
+                transformation_dict["primary_element"] = self.reversetypedict[
+                    int(mapsplit[0])
+                ]
+                transformation_dict["secondary_element"] = self.reversetypedict[
+                    int(mapsplit[1])
+                ]
                 transformation_dict["count"] = self.unique_mapping_counts[count]
                 self.transformation_list.append(transformation_dict)
 
@@ -307,59 +327,107 @@ class CompositionTransformation:
         self.update_typedicts()
         self.compute_possible_mappings()
         self.update_mappings()
-    
+
     def prepare_pair_lists(self):
         self.pair_list_old = []
         self.pair_list_new = []
         for mapping in self.unique_mappings:
             map_split = mapping.split("-")
-            #conserved atom
-            if (map_split[0]==map_split[1]):
+            # conserved atom
+            if map_split[0] == map_split[1]:
                 self.pair_list_old.append(self.reversetypedict[int(map_split[0])])
                 self.pair_list_new.append(self.reversetypedict[int(map_split[0])])
             else:
                 self.pair_list_old.append(self.reversetypedict[int(map_split[0])])
-                self.pair_list_new.append(self.reversetypedict[int(map_split[1])]) 
-        self.new_atomtype = np.array(range(len(self.unique_mappings)))+1
+                self.pair_list_new.append(self.reversetypedict[int(map_split[1])])
+        self.new_atomtype = np.array(range(len(self.unique_mappings))) + 1
         self.mappingdict = dict(zip(self.unique_mappings, self.new_atomtype))
-    
+
     def update_types(self):
         for x in range(len(self.atom_type)):
             self.atom_type[x] = self.mappingdict[self.mappings[x]]
-        
-        #smartify these loops
-        #npyscal = len(self.pyscal_structure.atoms.types)
+
+        # smartify these loops
+        # npyscal = len(self.pyscal_structure.atoms.types)
         self.pyscal_structure.atoms.types = self.atom_type
-        #for count in range(npyscal)):
+        # for count in range(npyscal)):
         #    self.pyscal_structure.atoms.types[count] = self.atom_type[count]
-            
+
     def iselement(self, symbol):
         try:
             _ = element(symbol)
             return True
         except:
             return False
-    
+
     def update_pair_coeff(self, pair_coeff):
+        """
+        Update pair_coeff command with new element specifications.
+
+        Handles both single-file formats (EAM alloy):
+            pair_coeff * * potential.eam.alloy El1 El2
+
+        And two-file formats (MEAM):
+            pair_coeff * * library.meam El1 El2 potential.meam El1 El2
+
+        For MEAM potentials, both element specifications are updated identically.
+        """
         pcsplit = pair_coeff.strip().split()
-        pc_before = []
-        pc_after = []
+        result_parts = []
+        i = 0
 
-        started = False
-        stopped = False
+        while i < len(pcsplit):
+            token = pcsplit[i]
 
-        for p in pcsplit:
-            if ((not self.iselement(p)) and (not started)):
-                pc_before.append(p)
-            elif (self.iselement(p) and (not started)):
-                started = True
-            elif ((not self.iselement(p)) and started):
-                stopped = True
-            elif ((not self.iselement(p)) and stopped):
-                pc_after.append(p)
-                
-        pc_old = " ".join([*pc_before, *self.pair_list_old, *pc_after])
-        pc_new = " ".join([*pc_before, *self.pair_list_new, *pc_after])
+            # Check if this token starts an element specification
+            # (either it's an element, or the next token is an element)
+            if self.iselement(token):
+                # Found start of element list - collect all consecutive elements
+                element_group = []
+                while i < len(pcsplit) and self.iselement(pcsplit[i]):
+                    element_group.append(pcsplit[i])
+                    i += 1
+
+                # Determine which element list to use based on what we found
+                # If element_group matches our pair_list_old, replace with pair_list_new
+                # Otherwise replace with pair_list_old (for the old/reference command)
+                if element_group == self.pair_list_old or set(element_group) == set(
+                    self.element
+                ):
+                    # This needs special handling - we'll mark position for later
+                    result_parts.append("__ELEMENTS__")
+                else:
+                    # Keep non-matching element groups as-is
+                    result_parts.extend(element_group)
+            else:
+                # Non-element token (potential file, wildcards, options, etc.)
+                result_parts.append(token)
+                i += 1
+
+        # Now build old and new commands by replacing __ELEMENTS__ markers
+        pc_old_parts = [
+            self.pair_list_old if p == "__ELEMENTS__" else [p] for p in result_parts
+        ]
+        pc_new_parts = [
+            self.pair_list_new if p == "__ELEMENTS__" else [p] for p in result_parts
+        ]
+
+        # Flatten the lists
+        pc_old = " ".join(
+            [
+                item
+                for sublist in pc_old_parts
+                for item in (sublist if isinstance(sublist, list) else [sublist])
+            ]
+        )
+        pc_new = " ".join(
+            [
+                item
+                for sublist in pc_new_parts
+                for item in (sublist if isinstance(sublist, list) else [sublist])
+            ]
+        )
+
         return pc_old, pc_new
 
     def get_swap_types(self):
@@ -369,42 +437,42 @@ class CompositionTransformation:
         swap_list = []
         for mapping in self.unique_mappings:
             map_split = mapping.split("-")
-            #conserved atom
-            if (map_split[0]==map_split[1]):
+            # conserved atom
+            if map_split[0] == map_split[1]:
                 pass
             else:
                 first_type = map_split[0]
                 second_type = map_split[1]
-                first_map = f'{first_type}-{first_type}'
+                first_map = f"{first_type}-{first_type}"
                 second_map = mapping
 
-                #get the numbers from dict
+                # get the numbers from dict
                 first_swap_type = self.mappingdict[first_map]
                 second_swap_type = self.mappingdict[second_map]
 
                 swap_list.append([first_swap_type, second_swap_type])
         return swap_list[0]
-            
-    
-    def write_structure(self, outfilename):
-        #create some species dict
-        #just to trick ase to write
-        utypes = np.unique(self.pyscal_structure.atoms["types"])
-        element_list = list(element_dict.keys())       
-        element_type_dict = {str(u):element_list[count] for count, u in enumerate(utypes)}
-        species = [element_type_dict[str(x)] for x in self.pyscal_structure.atoms["types"]]
-        self.pyscal_structure.atoms["species"] = species
-        self.pyscal_structure.write.file(outfilename, format='lammps-data')
-        
 
-        
-        
+    def write_structure(self, outfilename):
+        # create some species dict
+        # just to trick ase to write
+        utypes = np.unique(self.pyscal_structure.atoms["types"])
+        element_list = list(element_dict.keys())
+        element_type_dict = {
+            str(u): element_list[count] for count, u in enumerate(utypes)
+        }
+        species = [
+            element_type_dict[str(x)] for x in self.pyscal_structure.atoms["types"]
+        ]
+        self.pyscal_structure.atoms["species"] = species
+        self.pyscal_structure.write.file(outfilename, format="lammps-data")
+
     def prepare_mappings(self):
         self.atom_mark = []
         self.atom_species = []
         self.mappings = []
         self.unique_mappings = []
-        
+
         self.get_composition_transformation()
         self.convert_to_pyscal()
 
