@@ -96,12 +96,12 @@ def _extract_elements_from_pair_coeff(pair_coeff_string):
     """
     Extract element symbols from pair_coeff string.
     Returns None if pair_coeff doesn't contain element specifications.
-    
+
     Parameters
     ----------
     pair_coeff_string : str
         The pair_coeff command string (e.g., "* * potential.eam.fs Cu Zr")
-    
+
     Returns
     -------
     list or None
@@ -109,14 +109,14 @@ def _extract_elements_from_pair_coeff(pair_coeff_string):
     """
     if pair_coeff_string is None:
         return None
-    
+
     pcsplit = pair_coeff_string.strip().split()
     elements = []
-    
+
     # Start collecting after we find element symbols
     # Elements are typically after the potential filename
     started = False
-    
+
     for p in pcsplit:
         # Check if this looks like an element symbol
         # Element symbols are 1-2 characters, start with uppercase
@@ -131,7 +131,7 @@ def _extract_elements_from_pair_coeff(pair_coeff_string):
                 if started:
                     # We already started collecting elements and hit a non-element
                     break
-    
+
     return elements if len(elements) > 0 else None
 
 
@@ -208,7 +208,6 @@ class Queue(BaseModel, title="Options for configuring queue"):
     memory: Annotated[str, Field(default="3GB")]
     commands: Annotated[List, Field(default=[])]
     options: Annotated[List, Field(default=[])]
-    modules: Annotated[List, Field(default=[])]
 
 
 class Tolerance(BaseModel, title="Tolerance settings for convergence"):
@@ -356,13 +355,17 @@ class Calculation(BaseModel, title="Main input class"):
             raise ValueError("mass and elements should have same length")
 
         self.n_elements = len(self.element)
-        
+
         # Validate element/mass/pair_coeff ordering consistency
         # This is critical for multi-element systems where LAMMPS type numbers
         # are assigned based on element order: element[0]=Type1, element[1]=Type2, etc.
-        if len(self.element) > 1 and self.pair_coeff is not None and len(self.pair_coeff) > 0:
+        if (
+            len(self.element) > 1
+            and self.pair_coeff is not None
+            and len(self.pair_coeff) > 0
+        ):
             extracted_elements = _extract_elements_from_pair_coeff(self.pair_coeff[0])
-            
+
             if extracted_elements is not None:
                 # pair_coeff specifies elements - check ordering
                 if set(extracted_elements) != set(self.element):
@@ -372,7 +375,7 @@ class Calculation(BaseModel, title="Main input class"):
                         f"  pair_coeff: {extracted_elements}\n"
                         f"The elements specified must be the same."
                     )
-                
+
                 if list(extracted_elements) != list(self.element):
                     raise ValueError(
                         f"Element ordering mismatch detected!\n\n"
