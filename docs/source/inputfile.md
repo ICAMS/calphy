@@ -744,8 +744,6 @@ queue:
   walltime: "23:50:00"
   queuename: shorttime
   memory: 3GB
-  modules:
-    - anaconda/4
   commands:
     - conda activate env
 ```
@@ -849,18 +847,7 @@ Command that will be run **before** the actual calculations are carried out. Thi
 
 ---
 
-(modules)=
-#### `modules`         
-
-_type_: list of strings \
-_example_:
-```
-modules:
-  - anaconda
-  - lammps
-```
-
-List of modules to be loaded before running the calculations. The given module names will be prefixed by `module load`.
+List of commands to be run before the main calculation command. These commands will be executed in the submission script.
 
 ---
 

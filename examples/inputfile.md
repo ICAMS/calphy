@@ -196,8 +196,6 @@ queue:
   walltime: "23:50:00"
   queuename: shorttime
   memory: 3GB
-  modules:
-    - anaconda/4
   commands:
     - conda activate env
 ```
