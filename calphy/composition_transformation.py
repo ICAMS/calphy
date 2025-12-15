@@ -345,6 +345,17 @@ class CompositionTransformation:
             else:
                 self.pair_list_old.append(map_split[0])
                 self.pair_list_new.append(map_split[1])
+
+        # Special case: 100% transformation with only 1 mapping
+        # LAMMPS expects elements for all atom types in the system
+        # Example: Al→Mg only, but system has 2 types → need ['Al', 'Al'] and ['Mg', 'Mg']
+        n_elements = len(self.calc.element)
+        if len(self.unique_mappings) == 1 and n_elements > 1:
+            # Duplicate the single mapping to match number of element types
+            for _ in range(n_elements - 1):
+                self.pair_list_old.append(self.pair_list_old[0])
+                self.pair_list_new.append(self.pair_list_new[0])
+
         self.new_atomtype = np.array(range(len(self.unique_mappings))) + 1
         self.mappingdict = dict(zip(self.unique_mappings, self.new_atomtype))
 
@@ -435,12 +446,15 @@ class CompositionTransformation:
 
     def get_swap_types(self):
         """
-        Get swapping types
+        Get swapping types for configurational entropy calculation.
+
+        Returns types that share the same initial element but have different
+        transformation paths (e.g., Al→Al vs Al→Mg).
         """
         swap_list = []
         for mapping in self.unique_mappings:
             map_split = mapping.split("-")
-            # conserved atom
+            # conserved atom - skip
             if map_split[0] == map_split[1]:
                 pass
             else:
@@ -449,12 +463,19 @@ class CompositionTransformation:
                 first_map = f"{first_type}-{first_type}"
                 second_map = mapping
 
-                # get the numbers from dict
-                first_swap_type = self.mappingdict[first_map]
-                second_swap_type = self.mappingdict[second_map]
+                # Check if conserved mapping exists
+                if first_map in self.mappingdict:
+                    # get the numbers from dict
+                    first_swap_type = self.mappingdict[first_map]
+                    second_swap_type = self.mappingdict[second_map]
+                    swap_list.append([first_swap_type, second_swap_type])
+                else:
+                    # 100% transformation case - no conserved atoms of this type
+                    # Only the transforming type exists
+                    second_swap_type = self.mappingdict[second_map]
+                    swap_list.append([second_swap_type])
 
-                swap_list.append([first_swap_type, second_swap_type])
-        return swap_list[0]
+        return swap_list[0] if swap_list else []
 
     def write_structure(self, outfilename):
         # create some species dict
