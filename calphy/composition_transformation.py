@@ -172,7 +172,17 @@ class CompositionTransformation:
         """
         Convert a given system to pyscal and give a dict of type mappings
         """
-        aseobj = read(self.calc.lattice, format="lammps-data", style="atomic")
+        # Create Z_of_type mapping to properly read LAMMPS data files
+        # This ensures atoms are correctly identified by their element
+        Z_of_type = dict(
+            [
+                (count + 1, element(el).atomic_number)
+                for count, el in enumerate(self.calc.element)
+            ]
+        )
+        aseobj = read(
+            self.calc.lattice, format="lammps-data", style="atomic", Z_of_type=Z_of_type
+        )
         pstruct = pc.System(aseobj, format="ase")
 
         # here we have to validate the input composition dict; and map it
@@ -191,7 +201,6 @@ class CompositionTransformation:
         self.actual_species = len(self.typedict)
         self.new_species = len(self.output_chemical_composition) - len(self.typedict)
         self.maxtype = self.actual_species + 1  # + self.new_species
-        # print(self.typedict)
 
     def get_composition_transformation(self):
         """
@@ -215,26 +224,28 @@ class CompositionTransformation:
         self.to_remove = to_remove
         self.to_add = to_add
 
-    def get_random_index_of_species(self, species):
+    def get_random_index_of_species(self, species_name):
         """
-        Get a random index of a given species
+        Get a random index of a given species by element name
         """
-        ids = [count for count, x in enumerate(self.atom_type) if x == species]
+        ids = [count for count, x in enumerate(self.atom_species) if x == species_name]
         return ids[np.random.randint(0, len(ids))]
 
     def mark_atoms(self):
         for i in range(self.natoms):
             self.atom_mark.append(False)
 
+        # Use species (element symbols) instead of numeric types
+        self.atom_species = self.pyscal_structure.atoms.species
         self.atom_type = self.pyscal_structure.atoms.types
-        self.mappings = [f"{x}-{x}" for x in self.atom_type]
+        self.mappings = [f"{x}-{x}" for x in self.atom_species]
 
     def update_mark_atoms(self):
         self.marked_atoms = []
         for key, val in self.to_remove.items():
-            # print(f"Element {key}, count {val}")
+            # key is the element name (e.g., "Mg")
             for i in range(100000):
-                rint = self.get_random_index_of_species(self.typedict[key])
+                rint = self.get_random_index_of_species(key)
                 if rint not in self.marked_atoms:
                     self.atom_mark[rint] = True
                     self.marked_atoms.append(rint)
@@ -257,14 +268,12 @@ class CompositionTransformation:
 
     def compute_possible_mappings(self):
         self.possible_mappings = []
-        # Now make a list of possible mappings
+        # Now make a list of possible mappings using element names
         for key1, val1 in self.to_remove.items():
             for key2, val2 in self.to_add.items():
                 mapping = f"{key1}-{key2}"
                 if mapping not in self.restrictions:
-                    self.possible_mappings.append(
-                        f"{self.typedict[key1]}-{self.typedict[key2]}"
-                    )
+                    self.possible_mappings.append(mapping)
 
     def update_mappings(self):
         marked_atoms = self.marked_atoms.copy()
@@ -272,7 +281,7 @@ class CompositionTransformation:
             # now get all
 
             # we to see if we can get val number of atoms from marked ones
-            if val < len(marked_atoms):
+            if val > len(marked_atoms):
                 raise ValueError(
                     f"Not enough atoms to choose {val} from {len(marked_atoms)} not possible"
                 )
@@ -284,8 +293,8 @@ class CompositionTransformation:
                 to_del = []
                 for x in range(len(self.marked_atoms)):
                     random_choice = np.random.choice(marked_atoms)
-                    # find corresponding mappiong
-                    mapping = f"{self.atom_type[random_choice]}-{self.typedict[key]}"
+                    # find corresponding mapping using species name
+                    mapping = f"{self.atom_species[random_choice]}-{key}"
                     if mapping in self.possible_mappings:
                         # this is a valid choice
                         self.mappings[random_choice] = mapping
@@ -314,12 +323,8 @@ class CompositionTransformation:
             mapsplit = mapping.split("-")
             if not mapsplit[0] == mapsplit[1]:
                 transformation_dict = {}
-                transformation_dict["primary_element"] = self.reversetypedict[
-                    int(mapsplit[0])
-                ]
-                transformation_dict["secondary_element"] = self.reversetypedict[
-                    int(mapsplit[1])
-                ]
+                transformation_dict["primary_element"] = mapsplit[0]
+                transformation_dict["secondary_element"] = mapsplit[1]
                 transformation_dict["count"] = self.unique_mapping_counts[count]
                 self.transformation_list.append(transformation_dict)
 
@@ -333,25 +338,23 @@ class CompositionTransformation:
         self.pair_list_new = []
         for mapping in self.unique_mappings:
             map_split = mapping.split("-")
-            # conserved atom
+            # conserved atom - mappings now use element names directly
             if map_split[0] == map_split[1]:
-                self.pair_list_old.append(self.reversetypedict[int(map_split[0])])
-                self.pair_list_new.append(self.reversetypedict[int(map_split[0])])
+                self.pair_list_old.append(map_split[0])
+                self.pair_list_new.append(map_split[0])
             else:
-                self.pair_list_old.append(self.reversetypedict[int(map_split[0])])
-                self.pair_list_new.append(self.reversetypedict[int(map_split[1])])
+                self.pair_list_old.append(map_split[0])
+                self.pair_list_new.append(map_split[1])
         self.new_atomtype = np.array(range(len(self.unique_mappings))) + 1
         self.mappingdict = dict(zip(self.unique_mappings, self.new_atomtype))
 
     def update_types(self):
+        # Update atom_type based on mapping to new types
         for x in range(len(self.atom_type)):
             self.atom_type[x] = self.mappingdict[self.mappings[x]]
 
-        # smartify these loops
-        # npyscal = len(self.pyscal_structure.atoms.types)
+        # Update pyscal structure types
         self.pyscal_structure.atoms.types = self.atom_type
-        # for count in range(npyscal)):
-        #    self.pyscal_structure.atoms.types[count] = self.atom_type[count]
 
     def iselement(self, symbol):
         try:
@@ -392,7 +395,7 @@ class CompositionTransformation:
                 # If element_group matches our pair_list_old, replace with pair_list_new
                 # Otherwise replace with pair_list_old (for the old/reference command)
                 if element_group == self.pair_list_old or set(element_group) == set(
-                    self.element
+                    self.calc.element
                 ):
                     # This needs special handling - we'll mark position for later
                     result_parts.append("__ELEMENTS__")
