@@ -332,7 +332,8 @@ def _create_composition_array(comp_range, interval, reference):
         is_reference = np.abs(comp_arr - reference) < COMPOSITION_TOLERANCE
     elif len(comp_range) == 1:
         comp_arr = [comp_range[0]]
-        is_reference = [True]
+        # Check if this single composition equals the reference
+        is_reference = [np.abs(comp_range[0] - reference) < COMPOSITION_TOLERANCE]
     else:
         raise ValueError("Composition range should be scalar or list of two values!")
     

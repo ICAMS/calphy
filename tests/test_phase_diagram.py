@@ -191,3 +191,52 @@ def test_composition_transformation_single_atom_type_pair_coeff():
     ), f"Expected 1 element in pair_list_new, got {len(comp.pair_list_new)}: {comp.pair_list_new}"
     assert comp.pair_list_old == ["Cu"]
     assert comp.pair_list_new == ["Al"]
+
+
+def test_create_composition_array_single_non_reference():
+    """Test that single composition value different from reference is not marked as reference"""
+    from calphy.phase_diagram import _create_composition_array
+    
+    # Test: reference=0.0, single comp=1.0 (should NOT be marked as reference)
+    comp_arr, is_reference = _create_composition_array(
+        comp_range=1.0,
+        interval=0.1,
+        reference=0.0
+    )
+    
+    assert len(comp_arr) == 1
+    assert comp_arr[0] == 1.0
+    assert is_reference[0] == False, "Single composition at 1.0 should not be marked as reference when reference=0.0"
+
+
+def test_create_composition_array_single_is_reference():
+    """Test that single composition value equal to reference IS marked as reference"""
+    from calphy.phase_diagram import _create_composition_array
+    
+    # Test: reference=0.0, single comp=0.0 (SHOULD be marked as reference)
+    comp_arr, is_reference = _create_composition_array(
+        comp_range=0.0,
+        interval=0.1,
+        reference=0.0
+    )
+    
+    assert len(comp_arr) == 1
+    assert comp_arr[0] == 0.0
+    assert is_reference[0] == True, "Single composition at 0.0 should be marked as reference when reference=0.0"
+
+
+def test_create_composition_array_range():
+    """Test composition array creation with range"""
+    from calphy.phase_diagram import _create_composition_array
+    
+    # Test: reference=0.0, range [0.0, 1.0], interval=0.25
+    comp_arr, is_reference = _create_composition_array(
+        comp_range=[0.0, 1.0],
+        interval=0.25,
+        reference=0.0
+    )
+    
+    assert len(comp_arr) == 5  # 0.0, 0.25, 0.5, 0.75, 1.0
+    assert is_reference[0] == True  # 0.0 is reference
+    assert all(not ref for ref in is_reference[1:])  # Others are not reference
+
