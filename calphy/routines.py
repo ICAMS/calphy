@@ -94,6 +94,9 @@ class MeltingTemp:
         calc["mode"] = "ts"
         calc["temperature"] = [int(self.tmin), int(self.tmax)]
         calc["reference_phase"] = 'solid'
+        # Preserve n_iterations from the original melting_temperature calculation
+        if "n_iterations" in data["calculations"][int(self.calc.kernel)]:
+            calc["n_iterations"] = data["calculations"][int(self.calc.kernel)]["n_iterations"]
         calculations["calculations"].append(calc)
 
         with open(self.calc.inputfile, 'r') as fin:
@@ -103,6 +106,9 @@ class MeltingTemp:
         calc["mode"] = "ts"
         calc["temperature"] = [int(self.tmin), int(self.tmax)]
         calc["reference_phase"] = 'liquid'
+        # Preserve n_iterations from the original melting_temperature calculation
+        if "n_iterations" in data["calculations"][int(self.calc.kernel)]:
+            calc["n_iterations"] = data["calculations"][int(self.calc.kernel)]["n_iterations"]
         calculations["calculations"].append(calc)
 
         outfile = f'{self.calc.create_identifier()}.{self.attempts}.yaml'
