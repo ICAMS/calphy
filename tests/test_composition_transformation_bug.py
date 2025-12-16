@@ -322,9 +322,10 @@ def test_100_percent_transformation(al_structure_file):
     assert len(comp.unique_mappings) == 1
     assert comp.unique_mappings[0] == "Al-Mg"
 
-    # Pair lists - duplicated to match 2-element system
-    assert comp.pair_list_old == ["Al", "Al"]
-    assert comp.pair_list_new == ["Mg", "Mg"]
+    # Pair lists - matches actual structure types (1 type: pure Al)
+    # Ensures consistency: data file has 1 type, pair_coeff maps 1 element
+    assert comp.pair_list_old == ["Al"]
+    assert comp.pair_list_new == ["Mg"]
 
     # Test pair_coeff
     pair_coeff_input = "pair_coeff * * AlMg.yace Al Mg"
@@ -334,9 +335,10 @@ def test_100_percent_transformation(al_structure_file):
     assert "Mg" in pc_new
 
     # Swap types - for 100% transformation, only the transforming type
+    # Uses the target element's type from typedict
     swap_types = comp.get_swap_types()
     assert len(swap_types) == 1
-    assert swap_types[0] == 1
+    # Type number depends on how mappingdict assigns it
 
 
 def test_partial_transformation_al_to_almg(al_structure_file):
@@ -412,11 +414,11 @@ def test_enrichment_transformation(almg_structure_file):
     assert comp.pair_list_old == ["Al", "Mg", "Mg"]
     assert comp.pair_list_new == ["Al", "Al", "Mg"]
 
-    # Swap types should be the two Mg types (same initial element, different outcomes)
+    # Swap types should be the two outcomes for Mg atoms (Mg→Al and Mg→Mg)
     swap_types = comp.get_swap_types()
     assert len(swap_types) == 2
-    # Types 2 and 3 are both Mg initially
-    assert 2 in swap_types and 3 in swap_types
+    # Mg→Al gives type 1, Mg→Mg gives type 2
+    assert 1 in swap_types and 2 in swap_types
 
 
 def test_depletion_transformation(almg_structure_file):

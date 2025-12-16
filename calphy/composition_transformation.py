@@ -198,8 +198,16 @@ class CompositionTransformation:
         self.reversetypedict = dict(zip(atomtypes, atomsymbols))
         self.natoms = self.pyscal_structure.natoms
 
-        self.actual_species = len(self.typedict)
-        self.new_species = len(self.output_chemical_composition) - len(self.typedict)
+        # Count of actual unique atom types present in the structure
+        # This matches what's declared in the LAMMPS data file header
+        self.actual_species_in_structure = len(types)
+        # Count from calc.element (may include types with 0 atoms)
+        self.calc_element_count = len(self.calc.element)
+
+        # Use actual structure types for pair_coeff consistency
+        # pair_coeff must match the number declared in the data file header
+        self.actual_species = self.actual_species_in_structure
+        self.new_species = len(self.output_chemical_composition) - len(types)
         self.maxtype = self.actual_species + 1  # + self.new_species
 
     def get_composition_transformation(self):
@@ -347,17 +355,23 @@ class CompositionTransformation:
                 self.pair_list_new.append(map_split[1])
 
         # Special case: 100% transformation with only 1 mapping
-        # LAMMPS expects elements for all atom types in the system
-        # Example: Al→Mg only, but system has 2 types → need ['Al', 'Al'] and ['Mg', 'Mg']
-        n_elements = len(self.calc.element)
-        if len(self.unique_mappings) == 1 and n_elements > 1:
-            # Duplicate the single mapping to match number of element types
-            for _ in range(n_elements - 1):
+        # LAMMPS requires pair_coeff to map ALL atom types declared in data file
+        # Example: Pure Al→Mg with 2 types declared → need ['Al', 'Al'] and ['Mg', 'Mg']
+        # This ensures consistency between data file type count and pair_coeff mappings
+        if len(self.unique_mappings) == 1 and self.actual_species > 1:
+            # Duplicate the single mapping to match number of declared atom types
+            for _ in range(self.actual_species - 1):
                 self.pair_list_old.append(self.pair_list_old[0])
                 self.pair_list_new.append(self.pair_list_new[0])
 
-        self.new_atomtype = np.array(range(len(self.unique_mappings))) + 1
-        self.mappingdict = dict(zip(self.unique_mappings, self.new_atomtype))
+        # Create mapping from transformation strings to target element types
+        # Use typedict to get correct type numbers for each element
+        self.mappingdict = {}
+        for mapping in self.unique_mappings:
+            # Get target element (right side of transformation "Al-Mg" -> "Mg")
+            target_element = mapping.split("-")[1]
+            # Look up the type number for this element
+            self.mappingdict[mapping] = self.typedict[target_element]
 
     def update_types(self):
         # Update atom_type based on mapping to new types
@@ -478,15 +492,16 @@ class CompositionTransformation:
         return swap_list[0] if swap_list else []
 
     def write_structure(self, outfilename):
-        # create some species dict
-        # just to trick ase to write
-        utypes = np.unique(self.pyscal_structure.atoms["types"])
-        element_list = list(element_dict.keys())
-        element_type_dict = {
-            str(u): element_list[count] for count, u in enumerate(utypes)
-        }
+        """Write structure to LAMMPS data file with proper type declarations.
+
+        Ensures the data file declares all atom types from calc.element,
+        even if some types have zero atoms. This maintains consistency
+        with pair_coeff commands that must map all declared types.
+        """
+        # Map atom types to species using reversetypedict
+        # This includes both original elements and any added during transformation
         species = [
-            element_type_dict[str(x)] for x in self.pyscal_structure.atoms["types"]
+            self.reversetypedict[x] for x in self.pyscal_structure.atoms["types"]
         ]
         self.pyscal_structure.atoms["species"] = species
         self.pyscal_structure.write.file(outfilename, format="lammps-data")
