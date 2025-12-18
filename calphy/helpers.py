@@ -72,8 +72,10 @@ def create_object(
     if script_mode:
         lmp = LammpsScript()
     else:
-        if cmdargs == []:
+        if cmdargs == "":
             cmdargs = None
+        else:
+            cmdargs = cmdargs.split()
         lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
 
     commands = [

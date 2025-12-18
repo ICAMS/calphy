@@ -185,7 +185,7 @@ class MD(BaseModel, title="MD specific input options"):
         Union[float, conlist(float, min_length=2, max_length=2)],
         Field(default=0.1, gt=0),
     ]
-    cmdargs: Annotated[List, Field(default=[])]
+    cmdargs: Annotated[str, Field(default="")]
     init_commands: Annotated[List, Field(default=[])]
 
 
