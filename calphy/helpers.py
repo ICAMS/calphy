@@ -74,7 +74,7 @@ def create_object(
     else:
         if cmdargs == "":
             cmdargs = None
-        elif isinstance(str, cmdargs):
+        elif isinstance(cmdargs, str):
             cmdargs = cmdargs.split()
         lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
 
