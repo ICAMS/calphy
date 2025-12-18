@@ -185,7 +185,7 @@ class MD(BaseModel, title="MD specific input options"):
         Union[float, conlist(float, min_length=2, max_length=2)],
         Field(default=0.1, gt=0),
     ]
-    cmdargs: Annotated[str, Field(default="")]
+    cmdargs: Annotated[List, Field(default=[])]
     init_commands: Annotated[List, Field(default=[])]
 
 
@@ -350,7 +350,6 @@ class Calculation(BaseModel, title="Main input class"):
 
     @model_validator(mode="after")
     def _validate_all(self) -> "Input":
-
         if not (len(self.element) == len(self.mass)):
             raise ValueError("mass and elements should have same length")
 

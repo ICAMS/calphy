@@ -72,7 +72,7 @@ def create_object(
     if script_mode:
         lmp = LammpsScript()
     else:
-        if cmdargs == "":
+        if cmdargs == []:
             cmdargs = None
         lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
 
@@ -129,7 +129,7 @@ def set_mass(lmp, options):
 
     else:
         for i in range(options.n_elements):
-            lmp.command(f"mass {i+1} {options.mass[i]}")
+            lmp.command(f"mass {i + 1} {options.mass[i]}")
     return lmp
 
 
