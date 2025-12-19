@@ -74,6 +74,8 @@ def create_object(
     else:
         if cmdargs == "":
             cmdargs = None
+        elif isinstance(cmdargs, str):
+            cmdargs = cmdargs.split()
         lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
 
     commands = [
@@ -129,7 +131,7 @@ def set_mass(lmp, options):
 
     else:
         for i in range(options.n_elements):
-            lmp.command(f"mass {i+1} {options.mass[i]}")
+            lmp.command(f"mass {i + 1} {options.mass[i]}")
     return lmp
 
 
