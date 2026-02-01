@@ -278,6 +278,12 @@ class Phase:
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if solids / lmp.natoms < self.calc.tolerance.solid_fraction:
             lmp.close()
+            # Preserve log file on error
+            logfile = os.path.join(self.simfolder, "log.lammps")
+            if os.path.exists(logfile):
+                os.rename(
+                    logfile, os.path.join(self.simfolder, "melted_error.log.lammps")
+                )
             raise MeltedError(
                 "System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting:\n tolerance.solid_fraction: 0"
             )
@@ -287,6 +293,12 @@ class Phase:
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if solids / lmp.natoms > self.calc.tolerance.liquid_fraction:
             lmp.close()
+            # Preserve log file on error
+            logfile = os.path.join(self.simfolder, "log.lammps")
+            if os.path.exists(logfile):
+                os.rename(
+                    logfile, os.path.join(self.simfolder, "solidified_error.log.lammps")
+                )
             raise SolidifiedError("System solidified, increase temperature")
 
     def fix_nose_hoover(
@@ -594,6 +606,15 @@ class Phase:
 
         if not converged:
             lmp.close()
+            # Preserve log file on error
+            logfile = os.path.join(self.simfolder, "log.lammps")
+            if os.path.exists(logfile):
+                os.rename(
+                    logfile,
+                    os.path.join(
+                        self.simfolder, "pressure_convergence_error.log.lammps"
+                    ),
+                )
             raise ValueError(
                 "Pressure did not converge after MD runs, maybe change lattice_constant and try?"
             )
@@ -708,6 +729,15 @@ class Phase:
 
         if not converged:
             lmp.close()
+            # Preserve log file on error
+            logfile = os.path.join(self.simfolder, "log.lammps")
+            if os.path.exists(logfile):
+                os.rename(
+                    logfile,
+                    os.path.join(
+                        self.simfolder, "constrained_pressure_error.log.lammps"
+                    ),
+                )
             raise ValueError("pressure did not converge")
 
     def process_pressure(
@@ -1180,6 +1210,12 @@ class Phase:
 
         # close the object
         lmp.close()
+        # Preserve log file
+        logfile = os.path.join(self.simfolder, "log.lammps")
+        if os.path.exists(logfile):
+            os.rename(
+                logfile, os.path.join(self.simfolder, "reversible_scaling.log.lammps")
+            )
 
         self.logger.info("Please cite the following publications:")
         if self.calc.mode == "mts":
@@ -1217,10 +1253,13 @@ class Phase:
             return_values=return_values,
         )
 
-        self.logger.info(f'Maximum energy dissipation along the temperature scaling part: {ediss} eV/atom')
-        if np.abs(ediss) > 1E-4:
-            self.logger.warning(f'Found max energy dissipation of {ediss} along the temperature scaling path. Please ensure there are no structural changes!')
-
+        self.logger.info(
+            f"Maximum energy dissipation along the temperature scaling part: {ediss} eV/atom"
+        )
+        if np.abs(ediss) > 1e-4:
+            self.logger.warning(
+                f"Found max energy dissipation of {ediss} along the temperature scaling path. Please ensure there are no structural changes!"
+            )
 
         if return_values:
             return res
@@ -1369,6 +1408,12 @@ class Phase:
         lmp.command("run               %d" % self.calc._n_sweep_steps)
 
         lmp.close()
+        # Preserve log file
+        logfile = os.path.join(self.simfolder, "log.lammps")
+        if os.path.exists(logfile):
+            os.rename(
+                logfile, os.path.join(self.simfolder, "temperature_scaling.log.lammps")
+            )
 
     def pressure_scaling(self, iteration=1):
         """
@@ -1499,6 +1544,12 @@ class Phase:
         lmp.command("run               %d" % self.calc._n_sweep_steps)
 
         lmp.close()
+        # Preserve log file
+        logfile = os.path.join(self.simfolder, "log.lammps")
+        if os.path.exists(logfile):
+            os.rename(
+                logfile, os.path.join(self.simfolder, "pressure_scaling.log.lammps")
+            )
 
         self.logger.info("Please cite the following publications:")
         self.logger.info("- 10.1016/j.commatsci.2022.111275")
