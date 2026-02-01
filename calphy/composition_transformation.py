@@ -364,14 +364,19 @@ class CompositionTransformation:
                 self.pair_list_old.append(self.pair_list_old[0])
                 self.pair_list_new.append(self.pair_list_new[0])
 
-        # Create mapping from transformation strings to target element types
-        # Use typedict to get correct type numbers for each element
+        # Create mapping from transformation strings to UNIQUE type numbers
+        # Each unique transformation mapping needs its own type for LAMMPS swapping
+        # Example: Al-Al, Mg-Al, Mg-Mg should map to types 1, 2, 3 respectively
         self.mappingdict = {}
-        for mapping in self.unique_mappings:
-            # Get target element (right side of transformation "Al-Mg" -> "Mg")
-            target_element = mapping.split("-")[1]
-            # Look up the type number for this element
-            self.mappingdict[mapping] = self.typedict[target_element]
+        for idx, mapping in enumerate(self.unique_mappings, start=1):
+            self.mappingdict[mapping] = idx
+
+        # Update reversetypedict - map each type to its source element
+        # We'll handle species naming in write_structure to keep types separate
+        self.reversetypedict = {}
+        for mapping, type_num in self.mappingdict.items():
+            source_element = mapping.split("-")[0]
+            self.reversetypedict[type_num] = source_element
 
     def update_types(self):
         # Update atom_type based on mapping to new types
@@ -464,6 +469,13 @@ class CompositionTransformation:
 
         Returns types that share the same initial element but have different
         transformation paths (e.g., Al→Al vs Al→Mg).
+
+        The order matters for reversibility:
+        - Forward pass (e.g., Mg→Al enrichment): swap between Mg types
+        - Backward pass (e.g., Al→Mg depletion): swap between Al types
+
+        Returns list ordered as: [conserved_type, transforming_type]
+        where conserved_type is X→X and transforming_type is X→Y
         """
         swap_list = []
         for mapping in self.unique_mappings:
@@ -482,7 +494,9 @@ class CompositionTransformation:
                     # get the numbers from dict
                     first_swap_type = self.mappingdict[first_map]
                     second_swap_type = self.mappingdict[second_map]
-                    swap_list.append([first_swap_type, second_swap_type])
+                    # Order: [transforming_type, conserved_type]
+                    # This represents: atoms that transform vs atoms that don't
+                    swap_list.append([second_swap_type, first_swap_type])
                 else:
                     # 100% transformation case - no conserved atoms of this type
                     # Only the transforming type exists
@@ -494,17 +508,58 @@ class CompositionTransformation:
     def write_structure(self, outfilename):
         """Write structure to LAMMPS data file with proper type declarations.
 
-        Ensures the data file declares all atom types from calc.element,
-        even if some types have zero atoms. This maintains consistency
-        with pair_coeff commands that must map all declared types.
+        Writes using ASE directly with custom atom types to preserve distinct
+        type numbers for each transformation mapping.
         """
-        # Map atom types to species using reversetypedict
-        # This includes both original elements and any added during transformation
-        species = [
-            self.reversetypedict[x] for x in self.pyscal_structure.atoms["types"]
-        ]
-        self.pyscal_structure.atoms["species"] = species
-        self.pyscal_structure.write.file(outfilename, format="lammps-data")
+        from ase.io import write as ase_write
+        from ase import Atoms as ASEAtoms
+
+        # Get positions and cell from pyscal structure
+        positions = self.pyscal_structure.atoms.positions
+        cell = self.pyscal_structure.box
+
+        # Create ASE Atoms object with chemical symbols from reversetypedict
+        # All atoms get their source element symbol
+        symbols = [self.reversetypedict[t] for t in self.pyscal_structure.atoms.types]
+
+        ase_atoms = ASEAtoms(symbols=symbols, positions=positions, cell=cell, pbc=True)
+
+        # Write using ASE with atom_style
+        ase_write(outfilename, ase_atoms, format="lammps-data", atom_style="atomic")
+
+        # Post-process to fix the type column with our custom types
+        with open(outfilename, "r") as f:
+            lines = f.readlines()
+
+        # Find the Atoms section and replace type numbers
+        in_atoms_section = False
+        atom_idx = 0
+        for i, line in enumerate(lines):
+            if "Atoms" in line and "#" in line:
+                in_atoms_section = True
+                continue
+
+            if in_atoms_section and line.strip():
+                parts = line.split()
+                if len(parts) >= 5:  # atom_id type x y z
+                    # Replace the type (column 1, 0-indexed) with our custom type
+                    custom_type = self.pyscal_structure.atoms.types[atom_idx]
+                    parts[1] = str(custom_type)
+                    lines[i] = "  " + "  ".join(parts) + "\n"
+                    atom_idx += 1
+                    if atom_idx >= len(self.pyscal_structure.atoms.types):
+                        break
+
+        # Update the number of atom types in the header
+        required_ntypes = len(self.pair_list_old)
+        for i, line in enumerate(lines):
+            if "atom types" in line:
+                lines[i] = f"{required_ntypes} atom types\n"
+                break
+
+        # Write the corrected file
+        with open(outfilename, "w") as f:
+            f.writelines(lines)
 
     def prepare_mappings(self):
         self.atom_mark = []

@@ -18,6 +18,84 @@ from calphy.composition_transformation import CompositionTransformation
 from calphy.phase_diagram import SimpleCalculation
 
 
+def verify_lammps_data_file(
+    filepath, expected_natoms, expected_ntypes, expected_type_counts
+):
+    """
+    Verify contents of a LAMMPS data file.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to the LAMMPS data file
+    expected_natoms : int
+        Expected total number of atoms
+    expected_ntypes : int
+        Expected number of atom types declared in header
+    expected_type_counts : dict
+        Dictionary mapping type number to expected count
+        e.g., {1: 1000, 2: 600, 3: 400}
+    """
+    assert os.path.exists(filepath), f"File {filepath} does not exist"
+
+    with open(filepath, "r") as f:
+        lines = f.readlines()
+
+    # Check header
+    header_natoms = None
+    header_ntypes = None
+    atoms_section_start = None
+
+    for i, line in enumerate(lines):
+        if "atoms" in line and header_natoms is None:
+            header_natoms = int(line.split()[0])
+        if "atom types" in line:
+            header_ntypes = int(line.split()[0])
+        if "Atoms" in line:
+            atoms_section_start = i + 1
+            break
+
+    assert (
+        header_natoms == expected_natoms
+    ), f"Expected {expected_natoms} atoms in header, got {header_natoms}"
+    assert (
+        header_ntypes == expected_ntypes
+    ), f"Expected {expected_ntypes} atom types in header, got {header_ntypes}"
+
+    # Parse atoms section and count types
+    type_counts = {}
+    atom_count = 0
+
+    for line in lines[atoms_section_start:]:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) >= 5:  # atom_id type x y z
+            atom_type = int(parts[1])
+            type_counts[atom_type] = type_counts.get(atom_type, 0) + 1
+            atom_count += 1
+
+    assert (
+        atom_count == expected_natoms
+    ), f"Expected {expected_natoms} atoms in data, got {atom_count}"
+
+    # Verify type counts
+    for type_num, expected_count in expected_type_counts.items():
+        actual_count = type_counts.get(type_num, 0)
+        assert (
+            actual_count == expected_count
+        ), f"Expected {expected_count} atoms of type {type_num}, got {actual_count}"
+
+    # Verify all types are within declared range
+    for type_num in type_counts.keys():
+        assert (
+            1 <= type_num <= expected_ntypes
+        ), f"Type {type_num} out of range [1, {expected_ntypes}]"
+
+    return type_counts
+
+
 @pytest.fixture
 def mg_structure_file():
     """Create a temporary LAMMPS data file with only Mg atoms (all type 2)."""
@@ -163,6 +241,21 @@ def test_composition_transformation_with_pace_potential(mg_structure_file):
     assert "Mg" in pc_old
     assert "Al" in pc_new and "Mg" in pc_new
 
+    # Write and verify structure
+    output_structure = os.path.join(
+        os.path.dirname(mg_structure_file), "transformed_pace.lammps.data"
+    )
+    comp.write_structure(output_structure)
+
+    # Verify file content: 2048 atoms, 2 types (Al and Mg)
+    # Type 1: 102 Al (Mg→Al), Type 2: 1946 Mg (Mg→Mg)
+    type_counts = verify_lammps_data_file(
+        output_structure,
+        expected_natoms=2048,
+        expected_ntypes=2,
+        expected_type_counts={1: 102, 2: 1946},
+    )
+
 
 def test_composition_transformation_swap_types(mg_structure_file):
     """
@@ -184,6 +277,21 @@ def test_composition_transformation_swap_types(mg_structure_file):
 
     assert isinstance(swap_types, list)
     assert len(swap_types) == 2
+
+    # Write and verify structure
+    output_structure = os.path.join(
+        os.path.dirname(mg_structure_file), "transformed_swap.lammps.data"
+    )
+    comp.write_structure(output_structure)
+
+    # Verify file content: 2048 atoms, 2 types
+    # Type 1: 102 Al (Mg→Al), Type 2: 1946 Mg (Mg→Mg)
+    type_counts = verify_lammps_data_file(
+        output_structure,
+        expected_natoms=2048,
+        expected_ntypes=2,
+        expected_type_counts={1: 102, 2: 1946},
+    )
 
 
 @pytest.fixture
@@ -340,6 +448,20 @@ def test_100_percent_transformation(al_structure_file):
     assert len(swap_types) == 1
     # Type number depends on how mappingdict assigns it
 
+    # Write and verify structure
+    output_structure = os.path.join(
+        os.path.dirname(al_structure_file), "transformed_100pct.lammps.data"
+    )
+    comp.write_structure(output_structure)
+
+    # Verify file content: 2000 atoms, 1 type (all Al→Mg)
+    type_counts = verify_lammps_data_file(
+        output_structure,
+        expected_natoms=2000,
+        expected_ntypes=1,
+        expected_type_counts={1: 2000},
+    )
+
 
 def test_partial_transformation_al_to_almg(al_structure_file):
     """
@@ -374,9 +496,25 @@ def test_partial_transformation_al_to_almg(al_structure_file):
     assert comp.pair_list_new == ["Al", "Mg"]
 
     # Swap types should include both types (same initial element)
+    # Order: [transforming_type, conserved_type] = [Al→Mg, Al→Al]
     swap_types = comp.get_swap_types()
     assert len(swap_types) == 2
-    assert 1 in swap_types and 2 in swap_types
+    assert swap_types == [2, 1]
+
+    # Write and verify structure
+    output_structure = os.path.join(
+        os.path.dirname(al_structure_file), "transformed_partial.lammps.data"
+    )
+    comp.write_structure(output_structure)
+
+    # Verify file content: 2000 atoms, 2 types
+    # Type 1: 1600 Al (Al→Al), Type 2: 400 Mg (Al→Mg)
+    type_counts = verify_lammps_data_file(
+        output_structure,
+        expected_natoms=2000,
+        expected_ntypes=2,
+        expected_type_counts={1: 1600, 2: 400},
+    )
 
 
 def test_enrichment_transformation(almg_structure_file):
@@ -415,10 +553,26 @@ def test_enrichment_transformation(almg_structure_file):
     assert comp.pair_list_new == ["Al", "Al", "Mg"]
 
     # Swap types should be the two outcomes for Mg atoms (Mg→Al and Mg→Mg)
+    # Order: [transforming_type, conserved_type] = [Mg→Al, Mg→Mg]
     swap_types = comp.get_swap_types()
     assert len(swap_types) == 2
-    # Mg→Al gives type 1, Mg→Mg gives type 2
-    assert 1 in swap_types and 2 in swap_types
+    # Ordered as [type 2 (Mg→Al), type 3 (Mg→Mg)]
+    assert swap_types == [2, 3]
+
+    # Write and verify structure
+    output_structure = os.path.join(
+        os.path.dirname(almg_structure_file), "transformed_enrichment.lammps.data"
+    )
+    comp.write_structure(output_structure)
+
+    # Verify file content: 2000 atoms, 3 types
+    # Type 1: 1000 Al (Al→Al), Type 2: 600 Al (Mg→Al), Type 3: 400 Mg (Mg→Mg)
+    type_counts = verify_lammps_data_file(
+        output_structure,
+        expected_natoms=2000,
+        expected_ntypes=3,
+        expected_type_counts={1: 1000, 2: 600, 3: 400},
+    )
 
 
 def test_depletion_transformation(almg_structure_file):
@@ -457,9 +611,25 @@ def test_depletion_transformation(almg_structure_file):
     assert comp.pair_list_new == ["Al", "Mg", "Mg"]
 
     # Swap types should be the two Al types
+    # Order: [transforming_type, conserved_type] = [Al→Mg, Al→Al]
     swap_types = comp.get_swap_types()
     assert len(swap_types) == 2
-    assert 1 in swap_types and 2 in swap_types
+    assert swap_types == [2, 1]
+
+    # Write and verify structure
+    output_structure = os.path.join(
+        os.path.dirname(almg_structure_file), "transformed_depletion.lammps.data"
+    )
+    comp.write_structure(output_structure)
+
+    # Verify file content: 2000 atoms, 3 types
+    # Type 1: 400 Al (Al→Al), Type 2: 600 Mg (Al→Mg), Type 3: 1000 Mg (Mg→Mg)
+    type_counts = verify_lammps_data_file(
+        output_structure,
+        expected_natoms=2000,
+        expected_ntypes=3,
+        expected_type_counts={1: 400, 2: 600, 3: 1000},
+    )
 
 
 def test_small_transformation(mg_structure_file):
@@ -491,6 +661,21 @@ def test_small_transformation(mg_structure_file):
     # Transformation list should have 1 atom
     assert len(comp.transformation_list) == 1
     assert comp.transformation_list[0]["count"] == 1
+
+    # Write and verify structure
+    output_structure = os.path.join(
+        os.path.dirname(mg_structure_file), "transformed_small.lammps.data"
+    )
+    comp.write_structure(output_structure)
+
+    # Verify file content: 2048 atoms, 2 types
+    # Type 1: 1 Al (Mg→Al), Type 2: 2047 Mg (Mg→Mg)
+    type_counts = verify_lammps_data_file(
+        output_structure,
+        expected_natoms=2048,
+        expected_ntypes=2,
+        expected_type_counts={1: 1, 2: 2047},
+    )
 
 
 def test_three_element_transformation(almg_structure_file):
@@ -535,3 +720,15 @@ def test_three_element_transformation(almg_structure_file):
     )
     comp.write_structure(output_structure)
     assert os.path.exists(output_structure)
+
+    # Verify file content: 2000 atoms total with correct type distribution
+    # Multiple types for Al→Al, Al→Cu, Mg→Mg, Mg→Cu transformations
+    # Expected: 800 Al, 800 Mg, 400 Cu total
+    type_counts = verify_lammps_data_file(
+        output_structure,
+        expected_natoms=2000,
+        expected_ntypes=len(comp.unique_mappings),
+        expected_type_counts={},  # Complex mapping, just verify total
+    )
+    # Verify total count is correct
+    assert sum(type_counts.values()) == 2000
