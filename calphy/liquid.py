@@ -23,6 +23,7 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 
 import numpy as np
 import yaml
+import os
 
 from calphy.integrators import *
 import calphy.helpers as ph
@@ -100,6 +101,10 @@ class Liquid(cph.Phase):
         # if melting cycle is over and still not melted, raise error
         if not melted:
             lmp.close()
+            # Preserve log file
+            logfile = os.path.join(self.simfolder, "log.lammps")
+            if os.path.exists(logfile):
+                os.rename(logfile, os.path.join(self.simfolder, "melting.log.lammps"))
             raise SolidifiedError(
                 "Liquid system did not melt, maybe try a higher thigh temperature."
             )
@@ -175,6 +180,10 @@ class Liquid(cph.Phase):
         self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
         lmp = ph.write_data(lmp, "conf.equilibration.data")
         lmp.close()
+        # Preserve log file
+        logfile = os.path.join(self.simfolder, "log.lammps")
+        if os.path.exists(logfile):
+            os.rename(logfile, os.path.join(self.simfolder, "averaging.log.lammps"))
 
     def run_integration(self, iteration=1):
         """
@@ -390,6 +399,10 @@ class Liquid(cph.Phase):
 
         # close object
         lmp.close()
+        # Preserve log file
+        logfile = os.path.join(self.simfolder, "log.lammps")
+        if os.path.exists(logfile):
+            os.rename(logfile, os.path.join(self.simfolder, "integration.log.lammps"))
 
     def thermodynamic_integration(self):
         """
