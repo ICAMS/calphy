@@ -203,9 +203,14 @@ def test_composition_transformation_single_type_file(mg_structure_file):
     assert os.path.exists(output_structure)
 
     # Read and verify the written structure
+    import re
+
     with open(output_structure, "r") as f:
         content = f.read()
-        assert "2048 atoms" in content
+        # Check for "2048 atoms" with flexible whitespace (space or tab)
+        assert re.search(
+            r"2048\s+atoms", content
+        ), "Expected '2048 atoms' in output file"
 
     # Verify entropy contribution calculation
     entropy = comp.entropy_contribution
