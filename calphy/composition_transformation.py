@@ -549,6 +549,15 @@ class CompositionTransformation:
                     atom_idx += 1
                     if atom_idx >= len(self.pyscal_structure.atoms.types):
                         break
+        
+        # Verify all atoms were updated
+        expected_atoms = len(self.pyscal_structure.atoms.types)
+        if atom_idx != expected_atoms:
+            raise RuntimeError(
+                f"Failed to update all atoms in {outfilename}. "
+                f"Expected {expected_atoms} atoms but only updated {atom_idx}. "
+                f"This may indicate a problem with ASE LAMMPS file formatting."
+            )
 
         # Update the number of atom types in the header
         required_ntypes = len(self.pair_list_old)
