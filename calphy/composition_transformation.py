@@ -551,7 +551,7 @@ class CompositionTransformation:
                     atom_idx += 1
                     if atom_idx >= len(self.pyscal_structure.atoms.types):
                         break
-        
+
         # Verify all atoms were updated
         expected_atoms = len(self.pyscal_structure.atoms.types)
         if atom_idx != expected_atoms:
