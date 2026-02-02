@@ -3,14 +3,14 @@ calphy: a Python library and command line interface for automated free
 energy calculations.
 
 Copyright 2021  (c) Sarath Menon^1, Yury Lysogorskiy^2, Ralf Drautz^2
-^1: Max Planck Institut für Eisenforschung, Dusseldorf, Germany 
+^1: Max Planck Institut für Eisenforschung, Dusseldorf, Germany
 ^2: Ruhr-University Bochum, Bochum, Germany
 
-calphy is published and distributed under the Academic Software License v1.0 (ASL). 
-calphy is distributed in the hope that it will be useful for non-commercial academic research, 
-but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+calphy is published and distributed under the Academic Software License v1.0 (ASL).
+calphy is distributed in the hope that it will be useful for non-commercial academic research,
+but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 calphy API is published and distributed under the BSD 3-Clause "New" or "Revised" License
-See the LICENSE FILE for more details. 
+See the LICENSE FILE for more details.
 
 More information about the program can be found in:
 Menon, Sarath, Yury Lysogorskiy, Jutta Rogal, and Ralf Drautz.
@@ -27,7 +27,15 @@ import sys
 import math
 import os
 import warnings
-from calphy.splines import splines, sum_spline1, sum_spline25, sum_spline50, sum_spline75, sum_spline100
+from calphy.splines import (
+    splines,
+    sum_spline1,
+    sum_spline25,
+    sum_spline50,
+    sum_spline75,
+    sum_spline100,
+)
+
 try:
     from scipy.integrate import cumtrapz
 except ImportError:
@@ -36,25 +44,27 @@ from tqdm import tqdm
 import pyscal3.core as pc
 from ase.io import read
 
-#Constants
+# Constants
 h = const.physical_constants["Planck constant in eV/Hz"][0]
 hJ = const.physical_constants["Planck constant"][0]
-hbar = h/(2*np.pi)
+hbar = h / (2 * np.pi)
 kb = const.physical_constants["Boltzmann constant in eV/K"][0]
 kbJ = const.physical_constants["Boltzmann constant"][0]
 Na = const.physical_constants["Avogadro constant"][0]
 eV2J = const.eV
-J2eV = 6.242E18
+J2eV = 6.242e18
 
-#--------------------------------------------------------------------
+# --------------------------------------------------------------------
 #             TI PATH INTEGRATION ROUTINES
-#--------------------------------------------------------------------
+# --------------------------------------------------------------------
 
-def integrate_path(calc,
-    fwdfilename, 
-    bkdfilename,  
+
+def integrate_path(
+    calc,
+    fwdfilename,
+    bkdfilename,
     solid=True,
-    composition_integration=False):
+):
     """
     Get a filename with columns du and dlambda and integrate
 
@@ -77,8 +87,10 @@ def integrate_path(calc,
     q : float
         heat dissipation during switching of system
     """
-    natoms = np.array([calc._element_dict[x]['count'] for x in calc.element])
-    concentration = np.array([calc._element_dict[x]['composition'] for x in calc.element])
+    natoms = np.array([calc._element_dict[x]["count"] for x in calc.element])
+    concentration = np.array(
+        [calc._element_dict[x]["composition"] for x in calc.element]
+    )
     fdata = np.loadtxt(fwdfilename, unpack=True, comments="#")
     bdata = np.loadtxt(bkdfilename, unpack=True, comments="#")
 
@@ -91,11 +103,11 @@ def integrate_path(calc,
 
         for i in range(calc.n_elements):
             if natoms[i] > 0:
-                fdur += concentration[i]*fdata[i+1]/natoms[i]
-                bdur += concentration[i]*bdata[i+1]/natoms[i]
+                fdur += concentration[i] * fdata[i + 1] / natoms[i]
+                bdur += concentration[i] * bdata[i + 1] / natoms[i]
 
-        flambda = fdata[calc.n_elements+1]
-        blambda = bdata[calc.n_elements+1]
+        flambda = fdata[calc.n_elements + 1]
+        blambda = bdata[calc.n_elements + 1]
 
     else:
         fdui = fdata[0]
@@ -107,28 +119,19 @@ def integrate_path(calc,
         flambda = fdata[2]
         blambda = bdata[2]
 
-
     fdu = fdui - fdur
     bdu = bdui - bdur
-    
-    if composition_integration:
-        fw = cumtrapz(fdu, flambda, initial=0)
-        bw = cumtrapz(bdu, blambda, initial=0)
-    else:
-        fw = np.trapz(fdu, flambda)
-        bw = np.trapz(bdu, blambda)
 
-    w = 0.5*(fw - bw)
-    q = 0.5*(fw + bw)
+    fw = np.trapz(fdu, flambda)
+    bw = np.trapz(bdu, blambda)
+
+    w = 0.5 * (fw - bw)
+    q = 0.5 * (fw + bw)
 
     return w, q, flambda
 
 
-def find_w(mainfolder,
-    calc, 
-    full=False, 
-    solid=True,
-    composition_integration=False):
+def find_w(mainfolder, calc, full=False, solid=True):
     """
     Integrate the irreversible work and dissipation for independent simulations
 
@@ -161,26 +164,21 @@ def find_w(mainfolder,
     qs = []
 
     for i in range(calc.n_iterations):
-        fwdfilestring = 'forward_%d.dat' % (i+1)
-        fwdfilename = os.path.join(mainfolder,fwdfilestring)
-        
-        bkdfilestring = 'backward_%d.dat' % (i+1)
-        bkdfilename = os.path.join(mainfolder,bkdfilestring)
-        
-        w, q, flambda = integrate_path(calc,
-            fwdfilename, 
-            bkdfilename, 
+        fwdfilestring = "forward_%d.dat" % (i + 1)
+        fwdfilename = os.path.join(mainfolder, fwdfilestring)
+
+        bkdfilestring = "backward_%d.dat" % (i + 1)
+        bkdfilename = os.path.join(mainfolder, bkdfilestring)
+
+        w, q, flambda = integrate_path(
+            calc,
+            fwdfilename,
+            bkdfilename,
             solid=solid,
-            composition_integration=composition_integration)
-        
+        )
+
         ws.append(w)
         qs.append(q)
-    
-    if composition_integration:
-        wsmean = np.mean(ws, axis=0)
-        qsmean = np.mean(qs, axis=0)
-        wsstd = np.std(ws, axis=0)
-        return wsmean, qsmean, wsstd, flambda
 
     wsmean = np.mean(ws)
     qsmean = np.mean(qs)
@@ -192,10 +190,9 @@ def find_w(mainfolder,
         return wsmean
 
 
-def integrate_rs(simfolder, f0, t, 
-    natoms, p=0, nsims=5, 
-    scale_energy=False, 
-    return_values=False):
+def integrate_rs(
+    simfolder, f0, t, natoms, p=0, nsims=5, scale_energy=False, return_values=False
+):
     """
     Carry out the reversible scaling integration
 
@@ -223,30 +220,34 @@ def integrate_rs(simfolder, f0, t,
     Notes
     -----
     Writes the output in a file reversible_scaling.dat
-    
+
     """
     ws = []
     es = []
-    p = p/(10000*160.21766208)
-    
-    for i in range(1, nsims+1):
-        fdx, fp, fvol, flambda = np.loadtxt(os.path.join(simfolder, "ts.forward_%d.dat"%i), unpack=True, comments="#")
-        bdx, bp, bvol, blambda = np.loadtxt(os.path.join(simfolder, "ts.backward_%d.dat"%i), unpack=True, comments="#")
-        
+    p = p / (10000 * 160.21766208)
+
+    for i in range(1, nsims + 1):
+        fdx, fp, fvol, flambda = np.loadtxt(
+            os.path.join(simfolder, "ts.forward_%d.dat" % i), unpack=True, comments="#"
+        )
+        bdx, bp, bvol, blambda = np.loadtxt(
+            os.path.join(simfolder, "ts.backward_%d.dat" % i), unpack=True, comments="#"
+        )
+
         if scale_energy:
             fdx /= flambda
             bdx /= blambda
 
-        #add pressure contribution
-        fvol = fvol/natoms
-        bvol = bvol/natoms
-        fdx = fdx + p*fvol
-        bdx = bdx + p*bvol
-        
-        wf = cumtrapz(fdx, flambda,initial=0)
-        wb = cumtrapz(bdx[::-1], blambda[::-1],initial=0)
-        w = (wf + wb) / (2*flambda)
-        e = np.max(np.abs((wf - wb)/(2*flambda)))
+        # add pressure contribution
+        fvol = fvol / natoms
+        bvol = bvol / natoms
+        fdx = fdx + p * fvol
+        bdx = bdx + p * bvol
+
+        wf = cumtrapz(fdx, flambda, initial=0)
+        wb = cumtrapz(bdx[::-1], blambda[::-1], initial=0)
+        w = (wf + wb) / (2 * flambda)
+        e = np.max(np.abs((wf - wb) / (2 * flambda)))
 
         ws.append(w)
         es.append(e)
@@ -254,9 +255,9 @@ def integrate_rs(simfolder, f0, t,
     e_diss = np.min(es)
     wmean = np.mean(ws, axis=0)
     werr = np.std(ws, axis=0)
-    temp = t/flambda
+    temp = t / flambda
 
-    f = f0/flambda + 1.5*kb*temp*np.log(flambda) + wmean
+    f = f0 / flambda + 1.5 * kb * temp * np.log(flambda) + wmean
 
     if not return_values:
         outfile = os.path.join(simfolder, "temperature_sweep.dat")
@@ -266,11 +267,10 @@ def integrate_rs(simfolder, f0, t,
         return (temp, f, werr), e_diss
 
 
-def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1, 
-    return_values=False):
+def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1, return_values=False):
     """
     Carry out the reversible scaling integration
-    
+
     Parameters
     ----------
     simfolder : string
@@ -279,38 +279,42 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1,
         initial free energy for integration
     nsims : int, optional
         number of independent switching
-    
+
     Returns
     -------
     None
-    
+
     Notes
     -----
     Writes the output in a file pressure_sweep.dat
-    
+
     """
 
     ws = []
 
-    for i in range(1, nsims+1):
-        _, fp, fvol, _ = np.loadtxt(os.path.join(simfolder, "ps.forward_%d.dat"%i), unpack=True, comments="#")
-        _, bp, bvol, _ = np.loadtxt(os.path.join(simfolder, "ps.backward_%d.dat"%i), unpack=True, comments="#")
-        
-        fvol = fvol/natoms
-        bvol = bvol/natoms
-        
-        fp = fp/(10000*160.21766208)
-        bp = bp/(10000*160.21766208)
+    for i in range(1, nsims + 1):
+        _, fp, fvol, _ = np.loadtxt(
+            os.path.join(simfolder, "ps.forward_%d.dat" % i), unpack=True, comments="#"
+        )
+        _, bp, bvol, _ = np.loadtxt(
+            os.path.join(simfolder, "ps.backward_%d.dat" % i), unpack=True, comments="#"
+        )
+
+        fvol = fvol / natoms
+        bvol = bvol / natoms
+
+        fp = fp / (10000 * 160.21766208)
+        bp = bp / (10000 * 160.21766208)
 
         wf = cumtrapz(fvol, fp, initial=0)
         wb = cumtrapz(bvol[::-1], bp[::-1], initial=0)
 
-        w = (wf + wb)/2
+        w = (wf + wb) / 2
         ws.append(w)
 
     wmean = np.mean(ws, axis=0)
     werr = np.std(ws, axis=0)
-    
+
     press = np.linspace(pi, pf, len(wmean))
 
     f = f0 + wmean
@@ -322,38 +326,49 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1,
         return (press, f, werr)
 
 
-def integrate_mass(flambda, ref_mass, target_masses, target_counts,
-    temperature, natoms):
-    
-    mcorarr = np.zeros(len(flambda))
+def integrate_mass(ref_mass, target_masses, target_counts, temperature, natoms):
     mcorsum = 0
 
     for i in range(len(target_masses)):
-        mcorarr += 1.5*kb*temperature*(flambda*(target_counts[i]/natoms)*np.log(target_masses[i]/ref_mass))
-        mcorsum += 1.5*kb*temperature*(1.0*(target_counts[i]/natoms)*np.log(target_masses[i]/ref_mass))
+        mcorsum += (
+            1.5
+            * kb
+            * temperature
+            * (1.0 * (target_counts[i] / natoms) * np.log(target_masses[i] / ref_mass))
+        )
 
-    return mcorarr, mcorsum
+    return mcorsum
+
 
 def remove_steps(w, stdscale):
-    peak  = np.abs(w-np.roll(w, shift=-1))
-    peak = np.where(peak> stdscale*np.std(peak), peak, 0)
+    peak = np.abs(w - np.roll(w, shift=-1))
+    peak = np.where(peak > stdscale * np.std(peak), peak, 0)
     args = np.nonzero(peak)[0]
-    print(f'No of peaks #{len(args)}')
-    diff = [w[x]-w[x-1] if x in args else 0 for x in range(len(w[:-1]))]
+    print(f"No of peaks #{len(args)}")
+    diff = [w[x] - w[x - 1] if x in args else 0 for x in range(len(w[:-1]))]
     diff.append(0)
     cum_diff = np.cumsum(diff)
-    w = w-cum_diff
+    w = w - cum_diff
     return w
 
+
 def remove_peaks(w, stdscale):
-    peak = np.minimum(np.abs(w-np.roll(w, shift=-1)), np.abs(np.roll(w, shift=1)-w))
-    args = np.argwhere(peak > stdscale*np.std(peak))
-    k = [(w[x-1]+w[x+1])/2 if x in args else w[x] for x in range(len(w[:-1]))]
+    peak = np.minimum(np.abs(w - np.roll(w, shift=-1)), np.abs(np.roll(w, shift=1) - w))
+    args = np.argwhere(peak > stdscale * np.std(peak))
+    k = [(w[x - 1] + w[x + 1]) / 2 if x in args else w[x] for x in range(len(w[:-1]))]
     k.append(w[-1])
     return k
 
-def integrate_dcc(folder1, folder2, nsims=1, scale_energy=True, 
-                  full=False, stdscale=0.25, fit_order=None):
+
+def integrate_dcc(
+    folder1,
+    folder2,
+    nsims=1,
+    scale_energy=True,
+    full=False,
+    stdscale=0.25,
+    fit_order=None,
+):
     """
     Integrate Dynamic Clausius-Clapeyron equation
 
@@ -382,19 +397,19 @@ def integrate_dcc(folder1, folder2, nsims=1, scale_energy=True,
 
     """
 
-    #get number of atoms
+    # get number of atoms
     sys = pc.System(os.path.join(folder1, "traj.equilibration_stage1.dat"))
     natoms1 = int(sys.natoms)
 
     sys = pc.System(os.path.join(folder2, "traj.equilibration_stage1.dat"))
     natoms2 = int(sys.natoms)
 
-    #get temp and pressure
+    # get temp and pressure
     f1_raw = os.path.basename(folder1).split("-")
     pressure = float(f1_raw[-1])
     temperature = float(f1_raw[-2])
 
-    #recheck for folder2
+    # recheck for folder2
     f2_raw = os.path.basename(folder2).split("-")
     if pressure != float(f2_raw[-1]):
         raise ValueError("Pressure for both calculations are different!")
@@ -405,32 +420,40 @@ def integrate_dcc(folder1, folder2, nsims=1, scale_energy=True,
 
     ws = []
     for i in range(nsims):
-        fsu, fsp, fsv, fsl = np.loadtxt(os.path.join(folder1, "ts.forward_%d.dat"%(i+1)), unpack=True)
-        bsu, bsp, bsv, bsl = np.loadtxt(os.path.join(folder1, "ts.backward_%d.dat"%(i+1)), unpack=True)
-        flu, flp, flv, fll = np.loadtxt(os.path.join(folder2, "ts.forward_%d.dat"%(i+1)), unpack=True)
-        blu, blp, blv, bll = np.loadtxt(os.path.join(folder2, "ts.backward_%d.dat"%(i+1)), unpack=True)
+        fsu, fsp, fsv, fsl = np.loadtxt(
+            os.path.join(folder1, "ts.forward_%d.dat" % (i + 1)), unpack=True
+        )
+        bsu, bsp, bsv, bsl = np.loadtxt(
+            os.path.join(folder1, "ts.backward_%d.dat" % (i + 1)), unpack=True
+        )
+        flu, flp, flv, fll = np.loadtxt(
+            os.path.join(folder2, "ts.forward_%d.dat" % (i + 1)), unpack=True
+        )
+        blu, blp, blv, bll = np.loadtxt(
+            os.path.join(folder2, "ts.backward_%d.dat" % (i + 1)), unpack=True
+        )
 
         if scale_energy:
-            fsu = fsu/fsl
-            bsu = bsu/bsl
-            flu = flu/fll
-            blu = blu/bll
+            fsu = fsu / fsl
+            bsu = bsu / bsl
+            flu = flu / fll
+            blu = blu / bll
 
-        #now convert the pressure units
-        fsp = fsp/(10000*160.21766208)
-        bsp = bsp/(10000*160.21766208)
-        flp = flp/(10000*160.21766208)
-        blp = blp/(10000*160.21766208)
+        # now convert the pressure units
+        fsp = fsp / (10000 * 160.21766208)
+        bsp = bsp / (10000 * 160.21766208)
+        flp = flp / (10000 * 160.21766208)
+        blp = blp / (10000 * 160.21766208)
 
-        #scale volume per number of atoms
-        fsv = fsv/natoms1
-        bsv = bsv/natoms1
-        flv = flv/natoms2
-        blv = blv/natoms2
+        # scale volume per number of atoms
+        fsv = fsv / natoms1
+        bsv = bsv / natoms1
+        flv = flv / natoms2
+        blv = blv / natoms2
 
-        #get the integrand
-        fx = (fsu-flu)/(fsv-flv)
-        bx = (bsu-blu)/(bsv-blv)
+        # get the integrand
+        fx = (fsu - flu) / (fsv - flv)
+        bx = (bsu - blu) / (bsv - blv)
 
         if stdscale > 0:
             fx = remove_peaks(fx, stdscale=stdscale)
@@ -439,44 +462,43 @@ def integrate_dcc(folder1, folder2, nsims=1, scale_energy=True,
         wf = cumtrapz(fx, fsl, initial=0)
         wb = cumtrapz(bx[::-1], bsl[::-1], initial=0)
 
-        w = (wf + wb) / (2*fsl)
-        q = (wf - wb) / (2*fsl)
-        
+        w = (wf + wb) / (2 * fsl)
+        q = (wf - wb) / (2 * fsl)
+
         if stdscale > 0:
             w = remove_steps(w, stdscale=stdscale)
-        
+
         ws.append(w)
-    
-    #return ws
+
+    # return ws
     wmean = np.mean(ws, axis=0)
     werr = np.std(ws, axis=0)
-    xp = fsl*(pressure/(10000*160.21766208)) - wmean
-    temp = temperature/fsl
+    xp = fsl * (pressure / (10000 * 160.21766208)) - wmean
+    temp = temperature / fsl
 
-    #convert back
-    xp = xp*160.217*10000
+    # convert back
+    xp = xp * 160.217 * 10000
 
-    #fit if needed
+    # fit if needed
     if fit_order is not None:
         fit = np.polyfit(temp, xp, fit_order)
         xp = np.polyval(fit, temp)
 
-    #return the values
+    # return the values
     if not full:
         return xp, temp
     else:
         return xp, temp, werr
 
-#--------------------------------------------------------------------
+
+# --------------------------------------------------------------------
 #             REF. STATE ROUTINES: SOLID
-#--------------------------------------------------------------------
+# --------------------------------------------------------------------
+
 
 def get_einstein_crystal_fe(
-    calc,
-    vol, 
-    k, 
-    cm_correction=True,
-    return_contributions=False):
+    calc, vol, k, cm_correction=True, return_contributions=False
+):
     """
     Get the free energy of einstein crystal
 
@@ -513,62 +535,64 @@ def get_einstein_crystal_fe(
     The equations for free energy of Einstein crystal and centre of mass correction are from https://doi.org/10.1063/5.0044833.
 
     """
-    #temperature
+    # temperature
     temp = calc._temperature
 
-    #natoms
-    natoms = np.sum([calc._element_dict[x]['count'] for x in calc.element])
+    # natoms
+    natoms = np.sum([calc._element_dict[x]["count"] for x in calc.element])
 
-    #convert a to m3
-    vol = vol*1E-30
+    # convert a to m3
+    vol = vol * 1e-30
 
-    #whats the beta
-    beta = (1/(kbJ*temp))   
+    # whats the beta
+    beta = 1 / (kbJ * temp)
 
-    #create an array of mass
+    # create an array of mass
     mass = []
     for x in calc.element:
-        for count in range(calc._element_dict[x]['count']):
-            mass.append(calc._element_dict[x]['mass'])
+        for count in range(calc._element_dict[x]["count"]):
+            mass.append(calc._element_dict[x]["mass"])
     mass = np.array(mass)
-    
-    #convert mass to kg
-    mass = (mass/Na)*1E-3
 
-    #create an array of k as well
+    # convert mass to kg
+    mass = (mass / Na) * 1e-3
+
+    # create an array of k as well
     karr = []
     for c, x in enumerate(calc.element):
-        for count in range(calc._element_dict[x]['count']):
+        for count in range(calc._element_dict[x]["count"]):
             karr.append(k[c])
     k = np.array(karr)
-    #convert k from ev/A2 to J/m2
-    k = k*(eV2J/1E-20)
+    # convert k from ev/A2 to J/m2
+    k = k * (eV2J / 1e-20)
 
-    #fe of Einstein crystal
-    Z_e = ((beta**2*k*hJ**2)/(4*np.pi**2*mass))**1.5
+    # fe of Einstein crystal
+    Z_e = ((beta**2 * k * hJ**2) / (4 * np.pi**2 * mass)) ** 1.5
     F_e = np.log(Z_e)
-    F_e = kb*temp*np.sum(F_e)/natoms #*J2eV #convert back to eV
+    F_e = kb * temp * np.sum(F_e) / natoms  # *J2eV #convert back to eV
 
-    #now get the cm correction
+    # now get the cm correction
     if cm_correction:
         mass_sum = np.sum(mass)
-        mu = mass/mass_sum
-        mu2_over_k = mu**2/k
-        mu2_over_k_sum = np.sum(mu2_over_k) 
+        mu = mass / mass_sum
+        mu2_over_k = mu**2 / k
+        mu2_over_k_sum = np.sum(mu2_over_k)
         prefactor = vol
-        F_cm = np.log(prefactor*(beta/(2*np.pi*mu2_over_k_sum))**1.5)
-        F_cm = kb*temp*F_cm/natoms #convert to eV
+        F_cm = np.log(prefactor * (beta / (2 * np.pi * mu2_over_k_sum)) ** 1.5)
+        F_cm = kb * temp * F_cm / natoms  # convert to eV
     else:
         F_cm = 0
-    
+
     F_tot = F_e - F_cm
     if return_contributions:
         return F_e, -F_cm
     return F_tot
 
-#--------------------------------------------------------------------
+
+# --------------------------------------------------------------------
 #             REF. STATE ROUTINES: LIQUID
-#--------------------------------------------------------------------
+# --------------------------------------------------------------------
+
 
 def get_ideal_gas_fe(temp, rho, natoms, mass, concentration):
     """
@@ -600,25 +624,25 @@ def get_ideal_gas_fe(temp, rho, natoms, mass, concentration):
         free energy/atom of ideal gas system
 
     """
-    #find mass of one particle
-    mass = np.array(mass)/Na
-    beta = (1/(kb*temp)) #units - eV
+    # find mass of one particle
+    mass = np.array(mass) / Na
+    beta = 1 / (kb * temp)  # units - eV
 
-    #omega needs to be in m
-    omega = (beta*h*h/(2*np.pi*mass))**0.5
-    #convert omega
-    omega = omega*(const.eV/1E-3)**0.5
-    #the above is in metres - change to Angstrom
-    omega = omega*1E10
-    prefactor = 1/beta
+    # omega needs to be in m
+    omega = (beta * h * h / (2 * np.pi * mass)) ** 0.5
+    # convert omega
+    omega = omega * (const.eV / 1e-3) ** 0.5
+    # the above is in metres - change to Angstrom
+    omega = omega * 1e10
+    prefactor = 1 / beta
 
     fe = 0
     for count, conc in enumerate(concentration):
         if concentration[count] > 0:
-            fe += conc*(3*np.log(omega[count]) + np.log(rho) -1 + np.log(conc))
+            fe += conc * (3 * np.log(omega[count]) + np.log(rho) - 1 + np.log(conc))
 
-    #return prefactor*(ta + tb + (1/(2*natoms))*np.log(2*np.pi*natoms))
-    return prefactor*fe
+    # return prefactor*(ta + tb + (1/(2*natoms))*np.log(2*np.pi*natoms))
+    return prefactor * fe
 
 
 def get_uhlenbeck_ford_fe(temp, rho, p, sigma):
@@ -641,11 +665,12 @@ def get_uhlenbeck_ford_fe(temp, rho, p, sigma):
     fe : float
         excess free energy/atom of uf system
     """
-    x = (0.5*(np.pi*sigma*sigma)**1.5)*rho
+    x = (0.5 * (np.pi * sigma * sigma) ** 1.5) * rho
     _, fe = find_fe(p, x)
-    beta = (1/(kb*temp))
-    fe = fe/beta
+    beta = 1 / (kb * temp)
+    fe = fe / beta
     return fe
+
 
 def press(x, coef):
     """
@@ -655,7 +680,7 @@ def press(x, coef):
     ----------
     x : float
         x value for UF system
-    
+
     coef : list of floats
         coefficients
 
@@ -665,38 +690,45 @@ def press(x, coef):
         result pressure
 
     """
-    result = coef[0]*(x**3) + coef[1]*(x**2) + coef[2]*x + coef[3]
+    result = coef[0] * (x**3) + coef[1] * (x**2) + coef[2] * x + coef[3]
     return result
+
 
 def fe(x, coef, sum_spline, index):
     """
     Fe inbuilt method
     """
     if x < 0.0025:
-        result = coef[0]*(x**2)/2.0 + coef[1]*x
+        result = coef[0] * (x**2) / 2.0 + coef[1] * x
         return result
 
     elif x < 0.1:
-        if x*10000%25 == 0:
-            return sum_spline[index-1]
+        if x * 10000 % 25 == 0:
+            return sum_spline[index - 1]
         else:
-            x_0 = 0.0025*int(x*400)
-    
+            x_0 = 0.0025 * int(x * 400)
+
     elif x < 1:
-        if x*1000%25 == 0:
-            return sum_spline[index-1]
+        if x * 1000 % 25 == 0:
+            return sum_spline[index - 1]
         else:
-            x_0 = 0.025*int(x*40)
+            x_0 = 0.025 * int(x * 40)
 
     elif x < 4:
-        if x*100%10 == 0:
-            return sum_spline[index-1]
+        if x * 100 % 10 == 0:
+            return sum_spline[index - 1]
         else:
-            x_0 = 0.1*int(x*10)
+            x_0 = 0.1 * int(x * 10)
     else:
         return sum_spline[index]
 
-    result =  sum_spline[index-1] + coef[0]*(x**2.0 - x_0**2.0)/2.0 + coef[1]*(x - x_0) + (coef[2] - 1.0)*math.log(x/x_0) - coef[3]*(1.0/x - 1.0/x_0)
+    result = (
+        sum_spline[index - 1]
+        + coef[0] * (x**2.0 - x_0**2.0) / 2.0
+        + coef[1] * (x - x_0)
+        + (coef[2] - 1.0) * math.log(x / x_0)
+        - coef[3] * (1.0 / x - 1.0 / x_0)
+    )
     return result
 
 
@@ -719,19 +751,19 @@ def find_fe(p, x):
 
     """
     if not p in splines:
-        raise ValueError('Invalid p. Valid numbers are: 1, 25, 50, 75, and 100.')
+        raise ValueError("Invalid p. Valid numbers are: 1, 25, 50, 75, and 100.")
 
     if (x <= 0.0) or (x > 4.0):
-        raise ValueError('Invalid x. Valid numbers are 0.0 < x <= 4.0')
+        raise ValueError("Invalid x. Valid numbers are 0.0 < x <= 4.0")
 
     table1 = splines[p]
 
     if x < 0.1:
-        index =  0 + int(x*400)
+        index = 0 + int(x * 400)
     elif x < 1:
-        index = 40 + int((x*40 - 4))
+        index = 40 + int((x * 40 - 4))
     elif x < 4:
-        index = 76 + int((x*10 - 10))
+        index = 76 + int((x * 10 - 10))
     else:
         index = 105
 
@@ -739,24 +771,26 @@ def find_fe(p, x):
 
     pressure = press(x, coef)
 
-    if p==1:
+    if p == 1:
         sum_spline = sum_spline1
-    elif p==25:
+    elif p == 25:
         sum_spline = sum_spline25
-    elif p==50:
+    elif p == 50:
         sum_spline = sum_spline50
-    elif p==75:
+    elif p == 75:
         sum_spline = sum_spline75
     else:
         sum_spline = sum_spline100
 
-    free_energy = fe(x,coef,sum_spline,index)
+    free_energy = fe(x, coef, sum_spline, index)
 
     return pressure, free_energy
 
-#--------------------------------------------------------------------
+
+# --------------------------------------------------------------------
 #             PHASE DIAGRAM ROUTINES
-#--------------------------------------------------------------------
+# --------------------------------------------------------------------
+
 
 def calculate_entropy_mix(conc):
     """
@@ -772,7 +806,7 @@ def calculate_entropy_mix(conc):
     s: float
         entropy
     """
-    s = -kb*(conc*np.log(conc) + (1-conc)*np.log(1-conc))
+    s = -kb * (conc * np.log(conc) + (1 - conc) * np.log(1 - conc))
     return s
 
 
@@ -800,9 +834,10 @@ def calculate_fe_impurity(temp, natoms, fepure, feimpure):
     dg : float
         entropy of mixing
     """
-    dg = feimpure*natoms - fepure*natoms + kb*temp*np.log(natoms)
+    dg = feimpure * natoms - fepure * natoms + kb * temp * np.log(natoms)
     return dg
-    
+
+
 def calculate_fe_mix(temp, fepure, feimpure, concs, natoms=4000):
     """
     Calculate energy of mixing
@@ -834,11 +869,11 @@ def calculate_fe_mix(temp, fepure, feimpure, concs, natoms=4000):
         print("zero is autodone")
         concs = concs[1:]
     fes = [fepure]
-    
+
     s = calculate_entropy_mix(concs)
     dg = calculate_fe_impurity(temp, natoms, fepure, feimpure)
-    fe_conc = fepure + concs*dg - temp*s
-    
+    fe_conc = fepure + concs * dg - temp * s
+
     for f in fe_conc:
-        fes.append(f)    
+        fes.append(f)
     return fes
