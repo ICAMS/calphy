@@ -532,10 +532,12 @@ class CompositionTransformation:
             lines = f.readlines()
 
         # Find the Atoms section and replace type numbers
+        # Support different ASE formats: "Atoms # atomic", "Atoms # full", or just "Atoms"
         in_atoms_section = False
         atom_idx = 0
         for i, line in enumerate(lines):
-            if "Atoms" in line and "#" in line:
+            # More flexible detection of Atoms section header
+            if "Atoms" in line:
                 in_atoms_section = True
                 continue
 
