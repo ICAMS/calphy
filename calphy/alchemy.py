@@ -493,25 +493,12 @@ class Alchemy(cph.Phase):
         self.ferr = qerr
         self.fe = self.w
 
-        if self.calc.mode == "composition_scaling":
-            w_arr, q_arr, qerr_arr, flambda_arr = find_w(
-                self.simfolder,
-                self.calc,
-                full=True,
-                solid=False,
-                composition_integration=True,
-            )
-
-            # now we need to process the comp scaling
-            return flambda_arr, w_arr, q_arr, qerr_arr
-
-    def mass_integration(self, flambda, ref_mass, target_masses, target_counts):
-        mcorarr, mcorsum = integrate_mass(
-            flambda,
+    def mass_integration(self, ref_mass, target_masses, target_counts):
+        mcorsum = integrate_mass(
             ref_mass,
             target_masses,
             target_counts,
             self.calc._temperature,
             self.natoms,
         )
-        return mcorarr, mcorsum
+        return mcorsum
