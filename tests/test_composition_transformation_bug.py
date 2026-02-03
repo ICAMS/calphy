@@ -278,10 +278,12 @@ def test_composition_transformation_swap_types(mg_structure_file):
     comp = CompositionTransformation(calc)
 
     # Get swap types
-    swap_types = comp.get_swap_types()
+    forward_swap_types, reverse_swap_types = comp.get_swap_types()
 
-    assert isinstance(swap_types, list)
-    assert len(swap_types) == 2
+    assert isinstance(forward_swap_types, list)
+    assert isinstance(reverse_swap_types, list)
+    assert len(forward_swap_types) == 2  # Mg types: Mg→Al and Mg→Mg
+    assert len(reverse_swap_types) == 2  # Both types: Mg could be anywhere in reverse
 
     # Write and verify structure
     output_structure = os.path.join(
@@ -447,11 +449,13 @@ def test_100_percent_transformation(al_structure_file):
     assert "Al" in pc_old
     assert "Mg" in pc_new
 
-    # Swap types - for 100% transformation, only the transforming type
-    # Uses the target element's type from typedict
-    swap_types = comp.get_swap_types()
-    assert len(swap_types) == 1
-    # Type number depends on how mappingdict assigns it
+    # Swap types - for 100% transformation, no swapping possible (only 1 type)
+    # LAMMPS atom/swap requires at least 2 types
+    forward_swap_types, reverse_swap_types = comp.get_swap_types()
+    assert len(forward_swap_types) == 0  # Only 1 type exists, can't swap
+    assert len(reverse_swap_types) == 0  # Only 1 type exists, can't swap
+    assert forward_swap_types == []
+    assert reverse_swap_types == []
 
     # Write and verify structure
     output_structure = os.path.join(
@@ -501,10 +505,13 @@ def test_partial_transformation_al_to_almg(al_structure_file):
     assert comp.pair_list_new == ["Al", "Mg"]
 
     # Swap types should include both types (same initial element)
-    # Order: [transforming_type, conserved_type] = [Al→Mg, Al→Al]
-    swap_types = comp.get_swap_types()
-    assert len(swap_types) == 2
-    assert swap_types == [2, 1]
+    # Forward: swap between Al types (Al→Al and Al→Mg)
+    # Reverse: both types create Al in reverse (Al could be anywhere)
+    forward_swap_types, reverse_swap_types = comp.get_swap_types()
+    assert len(forward_swap_types) == 2  # Both Al types
+    assert len(reverse_swap_types) == 2  # Both types create Al in reverse
+    assert forward_swap_types == [1, 2]  # Al→Al and Al→Mg
+    assert reverse_swap_types == [1, 2]  # Both types involve Al
 
     # Write and verify structure
     output_structure = os.path.join(
@@ -558,11 +565,15 @@ def test_enrichment_transformation(almg_structure_file):
     assert comp.pair_list_new == ["Al", "Al", "Mg"]
 
     # Swap types should be the two outcomes for Mg atoms (Mg→Al and Mg→Mg)
-    # Order: [transforming_type, conserved_type] = [Mg→Al, Mg→Mg]
-    swap_types = comp.get_swap_types()
-    assert len(swap_types) == 2
-    # Ordered as [type 2 (Mg→Al), type 3 (Mg→Mg)]
-    assert swap_types == [2, 3]
+    # Forward: swap between Mg types (Mg being removed)
+    # Reverse: swap between Al types (Al being added back)
+    forward_swap_types, reverse_swap_types = comp.get_swap_types()
+    assert len(forward_swap_types) == 2  # Mg types: Mg→Al and Mg→Mg
+    assert len(reverse_swap_types) == 2  # Al types: Al→Al and Mg→Al
+    # Forward ordered as [Mg→Al (type 2), Mg→Mg (type 3)]
+    assert forward_swap_types == [2, 3]
+    # Reverse ordered as [Al→Al (type 1), Mg→Al (type 2)]
+    assert reverse_swap_types == [1, 2]
 
     # Write and verify structure
     output_structure = os.path.join(
@@ -616,10 +627,15 @@ def test_depletion_transformation(almg_structure_file):
     assert comp.pair_list_new == ["Al", "Mg", "Mg"]
 
     # Swap types should be the two Al types
-    # Order: [transforming_type, conserved_type] = [Al→Mg, Al→Al]
-    swap_types = comp.get_swap_types()
-    assert len(swap_types) == 2
-    assert swap_types == [2, 1]
+    # Forward: swap between Al types (Al being removed)
+    # Reverse: swap between Mg types (Mg being added back)
+    forward_swap_types, reverse_swap_types = comp.get_swap_types()
+    assert len(forward_swap_types) == 2  # Al types: Al→Al and Al→Mg
+    assert len(reverse_swap_types) == 2  # Mg types: Al→Mg and Mg→Mg
+    # Forward: [Al→Al (type 1), Al→Mg (type 2)]
+    assert forward_swap_types == [1, 2]
+    # Reverse: [Al→Mg (type 2), Mg→Mg (type 3)]
+    assert reverse_swap_types == [2, 3]
 
     # Write and verify structure
     output_structure = os.path.join(

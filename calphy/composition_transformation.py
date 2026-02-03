@@ -467,43 +467,90 @@ class CompositionTransformation:
         """
         Get swapping types for configurational entropy calculation.
 
-        Returns types that share the same initial element but have different
-        transformation paths (e.g., Al→Al vs Al→Mg).
+        Returns two separate lists for forward and reverse passes to ensure
+        proper ergodicity in thermodynamic integration.
 
-        The order matters for reversibility:
-        - Forward pass (e.g., Mg→Al enrichment): swap between Mg types
-        - Backward pass (e.g., Al→Mg depletion): swap between Al types
+        Forward pass: Atoms of the element being REMOVED should be able to
+                      swap with each other (e.g., Mg types in Mg→Al enrichment)
+        Reverse pass: Atoms of the element being ADDED should be able to
+                      swap with each other (e.g., Al types in reverse Al→Mg)
 
-        Returns list ordered as: [conserved_type, transforming_type]
-        where conserved_type is X→X and transforming_type is X→Y
+        Returns
+        -------
+        tuple of (forward_swap_types, reverse_swap_types)
+            forward_swap_types : list
+                Types to swap during forward integration (grouped by source element)
+            reverse_swap_types : list
+                Types to swap during reverse integration (grouped by target element)
+
+        Examples
+        --------
+        Enrichment (Mg→Al): Mappings [Al-Al(1), Mg-Al(2), Mg-Mg(3)]
+            forward: [2, 3] - swap Mg types (Mg being removed)
+            reverse: [1, 2] - swap Al types (Al being added back)
+
+        100% transformation (Mg→Al): Mappings [Mg-Al(1)]
+            forward: [] - only one type, no swapping possible
+            reverse: [] - only one type, no swapping possible
+
+        Partial addition (Mg→Mg+Al): Mappings [Mg-Al(1), Mg-Mg(2)]
+            forward: [1, 2] - swap Mg types (Mg being removed)
+            reverse: [] - only one Al type exists, no swapping possible
         """
-        swap_list = []
-        for mapping in self.unique_mappings:
-            map_split = mapping.split("-")
-            # conserved atom - skip
-            if map_split[0] == map_split[1]:
-                pass
-            else:
-                first_type = map_split[0]
-                second_type = map_split[1]
-                first_map = f"{first_type}-{first_type}"
-                second_map = mapping
+        forward_swap_types = []
+        reverse_swap_types = []
 
-                # Check if conserved mapping exists
-                if first_map in self.mappingdict:
-                    # get the numbers from dict
-                    first_swap_type = self.mappingdict[first_map]
-                    second_swap_type = self.mappingdict[second_map]
-                    # Order: [transforming_type, conserved_type]
-                    # This represents: atoms that transform vs atoms that don't
-                    swap_list.append([second_swap_type, first_swap_type])
-                else:
-                    # 100% transformation case - no conserved atoms of this type
-                    # Only the transforming type exists
-                    second_swap_type = self.mappingdict[second_map]
-                    swap_list.append([second_swap_type])
+        # Get the element being removed and added from transformation_list
+        if not self.transformation_list:
+            return [], []
 
-        return swap_list[0] if swap_list else []
+        # For composition transformations, we typically have one primary transformation
+        # primary_element is being removed, secondary_element is being added
+        primary_element = self.transformation_list[0]["primary_element"]
+        secondary_element = self.transformation_list[0]["secondary_element"]
+
+        # Forward pass: collect all types where SOURCE element matches primary_element
+        # These are atoms that could potentially be transformed
+        for mapping_str, type_num in self.mappingdict.items():
+            source_element, target_element = mapping_str.split("-")
+            if source_element == primary_element:
+                forward_swap_types.append(type_num)
+
+        # Reverse pass: We're removing secondary_element and adding back primary_element
+        # We need types where the TARGET (after forward transformation) is secondary_element
+        # These are the atoms that exist as secondary_element after forward pass
+        # BUT: if there are no such types (edge case), we need types that will CREATE
+        # primary_element in reverse - i.e., types involving primary_element
+        for mapping_str, type_num in self.mappingdict.items():
+            source_element, target_element = mapping_str.split("-")
+            if target_element == secondary_element:
+                reverse_swap_types.append(type_num)
+
+        # Edge case: if only 1 type maps to secondary_element, we need more types for swapping
+        # In this case, include types that involve primary_element
+        # Example: Mg→Mg+Al has types [Mg→Al(1), Mg→Mg(2)], reverse needs [1,2] not just [1]
+        if len(reverse_swap_types) < 2:
+            reverse_swap_types = []
+            for mapping_str, type_num in self.mappingdict.items():
+                source_element, target_element = mapping_str.split("-")
+                if (
+                    source_element == primary_element
+                    or target_element == primary_element
+                ):
+                    reverse_swap_types.append(type_num)
+
+        # Sort for consistency
+        forward_swap_types.sort()
+        reverse_swap_types.sort()
+
+        # If only 1 type exists after all attempts, swapping is not possible - return empty list
+        # LAMMPS atom/swap requires at least 2 types
+        if len(forward_swap_types) < 2:
+            forward_swap_types = []
+        if len(reverse_swap_types) < 2:
+            reverse_swap_types = []
+
+        return forward_swap_types, reverse_swap_types
 
     def write_structure(self, outfilename):
         """Write structure to LAMMPS data file with proper type declarations.
