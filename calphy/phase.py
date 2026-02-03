@@ -1080,19 +1080,22 @@ class Phase:
             % iteration
         )
 
-        # add swaps if n_swap is > 0
-        if self.calc.monte_carlo.n_swaps > 0:
+        # add swaps if n_swap is > 0 - forward sweep
+        if (
+            self.calc.monte_carlo.n_swaps > 0
+            and len(self.calc.monte_carlo.forward_swap_types) >= 2
+        ):
+            swap_str = " ".join(map(str, self.calc.monte_carlo.forward_swap_types))
             self.logger.info(
-                f"{self.calc.monte_carlo.n_swaps} swap moves are performed between {self.calc.monte_carlo.swap_types[0]} and {self.calc.monte_carlo.swap_types[1]} every {self.calc.monte_carlo.n_steps}"
+                f"{self.calc.monte_carlo.n_swaps} swap moves are performed between types [{swap_str}] every {self.calc.monte_carlo.n_steps}"
             )
             lmp.command(
-                "fix  swap all atom/swap %d %d %d ${ftemp} ke yes types %d %d"
+                "fix  swap all atom/swap %d %d %d ${ftemp} ke yes types %s"
                 % (
                     self.calc.monte_carlo.n_steps,
                     self.calc.monte_carlo.n_swaps,
                     np.random.randint(1, 10000),
-                    self.calc.monte_carlo.swap_types[0],
-                    self.calc.monte_carlo.swap_types[1],
+                    swap_str,
                 )
             )
 
@@ -1172,19 +1175,22 @@ class Phase:
                 % (self.calc.n_print_steps, iteration)
             )
 
-        # add swaps if n_swap is > 0
-        if self.calc.monte_carlo.n_swaps > 0:
+        # add swaps if n_swap is > 0 - backward sweep
+        if (
+            self.calc.monte_carlo.n_swaps > 0
+            and len(self.calc.monte_carlo.reverse_swap_types) >= 2
+        ):
+            swap_str = " ".join(map(str, self.calc.monte_carlo.reverse_swap_types))
             self.logger.info(
-                f"{self.calc.monte_carlo.n_swaps} swap moves are performed between {self.calc.monte_carlo.swap_types[1]} and {self.calc.monte_carlo.swap_types[0]} every {self.calc.monte_carlo.n_steps}"
+                f"{self.calc.monte_carlo.n_swaps} swap moves are performed between types [{swap_str}] every {self.calc.monte_carlo.n_steps}"
             )
             lmp.command(
-                "fix  swap all atom/swap %d %d %d ${btemp} ke yes types %d %d"
+                "fix  swap all atom/swap %d %d %d ${btemp} ke yes types %s"
                 % (
-                    self.calc.monte_carlo.n_steps,
+                    self.calc.monte_carlo.n_swaps,
                     self.calc.monte_carlo.n_swaps,
                     np.random.randint(1, 10000),
-                    self.calc.monte_carlo.swap_types[1],
-                    self.calc.monte_carlo.swap_types[0],
+                    swap_str,
                 )
             )
 

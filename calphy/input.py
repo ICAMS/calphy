@@ -149,10 +149,13 @@ class MonteCarlo(
     n_swaps: Annotated[
         int, Field(default=0, ge=0, description="number of swap moves to perform")
     ]
-    reverse_swap: Annotated[bool, Field(default=True)]
-    swap_types: Annotated[
-        conlist(int, min_length=2, max_length=2),
-        Field(default=[1, 2], description="which atoms to swap between"),
+    forward_swap_types: Annotated[
+        List[int],
+        Field(default=[], description="atom types to swap during forward integration"),
+    ]
+    reverse_swap_types: Annotated[
+        List[int],
+        Field(default=[], description="atom types to swap during reverse integration"),
     ]
 
 

@@ -308,20 +308,23 @@ class Alchemy(cph.Phase):
         )  # Driving-force obtained from NEHI procedure.
         lmp.command("variable        dU2 equal c_c2/atoms")
 
-        # add swaps if n_swap is > 0
-        if self.calc.monte_carlo.n_swaps > 0:
+        # add swaps if n_swap is > 0 - forward pass
+        if (
+            self.calc.monte_carlo.n_swaps > 0
+            and len(self.calc.monte_carlo.forward_swap_types) >= 2
+        ):
+            swap_str = " ".join(map(str, self.calc.monte_carlo.forward_swap_types))
             self.logger.info(
-                f"{self.calc.monte_carlo.n_swaps} swap moves are performed between {self.calc.monte_carlo.swap_types[0]} and {self.calc.monte_carlo.swap_types[1]} every {self.calc.monte_carlo.n_steps}"
+                f"{self.calc.monte_carlo.n_swaps} swap moves are performed between types [{swap_str}] every {self.calc.monte_carlo.n_steps}"
             )
             lmp.command(
-                "fix  swap all atom/swap %d %d %d %f ke no types %d %d"
+                "fix  swap all atom/swap %d %d %d %f ke no types %s"
                 % (
                     self.calc.monte_carlo.n_steps,
                     self.calc.monte_carlo.n_swaps,
                     np.random.randint(1, 10000),
                     self.calc._temperature,
-                    self.calc.monte_carlo.swap_types[0],
-                    self.calc.monte_carlo.swap_types[1],
+                    swap_str,
                 )
             )
             lmp.command("variable a equal f_swap[1]")
@@ -402,40 +405,25 @@ class Alchemy(cph.Phase):
         )  # Driving-force obtained from NEHI procedure.
         lmp.command("variable        dU2 equal c_c2/atoms")
 
-        # add swaps if n_swap is > 0
-        if self.calc.monte_carlo.n_swaps > 0:
-            if self.calc.monte_carlo.reverse_swap:
-                self.logger.info(
-                    f"{self.calc.monte_carlo.n_swaps} swap moves are performed between {self.calc.monte_carlo.swap_types[1]} and {self.calc.monte_carlo.swap_types[0]} every {self.calc.monte_carlo.n_steps}"
+        # add swaps if n_swap is > 0 - reverse pass
+        if (
+            self.calc.monte_carlo.n_swaps > 0
+            and len(self.calc.monte_carlo.reverse_swap_types) >= 2
+        ):
+            swap_str = " ".join(map(str, self.calc.monte_carlo.reverse_swap_types))
+            self.logger.info(
+                f"{self.calc.monte_carlo.n_swaps} swap moves are performed between types [{swap_str}] every {self.calc.monte_carlo.n_steps}"
+            )
+            lmp.command(
+                "fix  swap all atom/swap %d %d %d %f ke no types %s"
+                % (
+                    self.calc.monte_carlo.n_steps,
+                    self.calc.monte_carlo.n_swaps,
+                    np.random.randint(1, 10000),
+                    self.calc._temperature,
+                    swap_str,
                 )
-                lmp.command(
-                    "fix  swap all atom/swap %d %d %d %f ke no types %d %d"
-                    % (
-                        self.calc.monte_carlo.n_steps,
-                        self.calc.monte_carlo.n_swaps,
-                        np.random.randint(1, 10000),
-                        self.calc._temperature,
-                        self.calc.monte_carlo.swap_types[1],
-                        self.calc.monte_carlo.swap_types[0],
-                    )
-                )
-            else:
-                self.logger.info(
-                    f"{self.calc.monte_carlo.n_swaps} swap moves are performed between {self.calc.monte_carlo.swap_types[0]} and {self.calc.monte_carlo.swap_types[1]} every {self.calc.monte_carlo.n_steps}"
-                )
-                self.logger.info("note that swaps are not reversed")
-                lmp.command(
-                    "fix  swap all atom/swap %d %d %d %f ke no types %d %d"
-                    % (
-                        self.calc.monte_carlo.n_steps,
-                        self.calc.monte_carlo.n_swaps,
-                        np.random.randint(1, 10000),
-                        self.calc._temperature,
-                        self.calc.monte_carlo.swap_types[0],
-                        self.calc.monte_carlo.swap_types[1],
-                    )
-                )
-
+            )
             lmp.command("variable a equal f_swap[1]")
             lmp.command("variable b equal f_swap[2]")
             lmp.command(
