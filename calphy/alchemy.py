@@ -28,6 +28,7 @@ Notes
 import numpy as np
 import yaml
 import os
+import itertools
 
 from calphy.integrators import *
 import calphy.helpers as ph
@@ -313,32 +314,38 @@ class Alchemy(cph.Phase):
             self.calc.monte_carlo.n_swaps > 0
             and len(self.calc.monte_carlo.forward_swap_types) >= 2
         ):
-            swap_str = " ".join(map(str, self.calc.monte_carlo.forward_swap_types))
+            swap_types = self.calc.monte_carlo.forward_swap_types
+            swap_combos = list(itertools.combinations(swap_types, 2))
             self.logger.info(
-                f"{self.calc.monte_carlo.n_swaps} swap moves are performed between types [{swap_str}] every {self.calc.monte_carlo.n_steps}"
+                f"Forward pass: {self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
             )
-            lmp.command(
-                "fix  swap all atom/swap %d %d %d %f ke no types %s"
-                % (
-                    self.calc.monte_carlo.n_steps,
-                    self.calc.monte_carlo.n_swaps,
-                    np.random.randint(1, 10000),
-                    self.calc._temperature,
-                    swap_str,
+            for combo in swap_combos:
+                self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
+
+            for idx, (type1, type2) in enumerate(swap_combos):
+                swap_str = f"{type1} {type2}"
+                lmp.command(
+                    "fix  swap%d all atom/swap %d %d %d %f ke no types %s"
+                    % (
+                        idx,
+                        self.calc.monte_carlo.n_steps,
+                        self.calc.monte_carlo.n_swaps,
+                        np.random.randint(1, 10000),
+                        self.calc._temperature,
+                        swap_str,
+                    )
                 )
-            )
-            lmp.command("variable a equal f_swap[1]")
-            lmp.command("variable b equal f_swap[2]")
-            lmp.command(
-                'fix             swap2 all print 1 "${a} ${b} ${flambda}" screen no file swap.forward_%d.dat'
-                % iteration
-            )
+
+            # Use the first swap fix for output tracking
+            # lmp.command("variable a equal f_swap0[1]")
+            # lmp.command("variable b equal f_swap0[2]")
+            # lmp.command(
+            #    'fix             swap_print all print 1 "${a} ${b} ${flambda}" screen no file swap.forward_%d.dat'
+            #    % iteration
+            # )
 
         # Thermo output.
-        if self.calc.monte_carlo.n_swaps > 0:
-            lmp.command("thermo_style    custom step v_dU1 v_dU2 v_a v_b")
-        else:
-            lmp.command("thermo_style    custom step v_dU1 v_dU2")
+        lmp.command("thermo_style    custom step v_dU1 v_dU2")
         lmp.command("thermo          1000")
 
         # save the necessary items to a file: first step
@@ -355,8 +362,11 @@ class Alchemy(cph.Phase):
 
         # NEW SWAP
         if self.calc.monte_carlo.n_swaps > 0:
-            lmp.command("unfix swap")
-            lmp.command("unfix swap2")
+            swap_types = self.calc.monte_carlo.forward_swap_types
+            swap_combos = list(itertools.combinations(swap_types, 2))
+            for idx in range(len(swap_combos)):
+                lmp.command(f"unfix swap{idx}")
+            # lmp.command("unfix swap_print")
 
         lmp.command("pair_style      %s" % self.calc._pair_style_with_options[1])
         lmp.command("pair_coeff      %s" % self.calc.pair_coeff[1])
@@ -410,32 +420,38 @@ class Alchemy(cph.Phase):
             self.calc.monte_carlo.n_swaps > 0
             and len(self.calc.monte_carlo.reverse_swap_types) >= 2
         ):
-            swap_str = " ".join(map(str, self.calc.monte_carlo.reverse_swap_types))
+            swap_types = self.calc.monte_carlo.reverse_swap_types
+            swap_combos = list(itertools.combinations(swap_types, 2))
             self.logger.info(
-                f"{self.calc.monte_carlo.n_swaps} swap moves are performed between types [{swap_str}] every {self.calc.monte_carlo.n_steps}"
+                f"Reverse pass: {self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
             )
-            lmp.command(
-                "fix  swap all atom/swap %d %d %d %f ke no types %s"
-                % (
-                    self.calc.monte_carlo.n_steps,
-                    self.calc.monte_carlo.n_swaps,
-                    np.random.randint(1, 10000),
-                    self.calc._temperature,
-                    swap_str,
+            for combo in swap_combos:
+                self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
+
+            for idx, (type1, type2) in enumerate(swap_combos):
+                swap_str = f"{type1} {type2}"
+                lmp.command(
+                    "fix  swap%d all atom/swap %d %d %d %f ke no types %s"
+                    % (
+                        idx,
+                        self.calc.monte_carlo.n_steps,
+                        self.calc.monte_carlo.n_swaps,
+                        np.random.randint(1, 10000),
+                        self.calc._temperature,
+                        swap_str,
+                    )
                 )
-            )
-            lmp.command("variable a equal f_swap[1]")
-            lmp.command("variable b equal f_swap[2]")
-            lmp.command(
-                'fix             swap2 all print 1 "${a} ${b} ${blambda}" screen no file swap.backward_%d.dat'
-                % iteration
-            )
+
+            # Use the first swap fix for output tracking
+            # lmp.command("variable a equal f_swap0[1]")
+            # lmp.command("variable b equal f_swap0[2]")
+            # lmp.command(
+            #'fix             swap_print all print 1 "${a} ${b} ${blambda}" screen no file swap.backward_%d.dat'
+            #    % iteration
+            # )
 
         # Thermo output.
-        if self.calc.monte_carlo.n_swaps > 0:
-            lmp.command("thermo_style    custom step v_dU1 v_dU2 v_a v_b")
-        else:
-            lmp.command("thermo_style    custom step v_dU1 v_dU2")
+        lmp.command("thermo_style    custom step v_dU1 v_dU2")
         lmp.command("thermo          1000")
 
         # save the necessary items to a file: first step
@@ -451,7 +467,11 @@ class Alchemy(cph.Phase):
         lmp.command("uncompute       c2")
 
         if self.calc.monte_carlo.n_swaps > 0:
-            lmp.command("unfix  swap")
+            swap_types = self.calc.monte_carlo.reverse_swap_types
+            swap_combos = list(itertools.combinations(swap_types, 2))
+            for idx in range(len(swap_combos)):
+                lmp.command(f"unfix swap{idx}")
+            # lmp.command("unfix swap_print")
         lmp.close()
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")

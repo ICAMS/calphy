@@ -30,6 +30,7 @@ import yaml
 import copy
 import os
 import shutil
+import itertools
 
 import pyscal3.traj_process as ptp
 from calphy.integrators import *
@@ -1085,26 +1086,34 @@ class Phase:
             self.calc.monte_carlo.n_swaps > 0
             and len(self.calc.monte_carlo.forward_swap_types) >= 2
         ):
-            swap_str = " ".join(map(str, self.calc.monte_carlo.forward_swap_types))
+            swap_types = self.calc.monte_carlo.forward_swap_types
+            swap_combos = list(itertools.combinations(swap_types, 2))
             self.logger.info(
-                f"{self.calc.monte_carlo.n_swaps} swap moves are performed between types [{swap_str}] every {self.calc.monte_carlo.n_steps}"
+                f"Forward sweep: {self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
             )
-            lmp.command(
-                "fix  swap all atom/swap %d %d %d ${ftemp} ke yes types %s"
-                % (
-                    self.calc.monte_carlo.n_steps,
-                    self.calc.monte_carlo.n_swaps,
-                    np.random.randint(1, 10000),
-                    swap_str,
-                )
-            )
+            for combo in swap_combos:
+                self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
 
-            lmp.command("variable a equal f_swap[1]")
-            lmp.command("variable b equal f_swap[2]")
-            lmp.command(
-                'fix             swap2 all print 1 "${a} ${b} ${ftemp}" screen no file swap.rs.forward_%d.dat'
-                % iteration
-            )
+            for idx, (type1, type2) in enumerate(swap_combos):
+                swap_str = f"{type1} {type2}"
+                lmp.command(
+                    "fix  swap%d all atom/swap %d %d %d ${ftemp} ke yes types %s"
+                    % (
+                        idx,
+                        self.calc.monte_carlo.n_steps,
+                        self.calc.monte_carlo.n_swaps,
+                        np.random.randint(1, 10000),
+                        swap_str,
+                    )
+                )
+
+            # Use the first swap fix for output tracking
+            # lmp.command("variable a equal f_swap0[1]")
+            # lmp.command("variable b equal f_swap0[2]")
+            # lmp.command(
+            #    'fix             swap_print all print 1 "${a} ${b} ${ftemp}" screen no file swap.rs.forward_%d.dat'
+            #    % iteration
+            # )
 
         if self.calc.n_print_steps > 0:
             lmp.command(
@@ -1117,8 +1126,11 @@ class Phase:
         self.logger.info(f"Finished forward sweep: {iteration}")
 
         if self.calc.monte_carlo.n_swaps > 0:
-            lmp.command("unfix swap")
-            lmp.command("unfix swap2")
+            swap_types = self.calc.monte_carlo.forward_swap_types
+            swap_combos = list(itertools.combinations(swap_types, 2))
+            for idx in range(len(swap_combos)):
+                lmp.command(f"unfix swap{idx}")
+            # lmp.command("unfix swap_print")
 
         # unfix
         lmp.command("unfix             f3")
@@ -1180,34 +1192,45 @@ class Phase:
             self.calc.monte_carlo.n_swaps > 0
             and len(self.calc.monte_carlo.reverse_swap_types) >= 2
         ):
-            swap_str = " ".join(map(str, self.calc.monte_carlo.reverse_swap_types))
+            swap_types = self.calc.monte_carlo.reverse_swap_types
+            swap_combos = list(itertools.combinations(swap_types, 2))
             self.logger.info(
-                f"{self.calc.monte_carlo.n_swaps} swap moves are performed between types [{swap_str}] every {self.calc.monte_carlo.n_steps}"
+                f"Backward sweep: {self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
             )
-            lmp.command(
-                "fix  swap all atom/swap %d %d %d ${btemp} ke yes types %s"
-                % (
-                    self.calc.monte_carlo.n_swaps,
-                    self.calc.monte_carlo.n_swaps,
-                    np.random.randint(1, 10000),
-                    swap_str,
-                )
-            )
+            for combo in swap_combos:
+                self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
 
-            lmp.command("variable a equal f_swap[1]")
-            lmp.command("variable b equal f_swap[2]")
-            lmp.command(
-                'fix             swap2 all print 1 "${a} ${b} ${btemp}" screen no file swap.rs.backward_%d.dat'
-                % iteration
-            )
+            for idx, (type1, type2) in enumerate(swap_combos):
+                swap_str = f"{type1} {type2}"
+                lmp.command(
+                    "fix  swap%d all atom/swap %d %d %d ${btemp} ke yes types %s"
+                    % (
+                        idx,
+                        self.calc.monte_carlo.n_steps,
+                        self.calc.monte_carlo.n_swaps,
+                        np.random.randint(1, 10000),
+                        swap_str,
+                    )
+                )
+
+            # Use the first swap fix for output tracking
+            # lmp.command("variable a equal f_swap0[1]")
+            # lmp.command("variable b equal f_swap0[2]")
+            # lmp.command(
+            #    'fix             swap_print all print 1 "${a} ${b} ${btemp}" screen no file swap.rs.backward_%d.dat'
+            #    % iteration
+            # )
 
         self.logger.info(f"Started backward sweep: {iteration}")
         lmp.command("run               %d" % self.calc._n_sweep_steps)
         self.logger.info(f"Finished backward sweep: {iteration}")
 
         if self.calc.monte_carlo.n_swaps > 0:
-            lmp.command("unfix swap")
-            lmp.command("unfix swap2")
+            swap_types = self.calc.monte_carlo.reverse_swap_types
+            swap_combos = list(itertools.combinations(swap_types, 2))
+            for idx in range(len(swap_combos)):
+                lmp.command(f"unfix swap{idx}")
+            # lmp.command("unfix swap_print")
 
         lmp.command("unfix             f3")
 

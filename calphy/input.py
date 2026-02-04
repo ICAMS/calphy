@@ -49,7 +49,7 @@ from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 
 
 def _check_equal(val):
@@ -156,6 +156,13 @@ class MonteCarlo(
     reverse_swap_types: Annotated[
         List[int],
         Field(default=[], description="atom types to swap during reverse integration"),
+    ]
+    allow_all_swaps: Annotated[
+        bool,
+        Field(
+            default=False,
+            description="allow swapping between all atom types including fictitious ones",
+        ),
     ]
 
 

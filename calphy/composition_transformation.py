@@ -463,12 +463,18 @@ class CompositionTransformation:
 
         return pc_old, pc_new
 
-    def get_swap_types(self):
+    def get_swap_types(self, allow_all_swaps=False):
         """
         Get swapping types for configurational entropy calculation.
 
         Returns two separate lists for forward and reverse passes to ensure
         proper ergodicity in thermodynamic integration.
+
+        Parameters
+        ----------
+        allow_all_swaps : bool, optional
+            If True, return all atom types for swapping (including fictitious ones).
+            If False (default), filter types by element as described below.
 
         Forward pass: Atoms of the element being REMOVED should be able to
                       swap with each other (e.g., Mg types in Mg→Al enrichment)
@@ -488,6 +494,7 @@ class CompositionTransformation:
         Enrichment (Mg→Al): Mappings [Al-Al(1), Mg-Al(2), Mg-Mg(3)]
             forward: [2, 3] - swap Mg types (Mg being removed)
             reverse: [1, 2] - swap Al types (Al being added back)
+            with allow_all_swaps=True: [1, 2, 3] for both forward and reverse
 
         100% transformation (Mg→Al): Mappings [Mg-Al(1)]
             forward: [] - only one type, no swapping possible
@@ -497,6 +504,14 @@ class CompositionTransformation:
             forward: [1, 2] - swap Mg types (Mg being removed)
             reverse: [] - only one Al type exists, no swapping possible
         """
+        # If allow_all_swaps is True, return all types from mappingdict
+        if allow_all_swaps:
+            all_types = sorted(list(self.mappingdict.values()))
+            if len(all_types) >= 2:
+                return all_types, all_types
+            else:
+                return [], []
+
         forward_swap_types = []
         reverse_swap_types = []
 
