@@ -157,6 +157,13 @@ class MonteCarlo(
         List[int],
         Field(default=[], description="atom types to swap during reverse integration"),
     ]
+    allow_all_swaps: Annotated[
+        bool,
+        Field(
+            default=False,
+            description="allow swapping between all atom types including fictitious ones",
+        ),
+    ]
 
 
 class CompositionScaling(BaseModel, title="Composition scaling input options"):

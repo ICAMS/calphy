@@ -472,7 +472,9 @@ def routine_composition_scaling(job):
     # we set up comp scaling first
     job.logger.info("Calculating composition scaling")
     comp = CompositionTransformation(job.calc)
-    forward_swap_types, reverse_swap_types = comp.get_swap_types()
+    forward_swap_types, reverse_swap_types = comp.get_swap_types(
+        allow_all_swaps=job.calc.monte_carlo.allow_all_swaps
+    )
     job.calc.monte_carlo.forward_swap_types = forward_swap_types
     job.calc.monte_carlo.reverse_swap_types = reverse_swap_types
     job.logger.info(f"Forward swap types: {forward_swap_types}")
