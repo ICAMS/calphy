@@ -317,8 +317,10 @@ class Alchemy(cph.Phase):
             swap_types = self.calc.monte_carlo.forward_swap_types
             swap_combos = list(itertools.combinations(swap_types, 2))
             self.logger.info(
-                f"{self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
+                f"Forward pass: {self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
             )
+            for combo in swap_combos:
+                self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
 
             for idx, (type1, type2) in enumerate(swap_combos):
                 swap_str = f"{type1} {type2}"
@@ -424,8 +426,10 @@ class Alchemy(cph.Phase):
             swap_types = self.calc.monte_carlo.reverse_swap_types
             swap_combos = list(itertools.combinations(swap_types, 2))
             self.logger.info(
-                f"{self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
+                f"Reverse pass: {self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
             )
+            for combo in swap_combos:
+                self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
 
             for idx, (type1, type2) in enumerate(swap_combos):
                 swap_str = f"{type1} {type2}"
