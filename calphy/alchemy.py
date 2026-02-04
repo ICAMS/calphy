@@ -345,10 +345,7 @@ class Alchemy(cph.Phase):
             # )
 
         # Thermo output.
-        if self.calc.monte_carlo.n_swaps > 0:
-            lmp.command("thermo_style    custom step v_dU1 v_dU2 v_a v_b")
-        else:
-            lmp.command("thermo_style    custom step v_dU1 v_dU2")
+        lmp.command("thermo_style    custom step v_dU1 v_dU2")
         lmp.command("thermo          1000")
 
         # save the necessary items to a file: first step
@@ -454,10 +451,7 @@ class Alchemy(cph.Phase):
             # )
 
         # Thermo output.
-        if self.calc.monte_carlo.n_swaps > 0:
-            lmp.command("thermo_style    custom step v_dU1 v_dU2 v_a v_b")
-        else:
-            lmp.command("thermo_style    custom step v_dU1 v_dU2")
+        lmp.command("thermo_style    custom step v_dU1 v_dU2")
         lmp.command("thermo          1000")
 
         # save the necessary items to a file: first step
