@@ -864,7 +864,23 @@ def load_job(filename):
     return job
 
 
-def read_inputfile(file):
+def read_inputfile(file, validate=False):
+    """Read input file and parse calculations.
+
+    Parameters
+    ----------
+    file : str
+        Path to input YAML file
+    validate : bool, optional
+        If True, perform full Pydantic validation (structure creation, etc.).
+        If False, skip expensive validation (faster, for job submission).
+        Default is False.
+
+    Returns
+    -------
+    list
+        List of Calculation objects
+    """
     if not os.path.exists(file):
         raise FileNotFoundError(f"Input file {file} not found.")
 
@@ -876,11 +892,11 @@ def read_inputfile(file):
         outfile = _convert_legacy_inputfile(file)
     else:
         outfile = file
-    calculations = _read_inputfile(outfile)
+    calculations = _read_inputfile(outfile, validate=validate)
     return calculations
 
 
-def _read_inputfile(file):
+def _read_inputfile(file, validate=False):
     with open(file, "r") as fin:
         data = yaml.safe_load(fin)
     calculations = []
@@ -889,7 +905,12 @@ def _read_inputfile(file):
         calc["inputfile"] = file
         if "pressure" in calc.keys():
             calc["pressure"] = _to_none(calc["pressure"])
-        calculations.append(Calculation(**calc))
+        if validate:
+            # Full validation - used when actually running calculations
+            calculations.append(Calculation(**calc))
+        else:
+            # Skip expensive validation - for fast parsing
+            calculations.append(Calculation.model_construct(**calc))
     return calculations
 
 
