@@ -54,7 +54,7 @@ def run_jobs(inputfile, validate=False):
     # Step 2 - check input structure of calc and create lattice if needed
     # Step 3 - Submit job
 
-    # read the input file without validation (fast parsing for job submission)
+    # Use the validate parameter - now create_identifier() works with both modes
     calculations = read_inputfile(inputfile, validate=validate)
     print("Total number of %d calculations found" % len(calculations))
 

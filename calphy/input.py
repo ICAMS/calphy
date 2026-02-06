@@ -792,12 +792,32 @@ class Calculation(BaseModel, title="Main input class"):
         """
         # lattice processed
         prefix = self.mode
-        ts = int(self._temperature)
-        if self._pressure is None:
-            ps = "None"
+
+        # Handle both validated and non-validated objects
+        if self._temperature is not None:
+            ts = int(self._temperature)
         else:
+            # Fallback for non-validated objects
+            temp = (
+                self.temperature
+                if np.isscalar(self.temperature)
+                else self.temperature[0]
+            )
+            ts = int(temp)
+
+        if hasattr(self, "_pressure") and self._pressure is not None:
             ps = "%d" % (int(self._pressure))
-        l = self._original_lattice
+        elif self.pressure is None:
+            ps = "None"
+        elif np.isscalar(self.pressure):
+            ps = "%d" % (int(self.pressure))
+        else:
+            ps = "%d" % (int(self.pressure[0]))
+
+        if hasattr(self, "_original_lattice") and self._original_lattice:
+            l = self._original_lattice
+        else:
+            l = self.lattice
         l = l.split("/")
         l = l[-1]
 
