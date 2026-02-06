@@ -33,6 +33,20 @@ import argparse as ap
 from calphy import __version__ as version
 
 
+def _getattr_safe(obj, attr):
+    """Safely get attribute whether obj is Pydantic model or dict."""
+    if isinstance(obj, dict):
+        return obj.get(attr)
+    return getattr(obj, attr)
+
+
+def _to_dict(obj):
+    """Convert to dict whether obj is Pydantic model or dict."""
+    if isinstance(obj, dict):
+        return obj
+    return obj.__dict__
+
+
 def run_jobs(inputfile, validate=False):
     """
     Spawn jobs which are submitted to cluster
@@ -42,7 +56,8 @@ def run_jobs(inputfile, validate=False):
     options : dict
         dict containing input options
     validate : bool
-        if True, perform full validation during parsing
+        if True, perform full validation during parsing (slower).
+        if False, uses fast parsing with dict-like access.
 
     Returns
     -------
@@ -54,21 +69,29 @@ def run_jobs(inputfile, validate=False):
     # Step 2 - check input structure of calc and create lattice if needed
     # Step 3 - Submit job
 
-    # Use the validate parameter - now create_identifier() works with both modes
+    # Fast parsing by default - use helper functions for attribute access
     calculations = read_inputfile(inputfile, validate=validate)
     print("Total number of %d calculations found" % len(calculations))
 
     for count, calc in enumerate(calculations):
-        if calc.script_mode:
+        script_mode = _getattr_safe(calc, "script_mode")
+        queue = _getattr_safe(calc, "queue")
+
+        if script_mode:
             identistring = calc.create_identifier()
             scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
             errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
-            if calc.queue.scheduler == "local":
-                scheduler = pq.Local(calc.queue.__dict__, cores=calc.queue.cores)
-            elif calc.queue.scheduler == "slurm":
-                scheduler = pq.SLURM(calc.queue.__dict__, cores=calc.queue.cores)
-            elif calc.queue.scheduler == "sge":
-                scheduler = pq.SGE(calc.queue.__dict__, cores=calc.queue.cores)
+
+            scheduler_type = _getattr_safe(queue, "scheduler")
+            queue_dict = _to_dict(queue)
+            cores = _getattr_safe(queue, "cores")
+
+            if scheduler_type == "local":
+                scheduler = pq.Local(queue_dict, cores=cores)
+            elif scheduler_type == "slurm":
+                scheduler = pq.SLURM(queue_dict, cores=cores)
+            elif scheduler_type == "sge":
+                scheduler = pq.SGE(queue_dict, cores=cores)
             else:
                 raise ValueError("Unknown scheduler")
 
@@ -81,11 +104,15 @@ def run_jobs(inputfile, validate=False):
 
             command = f"cd {os.path.join(os.getcwd(), identistring)}"
             scheduler.queueoptions["commands"].append(command)
-            if calc.queue.cores > 1:
+
+            mpi_exec = _getattr_safe(calc, "mpi_executable")
+            lammps_exec = _getattr_safe(calc, "lammps_executable")
+
+            if cores > 1:
                 # here turn on mpi
-                command = f"{calc.mpi_executable} -np {calc.queue.cores} {calc.lammps_executable} -in averaging.lmp"
+                command = f"{mpi_exec} -np {cores} {lammps_exec} -in averaging.lmp"
             else:
-                command = f"{calc.lammps_executable} -in averaging.lmp"
+                command = f"{lammps_exec} -in averaging.lmp"
             scheduler.queueoptions["commands"].append(command)
             scheduler.queueoptions["commands"].append("cd ..")
 
@@ -97,11 +124,11 @@ def run_jobs(inputfile, validate=False):
 
             command = f"cd {os.path.join(os.getcwd(), identistring)}"
             scheduler.queueoptions["commands"].append(command)
-            if calc.queue.cores > 1:
+            if cores > 1:
                 # here turn on mpi
-                command = f"{calc.mpi_executable} -np {calc.queue.cores} {calc.lammps_executable} -in integration.lmp"
+                command = f"{mpi_exec} -np {cores} {lammps_exec} -in integration.lmp"
             else:
-                command = f"{calc.lammps_executable} -in integration.lmp"
+                command = f"{lammps_exec} -in integration.lmp"
             scheduler.queueoptions["commands"].append(command)
             scheduler.queueoptions["commands"].append("cd ..")
 
@@ -119,12 +146,17 @@ def run_jobs(inputfile, validate=False):
             # the below part assigns the schedulers
             # now we have to write the submission scripts for the job
             # parse Queue and import module
-            if calc.queue.scheduler == "local":
-                scheduler = pq.Local(calc.queue.__dict__, cores=calc.queue.cores)
-            elif calc.queue.scheduler == "slurm":
-                scheduler = pq.SLURM(calc.queue.__dict__, cores=calc.queue.cores)
-            elif calc.queue.scheduler == "sge":
-                scheduler = pq.SGE(calc.queue.__dict__, cores=calc.queue.cores)
+
+            scheduler_type = _getattr_safe(queue, "scheduler")
+            queue_dict = _to_dict(queue)
+            cores = _getattr_safe(queue, "cores")
+
+            if scheduler_type == "local":
+                scheduler = pq.Local(queue_dict, cores=cores)
+            elif scheduler_type == "slurm":
+                scheduler = pq.SLURM(queue_dict, cores=cores)
+            elif scheduler_type == "sge":
+                scheduler = pq.SGE(queue_dict, cores=cores)
             else:
                 raise ValueError("Unknown scheduler")
 
