@@ -160,7 +160,7 @@ class MonteCarlo(
     allow_all_swaps: Annotated[
         bool,
         Field(
-            default=False,
+            default=True,
             description="allow swapping between all atom types including fictitious ones",
         ),
     ]
