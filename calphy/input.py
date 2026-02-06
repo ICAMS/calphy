@@ -864,7 +864,7 @@ def load_job(filename):
     return job
 
 
-def read_inputfile(file, validate=False):
+def read_inputfile(file, validate=True):
     """Read input file and parse calculations.
 
     Parameters
@@ -874,7 +874,7 @@ def read_inputfile(file, validate=False):
     validate : bool, optional
         If True, perform full Pydantic validation (structure creation, etc.).
         If False, skip expensive validation (faster, for job submission).
-        Default is False.
+        Default is True for backward compatibility and to ensure tests pass.
 
     Returns
     -------

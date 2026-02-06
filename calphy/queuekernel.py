@@ -160,13 +160,24 @@ def main():
         calc = calculations[kernel]
     else:
         # Fast mode: parse without validation, then validate only the one we need
-        calculations = read_inputfile(args["input"], validate=False)
-        # Get the specific calculation and validate it
-        calc_data = calculations[kernel]
-        # Reconstruct with validation for the one we'll actually run
+        # Re-read the YAML to get clean data for just the kernel we need
+        with open(args["input"], "r") as fin:
+            data = yaml.safe_load(fin)
+
+        calc_data = data["calculations"][kernel]
+        calc_data["kernel"] = kernel
+        calc_data["inputfile"] = args["input"]
+
+        # Handle pressure conversion
+        if "pressure" in calc_data.keys():
+            from calphy.input import _to_none
+
+            calc_data["pressure"] = _to_none(calc_data["pressure"])
+
+        # Now validate this single calculation
         from calphy.input import Calculation
 
-        calc = Calculation(**calc_data.__dict__)
+        calc = Calculation(**calc_data)
 
     # format and parse the arguments
     simfolder = calc.create_folders()

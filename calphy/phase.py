@@ -58,7 +58,7 @@ class Phase:
         self.calc = copy.deepcopy(calculation)
 
         # serialise input
-        indict = {"calculations": [self.calc.dict()]}
+        indict = {"calculations": [self.calc.model_dump()]}
         with open(os.path.join(simfolder, "input_file.yaml"), "w") as fout:
             yaml.safe_dump(indict, fout)
 
