@@ -909,9 +909,9 @@ class Phase:
                 self.publications.append("10.1016/j.commatsci.2018.12.029")
                 self.publications.append("10.1063/1.4967775")
 
-    def reversible_scaling(self, iteration=1):
+    def _reversible_scaling_forward(self, iteration=1):
         """
-        Perform reversible scaling calculation in NPT
+        Perform forward sweep of reversible scaling calculation in NPT
 
         Parameters
         ----------
@@ -921,11 +921,16 @@ class Phase:
         Returns
         -------
         None
+
+        Notes
+        -----
+        This method performs:
+        1. Initial equilibration at T0
+        2. Equilibration with constrained center of mass
+        3. Forward sweep (lambda: 1 -> T0/Tf)
+        4. Saves final configuration to conf.ts.forward_{iteration}.data
         """
-        self.logger.info(f"Starting temperature sweep cycle: {iteration}")
-        solid = False
-        if self.calc.reference_phase == "solid":
-            solid = True
+        self.logger.info(f"Starting forward temperature sweep cycle: {iteration}")
 
         t0 = self.calc._temperature
         tf = self.calc._temperature_stop
@@ -1134,13 +1139,116 @@ class Phase:
 
         # unfix
         lmp.command("unfix             f3")
-        # lmp.command("unfix             f1")
 
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
 
-        # switch potential
+        # Save configuration at end of forward sweep
+        conf_forward = os.path.join(self.simfolder, f"conf.ts.forward_{iteration}.data")
+        lmp.command(f"write_data        {conf_forward}")
+        self.logger.info(
+            f"Saved forward sweep configuration to conf.ts.forward_{iteration}.data"
+        )
+
+        # close the object
+        lmp.close()
+
+    def _reversible_scaling_backward(self, iteration=1):
+        """
+        Perform backward sweep of reversible scaling calculation in NPT
+
+        Parameters
+        ----------
+        iteration : int, optional
+            iteration of the calculation. Default 1
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        This method performs:
+        1. Loads configuration from conf.ts.forward_{iteration}.data
+        2. Middle equilibration at Tf
+        3. Phase stability check
+        4. Backward sweep (lambda: T0/Tf -> 1)
+        """
+        self.logger.info(f"Starting backward temperature sweep cycle: {iteration}")
+        solid = False
+        if self.calc.reference_phase == "solid":
+            solid = True
+
+        t0 = self.calc._temperature
+        tf = self.calc._temperature_stop
+        li = 1
+        lf = t0 / tf
+        pi = self.calc._pressure
+        pf = lf * pi
+
+        # create lammps object
+        lmp = ph.create_object(
+            self.cores,
+            self.simfolder,
+            self.calc.md.timestep,
+            self.calc.md.cmdargs,
+            self.calc.md.init_commands,
+        )
+
+        lmp.command("echo              log")
+        lmp.command("variable          li equal %f" % li)
+        lmp.command("variable          lf equal %f" % lf)
+
+        lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+
+        # read in conf file from forward sweep
+        conf = os.path.join(self.simfolder, f"conf.ts.forward_{iteration}.data")
+        lmp = ph.read_data(lmp, conf)
+
+        # set up potential
+        lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+        lmp = ph.set_mass(lmp, self.calc)
+
+        # remap the box to get the correct pressure
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+
+        # now fix com
+        lmp.command("variable         xcm equal xcm(all,x)")
+        lmp.command("variable         ycm equal xcm(all,y)")
+        lmp.command("variable         zcm equal xcm(all,z)")
+
+        if self.calc.npt:
+            lmp.command(
+                "fix               f1 all npt temp %f %f %f %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"
+                % (
+                    t0,
+                    t0,
+                    self.calc.md.thermostat_damping[1],
+                    self.iso,
+                    pi,
+                    pi,
+                    self.calc.md.barostat_damping[1],
+                )
+            )
+        else:
+            lmp.command(
+                "fix               f1 all nvt temp %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"
+                % (t0, t0, self.calc.md.thermostat_damping[1])
+            )
+
+        # compute com and modify fix
+        lmp.command("compute           tcm all temp/com")
+        lmp.command("fix_modify        f1 temp tcm")
+
+        lmp.command("variable          step    equal step")
+        lmp.command("variable          dU      equal c_thermo_pe/atoms")
+        lmp.command("thermo_style      custom step pe c_tcm press vol")
+        lmp.command("thermo            10000")
+
+        # middle equilibration
+        self.logger.info(f"Starting middle equilibration: {iteration}")
         lmp.command("run               %d" % self.calc.n_equilibration_steps)
+        self.logger.info(f"Finished middle equilibration: {iteration}")
 
         # check melting or freezing
         if not self.calc.script_mode:
@@ -1163,6 +1271,30 @@ class Phase:
         )
         lmp.command(
             f"variable        btemp equal v_flambda*{self.calc._temperature_stop}"
+        )
+
+        # set up potential
+        pc = self.calc.pair_coeff[0]
+        pcraw = pc.split()
+        pcnew1 = " ".join(
+            [
+                *pcraw[:2],
+                *[
+                    self.calc._pair_style_names[0],
+                ],
+                "1",
+                *pcraw[2:],
+            ]
+        )
+        pcnew2 = " ".join(
+            [
+                *pcraw[:2],
+                *[
+                    self.calc._pair_style_names[0],
+                ],
+                "2",
+                *pcraw[2:],
+            ]
         )
 
         lmp.command(
@@ -1239,12 +1371,40 @@ class Phase:
 
         # close the object
         lmp.close()
+
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         if os.path.exists(logfile):
             os.rename(
                 logfile, os.path.join(self.simfolder, "reversible_scaling.log.lammps")
             )
+
+    def reversible_scaling(self, iteration=1):
+        """
+        Perform reversible scaling calculation in NPT
+
+        Parameters
+        ----------
+        iteration : int, optional
+            iteration of the calculation. Default 1
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        This method is a wrapper that calls _reversible_scaling_forward and
+        _reversible_scaling_backward in sequence to perform the complete
+        reversible scaling cycle.
+        """
+        self.logger.info(f"Starting temperature sweep cycle: {iteration}")
+
+        # Forward sweep
+        self._reversible_scaling_forward(iteration=iteration)
+
+        # Backward sweep
+        self._reversible_scaling_backward(iteration=iteration)
 
         self.logger.info("Please cite the following publications:")
         if self.calc.mode == "mts":
