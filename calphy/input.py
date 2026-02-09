@@ -140,6 +140,40 @@ class UFMP(BaseModel, title="UFM potential input options"):
     sigma: Annotated[float, Field(default=1.5)]
 
 
+class StructuralMonitoring(
+    BaseModel, title="Options for structural monitoring during reversible scaling"
+):
+    enabled: Annotated[
+        bool,
+        Field(
+            default=False,
+            description="Enable structural monitoring using FrameAccumulator",
+        ),
+    ]
+    check_interval: Annotated[
+        int,
+        Field(
+            default=1000,
+            gt=0,
+            description="Check structure every N steps during sweeps",
+        ),
+    ]
+    l_values: Annotated[
+        List[int],
+        Field(
+            default=[4, 5, 6, 8, 10],
+            description="Steinhardt parameter orders for structural descriptor",
+        ),
+    ]
+    cutoff: Annotated[
+        float,
+        Field(
+            default=0,
+            description="Cutoff radius in Angstroms for neighbor search",
+        ),
+    ]
+
+
 class MonteCarlo(
     BaseModel, title="Options for Monte Carlo moves during particle swap moves"
 ):
@@ -261,6 +295,7 @@ class MaterialsProject(BaseModel, title="Input options for materials project"):
 class Calculation(BaseModel, title="Main input class"):
     monte_carlo: Optional[MonteCarlo] = MonteCarlo()
     composition_scaling: Optional[CompositionScaling] = CompositionScaling()
+    structural_monitoring: Optional[StructuralMonitoring] = StructuralMonitoring()
     md: Optional[MD] = MD()
     nose_hoover: Optional[NoseHoover] = NoseHoover()
     berendsen: Optional[Berendsen] = Berendsen()

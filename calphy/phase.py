@@ -31,12 +31,23 @@ import copy
 import os
 import shutil
 import itertools
+import warnings
 
 import pyscal3.traj_process as ptp
 from calphy.integrators import *
 import calphy.helpers as ph
 from calphy.errors import *
 from calphy.input import generate_metadata
+
+# Import FrameAccumulator for structural monitoring
+try:
+    from structid import FrameAccumulator
+    from structid.descriptors import SteinhardtDescriptor
+    from structid.detectors import GPRDetector
+
+    STRUCTID_AVAILABLE = True
+except ImportError:
+    STRUCTID_AVAILABLE = False
 
 
 class Phase:
@@ -1031,9 +1042,86 @@ class Phase:
             % (t0, np.random.randint(1, 10000))
         )
 
+        # Initialize FrameAccumulator if structural monitoring is enabled
+        accumulator = None
+        pretrain_dump = None
+        if self.calc.structural_monitoring.enabled:
+            if not STRUCTID_AVAILABLE:
+                self.logger.warning(
+                    "Structural monitoring requested but structid is not available. "
+                    "Install structid to enable this feature."
+                )
+            else:
+                self.logger.info(
+                    "Initializing structural monitoring with FrameAccumulator"
+                )
+                self.logger.info(
+                    f"Steinhardt parameters: l_values={self.calc.structural_monitoring.l_values}"
+                )
+                self.logger.info(
+                    f"Neighbor cutoff: {self.calc.structural_monitoring.cutoff} Å"
+                )
+                self.logger.info(
+                    f"Check interval: every {self.calc.structural_monitoring.check_interval} steps"
+                )
+
+                # Create descriptor and detector
+                descriptor = SteinhardtDescriptor(
+                    l_values=tuple(self.calc.structural_monitoring.l_values),
+                    cutoff=self.calc.structural_monitoring.cutoff,
+                )
+                detector = GPRDetector()
+
+                # Initialize accumulator
+                accumulator = FrameAccumulator(descriptor=descriptor, detector=detector)
+
+                # Set up dump for equilibration trajectory to pre-train
+                pretrain_dump = os.path.join(self.simfolder, "_tmp_pretrain_traj.dump")
+                check_interval = self.calc.structural_monitoring.check_interval
+                lmp.command(
+                    f"dump _pretrain all custom {check_interval} {pretrain_dump} id type x y z"
+                )
+                self.logger.info(
+                    f"Dumping equilibration trajectory every {check_interval} steps for pre-training"
+                )
+
         self.logger.info(f"Starting equilibration with constrained com: {iteration}")
         lmp.command("run               %d" % self.calc.n_equilibration_steps)
         self.logger.info(f"Finished equilibration with constrained com: {iteration}")
+
+        # Pre-train FrameAccumulator on equilibration trajectory
+        if accumulator is not None and pretrain_dump is not None:
+            lmp.command("undump _pretrain")
+
+            if os.path.exists(pretrain_dump):
+                from ase.io import read
+
+                try:
+                    self.logger.info(
+                        "Pre-training FrameAccumulator on equilibration trajectory"
+                    )
+                    # Read all frames from equilibration
+                    traj = read(pretrain_dump, format="lammps-dump-text", index=":")
+                    self.logger.info(
+                        f"Read {len(traj)} frames from equilibration trajectory"
+                    )
+
+                    # Pre-train on all frames
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings(
+                            "ignore", category=Warning, module="sklearn"
+                        )
+                        for atoms in traj:
+                            accumulator.calculate_single_frame(atoms)
+
+                    self.logger.info("FrameAccumulator pre-trained successfully")
+                except Exception as e:
+                    self.logger.warning(f"Failed to pre-train FrameAccumulator: {e}")
+                    accumulator = None
+                finally:
+                    # Clean up trajectory file
+                    if os.path.exists(pretrain_dump):
+                        os.remove(pretrain_dump)
 
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
@@ -1081,11 +1169,6 @@ class Phase:
         lmp.command("pair_coeff       %s" % pcnew1)
         lmp.command("pair_coeff       %s" % pcnew2)
 
-        lmp.command(
-            'fix               f3 all print 1 "${dU} $(press) $(vol) ${flambda}" screen no file ts.forward_%d.dat'
-            % iteration
-        )
-
         # add swaps if n_swap is > 0 - forward sweep
         if (
             self.calc.monte_carlo.n_swaps > 0
@@ -1126,8 +1209,110 @@ class Phase:
                 % (self.calc.n_print_steps, iteration)
             )
 
+        # Reset timestep to 0 before sweep starts for ramp() and run start/stop to work correctly
+        lmp.command("reset_timestep 0")
+
         self.logger.info(f"Started forward sweep: {iteration}")
-        lmp.command("run               %d" % self.calc._n_sweep_steps)
+
+        # Run forward sweep with optional structural monitoring
+        if accumulator is not None and self.calc.structural_monitoring.enabled:
+            check_interval = self.calc.structural_monitoring.check_interval
+            n_checks = self.calc._n_sweep_steps // check_interval
+
+            temp_dump = os.path.join(self.simfolder, "_tmp_monitor.dump")
+
+            # Define total range for ramp() - same for all run segments
+            total_steps = self.calc._n_sweep_steps
+
+            for check_idx in range(n_checks):
+                # Create fix print for this cycle
+                lmp.command(
+                    'fix               f3 all print 1 "${dU} $(press) $(vol) ${flambda}" screen no file ts.forward_%d_cycle_%d.dat'
+                    % (iteration, check_idx)
+                )
+                
+                # All run commands use same start/stop for ramp() to work correctly
+                lmp.command(f"run {check_interval} start 0 stop {total_steps}")
+                
+                # Unfix to avoid duplicates at boundaries
+                lmp.command("unfix f3")
+
+                # Dump current snapshot without running steps
+                lmp.command(
+                    f"write_dump all custom {temp_dump} id type x y z modify sort id"
+                )
+
+                # Analyze structure
+                if os.path.exists(temp_dump):
+                    from ase.io import read
+
+                    try:
+                        atoms = read(temp_dump, format="lammps-dump-text")
+                        # Suppress sklearn convergence warnings during GPR fitting
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings(
+                                "ignore", category=Warning, module="sklearn"
+                            )
+                            is_consistent = accumulator.calculate_single_frame(atoms)
+
+                        if not is_consistent:
+                            current_step = (check_idx + 1) * check_interval
+                            self.logger.warning(
+                                f"⚠️  STRUCTURAL CHANGE DETECTED at step {current_step} "
+                                f"during forward sweep (iteration {iteration})"
+                            )
+                            self.logger.warning(
+                                "The system structure has changed significantly from the equilibrium state."
+                            )
+                    except Exception as e:
+                        self.logger.warning(
+                            f"Failed to monitor structure at check {check_idx}: {e}"
+                        )
+                    finally:
+                        # Clean up temporary file
+                        if os.path.exists(temp_dump):
+                            os.remove(temp_dump)
+
+            # Run any remaining steps
+            remaining_steps = self.calc._n_sweep_steps - (n_checks * check_interval)
+            if remaining_steps > 0:
+                # Create fix print for remaining steps
+                lmp.command(
+                    'fix               f3 all print 1 "${dU} $(press) $(vol) ${flambda}" screen no file ts.forward_%d_cycle_%d.dat'
+                    % (iteration, n_checks)
+                )
+                # Use same start/stop range as other segments
+                lmp.command(f"run {remaining_steps} start 0 stop {total_steps}")
+                lmp.command("unfix f3")
+            
+            # Merge all cycle files into final output
+            self.logger.info(f"Merging cycle files into ts.forward_{iteration}.dat")
+            final_file = os.path.join(self.simfolder, f"ts.forward_{iteration}.dat")
+            with open(final_file, 'w') as outfile:
+                # Write header from first cycle
+                cycle_file = os.path.join(self.simfolder, f"ts.forward_{iteration}_cycle_0.dat")
+                with open(cycle_file, 'r') as infile:
+                    outfile.write(infile.read())
+                # os.remove(cycle_file)  # Keep for debugging
+                
+                # Append subsequent cycles, skipping header and first data line (duplicate)
+                total_cycles = n_checks + (1 if remaining_steps > 0 else 0)
+                for cycle_idx in range(1, total_cycles):
+                    cycle_file = os.path.join(self.simfolder, f"ts.forward_{iteration}_cycle_{cycle_idx}.dat")
+                    with open(cycle_file, 'r') as infile:
+                        lines = infile.readlines()
+                        # Skip first two lines: header + duplicate first data line
+                        outfile.writelines(lines[2:])
+                    # os.remove(cycle_file)  # Keep for debugging
+        else:
+            # Standard run without monitoring - single fix print
+            lmp.command(
+                'fix               f3 all print 1 "${dU} $(press) $(vol) ${flambda}" screen no file ts.forward_%d.dat'
+                % iteration
+            )
+            lmp.command("run               %d" % self.calc._n_sweep_steps)
+            lmp.command("unfix             f3")
+
         self.logger.info(f"Finished forward sweep: {iteration}")
 
         if self.calc.monte_carlo.n_swaps > 0:
@@ -1135,10 +1320,6 @@ class Phase:
             swap_combos = list(itertools.combinations(swap_types, 2))
             for idx in range(len(swap_combos)):
                 lmp.command(f"unfix swap{idx}")
-            # lmp.command("unfix swap_print")
-
-        # unfix
-        lmp.command("unfix             f3")
 
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
@@ -1152,6 +1333,14 @@ class Phase:
 
         # close the object
         lmp.close()
+
+        # Preserve log file
+        logfile = os.path.join(self.simfolder, "log.lammps")
+        if os.path.exists(logfile):
+            os.rename(
+                logfile,
+                os.path.join(self.simfolder, "reversible_scaling_forward.log.lammps"),
+            )
 
     def _reversible_scaling_backward(self, iteration=1):
         """
@@ -1353,6 +1542,9 @@ class Phase:
             #    % iteration
             # )
 
+        # Reset timestep to 0 before sweep starts for ramp() to work correctly
+        lmp.command("reset_timestep 0")
+
         self.logger.info(f"Started backward sweep: {iteration}")
         lmp.command("run               %d" % self.calc._n_sweep_steps)
         self.logger.info(f"Finished backward sweep: {iteration}")
@@ -1376,7 +1568,8 @@ class Phase:
         logfile = os.path.join(self.simfolder, "log.lammps")
         if os.path.exists(logfile):
             os.rename(
-                logfile, os.path.join(self.simfolder, "reversible_scaling.log.lammps")
+                logfile,
+                os.path.join(self.simfolder, "reversible_scaling_backward.log.lammps"),
             )
 
     def reversible_scaling(self, iteration=1):
