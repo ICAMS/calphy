@@ -38,20 +38,10 @@ from calphy.integrators import *
 import calphy.helpers as ph
 from calphy.errors import *
 from calphy.input import generate_metadata
+import calphy.structural_monitoring as sm
 
-# Import FrameAccumulator for structural monitoring
-try:
-    from structid import FrameAccumulator
-    from structid.descriptors import SteinhardtDescriptor
-    from structid.detectors import (
-        GPRDetector,
-        AdaptiveZScoreDetector,
-        CumulativeMeanDetector,
-    )
-
-    STRUCTID_AVAILABLE = True
-except ImportError:
-    STRUCTID_AVAILABLE = False
+# Check if structid is available
+STRUCTID_AVAILABLE = sm.STRUCTID_AVAILABLE
 
 
 class Phase:
@@ -1069,26 +1059,20 @@ class Phase:
                     f"Temperature interval for monitoring: {self.calc.structural_monitoring.temperature_interval} K"
                 )
 
-                # Create descriptor and detector
-                descriptor = SteinhardtDescriptor(
-                    l_values=tuple(self.calc.structural_monitoring.l_values),
+                # Initialize accumulator using structural_monitoring module
+                accumulator = sm.initialize_accumulator(
+                    l_values=self.calc.structural_monitoring.l_values,
                     cutoff=self.calc.structural_monitoring.cutoff,
+                    detector_type="cumulative",
+                    threshold=3,
                 )
-                detector = CumulativeMeanDetector(threshold=3)
-
-                # Initialize accumulator
-                accumulator = FrameAccumulator(descriptor=descriptor, detector=detector)
 
                 # Set up dump for equilibration trajectory to pre-train
-                pretrain_dump = os.path.join(self.simfolder, "_tmp_pretrain_traj.dump")
-                pretrain_dump_interval = (
-                    100  # Fixed interval for equilibration pre-training
-                )
-                lmp.command(
-                    f"dump _pretrain all custom {pretrain_dump_interval} {pretrain_dump} id type x y z"
+                pretrain_dump = sm.setup_pretraining_dump(
+                    lmp=lmp, simfolder=self.simfolder, dump_interval=100
                 )
                 self.logger.info(
-                    f"Dumping equilibration trajectory every {pretrain_dump_interval} steps for pre-training"
+                    "Dumping equilibration trajectory every 100 steps for pre-training"
                 )
 
         self.logger.info(f"Starting equilibration with constrained com: {iteration}")
@@ -1099,35 +1083,16 @@ class Phase:
         if accumulator is not None and pretrain_dump is not None:
             lmp.command("undump _pretrain")
 
+            success = sm.pretrain_accumulator(
+                accumulator=accumulator, pretrain_dump=pretrain_dump, logger=self.logger
+            )
+
+            if not success:
+                accumulator = None
+
+            # Clean up trajectory file
             if os.path.exists(pretrain_dump):
-                from ase.io import read
-
-                try:
-                    self.logger.info(
-                        "Pre-training FrameAccumulator on equilibration trajectory"
-                    )
-                    # Read all frames from equilibration
-                    traj = read(pretrain_dump, format="lammps-dump-text", index=":")
-                    self.logger.info(
-                        f"Read {len(traj)} frames from equilibration trajectory"
-                    )
-
-                    # Pre-train on all frames
-                    with warnings.catch_warnings():
-                        warnings.filterwarnings(
-                            "ignore", category=Warning, module="sklearn"
-                        )
-                        for atoms in traj:
-                            accumulator.calculate_single_frame(atoms)
-
-                    self.logger.info("FrameAccumulator pre-trained successfully")
-                except Exception as e:
-                    self.logger.warning(f"Failed to pre-train FrameAccumulator: {e}")
-                    accumulator = None
-                finally:
-                    # Clean up trajectory file
-                    if os.path.exists(pretrain_dump):
-                        os.remove(pretrain_dump)
+                os.remove(pretrain_dump)
 
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
@@ -1305,96 +1270,28 @@ class Phase:
                 # Unfix to avoid duplicates at boundaries
                 lmp.command("unfix f3")
 
-                # Get atomic data directly from LAMMPS instead of writing/reading file
+                # Get atomic data directly from LAMMPS
                 try:
-                    from ase import Atoms
+                    atoms = sm.extract_atoms_from_lammps(lmp)
 
-                    # Gather atomic positions and types
-                    x = lmp.gather_atoms("x", 3)  # positions (natoms × 3)
-                    atom_types = lmp.gather_atoms("type", 0)  # atom types (natoms,)
-
-                    # Get box dimensions
-                    boxlo, boxhi, xy, yz, xz, periodicity, box_change = (
-                        lmp.extract_box()
+                    # Process frame and get statistics
+                    stats = sm.process_monitoring_frame(
+                        accumulator=accumulator, atoms=atoms, logger=self.logger
                     )
-
-                    # Reshape positions to (natoms, 3)
-                    positions = x.reshape(-1, 3)
-
-                    # Create cell from box bounds
-                    xlo, ylo, zlo = boxlo
-                    xhi, yhi, zhi = boxhi
-                    cell = [[xhi - xlo, 0, 0], [xy, yhi - ylo, 0], [xz, yz, zhi - zlo]]
-
-                    # Create ASE Atoms object
-                    atoms = Atoms(
-                        numbers=atom_types, positions=positions, cell=cell, pbc=True
-                    )
-
-                    # Suppress sklearn convergence warnings during GPR fitting
-                    with warnings.catch_warnings():
-                        warnings.filterwarnings(
-                            "ignore", category=Warning, module="sklearn"
-                        )
-                        is_consistent = accumulator.calculate_single_frame(atoms)
 
                     # Get detector statistics for logging
                     lambda_value = li + (lf - li) * current_step / total_steps
                     apparent_temp = t0 / lambda_value
 
-                    # Extract data from accumulator using get_results()
-                    distance = -1.0
-                    mean_val = -1.0
-                    std_val = -1.0
-                    is_flagged = False  # Whether this frame is flagged as anomalous
-
-                    try:
-                        frames_arr, vectors, distances_arr, flagged = (
-                            accumulator.get_results()
-                        )
-                        # Get the latest distance (last element in distances array)
-                        if len(distances_arr) > 0:
-                            distance = distances_arr[-1]
-
-                        # Check if current frame index is in the flagged array
-                        current_frame_idx = (
-                            len(frames_arr) - 1 if len(frames_arr) > 0 else -1
-                        )
-                        is_flagged = current_frame_idx in flagged
-
-                        # Get detector statistics using common interface
-                        # All detectors now have get_statistics() method
-                        if hasattr(accumulator.detector, "get_statistics"):
-                            # Stateful detectors (Adaptive, Cumulative, GPR) don't need arguments
-                            # Stateless detectors (StdDev, Threshold) take historical_distances
-                            try:
-                                stats = accumulator.detector.get_statistics()
-                            except TypeError:
-                                # Stateless detector needs historical_distances argument
-                                stats = accumulator.detector.get_statistics(
-                                    distances_arr
-                                )
-
-                            mean_val = (
-                                stats.get("mean", -1.0)
-                                if stats.get("mean") is not None
-                                else -1.0
-                            )
-                            std_val = (
-                                stats.get("std", -1.0)
-                                if stats.get("std") is not None
-                                else -1.0
-                            )
-                    except Exception as e:
-                        self.logger.debug(f"Could not extract detector statistics: {e}")
-
                     # Write to monitoring file
                     monitor_out.write(
-                        f"{block_idx} {current_step} {lambda_value:.6f} {apparent_temp:.2f} {int(is_flagged)} {distance:.6f} {mean_val:.6f} {std_val:.6f}\n"
+                        f"{block_idx} {current_step} {lambda_value:.6f} {apparent_temp:.2f} "
+                        f"{int(stats['is_flagged'])} {stats['distance']:.6f} "
+                        f"{stats['mean']:.6f} {stats['std']:.6f}\n"
                     )
                     monitor_out.flush()
 
-                    if is_flagged:
+                    if stats["is_flagged"]:
                         self.logger.warning(
                             f"⚠️  STRUCTURAL CHANGE DETECTED at step {current_step} (λ={lambda_value:.4f}, T={apparent_temp:.2f}K) "
                             f"during forward sweep (iteration {iteration})"
@@ -1427,106 +1324,16 @@ class Phase:
             self.logger.info(f"Structural monitoring data saved to {monitor_file}")
 
             # Generate monitoring plot
-            try:
-                import matplotlib
-
-                matplotlib.use("Agg")  # Non-interactive backend
-                import matplotlib.pyplot as plt
-
-                # Read monitoring data
-                data = np.loadtxt(monitor_file)
-                if len(data.shape) == 1:  # Single row
-                    data = data.reshape(1, -1)
-
-                block_idx_arr = data[:, 0]
-                step_arr = data[:, 1]
-                lambda_arr = data[:, 2]
-                temp_arr = data[:, 3]
-                is_flagged_arr = data[:, 4]
-                distance_arr = data[:, 5]
-
-                # Calculate cumulative mean and std
-                cumulative_mean = np.array(
-                    [np.mean(distance_arr[: i + 1]) for i in range(len(distance_arr))]
-                )
-                cumulative_std = np.array(
-                    [np.std(distance_arr[: i + 1]) for i in range(len(distance_arr))]
-                )
-
-                # Create plot
-                fig, ax = plt.subplots(figsize=(10, 6))
-                ax.plot(
-                    step_arr,
-                    distance_arr,
-                    "o-",
-                    label="Descriptor Distance",
-                    linewidth=2,
-                    markersize=6,
-                )
-                ax.plot(
-                    step_arr,
-                    cumulative_mean,
-                    "k-",
-                    label="Cumulative Mean",
-                    linewidth=2,
-                )
-                ax.plot(
-                    step_arr,
-                    cumulative_mean + 2.0 * cumulative_std,
-                    "--",
-                    label="Mean + 2σ",
-                    linewidth=1.5,
-                )
-                ax.plot(
-                    step_arr,
-                    cumulative_mean + 2.5 * cumulative_std,
-                    "--",
-                    label="Mean + 2.5σ",
-                    linewidth=1.5,
-                )
-                ax.plot(
-                    step_arr,
-                    cumulative_mean + 3.0 * cumulative_std,
-                    "--",
-                    label="Mean + 3σ",
-                    linewidth=1.5,
-                )
-
-                # Highlight flagged points (anomalies)
-                flagged_indices = np.where(is_flagged_arr > 0.5)[0]
-                if len(flagged_indices) > 0:
-                    ax.scatter(
-                        step_arr[flagged_indices],
-                        distance_arr[flagged_indices],
-                        c="red",
-                        s=200,
-                        marker="X",
-                        edgecolors="darkred",
-                        linewidth=2,
-                        label="Flagged Anomalies",
-                        zorder=5,
-                    )
-
-                ax.set_xlabel("Step", fontsize=12)
-                ax.set_ylabel("Descriptor Distance", fontsize=12)
-                ax.set_title(
-                    f"Structural Monitoring - Forward Sweep (Iteration {iteration})",
-                    fontsize=14,
-                )
-                ax.legend(loc="best", fontsize=10)
-                ax.grid(True, alpha=0.3)
-
-                # Save plot
-                plot_file = os.path.join(
-                    self.simfolder, f"structural_monitoring_forward_{iteration}.png"
-                )
-                plt.tight_layout()
-                plt.savefig(plot_file, dpi=150, bbox_inches="tight")
-                plt.close()
+            plot_file = os.path.join(
+                self.simfolder, f"structural_monitoring_forward_{iteration}.png"
+            )
+            success = sm.generate_monitoring_plot(
+                monitor_file=monitor_file, output_file=plot_file, iteration=iteration
+            )
+            if success:
                 self.logger.info(f"Monitoring plot saved to {plot_file}")
-
-            except Exception as e:
-                self.logger.warning(f"Failed to generate monitoring plot: {e}")
+            else:
+                self.logger.warning("Failed to generate monitoring plot")
 
             # Merge all cycle files into final output
             self.logger.info(f"Merging cycle files into ts.forward_{iteration}.dat")
