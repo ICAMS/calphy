@@ -1040,12 +1040,7 @@ class Phase:
         accumulator = None
         pretrain_dump = None
         if self.calc.structural_monitoring.enabled:
-            if not STRUCTID_AVAILABLE:
-                self.logger.warning(
-                    "Structural monitoring requested but structid is not available. "
-                    "Install structid to enable this feature."
-                )
-            else:
+            if STRUCTID_AVAILABLE:
                 self.logger.info(
                     "Initializing structural monitoring with FrameAccumulator"
                 )
@@ -1068,7 +1063,7 @@ class Phase:
                 )
 
                 # Set up dump for equilibration trajectory to pre-train
-                pretrain_dump = sm.setup_pretraining_dump(
+                pretrain_dump, pretrain_dump_id = sm.setup_pretraining_dump(
                     lmp=lmp, simfolder=self.simfolder, dump_interval=100
                 )
                 self.logger.info(
@@ -1081,14 +1076,11 @@ class Phase:
 
         # Pre-train FrameAccumulator on equilibration trajectory
         if accumulator is not None and pretrain_dump is not None:
-            lmp.command("undump _pretrain")
+            lmp.command(f"undump {pretrain_dump_id}")
 
             success = sm.pretrain_accumulator(
                 accumulator=accumulator, pretrain_dump=pretrain_dump, logger=self.logger
             )
-
-            if not success:
-                accumulator = None
 
             # Clean up trajectory file
             if os.path.exists(pretrain_dump):
@@ -1293,12 +1285,10 @@ class Phase:
 
                     if stats["is_flagged"]:
                         self.logger.warning(
-                            f"⚠️  STRUCTURAL CHANGE DETECTED at step {current_step} (λ={lambda_value:.4f}, T={apparent_temp:.2f}K) "
+                            f"STRUCTURAL CHANGE DETECTED at step {current_step} (λ={lambda_value:.4f}, T={apparent_temp:.2f}K) "
                             f"during forward sweep (iteration {iteration})"
                         )
-                        self.logger.warning(
-                            "The system structure has changed significantly from the equilibrium state."
-                        )
+
                 except Exception as e:
                     self.logger.warning(
                         f"Failed to monitor structure at block {block_idx}: {e}"
@@ -1496,10 +1486,47 @@ class Phase:
         lmp.command("thermo_style      custom step pe c_tcm press vol")
         lmp.command("thermo            10000")
 
+        # ---------------------------
+        # Initialize FrameAccumulator if structural monitoring is enabled
+        accumulator = None
+        pretrain_dump = None
+        if self.calc.structural_monitoring.enabled:
+
+            # Initialize accumulator using structural_monitoring module
+            accumulator = sm.initialize_accumulator(
+                l_values=self.calc.structural_monitoring.l_values,
+                cutoff=self.calc.structural_monitoring.cutoff,
+                detector_type="cumulative",
+                threshold=3,
+            )
+
+            # Set up dump for equilibration trajectory to pre-train
+            pretrain_dump, pretrain_dump_id = sm.setup_pretraining_dump(
+                lmp=lmp, simfolder=self.simfolder, dump_interval=100
+            )
+
+            self.logger.info(
+                "Dumping equilibration trajectory every 100 steps for pre-training"
+            )
+
+        # ---------------------------
+
         # middle equilibration
         self.logger.info(f"Starting middle equilibration: {iteration}")
         lmp.command("run               %d" % self.calc.n_equilibration_steps)
         self.logger.info(f"Finished middle equilibration: {iteration}")
+
+        # Pre-train FrameAccumulator on equilibration trajectory
+        if accumulator is not None and pretrain_dump is not None:
+            lmp.command(f"undump {pretrain_dump_id}")
+
+            success = sm.pretrain_accumulator(
+                accumulator=accumulator, pretrain_dump=pretrain_dump, logger=self.logger
+            )
+
+            # Clean up trajectory file
+            if os.path.exists(pretrain_dump):
+                os.remove(pretrain_dump)
 
         # check melting or freezing
         if not self.calc.script_mode:
@@ -1608,7 +1635,184 @@ class Phase:
         lmp.command("reset_timestep 0")
 
         self.logger.info(f"Started backward sweep: {iteration}")
-        lmp.command("run               %d" % self.calc._n_sweep_steps)
+        # Run backward sweep with optional structural monitoring
+        if accumulator is not None and self.calc.structural_monitoring.enabled:
+            temperature_interval = self.calc.structural_monitoring.temperature_interval
+
+            # Define total range for ramp() - same for all run segments
+            total_steps = self.calc._n_sweep_steps
+
+            # Calculate temperature checkpoints - handle both increasing and decreasing temperature
+            temp_checkpoints = []
+
+            if t0 > tf:
+                # Temperature decreasing (cooling)
+                current_temp = t0
+                while current_temp >= tf:
+                    temp_checkpoints.append(current_temp)
+                    current_temp -= temperature_interval
+                if temp_checkpoints[-1] != tf:
+                    temp_checkpoints.append(tf)
+            else:
+                # Temperature increasing (heating)
+                current_temp = t0
+                while current_temp <= tf:
+                    temp_checkpoints.append(current_temp)
+                    current_temp += temperature_interval
+                if temp_checkpoints[-1] != tf:
+                    temp_checkpoints.append(tf)
+
+            # Convert temperature checkpoints to lambda values and then to step numbers
+            checkpoint_data = []
+            for temp in temp_checkpoints:
+                lambda_val = t0 / temp
+                step = int((lambda_val - li) * total_steps / (lf - li))
+                step = max(0, min(step, total_steps))
+                checkpoint_data.append(
+                    {"temp": temp, "lambda": lambda_val, "step": step}
+                )
+
+            self.logger.info(
+                f"Temperature-based monitoring (backward): {len(checkpoint_data)-1} blocks"
+            )
+            for i, cp in enumerate(checkpoint_data):
+                self.logger.info(
+                    f"  Checkpoint {i}: T={cp['temp']:.2f}K, λ={cp['lambda']:.4f}, step={cp['step']}"
+                )
+
+            # Open file to save monitoring data
+            monitor_file = os.path.join(
+                self.simfolder, f"structural_monitoring_backward_{iteration}.dat"
+            )
+            monitor_out = open(monitor_file, "w")
+            monitor_out.write(
+                "# block_idx step lambda temperature is_flagged distance mean std\n"
+            )
+
+            # Run blocks between consecutive checkpoints
+            current_step = 0
+            for block_idx in range(len(checkpoint_data) - 1):
+                start_checkpoint = checkpoint_data[block_idx]
+                end_checkpoint = checkpoint_data[block_idx + 1]
+
+                block_steps = end_checkpoint["step"] - start_checkpoint["step"]
+
+                if block_steps <= 0:
+                    continue
+
+                # Create fix print for this block
+                lmp.command(
+                    'fix               f3 all print 1 "${dU} $(press) $(vol) ${blambda}" screen no file ts.backward_%d_cycle_%d.dat'
+                    % (iteration, block_idx)
+                )
+
+                # All run commands use same start/stop for ramp() to work correctly
+                lmp.command(f"run {block_steps} start 0 stop {total_steps}")
+
+                # Update current step counter
+                current_step += block_steps
+
+                # Unfix to avoid duplicates at boundaries
+                lmp.command("unfix f3")
+
+                # Get atomic data directly from LAMMPS
+                try:
+                    atoms = sm.extract_atoms_from_lammps(lmp)
+
+                    # Process frame and get statistics
+                    stats = sm.process_monitoring_frame(
+                        accumulator=accumulator, atoms=atoms, logger=self.logger
+                    )
+
+                    # Get detector statistics for logging
+                    lambda_value = li + (lf - li) * current_step / total_steps
+                    apparent_temp = t0 / lambda_value
+
+                    # Write to monitoring file
+                    monitor_out.write(
+                        f"{block_idx} {current_step} {lambda_value:.6f} {apparent_temp:.2f} "
+                        f"{int(stats['is_flagged'])} {stats['distance']:.6f} "
+                        f"{stats['mean']:.6f} {stats['std']:.6f}\n"
+                    )
+                    monitor_out.flush()
+
+                    if stats["is_flagged"]:
+                        self.logger.warning(
+                            f"STRUCTURAL CHANGE DETECTED at step {current_step} (λ={lambda_value:.4f}, T={apparent_temp:.2f}K) "
+                            f"during backward sweep (iteration {iteration})"
+                        )
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to monitor structure at backward block {block_idx}: {e}"
+                    )
+                    import traceback
+
+                    self.logger.warning(f"Traceback: {traceback.format_exc()}")
+
+            # Run any remaining steps
+            remaining_steps = total_steps - current_step
+            if remaining_steps > 0:
+                lmp.command(
+                    'fix               f3 all print 1 "${dU} $(press) $(vol) ${blambda}" screen no file ts.backward_%d_cycle_%d.dat'
+                    % (iteration, len(checkpoint_data) - 1)
+                )
+                lmp.command(f"run {remaining_steps} start 0 stop {total_steps}")
+                lmp.command("unfix f3")
+
+            # Close monitoring data file
+            monitor_out.close()
+            self.logger.info(f"Structural monitoring data saved to {monitor_file}")
+
+            # Generate monitoring plot
+            plot_file = os.path.join(
+                self.simfolder, f"structural_monitoring_backward_{iteration}.png"
+            )
+            success = sm.generate_monitoring_plot(
+                monitor_file=monitor_file, output_file=plot_file, iteration=iteration
+            )
+            if success:
+                self.logger.info(f"Monitoring plot saved to {plot_file}")
+            else:
+                self.logger.warning("Failed to generate monitoring plot (backward)")
+
+            # Merge all cycle files into final output
+            self.logger.info(f"Merging cycle files into ts.backward_{iteration}.dat")
+            final_file = os.path.join(self.simfolder, f"ts.backward_{iteration}.dat")
+
+            import shutil
+
+            with open(final_file, "w") as outfile:
+                # Copy first cycle file entirely
+                cycle_file = os.path.join(
+                    self.simfolder, f"ts.backward_{iteration}_cycle_0.dat"
+                )
+                with open(cycle_file, "r") as infile:
+                    shutil.copyfileobj(infile, outfile)
+                os.remove(cycle_file)
+
+                # Append subsequent cycles, skipping header and first data line (duplicate)
+                total_cycles = (
+                    len(checkpoint_data) - 1 + (1 if remaining_steps > 0 else 0)
+                )
+                for cycle_idx in range(1, total_cycles):
+                    cycle_file = os.path.join(
+                        self.simfolder, f"ts.backward_{iteration}_cycle_{cycle_idx}.dat"
+                    )
+                    with open(cycle_file, "r") as infile:
+                        # Skip first two lines: header + duplicate first data line
+                        next(infile)  # Skip header
+                        next(infile)  # Skip duplicate line
+                        # Stream the rest
+                        shutil.copyfileobj(infile, outfile)
+                    os.remove(cycle_file)
+        else:
+            # Standard run without monitoring - single fix print
+            lmp.command(
+                'fix               f3 all print 1 "${dU} $(press) $(vol) ${blambda}" screen no file ts.backward_%d.dat'
+                % iteration
+            )
+            lmp.command("run               %d" % self.calc._n_sweep_steps)
+            lmp.command("unfix             f3")
         self.logger.info(f"Finished backward sweep: {iteration}")
 
         if self.calc.monte_carlo.n_swaps > 0:
@@ -1617,8 +1821,6 @@ class Phase:
             for idx in range(len(swap_combos)):
                 lmp.command(f"unfix swap{idx}")
             # lmp.command("unfix swap_print")
-
-        lmp.command("unfix             f3")
 
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
