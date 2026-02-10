@@ -150,12 +150,12 @@ class StructuralMonitoring(
             description="Enable structural monitoring using FrameAccumulator",
         ),
     ]
-    check_interval: Annotated[
-        int,
+    temperature_interval: Annotated[
+        float,
         Field(
-            default=1000,
+            default=50.0,
             gt=0,
-            description="Check structure every N steps during sweeps",
+            description="Check structure at temperature intervals (in K) during sweeps",
         ),
     ]
     l_values: Annotated[
