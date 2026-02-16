@@ -286,7 +286,7 @@ class Calculation(BaseModel, title="Main input class"):
         Union[
             None,
             float,
-            conlist(float, min_length=1, max_length=2),
+            conlist(float, min_length=1, max_length=3),  # Allow lists of 1-3 floats
             conlist(
                 conlist(float, min_length=3, max_length=3), min_length=1, max_length=2
             ),
