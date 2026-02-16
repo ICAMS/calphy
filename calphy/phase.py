@@ -1059,32 +1059,32 @@ class Phase:
                     l_values=self.calc.structural_monitoring.l_values,
                     cutoff=self.calc.structural_monitoring.cutoff,
                     detector_type="cumulative",
-                    threshold=3,
+                    threshold=3 / 2,
                 )
 
                 # Set up dump for equilibration trajectory to pre-train
-                pretrain_dump, pretrain_dump_id = sm.setup_pretraining_dump(
-                    lmp=lmp, simfolder=self.simfolder, dump_interval=100
-                )
-                self.logger.info(
-                    "Dumping equilibration trajectory every 100 steps for pre-training"
-                )
+                # pretrain_dump, pretrain_dump_id = sm.setup_pretraining_dump(
+                #    lmp=lmp, simfolder=self.simfolder, dump_interval=100
+                # )
+                # self.logger.info(
+                #    "Dumping equilibration trajectory every 100 steps for pre-training"
+                # )
 
         self.logger.info(f"Starting equilibration with constrained com: {iteration}")
         lmp.command("run               %d" % self.calc.n_equilibration_steps)
         self.logger.info(f"Finished equilibration with constrained com: {iteration}")
 
         # Pre-train FrameAccumulator on equilibration trajectory
-        if accumulator is not None and pretrain_dump is not None:
-            lmp.command(f"undump {pretrain_dump_id}")
+        # if accumulator is not None and pretrain_dump is not None:
+        #    lmp.command(f"undump {pretrain_dump_id}")
+        #
+        #    success = sm.pretrain_accumulator(
+        #        accumulator=accumulator, pretrain_dump=pretrain_dump, logger=self.logger
+        #    )
 
-            success = sm.pretrain_accumulator(
-                accumulator=accumulator, pretrain_dump=pretrain_dump, logger=self.logger
-            )
-
-            # Clean up trajectory file
-            if os.path.exists(pretrain_dump):
-                os.remove(pretrain_dump)
+        #    # Clean up trajectory file
+        #    if os.path.exists(pretrain_dump):
+        #        os.remove(pretrain_dump)
 
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
@@ -1222,10 +1222,6 @@ class Phase:
             self.logger.info(
                 f"Temperature-based monitoring: {len(checkpoint_data)-1} blocks"
             )
-            for i, cp in enumerate(checkpoint_data):
-                self.logger.info(
-                    f"  Checkpoint {i}: T={cp['temp']:.2f}K, λ={cp['lambda']:.4f}, step={cp['step']}"
-                )
 
             # Open file to save monitoring data
             monitor_file = os.path.join(
@@ -1266,14 +1262,75 @@ class Phase:
                 try:
                     atoms = sm.extract_atoms_from_lammps(lmp)
 
+                    # here lets start a new LAMMPS instance and then relax it
+                    # create lammps object
+                    # Get detector statistics for logging
+                    lambda_value = li + (lf - li) * current_step / total_steps
+                    apparent_temp = t0 / lambda_value
+
+                    self.logger.info(
+                        f"  Checkpoint {block_idx}/{len(checkpoint_data)-1}: T={apparent_temp:.2f}K, λ={lambda_value:.4f}"
+                    )
+                    self.logger.info(
+                        "Starting quick relaxation for structural monitoring at block %d"
+                        % block_idx
+                    )
+                    lmpmin = ph.create_object(
+                        self.cores,
+                        self.simfolder,
+                        self.calc.md.timestep,
+                        self.calc.md.cmdargs,
+                        self.calc.md.init_commands,
+                    )
+
+                    lmpmin.command("echo              log")
+                    lmpmin.command("variable          li equal %f" % li)
+                    lmpmin.command("variable          lf equal %f" % lf)
+
+                    lmpmin.command(
+                        f"pair_style {self.calc._pair_style_with_options[0]}"
+                    )
+
+                    # read in conf file
+                    # conf = os.path.join(self.simfolder, "conf.equilibration.dump")
+                    from ase.io import write
+
+                    write(
+                        os.path.join(self.simfolder, "temp_monitoring_frame.data"),
+                        atoms,
+                        format="lammps-data",
+                        atom_style="atomic",
+                    )
+                    conf = os.path.join(self.simfolder, "temp_monitoring_frame.data")
+                    lmpmin = ph.read_data(lmpmin, conf)
+
+                    # set up potential
+                    lmpmin.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+                    lmpmin = ph.set_mass(lmpmin, self.calc)
+
+                    # now we do a quick relaxation to get the structure back to a reasonable state before calculating the stats
+                    lmpmin.command("fix ensemble all box/relax aniso 0.0")
+                    lmpmin.command(f"minimize 1e-5 1e-5 100000 100000")
+                    lmpmin.command("run 0")
+
+                    atoms = sm.extract_atoms_from_lammps(lmpmin)
+                    lmpmin.close()
+                    self.logger.info(
+                        "Completed quick relaxation for structural monitoring at block %d"
+                        % block_idx
+                    )
+                    write(
+                        os.path.join(
+                            self.simfolder, f"temp_monitoring_frame_{block_idx}.data"
+                        ),
+                        atoms,
+                        format="lammps-data",
+                        atom_style="atomic",
+                    )
                     # Process frame and get statistics
                     stats = sm.process_monitoring_frame(
                         accumulator=accumulator, atoms=atoms, logger=self.logger
                     )
-
-                    # Get detector statistics for logging
-                    lambda_value = li + (lf - li) * current_step / total_steps
-                    apparent_temp = t0 / lambda_value
 
                     # Write to monitoring file
                     monitor_out.write(
@@ -1497,7 +1554,7 @@ class Phase:
                 l_values=self.calc.structural_monitoring.l_values,
                 cutoff=self.calc.structural_monitoring.cutoff,
                 detector_type="cumulative",
-                threshold=3,
+                threshold=3 / 2,
             )
 
             # Set up dump for equilibration trajectory to pre-train

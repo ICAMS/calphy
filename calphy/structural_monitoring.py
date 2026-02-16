@@ -223,6 +223,8 @@ def process_monitoring_frame(accumulator, atoms, logger=None):
         # Get the latest distance
         if len(distances_arr) > 0:
             stats["distance"] = distances_arr[-1]
+        else:
+            stats["distance"] = np.nan
 
         # Check if current frame is flagged
         current_frame_idx = len(frames_arr) - 1 if len(frames_arr) > 0 else -1
@@ -249,16 +251,20 @@ def process_monitoring_frame(accumulator, atoms, logger=None):
                             "std": float(np.std(finite)),
                         }
 
-            stats["mean"] = (
-                detector_stats.get("mean", -1.0)
-                if detector_stats.get("mean") is not None
-                else -1.0
-            )
-            stats["std"] = (
-                detector_stats.get("std", -1.0)
-                if detector_stats.get("std") is not None
-                else -1.0
-            )
+            # If no previous data, use current value for mean, 0 for std
+            if detector_stats.get("mean") is not None:
+                stats["mean"] = detector_stats["mean"]
+            elif stats["distance"] != -1.0:
+                stats["mean"] = stats["distance"]
+            else:
+                stats["mean"] = np.nan
+
+            if detector_stats.get("std") is not None:
+                stats["std"] = detector_stats["std"]
+            elif stats["distance"] != -1.0:
+                stats["std"] = 0.0
+            else:
+                stats["std"] = np.nan
 
     except Exception as e:
         if logger:
@@ -311,8 +317,12 @@ def generate_monitoring_plot(monitor_file, output_file, iteration=1):
             mean_arr = data[:, 6]
             std_arr = data[:, 7]
         else:
-            mean_arr = np.array([np.mean(distance_arr[: i + 1]) for i in range(len(distance_arr))])
-            std_arr = np.array([np.std(distance_arr[: i + 1]) for i in range(len(distance_arr))])
+            mean_arr = np.array(
+                [np.mean(distance_arr[: i + 1]) for i in range(len(distance_arr))]
+            )
+            std_arr = np.array(
+                [np.std(distance_arr[: i + 1]) for i in range(len(distance_arr))]
+            )
 
         # Create plot
         fig, ax = plt.subplots(figsize=(10, 6))
