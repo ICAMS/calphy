@@ -129,8 +129,11 @@ class Alchemy(cph.Phase):
         lmp.close()
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
-        if os.path.exists(logfile):
-            os.rename(logfile, os.path.join(self.simfolder, "averaging.log.lammps"))
+        try:
+            if os.path.exists(logfile):
+                os.rename(logfile, os.path.join(self.simfolder, "averaging.log.lammps"))
+        except OSError as e:
+            self.logger.warning(f"Failed to rename log file: {e}")
 
     def run_integration(self, iteration=1):
         """
@@ -475,8 +478,13 @@ class Alchemy(cph.Phase):
         lmp.close()
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
-        if os.path.exists(logfile):
-            os.rename(logfile, os.path.join(self.simfolder, "integration.log.lammps"))
+        try:
+            if os.path.exists(logfile):
+                os.rename(
+                    logfile, os.path.join(self.simfolder, "integration.log.lammps")
+                )
+        except OSError as e:
+            self.logger.warning(f"Failed to rename log file: {e}")
 
     def thermodynamic_integration(self):
         """

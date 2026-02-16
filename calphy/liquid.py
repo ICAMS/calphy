@@ -103,8 +103,10 @@ class Liquid(cph.Phase):
             lmp.close()
             # Preserve log file
             logfile = os.path.join(self.simfolder, "log.lammps")
-            if os.path.exists(logfile):
+            try:
                 os.rename(logfile, os.path.join(self.simfolder, "melting.log.lammps"))
+            except OSError as e:
+                self.logger.warning(f"Failed to rename log file: {e}")
             raise SolidifiedError(
                 "Liquid system did not melt, maybe try a higher thigh temperature."
             )
@@ -182,8 +184,10 @@ class Liquid(cph.Phase):
         lmp.close()
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
-        if os.path.exists(logfile):
+        try:
             os.rename(logfile, os.path.join(self.simfolder, "averaging.log.lammps"))
+        except OSError as e:
+            self.logger.warning(f"Failed to rename log file: {e}")
 
     def run_integration(self, iteration=1):
         """
@@ -401,8 +405,10 @@ class Liquid(cph.Phase):
         lmp.close()
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
-        if os.path.exists(logfile):
+        try:
             os.rename(logfile, os.path.join(self.simfolder, "integration.log.lammps"))
+        except OSError as e:
+            self.logger.warning(f"Failed to rename log file: {e}")
 
     def thermodynamic_integration(self):
         """

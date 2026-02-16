@@ -281,10 +281,12 @@ class Phase:
             lmp.close()
             # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
-            if os.path.exists(logfile):
+            try:
                 os.rename(
                     logfile, os.path.join(self.simfolder, "melted_error.log.lammps")
                 )
+            except OSError as e:
+                self.logger.warning(f"Failed to rename log file: {e}")
             raise MeltedError(
                 "System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting:\n tolerance.solid_fraction: 0"
             )
@@ -296,10 +298,12 @@ class Phase:
             lmp.close()
             # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
-            if os.path.exists(logfile):
+            try:
                 os.rename(
                     logfile, os.path.join(self.simfolder, "solidified_error.log.lammps")
                 )
+            except OSError as e:
+                self.logger.warning(f"Failed to rename log file: {e}")
             raise SolidifiedError("System solidified, increase temperature")
 
     def fix_nose_hoover(
@@ -609,13 +613,15 @@ class Phase:
             lmp.close()
             # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
-            if os.path.exists(logfile):
+            try:
                 os.rename(
                     logfile,
                     os.path.join(
                         self.simfolder, "pressure_convergence_error.log.lammps"
                     ),
                 )
+            except OSError as e:
+                self.logger.warning(f"Failed to rename log file: {e}")
             raise ValueError(
                 "Pressure did not converge after MD runs, maybe change lattice_constant and try?"
             )
@@ -732,13 +738,15 @@ class Phase:
             lmp.close()
             # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
-            if os.path.exists(logfile):
+            try:
                 os.rename(
                     logfile,
                     os.path.join(
                         self.simfolder, "constrained_pressure_error.log.lammps"
                     ),
                 )
+            except OSError as e:
+                self.logger.warning(f"Failed to rename log file: {e}")
             raise ValueError("pressure did not converge")
 
     def process_pressure(
@@ -1333,7 +1341,7 @@ class Phase:
         lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
 
         # read in conf
-        # conf = os.path.join(self.simfolder, "conf.equilibration.dump")
+        # conf = os.path.join(self.simfolder, "conf.dump")
         conf = os.path.join(self.simfolder, "conf.equilibration.data")
         lmp = ph.read_data(lmp, conf)
 
@@ -1421,12 +1429,12 @@ class Phase:
         lmp.command(
             "fix               f2 all npt temp %f %f %f %s %f %f %f"
             % (
-                tf,
+                t0,
                 t0,
                 self.calc.md.thermostat_damping[1],
                 self.iso,
-                pf,
                 p0,
+                pf,
                 self.calc.md.barostat_damping[1],
             )
         )
