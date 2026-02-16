@@ -812,7 +812,10 @@ class Calculation(BaseModel, title="Main input class"):
         elif np.isscalar(self.pressure):
             ps = "%d" % (int(self.pressure))
         else:
-            ps = "%d" % (int(self.pressure[0]))
+            if isinstance(self.pressure[0], list):
+                ps = "%d" % (int(self.pressure[0][0]))
+            else:
+                ps = "%d" % (int(self.pressure[0]))
 
         if hasattr(self, "_original_lattice") and self._original_lattice:
             l = self._original_lattice
