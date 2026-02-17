@@ -40,6 +40,13 @@ try:
     from scipy.integrate import cumtrapz
 except ImportError:
     from scipy.integrate import cumulative_trapezoid as cumtrapz
+    
+npversion = int(np.__version__.split('.')[0])
+if npversion <= 1:
+    from numpy import trapz
+else:
+    from numpy import trapezoid as trapz
+    
 from tqdm import tqdm
 import pyscal3.core as pc
 from ase.io import read
