@@ -129,8 +129,8 @@ def integrate_path(
     fdu = fdui - fdur
     bdu = bdui - bdur
 
-    fw = np.trapz(fdu, flambda)
-    bw = np.trapz(bdu, blambda)
+    fw = trapz(fdu, flambda)
+    bw = trapz(bdu, blambda)
 
     w = 0.5 * (fw - bw)
     q = 0.5 * (fw + bw)
