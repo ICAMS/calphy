@@ -190,9 +190,9 @@ class MeltingTemp:
                 self.logger.info("Solid system melted during reversible scaling run")
                 return 2
 
-            self.solres = self.soljob.integrate_reversible_scaling(
-                scale_energy=True, return_values=True
-            )
+        self.solres = self.soljob.integrate_reversible_scaling(
+            scale_energy=True, return_values=True
+        )
 
         self.logger.info("Starting liquid fe calculation")
         try:
