@@ -232,7 +232,7 @@ def write_data(lmp, file):
 
 
 def prepare_log(file, screen=False):
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger(file)
 
     # Remove all existing handlers to prevent duplicate logging
     for handler in logger.handlers[:]:
@@ -240,7 +240,7 @@ def prepare_log(file, screen=False):
         logger.removeHandler(handler)
 
     handler = logging.FileHandler(file)
-    formatter = logging.Formatter("%(asctime)s %(name)-12s %(levelname)-8s %(message)s")
+    formatter = logging.Formatter("%(asctime)s calphy.helpers %(levelname)-8s %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)

@@ -168,6 +168,12 @@ class MeltingTemp:
             simfolder=self.calculations[1].create_folders(),
         )
 
+        # Propagate MeltingTemp file handlers to sub-job loggers so that
+        # all sub-job output also appears in melting_temperature.log
+        for handler in self.logger.handlers:
+            self.soljob.logger.addHandler(handler)
+            self.lqdjob.logger.addHandler(handler)
+
         self.logger.info(
             "Free energy of %s and %s phases will be calculated"
             % (self.soljob.calc.lattice, self.lqdjob.calc.lattice)
