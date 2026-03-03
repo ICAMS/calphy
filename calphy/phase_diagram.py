@@ -583,7 +583,7 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                                     input_chemical_composition,
                                     output_chemical_composition)
                     compsc = CompositionTransformation(simplecalc)
-                    compsc.write_structure(outfile)
+                    compsc.write_structure(outfile, for_fe_mode=True)
             
                     #pop extra keys which are not needed
                     #we dont kick out phase name
@@ -753,6 +753,10 @@ def get_phase_free_energy(df, phase, temp,
 
     if (len(fes)==0) or (fes is None):
         warnings.warn("Some temperatures could not be found!")
+    elif len(fes) <= fit_order:
+        warnings.warn(f"Not enough data points ({len(fes)}) for fit order {fit_order} for phase '{phase}'. "
+                      f"Need at least {fit_order+1} points. Returning None.")
+        return None
     else:
         if ideal_configurational_entropy:
             entropy_term = kb*temp*_calculate_configurational_entropy(composition, 

@@ -567,11 +567,22 @@ class CompositionTransformation:
 
         return forward_swap_types, reverse_swap_types
 
-    def write_structure(self, outfilename):
+    def write_structure(self, outfilename, for_fe_mode=False):
         """Write structure to LAMMPS data file with proper type declarations.
 
-        Writes using ASE directly with custom atom types to preserve distinct
-        type numbers for each transformation mapping.
+        Parameters
+        ----------
+        outfilename : str
+            Path to write the LAMMPS data file.
+        for_fe_mode : bool, optional
+            If True, write atom types reflecting the **target** element's type
+            number from ``typedict`` (e.g. Cu=1, Ni=2) and declare
+            ``calc_element_count`` atom types in the header.  This is required
+            when the output file will be used as a structure input for a plain
+            ``fe`` calculation where the pair_coeff enumerates all elements.
+            If False (default), use the ``mappingdict`` type indices (one per
+            unique transformation mapping) which is what the alchemy /
+            composition_scaling LAMMPS routines expect for ``fix atom/swap``.
         """
         from ase.io import write as ase_write
         from ase import Atoms as ASEAtoms
@@ -580,9 +591,20 @@ class CompositionTransformation:
         positions = self.pyscal_structure.atoms.positions
         cell = self.pyscal_structure.box
 
-        # Create ASE Atoms object with chemical symbols from reversetypedict
-        # All atoms get their source element symbol
-        symbols = [self.reversetypedict[t] for t in self.pyscal_structure.atoms.types]
+        # Build per-atom type numbers and chemical symbols.
+        # for_fe_mode: remap each atom to its TARGET element's typedict entry so
+        # the structure matches the pair_coeff element ordering exactly.
+        # Default (alchemy) mode: keep the mappingdict indices as-is.
+        if for_fe_mode:
+            fe_types = [
+                self.typedict[self.mappings[i].split('-')[1]]
+                for i in range(len(self.mappings))
+            ]
+            invert_typedict = {v: k for k, v in self.typedict.items()}
+            symbols = [invert_typedict[t] for t in fe_types]
+        else:
+            fe_types = None  # will use pyscal types below
+            symbols = [self.reversetypedict[t] for t in self.pyscal_structure.atoms.types]
 
         ase_atoms = ASEAtoms(symbols=symbols, positions=positions, cell=cell, pbc=True)
 
@@ -592,6 +614,9 @@ class CompositionTransformation:
         # Post-process to fix the type column with our custom types
         with open(outfilename, "r") as f:
             lines = f.readlines()
+
+        # Choose which per-atom type list to use
+        atom_types_to_write = fe_types if for_fe_mode else list(self.pyscal_structure.atoms.types)
 
         # Find the Atoms section and replace type numbers
         # Support different ASE formats: "Atoms # atomic", "Atoms # full", or just "Atoms"
@@ -607,11 +632,11 @@ class CompositionTransformation:
                 parts = line.split()
                 if len(parts) >= 5:  # atom_id type x y z
                     # Replace the type (column 1, 0-indexed) with our custom type
-                    custom_type = self.pyscal_structure.atoms.types[atom_idx]
+                    custom_type = atom_types_to_write[atom_idx]
                     parts[1] = str(custom_type)
                     lines[i] = "  " + "  ".join(parts) + "\n"
                     atom_idx += 1
-                    if atom_idx >= len(self.pyscal_structure.atoms.types):
+                    if atom_idx >= len(atom_types_to_write):
                         break
 
         # Verify all atoms were updated
@@ -623,8 +648,13 @@ class CompositionTransformation:
                 f"This may indicate a problem with ASE LAMMPS file formatting."
             )
 
-        # Update the number of atom types in the header
-        required_ntypes = len(self.pair_list_old)
+        # Update the number of atom types in the header.
+        # fe mode: must match the number of elements in the pair_coeff.
+        # alchemy mode: one type per unique mapping (for fix atom/swap).
+        if for_fe_mode:
+            required_ntypes = self.calc_element_count
+        else:
+            required_ntypes = len(self.pair_list_old)
         for i, line in enumerate(lines):
             if "atom types" in line:
                 lines[i] = f"{required_ntypes} atom types\n"
