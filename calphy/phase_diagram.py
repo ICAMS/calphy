@@ -302,24 +302,33 @@ def read_structure_composition(lattice_file, element_list):
 COMPOSITION_TOLERANCE = 1E-5
 
 
-def _create_composition_array(comp_range, interval, reference):
+def _create_composition_array(comp_range, interval, reference, values=None):
     """
-    Create composition array from range specification.
+    Create composition array from range specification or a direct list of values.
     
     Parameters
     ----------
     comp_range : list or scalar
-        Composition range [min, max] or single value
+        Composition range [min, max] or single value. Ignored when *values* is given.
     interval : float
-        Composition interval
+        Composition interval. Ignored when *values* is given.
     reference : float
         Reference composition value
+    values : list, optional
+        Explicit list of compositions to use instead of deriving them from
+        *comp_range* and *interval*. Allows non-equidistant spacing.
     
     Returns
     -------
     tuple
         (comp_arr, is_reference) - composition array and boolean array marking reference compositions
     """
+    # Direct values array takes priority over range/interval
+    if values is not None:
+        comp_arr = np.asarray(values, dtype=float)
+        is_reference = np.abs(comp_arr - reference) < COMPOSITION_TOLERANCE
+        return comp_arr, is_reference
+
     # Convert to list if scalar
     if not isinstance(comp_range, list):
         comp_range = [comp_range]
@@ -487,10 +496,12 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
         other_element = other_element_list[0]
 
         # Create composition array using helper function
+        # A direct 'values' list in the input takes priority over range/interval
         comp_arr, is_reference = _create_composition_array(
-            comps['range'], 
-            comps['interval'], 
-            comps['reference']
+            comps.get('range'), 
+            comps.get('interval'), 
+            comps['reference'],
+            values=comps.get('values')
         )
         ncomps = len(comp_arr)
 
