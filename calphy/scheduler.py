@@ -54,8 +54,8 @@ class Local:
         """
         Write the script file
         """
-        jobout = ".".join([outfile, "out"])
-        joberr = ".".join([outfile, "err"])
+        jobout = os.path.join(self.queueoptions["directory"], "local.out")
+        joberr = os.path.join(self.queueoptions["directory"], "local.err")
 
         with open(outfile, "w") as fout:
             fout.write(self.queueoptions["header"])
@@ -114,8 +114,8 @@ class SLURM:
         """
         Write the script file
         """
-        jobout = ".".join([outfile, "out"])
-        joberr = ".".join([outfile, "err"])
+        jobout = os.path.join(self.queueoptions["directory"], "slurm.out")
+        joberr = os.path.join(self.queueoptions["directory"], "slurm.err")
 
         with open(outfile, "w") as fout:
             fout.write(self.queueoptions["header"])
@@ -190,8 +190,8 @@ class SGE:
         """
         Write the script file
         """
-        jobout = ".".join([outfile, "out"])
-        joberr = ".".join([outfile, "err"])
+        jobout = os.path.join(self.queueoptions["directory"], "sge.out")
+        joberr = os.path.join(self.queueoptions["directory"], "sge.err")
 
         with open(outfile, "w") as fout:
             fout.write(self.queueoptions["header"])
