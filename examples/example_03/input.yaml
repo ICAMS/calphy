@@ -8,6 +8,7 @@ calculations:
     timestep: 0.001
   mode: ts
   n_equilibration_steps: 10000
+  n_print_steps: 100
   n_iterations: 1
   n_switching_steps: 25000
   pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
@@ -25,7 +26,9 @@ calculations:
   - 5
   temperature:
   - 1200.0
-  - 1400.0
+  - 2000.0
+  tolerance:
+    solid_fraction: 0
 - element: Cu
   lattice: fcc
   lattice_constant: 3.61

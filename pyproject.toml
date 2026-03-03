@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "calphy"
+version = "1.5.8"
+description = "free energy calculation for python"
+readme = "README.md"
+license = "GPL-3.0-only"
+requires-python = ">=3.10"
+authors = [
+    { name = "Sarath Menon", email = "sarathmenon@mailbox.org" },
+    { name = "Yury Lysogorskiy" },
+    { name = "Ralf Drautz" },
+]
+keywords = ["calphy", "free energy", "molecular dynamics", "LAMMPS"]
+classifiers = [
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "matplotlib",
+    "pyyaml",
+    "mendeleev",
+    "tqdm",
+    "scipy",
+    "pydantic",
+    "pyscal3",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/ICAMS/calphy"
+Documentation = "https://calphy.org"
+Repository = "https://github.com/ICAMS/calphy"
+
+[project.scripts]
+calphy = "calphy.kernel:main"
+calphy_kernel = "calphy.queuekernel:main"
+calphy_run_averaging = "calphy.clitools:run_averaging"
+calphy_process_averaging = "calphy.clitools:process_averaging"
+calphy_run_integration = "calphy.clitools:run_integration"
+calphy_process_integration = "calphy.clitools:process_integration"
+calphy_convert_input = "calphy.clitools:convert_legacy_inputfile"
+calphy_phase_diagram = "calphy.clitools:phase_diagram"
+
+[tool.setuptools.packages.find]
+include = ["calphy", "calphy.*"]

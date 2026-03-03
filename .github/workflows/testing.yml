@@ -27,9 +27,5 @@ jobs:
     - name: run tests
       shell: bash -l {0}
       run: |
-        pip install -e .
-        pip install pytest
-        pip install pytest-cov
+        pip install -e ".[test]"
         pytest tests/
-        cd examples/example_01
-        #calphy_kernel -i input.yaml -k 0 -s True
