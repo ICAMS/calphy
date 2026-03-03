@@ -293,3 +293,41 @@ def test_create_composition_array_values_overrides_range():
     assert len(comp_arr) == 3
     assert list(comp_arr) == direct
 
+
+def test_create_temperature_array_direct_values():
+    """Test that a direct 'values' list bypasses range/interval"""
+    from calphy.phase_diagram import _create_temperature_array
+
+    direct = [1000, 1200, 1500, 1800]  # non-equidistant
+    temp_arr = _create_temperature_array(temp_range=None, interval=None, values=direct)
+
+    assert len(temp_arr) == 4
+    assert list(temp_arr) == [float(t) for t in direct]
+
+
+def test_create_temperature_array_values_overrides_range():
+    """values kwarg takes priority over range/interval when both are supplied"""
+    from calphy.phase_diagram import _create_temperature_array
+
+    direct = [1300, 1600, 1800]
+    temp_arr = _create_temperature_array(
+        temp_range=[1300, 1800],
+        interval=100,          # would give 6 points if used
+        values=direct
+    )
+
+    # Should use direct values (3 points), not range/interval (6 points)
+    assert len(temp_arr) == 3
+    assert list(temp_arr) == [float(t) for t in direct]
+
+
+def test_create_temperature_array_range_unchanged():
+    """Existing range/interval behaviour is unaffected when values is not given"""
+    from calphy.phase_diagram import _create_temperature_array
+
+    temp_arr = _create_temperature_array(temp_range=[1300, 1500], interval=100)
+
+    assert len(temp_arr) == 3  # 1300, 1400, 1500
+    assert temp_arr[0] == 1300.0
+    assert temp_arr[-1] == 1500.0
+

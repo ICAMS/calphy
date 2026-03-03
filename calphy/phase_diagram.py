@@ -349,22 +349,29 @@ def _create_composition_array(comp_range, interval, reference, values=None):
     return comp_arr, is_reference
 
 
-def _create_temperature_array(temp_range, interval):
+def _create_temperature_array(temp_range, interval, values=None):
     """
-    Create temperature array from range specification.
+    Create temperature array from range specification or a direct list of values.
     
     Parameters
     ----------
     temp_range : list or scalar
-        Temperature range [min, max] or single value
+        Temperature range [min, max] or single value. Ignored when *values* is given.
     interval : float
-        Temperature interval
+        Temperature interval. Ignored when *values* is given.
+    values : list, optional
+        Explicit list of temperatures to use instead of deriving them from
+        *temp_range* and *interval*. Allows non-equidistant spacing.
     
     Returns
     -------
     ndarray
         Temperature array
     """
+    # Direct values array takes priority over range/interval
+    if values is not None:
+        return np.asarray(values, dtype=float)
+
     # Convert to list if scalar
     if not isinstance(temp_range, list):
         temp_range = [temp_range]
@@ -507,7 +514,12 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
 
         # Create temperature array using helper function
         temps = phase["temperature"]
-        temp_arr = _create_temperature_array(temps['range'], temps['interval'])
+        # A direct 'values' list in the input takes priority over range/interval
+        temp_arr = _create_temperature_array(
+            temps.get('range'),
+            temps.get('interval'),
+            values=temps.get('values')
+        )
         ntemps = len(temp_arr)
 
         all_calculations = []
