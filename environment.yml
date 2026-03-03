@@ -7,11 +7,11 @@ dependencies:
   - scipy
   - pyyaml
   - mendeleev
-  - lammps =2024.08.29=*_openmpi_*
+  - lammps
   - openmpi
   - numpy
   - mpi4py
-  - pylammpsmpi >=0.2.13,<=0.2.35
+  - pylammpsmpi
   - matplotlib
   - tqdm
   - uncertainties
