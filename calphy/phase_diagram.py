@@ -966,7 +966,7 @@ def get_phase_free_energy(df, phase, temp,
     return None
 
 
-def get_free_energy_mixing(dict_list, threshold=1E-3, boundary_trim=0.0):
+def get_free_energy_mixing(dict_list, threshold=1E-3, boundary_trim=0.1):
     """
     Input is a list of dictionaries
 
@@ -984,7 +984,7 @@ def get_free_energy_mixing(dict_list, threshold=1E-3, boundary_trim=0.0):
         phases.  A partial-range phase is one whose composition range
         does not reach the global minimum or maximum.  Trimming removes
         the edge region where the global linear reference can produce
-        artefactual dips in F_mix.  Set to 0 (default) to disable.
+        artefactual dips in F_mix.  Set to ``0`` to disable.
     """
     dict_list = np.atleast_1d(dict_list)
 
@@ -1033,11 +1033,13 @@ def get_free_energy_mixing(dict_list, threshold=1E-3, boundary_trim=0.0):
             right_partial = c_max < max_comp - threshold
 
             if left_partial or right_partial:
+                trim = float(boundary_trim)
+
                 mask = np.ones(len(comp), dtype=bool)
                 if left_partial:
-                    mask &= comp >= c_min + boundary_trim
+                    mask &= comp >= c_min + trim
                 if right_partial:
-                    mask &= comp <= c_max - boundary_trim
+                    mask &= comp <= c_max - trim
                 d["composition"] = comp[mask]
                 d["free_energy"] = d["free_energy"][mask]
                 d["free_energy_mix"] = d["free_energy_mix"][mask]
@@ -1377,7 +1379,7 @@ class PhaseDiagram:
 
     def calculate(self, T_range=(400, 1400), T_step=5,
                   fit_order=4, method='polynomial',
-                  boundary_trim=0.0,
+                  boundary_trim=0.1,
                   remove_self_tangents_for=None,
                   ideal_configurational_entropy=True,
                   end_weight=3, end_indices=4):
@@ -1396,6 +1398,8 @@ class PhaseDiagram:
             ``'polynomial'`` or ``'redlich-kister'``.
         boundary_trim : float
             Amount to trim from partial-range phase boundaries.
+            ``'auto'`` (default) computes 2× the average composition
+            spacing per phase.
         remove_self_tangents_for : list of str, optional
             Phase names for which same-phase tangent constructions
             should be discarded.
@@ -1575,7 +1579,7 @@ class PhaseDiagram:
 
         dc = get_free_energy_mixing(
             dict_list,
-            boundary_trim=kw.get('boundary_trim', 0.0))
+            boundary_trim=kw.get('boundary_trim', 0.1))
 
         for d in dc:
             phase = d['phase']
