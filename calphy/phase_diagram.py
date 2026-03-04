@@ -690,15 +690,102 @@ def _get_free_energy_fit(composition,
                         free_energy, 
                         fit_order=5,
                         end_weight=3,
-                        end_indices=4):
+                        end_indices=4,
+                        method="polynomial"):
     """
-    Create splines for free energy, and return them
+    Fit free energy as a function of composition.
+
+    Parameters
+    ----------
+    composition : array-like
+        Composition values (between 0 and 1).
+    free_energy : array-like
+        Free energy values at each composition.
+    fit_order : int
+        Number of Redlich-Kister coefficients (method="redlich-kister")
+        or polynomial order (method="polynomial").
+    end_weight : float
+        Extra weight given to endpoint data points.
+    end_indices : int
+        Number of points at each end to receive extra weight.
+    method : str
+        "redlich-kister" or "polynomial" (default).
+
+    Returns
+    -------
+    If method="polynomial": polynomial coefficient array (np.polyfit style).
+    If method="redlich-kister": dict with keys "L" (RK coefficients),
+        "F0" and "F1" (endpoint free energies), "x0" and "x1" (endpoint
+        compositions).
     """
     weights = np.ones_like(free_energy)
     weights[0:end_indices] = end_weight
     weights[-end_indices:] = end_weight
-    fit = np.polyfit(composition, free_energy, fit_order, w=weights)
-    return fit
+
+    if method == "polynomial":
+        fit = np.polyfit(composition, free_energy, fit_order, w=weights)
+        return fit
+
+    # --- Redlich-Kister ---
+    x = np.asarray(composition, dtype=float)
+    F = np.asarray(free_energy, dtype=float)
+
+    # Endpoint values (use actual data at boundaries)
+    x0, x1 = x[0], x[-1]
+    F0, F1 = F[0], F[-1]
+
+    # Linear reference between endpoints
+    F_lin = F0 + (F1 - F0) * (x - x0) / (x1 - x0)
+    F_excess = F - F_lin
+
+    # Shifted coordinate so that x0->0, x1->1
+    xi = (x - x0) / (x1 - x0)
+
+    # RK basis:  xi*(1-xi) * (1-2*xi)^k  for k=0..fit_order-1
+    n_coeffs = fit_order
+    prefactor = xi * (1 - xi)
+    basis = np.column_stack([
+        prefactor * (1 - 2 * xi)**k for k in range(n_coeffs)
+    ])
+
+    # Weighted least-squares
+    W = np.diag(weights)
+    L_coeffs, _, _, _ = np.linalg.lstsq(W @ basis, W @ F_excess, rcond=None)
+
+    return {"L": L_coeffs, "F0": F0, "F1": F1, "x0": x0, "x1": x1}
+
+
+def _eval_free_energy_fit(fit, composition):
+    """
+    Evaluate a free energy fit at the given compositions.
+
+    Parameters
+    ----------
+    fit : array or dict
+        Output of ``_get_free_energy_fit``.
+        If array → polynomial (np.polyval).
+        If dict  → Redlich-Kister evaluation.
+    composition : array-like
+        Composition values to evaluate at.
+
+    Returns
+    -------
+    F : ndarray
+        Free energy values.
+    """
+    if isinstance(fit, dict):
+        x = np.asarray(composition, dtype=float)
+        x0, x1 = fit["x0"], fit["x1"]
+        F0, F1 = fit["F0"], fit["F1"]
+        L = fit["L"]
+
+        F_lin = F0 + (F1 - F0) * (x - x0) / (x1 - x0)
+        xi = (x - x0) / (x1 - x0)
+        prefactor = xi * (1 - xi)
+        F_excess = sum(L[k] * prefactor * (1 - 2 * xi)**k for k in range(len(L)))
+        return F_lin + F_excess
+    else:
+        return np.polyval(fit, composition)
 
 def get_phase_free_energy(df, phase, temp, 
                           composition_interval=(0, 1),
@@ -710,7 +797,8 @@ def get_phase_free_energy(df, phase, temp,
                           reset_value=1,
                           plot=False,
                           end_weight=3,
-                          end_indices=4):
+                          end_indices=4,
+                          method="polynomial"):
     """
     Get the free energy of a phase as a function of composition.
 
@@ -751,6 +839,11 @@ def get_phase_free_energy(df, phase, temp,
     plot: bool, optional
         If True, plot the calculated free energy curves.
 
+    method: str, optional
+        Fitting method for F(x). "polynomial" (default) uses np.polyfit;
+        "redlich-kister" uses the Redlich-Kister expansion
+        F_excess = x(1-x) * sum_k L_k*(1-2x)^k.
+
     Returns
     -------
     result_dict: dict
@@ -790,11 +883,12 @@ def get_phase_free_energy(df, phase, temp,
 
         fe_fit = _get_free_energy_fit(composition, fes, fit_order=fit_order,
                                             end_weight=end_weight,
-                                            end_indices=end_indices)
+                                            end_indices=end_indices,
+                                            method=method)
         compfine = np.linspace(np.min(composition), np.max(composition), composition_grid)
         
         #now fit on the comp grid again
-        fe = np.polyval(fe_fit, compfine)
+        fe = _eval_free_energy_fit(fe_fit, compfine)
 
         if composition_cutoff is not None:
             distances = [np.min(np.abs(c-composition)) for c in compfine]
