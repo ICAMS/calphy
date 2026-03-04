@@ -948,12 +948,25 @@ def get_phase_free_energy(df, phase, temp,
     return None
 
 
-def get_free_energy_mixing(dict_list, threshold=1E-3):
+def get_free_energy_mixing(dict_list, threshold=1E-3, boundary_trim=0.0):
     """
     Input is a list of dictionaries
 
     Get free energy of mixing by subtracting end member values.
     End members are chosen automatically.
+
+    Parameters
+    ----------
+    dict_list : list of dict
+        Phase free-energy dictionaries (output of ``get_phase_free_energy``).
+    threshold : float
+        Tolerance for matching end-member compositions (default 1e-3).
+    boundary_trim : float
+        Composition width to trim from the boundaries of partial-range
+        phases.  A partial-range phase is one whose composition range
+        does not reach the global minimum or maximum.  Trimming removes
+        the edge region where the global linear reference can produce
+        artefactual dips in F_mix.  Set to 0 (default) to disable.
     """
     dict_list = np.atleast_1d(dict_list)
 
@@ -992,6 +1005,25 @@ def get_free_energy_mixing(dict_list, threshold=1E-3):
         #print((right_ref_scaled + left_ref_scaled)[-1])
         ref = d["free_energy"] - (right_ref_scaled + left_ref_scaled)
         d["free_energy_mix"] = ref
+
+    # Trim boundary points from partial-range phases
+    if boundary_trim > 0:
+        for d in dict_list:
+            comp = d["composition"]
+            c_min, c_max = np.min(comp), np.max(comp)
+            left_partial = c_min > min_comp + threshold
+            right_partial = c_max < max_comp - threshold
+
+            if left_partial or right_partial:
+                mask = np.ones(len(comp), dtype=bool)
+                if left_partial:
+                    mask &= comp >= c_min + boundary_trim
+                if right_partial:
+                    mask &= comp <= c_max - boundary_trim
+                d["composition"] = comp[mask]
+                d["free_energy"] = d["free_energy"][mask]
+                d["free_energy_mix"] = d["free_energy_mix"][mask]
+
     return dict_list    
 
 def create_color_list(phases):    
