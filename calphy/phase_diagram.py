@@ -17,6 +17,7 @@ from calphy.integrators import kb
 from scipy.spatial import ConvexHull
 from scipy.interpolate import splrep, splev
 from scipy.optimize import curve_fit
+from scipy.signal import savgol_filter
 
 
 colors = ['#a6cee3','#1f78b4','#b2df8a',
@@ -926,7 +927,12 @@ def get_phase_free_energy(df, phase, temp,
                                             end_weight=end_weight,
                                             end_indices=end_indices,
                                             method=method)
-        compfine = np.linspace(np.min(composition), np.max(composition), composition_grid)
+        # Use the requested composition_interval for the evaluation grid
+        # so the range is consistent even when some endpoint data is
+        # missing at certain temperatures.
+        comp_lo = composition_interval[0] if composition_interval is not None else np.min(composition)
+        comp_hi = composition_interval[1] if composition_interval is not None else np.max(composition)
+        compfine = np.linspace(comp_lo, comp_hi, composition_grid)
         
         #now fit on the comp grid again
         fe = _eval_free_energy_fit(fe_fit, compfine)
@@ -1163,6 +1169,7 @@ def plot_phase_diagram(tangents, temperature,
     fill=True,
     alpha=0.35,
     border_lw=2,
+    smooth_boundary=0,
     figsize=None,
     ax=None):
     """
@@ -1192,6 +1199,10 @@ def plot_phase_diagram(tangents, temperature,
         Fill opacity for polygons (0–1).
     border_lw : float
         Line width of the polygon borders.
+    smooth_boundary : int
+        Savitzky-Golay window size (odd integer) for smoothing polygon
+        boundaries.  Set to 0 (default) to disable.  A value of 11
+        is a good starting point.
     figsize : tuple or None
         Figure size.  Defaults to (7, 5).
     ax : matplotlib Axes or None
@@ -1239,6 +1250,11 @@ def plot_phase_diagram(tangents, temperature,
             Ts = [r[0] for r in rows]
             x_left = [r[1] for r in rows]
             x_right = [r[2] for r in rows]
+
+            # Optionally smooth the boundary curves
+            if smooth_boundary > 0 and len(x_left) > smooth_boundary:
+                x_left = list(savgol_filter(x_left, smooth_boundary, 3))
+                x_right = list(savgol_filter(x_right, smooth_boundary, 3))
 
             # Build a closed polygon: go up along the left boundary,
             # then back down along the right boundary.
