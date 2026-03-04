@@ -1126,10 +1126,52 @@ def plot_phase_diagram(tangents, temperature,
     phases,
     edgecolor="#37474f",
     linewidth=1,
-    linestyle='-'):
-    
-    #get a phase list
-    color_dict = create_color_list(phases) 
+    linestyle='-',
+    fill=True,
+    alpha=0.35,
+    border_lw=2,
+    figsize=None,
+    ax=None):
+    """
+    Plot a binary phase diagram.
+
+    Parameters
+    ----------
+    tangents : list of arrays
+        Tangent composition pairs at each temperature, output of the
+        phase-diagram loop.
+    temperature : list
+        Temperature value for each entry in *tangents*.
+    tangent_types : list of arrays
+        Phase-pair labels (e.g. ``"cufcc-lqd"``) for every tangent.
+    phases : list of str
+        Ordered phase names used to build the colour palette.
+    edgecolor : str
+        Colour for polygon borders and the figure frame.
+    linewidth : float
+        Line width when *fill* is False (legacy horizontal-line mode).
+    linestyle : str
+        Line style when *fill* is False.
+    fill : bool
+        If True (default), render two-phase regions as filled polygons
+        with coloured borders.  If False, fall back to horizontal lines.
+    alpha : float
+        Fill opacity for polygons (0–1).
+    border_lw : float
+        Line width of the polygon borders.
+    figsize : tuple or None
+        Figure size.  Defaults to (7, 5).
+    ax : matplotlib Axes or None
+        If given, draw on this axes instead of creating a new figure.
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    """
+    if figsize is None:
+        figsize = (7, 5)
+
+    color_dict = create_color_list(phases)
     minimal_color_dict = {}
     color_list = []
     for key, val in color_dict.items():
@@ -1137,18 +1179,55 @@ def plot_phase_diagram(tangents, temperature,
             color_list.append(val)
             minimal_color_dict[key] = val
 
-    legend_patches = [mpatches.Patch(color=color, label=label) for label, color in minimal_color_dict.items()]
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
 
-    fig, ax = plt.subplots(edgecolor=edgecolor)
+    if not fill:
+        # ---- legacy: horizontal lines ----
+        for count, x in enumerate(tangents):
+            for c, a in enumerate(x):
+                ax.plot(np.array(a),
+                        [temperature[count], temperature[count]],
+                        linestyle,
+                        lw=linewidth,
+                        c=color_dict[tangent_types[count][c]])
+    else:
+        # ---- filled polygons ----
+        # Collect boundary curves per region type.
+        # Each region type accumulates (T, x_left, x_right) triples.
+        from collections import defaultdict
+        region_data = defaultdict(list)
 
-    for count, x in enumerate(tangents):
-        for c, a in enumerate(x):
-            ax.plot(np.array(a), 
-                     [temperature[count], temperature[count]], 
-                     linestyle,
-                     lw=linewidth,
-                     c=color_dict[tangent_types[count][c]],
-                     )
+        for count, x in enumerate(tangents):
+            T = temperature[count]
+            for c, a in enumerate(x):
+                label = tangent_types[count][c]
+                region_data[label].append((T, a[0], a[1]))
+
+        for label, rows in region_data.items():
+            rows.sort(key=lambda r: r[0])
+            Ts = [r[0] for r in rows]
+            x_left = [r[1] for r in rows]
+            x_right = [r[2] for r in rows]
+
+            # Build a closed polygon: go up along the left boundary,
+            # then back down along the right boundary.
+            poly_x = x_left + x_right[::-1]
+            poly_T = Ts + Ts[::-1]
+
+            color = color_dict[label]
+            ax.fill(poly_x, poly_T, color=color, alpha=alpha)
+            # Draw the left and right boundary lines
+            ax.plot(x_left, Ts, color=color, lw=border_lw, solid_capstyle='round')
+            ax.plot(x_right, Ts, color=color, lw=border_lw, solid_capstyle='round')
+
+    legend_patches = [mpatches.Patch(color=color, label=label)
+                      for label, color in minimal_color_dict.items()]
     ax.legend(handles=legend_patches, loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.set_xlabel("Composition")
+    ax.set_ylabel("T (K)")
+    fig.tight_layout()
     return fig
 
