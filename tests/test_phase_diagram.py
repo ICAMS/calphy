@@ -240,3 +240,94 @@ def test_create_composition_array_range():
     assert is_reference[0] == True  # 0.0 is reference
     assert all(not ref for ref in is_reference[1:])  # Others are not reference
 
+
+def test_create_composition_array_direct_values():
+    """Test that a direct 'values' list bypasses range/interval"""
+    from calphy.phase_diagram import _create_composition_array
+    
+    direct = [0.0, 0.1, 0.3, 0.6, 1.0]  # non-equidistant
+    comp_arr, is_reference = _create_composition_array(
+        comp_range=None,
+        interval=None,
+        reference=0.0,
+        values=direct
+    )
+    
+    assert len(comp_arr) == 5
+    assert list(comp_arr) == direct
+    assert is_reference[0] == True   # 0.0 is reference
+    assert all(not ref for ref in is_reference[1:])  # others are not reference
+
+
+def test_create_composition_array_direct_values_reference_in_middle():
+    """Test direct values array where reference is not the first entry"""
+    from calphy.phase_diagram import _create_composition_array
+    
+    direct = [0.2, 0.5, 1.0]
+    comp_arr, is_reference = _create_composition_array(
+        comp_range=None,
+        interval=None,
+        reference=0.5,
+        values=direct
+    )
+    
+    assert len(comp_arr) == 3
+    assert is_reference[0] == False
+    assert is_reference[1] == True   # 0.5 matches reference
+    assert is_reference[2] == False
+
+
+def test_create_composition_array_values_overrides_range():
+    """values kwarg takes priority over range/interval when both are supplied"""
+    from calphy.phase_diagram import _create_composition_array
+    
+    direct = [0.0, 0.5, 1.0]
+    comp_arr, is_reference = _create_composition_array(
+        comp_range=[0.0, 1.0],
+        interval=0.1,          # would give 11 points if used
+        reference=0.0,
+        values=direct
+    )
+    
+    # Should use direct values (3 points), not range/interval (11 points)
+    assert len(comp_arr) == 3
+    assert list(comp_arr) == direct
+
+
+def test_create_temperature_array_direct_values():
+    """Test that a direct 'values' list bypasses range/interval"""
+    from calphy.phase_diagram import _create_temperature_array
+
+    direct = [1000, 1200, 1500, 1800]  # non-equidistant
+    temp_arr = _create_temperature_array(temp_range=None, interval=None, values=direct)
+
+    assert len(temp_arr) == 4
+    assert list(temp_arr) == [float(t) for t in direct]
+
+
+def test_create_temperature_array_values_overrides_range():
+    """values kwarg takes priority over range/interval when both are supplied"""
+    from calphy.phase_diagram import _create_temperature_array
+
+    direct = [1300, 1600, 1800]
+    temp_arr = _create_temperature_array(
+        temp_range=[1300, 1800],
+        interval=100,          # would give 6 points if used
+        values=direct
+    )
+
+    # Should use direct values (3 points), not range/interval (6 points)
+    assert len(temp_arr) == 3
+    assert list(temp_arr) == [float(t) for t in direct]
+
+
+def test_create_temperature_array_range_unchanged():
+    """Existing range/interval behaviour is unaffected when values is not given"""
+    from calphy.phase_diagram import _create_temperature_array
+
+    temp_arr = _create_temperature_array(temp_range=[1300, 1500], interval=100)
+
+    assert len(temp_arr) == 3  # 1300, 1400, 1500
+    assert temp_arr[0] == 1300.0
+    assert temp_arr[-1] == 1500.0
+

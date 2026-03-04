@@ -17,6 +17,7 @@ from calphy.integrators import kb
 from scipy.spatial import ConvexHull
 from scipy.interpolate import splrep, splev
 from scipy.optimize import curve_fit
+from scipy.signal import savgol_filter
 
 
 colors = ['#a6cee3','#1f78b4','#b2df8a',
@@ -302,24 +303,33 @@ def read_structure_composition(lattice_file, element_list):
 COMPOSITION_TOLERANCE = 1E-5
 
 
-def _create_composition_array(comp_range, interval, reference):
+def _create_composition_array(comp_range, interval, reference, values=None):
     """
-    Create composition array from range specification.
+    Create composition array from range specification or a direct list of values.
     
     Parameters
     ----------
     comp_range : list or scalar
-        Composition range [min, max] or single value
+        Composition range [min, max] or single value. Ignored when *values* is given.
     interval : float
-        Composition interval
+        Composition interval. Ignored when *values* is given.
     reference : float
         Reference composition value
+    values : list, optional
+        Explicit list of compositions to use instead of deriving them from
+        *comp_range* and *interval*. Allows non-equidistant spacing.
     
     Returns
     -------
     tuple
         (comp_arr, is_reference) - composition array and boolean array marking reference compositions
     """
+    # Direct values array takes priority over range/interval
+    if values is not None:
+        comp_arr = np.asarray(values, dtype=float)
+        is_reference = np.abs(comp_arr - reference) < COMPOSITION_TOLERANCE
+        return comp_arr, is_reference
+
     # Convert to list if scalar
     if not isinstance(comp_range, list):
         comp_range = [comp_range]
@@ -340,22 +350,29 @@ def _create_composition_array(comp_range, interval, reference):
     return comp_arr, is_reference
 
 
-def _create_temperature_array(temp_range, interval):
+def _create_temperature_array(temp_range, interval, values=None):
     """
-    Create temperature array from range specification.
+    Create temperature array from range specification or a direct list of values.
     
     Parameters
     ----------
     temp_range : list or scalar
-        Temperature range [min, max] or single value
+        Temperature range [min, max] or single value. Ignored when *values* is given.
     interval : float
-        Temperature interval
+        Temperature interval. Ignored when *values* is given.
+    values : list, optional
+        Explicit list of temperatures to use instead of deriving them from
+        *temp_range* and *interval*. Allows non-equidistant spacing.
     
     Returns
     -------
     ndarray
         Temperature array
     """
+    # Direct values array takes priority over range/interval
+    if values is not None:
+        return np.asarray(values, dtype=float)
+
     # Convert to list if scalar
     if not isinstance(temp_range, list):
         temp_range = [temp_range]
@@ -486,17 +503,36 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
         other_element_list.remove(reference_element)
         other_element = other_element_list[0]
 
+        # Auto-calculate reference composition from the lattice file
+        # if the user did not provide it explicitly.
+        if 'reference' not in comps:
+            lattice_file = phase['lattice']
+            struct_comp = read_structure_composition(lattice_file, phase['element'])
+            total_atoms = sum(struct_comp.values())
+            if total_atoms > 0:
+                ref_comp = struct_comp.get(reference_element, 0) / total_atoms
+            else:
+                ref_comp = 0.0
+            comps['reference'] = ref_comp
+
         # Create composition array using helper function
+        # A direct 'values' list in the input takes priority over range/interval
         comp_arr, is_reference = _create_composition_array(
-            comps['range'], 
-            comps['interval'], 
-            comps['reference']
+            comps.get('range'), 
+            comps.get('interval'), 
+            comps['reference'],
+            values=comps.get('values')
         )
         ncomps = len(comp_arr)
 
         # Create temperature array using helper function
         temps = phase["temperature"]
-        temp_arr = _create_temperature_array(temps['range'], temps['interval'])
+        # A direct 'values' list in the input takes priority over range/interval
+        temp_arr = _create_temperature_array(
+            temps.get('range'),
+            temps.get('interval'),
+            values=temps.get('values')
+        )
         ntemps = len(temp_arr)
 
         all_calculations = []
@@ -583,7 +619,7 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
                                     input_chemical_composition,
                                     output_chemical_composition)
                     compsc = CompositionTransformation(simplecalc)
-                    compsc.write_structure(outfile)
+                    compsc.write_structure(outfile, for_fe_mode=True)
             
                     #pop extra keys which are not needed
                     #we dont kick out phase name
@@ -667,15 +703,143 @@ def _get_free_energy_fit(composition,
                         free_energy, 
                         fit_order=5,
                         end_weight=3,
-                        end_indices=4):
+                        end_indices=4,
+                        method="polynomial"):
     """
-    Create splines for free energy, and return them
+    Fit free energy as a function of composition.
+
+    Parameters
+    ----------
+    composition : array-like
+        Composition values (between 0 and 1).
+    free_energy : array-like
+        Free energy values at each composition.
+    fit_order : int
+        Number of Redlich-Kister coefficients (method="redlich-kister")
+        or polynomial order (method="polynomial").
+    end_weight : float
+        Extra weight given to endpoint data points.
+    end_indices : int
+        Number of points at each end to receive extra weight.
+    method : str
+        "redlich-kister" or "polynomial" (default).
+
+    Returns
+    -------
+    If method="polynomial": polynomial coefficient array (np.polyfit style).
+    If method="redlich-kister": dict with keys "L" (RK coefficients),
+        "F0" and "F1" (endpoint free energies), "x0" and "x1" (endpoint
+        compositions).
     """
     weights = np.ones_like(free_energy)
     weights[0:end_indices] = end_weight
     weights[-end_indices:] = end_weight
-    fit = np.polyfit(composition, free_energy, fit_order, w=weights)
-    return fit
+
+    if method == "polynomial":
+        fit = np.polyfit(composition, free_energy, fit_order, w=weights)
+        return fit
+
+    # --- Redlich-Kister ---
+    x = np.asarray(composition, dtype=float)
+    F = np.asarray(free_energy, dtype=float)
+
+    # Endpoint values (use actual data at boundaries)
+    x0, x1 = x[0], x[-1]
+    F0, F1 = F[0], F[-1]
+
+    # Determine which endpoints are actual pure components (x=0 or x=1).
+    # Only at pure-component boundaries should the excess be forced to zero.
+    tol = 1e-3
+    left_is_pure = (x0 < tol) or (x0 > 1.0 - tol)
+    right_is_pure = (x1 < tol) or (x1 > 1.0 - tol)
+
+    # Linear reference between endpoints
+    F_lin = F0 + (F1 - F0) * (x - x0) / (x1 - x0)
+    F_excess = F - F_lin
+
+    # Shifted coordinate so that x0->0, x1->1
+    xi = (x - x0) / (x1 - x0)
+
+    if left_is_pure and right_is_pure:
+        # Standard RK: excess vanishes at both endpoints via xi*(1-xi) prefactor
+        n_coeffs = fit_order
+        prefactor = xi * (1 - xi)
+        basis = np.column_stack([
+            prefactor * (1 - 2 * xi)**k for k in range(n_coeffs)
+        ])
+    elif right_is_pure:
+        # Only pin excess=0 at right endpoint (x1 is pure component)
+        # Use (1-xi) prefactor: vanishes at xi=1 but free at xi=0
+        n_coeffs = fit_order
+        prefactor = (1 - xi)
+        basis = np.column_stack([
+            prefactor * xi**k for k in range(n_coeffs)
+        ])
+    elif left_is_pure:
+        # Only pin excess=0 at left endpoint (x0 is pure component)
+        # Use xi prefactor: vanishes at xi=0 but free at xi=1
+        n_coeffs = fit_order
+        prefactor = xi
+        basis = np.column_stack([
+            prefactor * (1 - xi)**k for k in range(n_coeffs)
+        ])
+    else:
+        # Neither endpoint is pure — use unconstrained polynomial for excess
+        n_coeffs = fit_order
+        basis = np.column_stack([xi**k for k in range(n_coeffs)])
+
+    # Weighted least-squares
+    W = np.diag(weights)
+    L_coeffs, _, _, _ = np.linalg.lstsq(W @ basis, W @ F_excess, rcond=None)
+
+    return {"L": L_coeffs, "F0": F0, "F1": F1, "x0": x0, "x1": x1,
+            "left_is_pure": left_is_pure, "right_is_pure": right_is_pure}
+
+
+def _eval_free_energy_fit(fit, composition):
+    """
+    Evaluate a free energy fit at the given compositions.
+
+    Parameters
+    ----------
+    fit : array or dict
+        Output of ``_get_free_energy_fit``.
+        If array → polynomial (np.polyval).
+        If dict  → Redlich-Kister evaluation.
+    composition : array-like
+        Composition values to evaluate at.
+
+    Returns
+    -------
+    F : ndarray
+        Free energy values.
+    """
+    if isinstance(fit, dict):
+        x = np.asarray(composition, dtype=float)
+        x0, x1 = fit["x0"], fit["x1"]
+        F0, F1 = fit["F0"], fit["F1"]
+        L = fit["L"]
+        left_is_pure = fit.get("left_is_pure", True)
+        right_is_pure = fit.get("right_is_pure", True)
+
+        F_lin = F0 + (F1 - F0) * (x - x0) / (x1 - x0)
+        xi = (x - x0) / (x1 - x0)
+
+        if left_is_pure and right_is_pure:
+            prefactor = xi * (1 - xi)
+            F_excess = sum(L[k] * prefactor * (1 - 2 * xi)**k for k in range(len(L)))
+        elif right_is_pure:
+            prefactor = (1 - xi)
+            F_excess = sum(L[k] * prefactor * xi**k for k in range(len(L)))
+        elif left_is_pure:
+            prefactor = xi
+            F_excess = sum(L[k] * prefactor * (1 - xi)**k for k in range(len(L)))
+        else:
+            F_excess = sum(L[k] * xi**k for k in range(len(L)))
+
+        return F_lin + F_excess
+    else:
+        return np.polyval(fit, composition)
 
 def get_phase_free_energy(df, phase, temp, 
                           composition_interval=(0, 1),
@@ -687,7 +851,8 @@ def get_phase_free_energy(df, phase, temp,
                           reset_value=1,
                           plot=False,
                           end_weight=3,
-                          end_indices=4):
+                          end_indices=4,
+                          method="polynomial"):
     """
     Get the free energy of a phase as a function of composition.
 
@@ -728,6 +893,11 @@ def get_phase_free_energy(df, phase, temp,
     plot: bool, optional
         If True, plot the calculated free energy curves.
 
+    method: str, optional
+        Fitting method for F(x). "polynomial" (default) uses np.polyfit;
+        "redlich-kister" uses the Redlich-Kister expansion
+        F_excess = x(1-x) * sum_k L_k*(1-2x)^k.
+
     Returns
     -------
     result_dict: dict
@@ -753,6 +923,10 @@ def get_phase_free_energy(df, phase, temp,
 
     if (len(fes)==0) or (fes is None):
         warnings.warn("Some temperatures could not be found!")
+    elif len(fes) <= fit_order:
+        warnings.warn(f"Not enough data points ({len(fes)}) for fit order {fit_order} for phase '{phase}'. "
+                      f"Need at least {fit_order+1} points. Returning None.")
+        return None
     else:
         if ideal_configurational_entropy:
             entropy_term = kb*temp*_calculate_configurational_entropy(composition, 
@@ -763,11 +937,17 @@ def get_phase_free_energy(df, phase, temp,
 
         fe_fit = _get_free_energy_fit(composition, fes, fit_order=fit_order,
                                             end_weight=end_weight,
-                                            end_indices=end_indices)
-        compfine = np.linspace(np.min(composition), np.max(composition), composition_grid)
+                                            end_indices=end_indices,
+                                            method=method)
+        # Use the requested composition_interval for the evaluation grid
+        # so the range is consistent even when some endpoint data is
+        # missing at certain temperatures.
+        comp_lo = composition_interval[0] if composition_interval is not None else np.min(composition)
+        comp_hi = composition_interval[1] if composition_interval is not None else np.max(composition)
+        compfine = np.linspace(comp_lo, comp_hi, composition_grid)
         
         #now fit on the comp grid again
-        fe = np.polyval(fe_fit, compfine)
+        fe = _eval_free_energy_fit(fe_fit, compfine)
 
         if composition_cutoff is not None:
             distances = [np.min(np.abs(c-composition)) for c in compfine]
@@ -786,12 +966,25 @@ def get_phase_free_energy(df, phase, temp,
     return None
 
 
-def get_free_energy_mixing(dict_list, threshold=1E-3):
+def get_free_energy_mixing(dict_list, threshold=1E-3, boundary_trim=0.1):
     """
     Input is a list of dictionaries
 
     Get free energy of mixing by subtracting end member values.
     End members are chosen automatically.
+
+    Parameters
+    ----------
+    dict_list : list of dict
+        Phase free-energy dictionaries (output of ``get_phase_free_energy``).
+    threshold : float
+        Tolerance for matching end-member compositions (default 1e-3).
+    boundary_trim : float
+        Composition width to trim from the boundaries of partial-range
+        phases.  A partial-range phase is one whose composition range
+        does not reach the global minimum or maximum.  Trimming removes
+        the edge region where the global linear reference can produce
+        artefactual dips in F_mix.  Set to ``0`` to disable.
     """
     dict_list = np.atleast_1d(dict_list)
 
@@ -830,7 +1023,34 @@ def get_free_energy_mixing(dict_list, threshold=1E-3):
         #print((right_ref_scaled + left_ref_scaled)[-1])
         ref = d["free_energy"] - (right_ref_scaled + left_ref_scaled)
         d["free_energy_mix"] = ref
+
+    # Trim boundary points from partial-range phases
+    if boundary_trim > 0:
+        for d in dict_list:
+            comp = d["composition"]
+            c_min, c_max = np.min(comp), np.max(comp)
+            left_partial = c_min > min_comp + threshold
+            right_partial = c_max < max_comp - threshold
+
+            if left_partial or right_partial:
+                trim = float(boundary_trim)
+
+                mask = np.ones(len(comp), dtype=bool)
+                if left_partial:
+                    mask &= comp >= c_min + trim
+                if right_partial:
+                    mask &= comp <= c_max - trim
+                d["composition"] = comp[mask]
+                d["free_energy"] = d["free_energy"][mask]
+                d["free_energy_mix"] = d["free_energy_mix"][mask]
+
     return dict_list    
+
+TABLEAU10 = [
+    "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
+    "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC",
+]
+
 
 def create_color_list(phases):    
     combinations_list = ['-'.join(pair) for pair in combinations(phases, 2)]
@@ -839,13 +1059,8 @@ def create_color_list(phases):
 
     color_dict = {}
 
-    color_keys = list(matcolors.keys())
-    int_keys = list(matcolors['red'].keys())
-
     for count, combination in enumerate(final_combinations):
-        index = count%len(color_keys)
-        second_index = -1
-        color_hex = matcolors[color_keys[int(index)]][int_keys[second_index]]
+        color_hex = TABLEAU10[count % len(TABLEAU10)]
         color_dict[combination] = color_hex
         raw = combination.split('-')
         if raw[0] != raw[1]:
@@ -964,29 +1179,567 @@ def plot_phase_diagram(tangents, temperature,
     phases,
     edgecolor="#37474f",
     linewidth=1,
-    linestyle='-'):
-    
-    #get a phase list
-    color_dict = create_color_list(phases) 
-    minimal_color_dict = {}
-    color_list = []
-    for key, val in color_dict.items():
-        if val not in color_list:
-            color_list.append(val)
-            minimal_color_dict[key] = val
+    linestyle='-',
+    fill=True,
+    alpha=0.35,
+    border_lw=2,
+    smooth_boundary=0,
+    figsize=None,
+    ax=None):
+    """
+    Plot a binary phase diagram.
 
-    legend_patches = [mpatches.Patch(color=color, label=label) for label, color in minimal_color_dict.items()]
+    Parameters
+    ----------
+    tangents : list of arrays
+        Tangent composition pairs at each temperature, output of the
+        phase-diagram loop.
+    temperature : list
+        Temperature value for each entry in *tangents*.
+    tangent_types : list of arrays
+        Phase-pair labels (e.g. ``"cufcc-lqd"``) for every tangent.
+    phases : list of str
+        Ordered phase names used to build the colour palette.
+    edgecolor : str
+        Colour for polygon borders and the figure frame.
+    linewidth : float
+        Line width when *fill* is False (legacy horizontal-line mode).
+    linestyle : str
+        Line style when *fill* is False.
+    fill : bool
+        If True (default), render two-phase regions as filled polygons
+        with coloured borders.  If False, fall back to horizontal lines.
+    alpha : float
+        Fill opacity for polygons (0–1).
+    border_lw : float
+        Line width of the polygon borders.
+    smooth_boundary : int
+        Savitzky-Golay window size (odd integer) for smoothing polygon
+        boundaries.  Set to 0 (default) to disable.  A value of 11
+        is a good starting point.
+    figsize : tuple or None
+        Figure size.  Defaults to (7, 5).
+    ax : matplotlib Axes or None
+        If given, draw on this axes instead of creating a new figure.
 
-    fig, ax = plt.subplots(edgecolor=edgecolor)
+    Returns
+    -------
+    fig : matplotlib Figure
+    ax : matplotlib Axes
+    """
+    if figsize is None:
+        figsize = (7, 5)
 
-    for count, x in enumerate(tangents):
-        for c, a in enumerate(x):
-            ax.plot(np.array(a), 
-                     [temperature[count], temperature[count]], 
-                     linestyle,
-                     lw=linewidth,
-                     c=color_dict[tangent_types[count][c]],
-                     )
+    color_dict = create_color_list(phases)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
+
+    if not fill:
+        # ---- legacy: horizontal lines ----
+        for count, x in enumerate(tangents):
+            for c, a in enumerate(x):
+                ax.plot(np.array(a),
+                        [temperature[count], temperature[count]],
+                        linestyle,
+                        lw=linewidth,
+                        c=color_dict[tangent_types[count][c]])
+    else:
+        # ---- filled polygons ----
+        # Collect boundary curves per region type.
+        # Each region type accumulates (T, x_left, x_right) triples.
+        from collections import defaultdict
+        region_data = defaultdict(list)
+
+        for count, x in enumerate(tangents):
+            T = temperature[count]
+            for c, a in enumerate(x):
+                label = tangent_types[count][c]
+                region_data[label].append((T, a[0], a[1]))
+
+        for label, rows in region_data.items():
+            rows.sort(key=lambda r: r[0])
+            Ts = [r[0] for r in rows]
+            x_left = [r[1] for r in rows]
+            x_right = [r[2] for r in rows]
+
+            # Optionally smooth the boundary curves
+            if smooth_boundary > 0 and len(x_left) > smooth_boundary:
+                x_left = list(savgol_filter(x_left, smooth_boundary, 3))
+                x_right = list(savgol_filter(x_right, smooth_boundary, 3))
+
+            # Build a closed polygon: go up along the left boundary,
+            # then back down along the right boundary.
+            poly_x = x_left + x_right[::-1]
+            poly_T = Ts + Ts[::-1]
+
+            color = color_dict[label]
+            ax.fill(poly_x, poly_T, color=color, alpha=alpha)
+            # Draw the left and right boundary lines
+            ax.plot(x_left, Ts, color=color, lw=border_lw, solid_capstyle='round')
+            ax.plot(x_right, Ts, color=color, lw=border_lw, solid_capstyle='round')
+
+    # Build legend only for regions that actually appear in the data
+    seen_labels = set()
+    for tt in tangent_types:
+        for label in np.atleast_1d(tt):
+            seen_labels.add(label)
+
+    legend_patches = []
+    seen_colors = set()
+    for label in seen_labels:
+        color = color_dict.get(label, TABLEAU10[0])
+        # Deduplicate reversed pairs (e.g. lqd-agfcc == agfcc-lqd)
+        canonical = '-'.join(sorted(label.split('-')))
+        if canonical not in seen_colors:
+            legend_patches.append(mpatches.Patch(color=color, label=label))
+            seen_colors.add(canonical)
     ax.legend(handles=legend_patches, loc='center left', bbox_to_anchor=(1, 0.5))
-    return fig
+    ax.set_xlabel("Composition")
+    ax.set_ylabel("T (K)")
+    fig.tight_layout()
+    return fig, ax
+
+
+class PhaseDiagram:
+    """
+    High-level class for computing and plotting a binary phase diagram.
+
+    Wraps the full workflow — data gathering, cleaning, free-energy
+    fitting, common-tangent construction, and plotting — into a single
+    object.
+
+    Parameters
+    ----------
+    folders : dict
+        Mapping of phase name → folder path, e.g.
+        ``{'cufcc': 'cufcc', 'agfcc': 'agfcc', 'lqd': 'lqd'}``.
+    reference_element : str
+        The element whose fraction is used as the composition axis
+        (e.g. ``'Ag'``).
+    composition_intervals : dict, optional
+        Per-phase composition bounds, e.g.
+        ``{'cufcc': (0, 0.5), 'agfcc': (0.7, 1.0)}``.
+        Phases not listed are auto-detected from the data: the
+        interval is set to the ``(min, max)`` of available
+        compositions for that phase.
+    smooth : bool
+        If True (default), smooth F(T) data with thermodynamic basis
+        during the ``clean_df`` step.
+
+    Examples
+    --------
+    >>> pd = PhaseDiagram(
+    ...     folders={'cufcc': 'cufcc', 'agfcc': 'agfcc', 'lqd': 'lqd'},
+    ...     reference_element='Ag',
+    ... )
+    >>> pd.calculate(T_range=(400, 1400), T_step=5, fit_order=4,
+    ...              method='redlich-kister')
+    >>> fig, ax = pd.plot()
+    """
+
+    def __init__(self, folders, reference_element,
+                 composition_intervals=None, smooth=True):
+        from calphy.postprocessing import (gather_results, clean_df,
+                                           fix_composition_scaling)
+
+        self.reference_element = reference_element
+        self.composition_intervals = composition_intervals or {}
+        self.phases = list(folders.keys())
+
+        # ---- gather & clean ----
+        dfs = []
+        for phase, folder in folders.items():
+            df = gather_results(folder, reduce_composition=True,
+                                extract_phase_prefix=True)
+            dfs.append(df)
+
+        combined = pd.concat(dfs, ignore_index=True)
+        combined = combined.loc[combined.status == 'True']
+
+        dfc = clean_df(combined, reference_element,
+                       combine_direct_calculations=True, smooth=smooth)
+        dfc = fix_composition_scaling(dfc, add_ideal_entropy=True)
+
+        for key, val in dfc.items():
+            val['phase'] = key
+
+        self.df = pd.concat([val for val in dfc.values()])
+
+        # ---- auto-detect composition intervals from data ----
+        for phase in self.phases:
+            if phase not in self.composition_intervals:
+                df_p = self.df.loc[self.df['phase'] == phase, 'composition']
+                if len(df_p) > 0:
+                    self.composition_intervals[phase] = (
+                        float(df_p.min()), float(df_p.max()))
+
+        # ---- state filled by calculate() ----
+        self.tangents = None
+        self.temperatures = None
+        self.tangent_types = None
+        self._calc_kwargs = {}
+
+    # ------------------------------------------------------------------
+    # Core computation
+    # ------------------------------------------------------------------
+
+    def calculate(self, T_range=(400, 1400), T_step=5,
+                  fit_order=4, method='polynomial',
+                  boundary_trim=0.1,
+                  remove_self_tangents_for=None,
+                  ideal_configurational_entropy=True,
+                  end_weight=3, end_indices=4):
+        """
+        Compute common-tangent constructions across a temperature range.
+
+        Parameters
+        ----------
+        T_range : tuple
+            (T_min, T_max) in Kelvin.
+        T_step : float
+            Temperature increment.
+        fit_order : int
+            Polynomial / Redlich-Kister order for F(x) fits.
+        method : str
+            ``'polynomial'`` or ``'redlich-kister'``.
+        boundary_trim : float
+            Amount to trim from partial-range phase boundaries.
+            ``'auto'`` (default) computes 2× the average composition
+            spacing per phase.
+        remove_self_tangents_for : list of str, optional
+            Phase names for which same-phase tangent constructions
+            should be discarded.
+        ideal_configurational_entropy : bool
+            Add ideal configurational entropy to free energies.
+        end_weight : int
+            Weight for endpoints in the fit.
+        end_indices : int
+            Number of endpoint indices to weight.
+        """
+        if remove_self_tangents_for is None:
+            remove_self_tangents_for = []
+
+        self._calc_kwargs = dict(
+            fit_order=fit_order, method=method,
+            boundary_trim=boundary_trim,
+            remove_self_tangents_for=remove_self_tangents_for,
+            ideal_configurational_entropy=ideal_configurational_entropy,
+            end_weight=end_weight, end_indices=end_indices,
+        )
+
+        temps_arr = np.arange(T_range[0], T_range[1], T_step)
+        tangents = []
+        temps = []
+        tangent_types = []
+
+        for t in temps_arr:
+            dict_list = []
+            for phase in self.phases:
+                ci = self.composition_intervals.get(phase, (0, 1))
+                d = get_phase_free_energy(
+                    self.df, phase, t,
+                    ideal_configurational_entropy=ideal_configurational_entropy,
+                    composition_interval=ci,
+                    fit_order=fit_order,
+                    method=method,
+                    end_weight=end_weight,
+                    end_indices=end_indices,
+                )
+                if d is not None:
+                    dict_list.append(d)
+
+            if len(dict_list) > 0:
+                dc = get_free_energy_mixing(dict_list,
+                                            boundary_trim=boundary_trim)
+                tn, _, cn, _ = get_common_tangents(
+                    dc, remove_self_tangents_for=remove_self_tangents_for)
+                tangents.append(tn)
+                temps.append(t)
+                tangent_types.append(cn)
+
+        self.tangents = tangents
+        self.temperatures = temps
+        self.tangent_types = tangent_types
+
+    # ------------------------------------------------------------------
+    # Phase diagram plot
+    # ------------------------------------------------------------------
+
+    def plot(self, fill=True, alpha=0.2, border_lw=2,
+             smooth_boundary=11, figsize=None, ax=None, **kwargs):
+        """
+        Plot the full phase diagram.
+
+        All keyword arguments are forwarded to
+        :func:`plot_phase_diagram`.
+
+        Returns
+        -------
+        fig : matplotlib Figure
+        ax : matplotlib Axes
+        """
+        self._require_calculated()
+        return plot_phase_diagram(
+            self.tangents, self.temperatures, self.tangent_types,
+            self.phases, fill=fill, alpha=alpha, border_lw=border_lw,
+            smooth_boundary=smooth_boundary, figsize=figsize, ax=ax,
+            **kwargs)
+
+    # ------------------------------------------------------------------
+    # Free-energy curves at a single temperature
+    # ------------------------------------------------------------------
+
+    def plot_free_energy(self, T, figsize=None, ax=None):
+        """
+        Plot free-energy curves F(x) for all phases at temperature *T*.
+
+        Parameters
+        ----------
+        T : float
+            Temperature in Kelvin.
+        figsize : tuple, optional
+        ax : matplotlib Axes, optional
+
+        Returns
+        -------
+        fig : matplotlib Figure
+        ax : matplotlib Axes
+        """
+        kw = self._calc_kwargs
+        if figsize is None:
+            figsize = (7, 5)
+        if ax is None:
+            fig, ax = plt.subplots(figsize=figsize)
+        else:
+            fig = ax.get_figure()
+
+        color_dict = create_color_list(self.phases)
+
+        for phase in self.phases:
+            ci = self.composition_intervals.get(phase, (0, 1))
+            d = get_phase_free_energy(
+                self.df, phase, T,
+                ideal_configurational_entropy=kw.get(
+                    'ideal_configurational_entropy', True),
+                composition_interval=ci,
+                fit_order=kw.get('fit_order', 4),
+                method=kw.get('method', 'polynomial'),
+                end_weight=kw.get('end_weight', 3),
+                end_indices=kw.get('end_indices', 4),
+            )
+            if d is not None:
+                color = color_dict.get(f'{phase}-{phase}', TABLEAU10[0])
+                ax.plot(d['composition'], d['free_energy'],
+                        label=phase, color=color, lw=2)
+
+        ax.set_xlabel("Composition")
+        ax.set_ylabel("F (eV/atom)")
+        ax.set_title(f"T = {T} K")
+        ax.legend()
+        fig.tight_layout()
+        return fig, ax
+
+    # ------------------------------------------------------------------
+    # Free-energy of mixing + tangent lines at one temperature
+    # ------------------------------------------------------------------
+
+    def plot_free_energy_mixing(self, T, figsize=None, ax=None):
+        """
+        Plot free energy of mixing F_mix(x) with common-tangent lines
+        at temperature *T*.
+
+        Returns
+        -------
+        fig : matplotlib Figure
+        ax : matplotlib Axes
+        """
+        kw = self._calc_kwargs
+        if figsize is None:
+            figsize = (7, 5)
+        if ax is None:
+            fig, ax = plt.subplots(figsize=figsize)
+        else:
+            fig = ax.get_figure()
+
+        color_dict = create_color_list(self.phases)
+
+        dict_list = []
+        for phase in self.phases:
+            ci = self.composition_intervals.get(phase, (0, 1))
+            d = get_phase_free_energy(
+                self.df, phase, T,
+                ideal_configurational_entropy=kw.get(
+                    'ideal_configurational_entropy', True),
+                composition_interval=ci,
+                fit_order=kw.get('fit_order', 4),
+                method=kw.get('method', 'polynomial'),
+                end_weight=kw.get('end_weight', 3),
+                end_indices=kw.get('end_indices', 4),
+            )
+            if d is not None:
+                dict_list.append(d)
+
+        if len(dict_list) == 0:
+            warnings.warn(f"No valid data at T={T}")
+            return fig, ax
+
+        dc = get_free_energy_mixing(
+            dict_list,
+            boundary_trim=kw.get('boundary_trim', 0.1))
+
+        for d in dc:
+            phase = d['phase']
+            color = color_dict.get(f'{phase}-{phase}', TABLEAU10[0])
+            ax.plot(d['composition'], d['free_energy_mix'],
+                    label=phase, color=color, lw=2)
+
+        tn, en, _, _ = get_common_tangents(
+            dc,
+            remove_self_tangents_for=kw.get(
+                'remove_self_tangents_for', []))
+
+        for t, e in zip(tn, en):
+            ax.plot(t, e, color='black', ls='dashed', lw=1.5)
+
+        ax.set_xlabel("Composition")
+        ax.set_ylabel(r"$\Delta F_\mathrm{mix}$ (eV/atom)")
+        ax.set_title(f"T = {T} K")
+        ax.set_ylim(top=0.0)
+        ax.legend()
+        fig.tight_layout()
+        return fig, ax
+
+    # ------------------------------------------------------------------
+    # Raw data vs fit at one temperature
+    # ------------------------------------------------------------------
+
+    def plot_data_vs_fit(self, phase, T, figsize=None, ax=None):
+        """
+        Compare raw free-energy data points with the fitted curve
+        for a single phase at temperature *T*.
+
+        Returns
+        -------
+        fig : matplotlib Figure
+        ax : matplotlib Axes
+        """
+        kw = self._calc_kwargs
+        if figsize is None:
+            figsize = (7, 5)
+        if ax is None:
+            fig, ax = plt.subplots(figsize=figsize)
+        else:
+            fig = ax.get_figure()
+
+        ci = self.composition_intervals.get(phase, (0, 1))
+        df_phase = self.df.loc[self.df['phase'] == phase].copy()
+        df_phase = df_phase.sort_values(by='composition')
+        df_phase = df_phase[
+            (df_phase['composition'] >= ci[0])
+            & (df_phase['composition'] <= ci[1])]
+
+        composition = df_phase['composition'].values
+        args = df_phase['temperature'].apply(_get_temp_arg, args=(T,))
+        fes = _get_fe_at_args(df_phase['free_energy'].values, args)
+
+        comp_raw = np.array([composition[i] for i, x in enumerate(fes)
+                             if x is not None])
+        fe_raw = np.array([x for x in fes if x is not None])
+
+        if len(fe_raw) == 0:
+            warnings.warn(f"No data for phase '{phase}' at T={T}")
+            return fig, ax
+
+        ice = kw.get('ideal_configurational_entropy', True)
+        if ice:
+            entropy_term = kb * T * _calculate_configurational_entropy(
+                comp_raw)
+            fe_raw = fe_raw - entropy_term
+
+        # Plot raw data
+        ax.scatter(comp_raw, fe_raw, s=40, zorder=5, label='data',
+                   edgecolors='black', facecolors='white', lw=1.5)
+
+        # Plot fit
+        d = get_phase_free_energy(
+            self.df, phase, T,
+            ideal_configurational_entropy=ice,
+            composition_interval=ci,
+            fit_order=kw.get('fit_order', 4),
+            method=kw.get('method', 'polynomial'),
+            end_weight=kw.get('end_weight', 3),
+            end_indices=kw.get('end_indices', 4),
+        )
+        if d is not None:
+            ax.plot(d['composition'], d['free_energy'],
+                    color='#E15759', lw=2, label='fit')
+
+        ax.set_xlabel("Composition")
+        ax.set_ylabel("F (eV/atom)")
+        ax.set_title(f"{phase} — T = {T} K")
+        ax.legend()
+        fig.tight_layout()
+        return fig, ax
+
+    # ------------------------------------------------------------------
+    # Data convergence overview
+    # ------------------------------------------------------------------
+
+    def plot_convergence(self, figsize=None):
+        """
+        Show which (phase, composition, temperature) calculations
+        succeeded.  Each phase gets a subplot with temperature on
+        the y-axis and composition on the x-axis.  Successful runs
+        are shown as filled circles; missing data as open circles.
+
+        Returns
+        -------
+        fig : matplotlib Figure
+        axes : array of matplotlib Axes
+        """
+        n = len(self.phases)
+        if figsize is None:
+            figsize = (4 * n, 5)
+        fig, axes = plt.subplots(1, n, figsize=figsize, sharey=True)
+        if n == 1:
+            axes = [axes]
+
+        for ax, phase in zip(axes, self.phases):
+            df_p = self.df.loc[self.df['phase'] == phase]
+            for _, row in df_p.iterrows():
+                comp = row['composition']
+                tarr = np.atleast_1d(row['temperature'])
+                farr = np.atleast_1d(row['free_energy'])
+                ok = ~np.isnan(farr.astype(float))
+                ax.scatter(np.full(ok.sum(), comp), tarr[ok],
+                           c='#4E79A7', s=15, zorder=3)
+                if (~ok).any():
+                    ax.scatter(np.full((~ok).sum(), comp), tarr[~ok],
+                               facecolors='none', edgecolors='#E15759',
+                               s=15, zorder=3)
+            ax.set_title(phase)
+            ax.set_xlabel("Composition")
+
+        axes[0].set_ylabel("T (K)")
+        fig.tight_layout()
+        return fig, axes
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _require_calculated(self):
+        if self.tangents is None:
+            raise RuntimeError(
+                "No tangent data. Call .calculate() first.")
+
+    def __repr__(self):
+        n = len(self.phases)
+        status = ("calculated" if self.tangents is not None
+                  else "not calculated")
+        return (f"PhaseDiagram(phases={self.phases}, "
+                f"ref='{self.reference_element}', {status})")
 

@@ -753,3 +753,178 @@ def test_three_element_transformation(almg_structure_file):
     )
     # Verify total count is correct
     assert sum(type_counts.values()) == 2000
+
+
+# ---------------------------------------------------------------------------
+# Tests for for_fe_mode=True (liquid / fe-mode calculations)
+# ---------------------------------------------------------------------------
+# In fe mode the .comp.mod file is used directly as the structure input for
+# a plain `fe` LAMMPS run (not alchemy).  The pair_coeff declares ALL
+# elements, so atom types MUST reflect the *target* element using the
+# typedict numbering (Cu=1, Ni=2, …), not the mappingdict indices.
+# The header must also declare calc_element_count types regardless of whether
+# all atoms happen to be a single species (e.g. pure Ni at x=1.0).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def cu_liquid_structure_file():
+    """Pure Cu liquid structure: 500 atoms, 2 atom types declared, all type 1."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filepath = os.path.join(tmpdir, "lqd.lammps.data")
+        natoms = 500
+        lx = 18.075
+        content = f"""(written by ASE)
+
+{natoms} atoms
+2 atom types
+
+0.0 {lx} xlo xhi
+0.0 {lx} ylo yhi
+0.0 {lx} zlo zhi
+
+Atoms # atomic
+
+"""
+        # Simple FCC positions, all type 1 (Cu)
+        nx = 5
+        a = lx / nx
+        atom_id = 1
+        for ix in range(nx):
+            for iy in range(nx):
+                for iz in range(nx):
+                    for dx, dy, dz in [(0,0,0),(0.5,0.5,0),(0.5,0,0.5),(0,0.5,0.5)]:
+                        x = (ix + dx) * a
+                        y = (iy + dy) * a
+                        z = (iz + dz) * a
+                        content += f"  {atom_id}  1  {x:.6f}  {y:.6f}  {z:.6f}\n"
+                        atom_id += 1
+
+        with open(filepath, "w") as f:
+            f.write(content)
+        yield filepath
+
+
+def test_fe_mode_100pct_to_ni(cu_liquid_structure_file):
+    """
+    fe mode: pure Cu structure (all type 1) → pure Ni (x_Ni = 1.0).
+
+    write_structure(for_fe_mode=True) must produce:
+      - header: 2 atom types  (= calc_element_count, not unique_mappings count)
+      - all 500 atoms: type 2  (Ni's typedict entry)
+    """
+    natoms = 500
+    calc = SimpleCalculation(
+        lattice=cu_liquid_structure_file,
+        element=["Cu", "Ni"],
+        input_chemical_composition={"Cu": natoms, "Ni": 0},
+        output_chemical_composition={"Cu": 0, "Ni": natoms},
+    )
+    comp = CompositionTransformation(calc)
+
+    assert comp.typedict == {"Cu": 1, "Ni": 2}
+    assert comp.to_remove == {"Cu": natoms}
+    assert comp.to_add == {"Ni": natoms}
+
+    outfile = os.path.join(os.path.dirname(cu_liquid_structure_file), "lqd-1.00.comp.mod")
+    comp.write_structure(outfile, for_fe_mode=True)
+
+    type_counts = verify_lammps_data_file(
+        outfile,
+        expected_natoms=natoms,
+        expected_ntypes=2,          # full element count, NOT unique_mappings (1)
+        expected_type_counts={2: natoms},  # all Ni = type 2
+    )
+    assert 1 not in type_counts  # no Cu atoms remain
+
+
+def test_fe_mode_50pct_ni(cu_liquid_structure_file):
+    """
+    fe mode: pure Cu structure → 50% Cu / 50% Ni (x_Ni = 0.5).
+
+    write_structure(for_fe_mode=True) must produce:
+      - header: 2 atom types
+      - 250 atoms type 1 (Cu), 250 atoms type 2 (Ni)
+    """
+    natoms = 500
+    n_ni = natoms // 2
+    n_cu = natoms - n_ni
+    calc = SimpleCalculation(
+        lattice=cu_liquid_structure_file,
+        element=["Cu", "Ni"],
+        input_chemical_composition={"Cu": natoms, "Ni": 0},
+        output_chemical_composition={"Cu": n_cu, "Ni": n_ni},
+    )
+    comp = CompositionTransformation(calc)
+
+    outfile = os.path.join(os.path.dirname(cu_liquid_structure_file), "lqd-0.50.comp.mod")
+    comp.write_structure(outfile, for_fe_mode=True)
+
+    type_counts = verify_lammps_data_file(
+        outfile,
+        expected_natoms=natoms,
+        expected_ntypes=2,
+        expected_type_counts={1: n_cu, 2: n_ni},
+    )
+
+
+def test_fe_mode_pure_cu(cu_liquid_structure_file):
+    """
+    fe mode: pure Cu structure → pure Cu (x_Ni = 0.0, reference calc).
+
+    No atoms are transformed. write_structure(for_fe_mode=True) must still
+    declare 2 atom types in the header and keep all atoms as type 1.
+    """
+    natoms = 500
+    calc = SimpleCalculation(
+        lattice=cu_liquid_structure_file,
+        element=["Cu", "Ni"],
+        input_chemical_composition={"Cu": natoms, "Ni": 0},
+        output_chemical_composition={"Cu": natoms, "Ni": 0},
+    )
+    comp = CompositionTransformation(calc)
+
+    outfile = os.path.join(os.path.dirname(cu_liquid_structure_file), "lqd-0.00.comp.mod")
+    comp.write_structure(outfile, for_fe_mode=True)
+
+    type_counts = verify_lammps_data_file(
+        outfile,
+        expected_natoms=natoms,
+        expected_ntypes=2,
+        expected_type_counts={1: natoms},
+    )
+    assert 2 not in type_counts  # no Ni atoms
+
+
+def test_fe_mode_does_not_affect_alchemy_mode(cu_liquid_structure_file):
+    """
+    Ensure for_fe_mode=False (default) still uses mappingdict type indices,
+    not typedict, so alchemy / atom-swap routines are unaffected.
+
+    For Cu→Ni 50-50: unique_mappings = [Cu-Cu, Cu-Ni] → types 1, 2 from
+    mappingdict.  The alchemy file should have 2 types (= len(unique_mappings))
+    and the type counts match mappingdict indices, NOT typedict.
+    """
+    natoms = 500
+    n_ni = natoms // 2
+    n_cu = natoms - n_ni
+    calc = SimpleCalculation(
+        lattice=cu_liquid_structure_file,
+        element=["Cu", "Ni"],
+        input_chemical_composition={"Cu": natoms, "Ni": 0},
+        output_chemical_composition={"Cu": n_cu, "Ni": n_ni},
+    )
+    comp = CompositionTransformation(calc)
+
+    outfile = os.path.join(os.path.dirname(cu_liquid_structure_file), "alchemy.lammps.data")
+    comp.write_structure(outfile, for_fe_mode=False)  # default / alchemy mode
+
+    # Should have len(unique_mappings) types, not calc_element_count
+    expected_ntypes = len(comp.unique_mappings)
+    type_counts = verify_lammps_data_file(
+        outfile,
+        expected_natoms=natoms,
+        expected_ntypes=expected_ntypes,
+        expected_type_counts={},
+    )
+    assert sum(type_counts.values()) == natoms
