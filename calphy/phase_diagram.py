@@ -503,6 +503,18 @@ def prepare_inputs_for_phase_diagram(inputyamlfile, calculation_base_name=None):
         other_element_list.remove(reference_element)
         other_element = other_element_list[0]
 
+        # Auto-calculate reference composition from the lattice file
+        # if the user did not provide it explicitly.
+        if 'reference' not in comps:
+            lattice_file = phase['lattice']
+            struct_comp = read_structure_composition(lattice_file, phase['element'])
+            total_atoms = sum(struct_comp.values())
+            if total_atoms > 0:
+                ref_comp = struct_comp.get(reference_element, 0) / total_atoms
+            else:
+                ref_comp = 0.0
+            comps['reference'] = ref_comp
+
         # Create composition array using helper function
         # A direct 'values' list in the input takes priority over range/interval
         comp_arr, is_reference = _create_composition_array(
