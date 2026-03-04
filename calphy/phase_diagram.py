@@ -1026,6 +1026,12 @@ def get_free_energy_mixing(dict_list, threshold=1E-3, boundary_trim=0.0):
 
     return dict_list    
 
+TABLEAU10 = [
+    "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
+    "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC",
+]
+
+
 def create_color_list(phases):    
     combinations_list = ['-'.join(pair) for pair in combinations(phases, 2)]
     same_element_pairs = ['-'.join([item, item]) for item in phases]
@@ -1033,13 +1039,8 @@ def create_color_list(phases):
 
     color_dict = {}
 
-    color_keys = list(matcolors.keys())
-    int_keys = list(matcolors['red'].keys())
-
     for count, combination in enumerate(final_combinations):
-        index = count%len(color_keys)
-        second_index = -1
-        color_hex = matcolors[color_keys[int(index)]][int_keys[second_index]]
+        color_hex = TABLEAU10[count % len(TABLEAU10)]
         color_dict[combination] = color_hex
         raw = combination.split('-')
         if raw[0] != raw[1]:
@@ -1199,17 +1200,12 @@ def plot_phase_diagram(tangents, temperature,
     Returns
     -------
     fig : matplotlib Figure
+    ax : matplotlib Axes
     """
     if figsize is None:
         figsize = (7, 5)
 
     color_dict = create_color_list(phases)
-    minimal_color_dict = {}
-    color_list = []
-    for key, val in color_dict.items():
-        if val not in color_list:
-            color_list.append(val)
-            minimal_color_dict[key] = val
 
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -1255,11 +1251,24 @@ def plot_phase_diagram(tangents, temperature,
             ax.plot(x_left, Ts, color=color, lw=border_lw, solid_capstyle='round')
             ax.plot(x_right, Ts, color=color, lw=border_lw, solid_capstyle='round')
 
-    legend_patches = [mpatches.Patch(color=color, label=label)
-                      for label, color in minimal_color_dict.items()]
+    # Build legend only for regions that actually appear in the data
+    seen_labels = set()
+    for tt in tangent_types:
+        for label in np.atleast_1d(tt):
+            seen_labels.add(label)
+
+    legend_patches = []
+    seen_colors = set()
+    for label in seen_labels:
+        color = color_dict.get(label, TABLEAU10[0])
+        # Deduplicate reversed pairs (e.g. lqd-agfcc == agfcc-lqd)
+        canonical = '-'.join(sorted(label.split('-')))
+        if canonical not in seen_colors:
+            legend_patches.append(mpatches.Patch(color=color, label=label))
+            seen_colors.add(canonical)
     ax.legend(handles=legend_patches, loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_xlabel("Composition")
     ax.set_ylabel("T (K)")
     fig.tight_layout()
-    return fig
+    return fig, ax
 
