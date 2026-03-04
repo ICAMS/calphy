@@ -209,7 +209,7 @@ def _entropy(compC, comp_init=[1, 0]):
     dC = compC*_log(compC) - comp_init[1]*_log(comp_init[1])
     return kb*(dA+dC)
     
-def clean_df(df, reference_element, combine_direct_calculations=False, fit_order=0):
+def clean_df(df, reference_element, combine_direct_calculations=False, smooth=False):
     """
     Clean a parsed dataframe and drop unnecessary columns. This gets it ready for further processing
     Note that `gather_results` should be run with `reduce_composition` and `extract_phase_name` for this to work.
@@ -225,10 +225,12 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
     
     combine_direct_calculations: bool, optional
         If True, combine direct calculations by fitting to produce temperature and free energy arrays
-        If used, an extra column `error` with mean square error of the fitting is also created
+        If used, an extra column `error` with RMSE of the fitting is also created
     
-    fit_order: int, optional
-        If `combine_direct_calculations` is used, this argument is used for fitting order.
+    smooth : bool, optional
+        If True, smooth the F(T) data using the thermodynamic basis
+        ``[1, T, T ln T, T²]``.  If False (default), return the raw data
+        points without smoothing.
 
     Returns
     -------
@@ -281,15 +283,23 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
                 #print(fe, entropy)
                 #print(len(fe), len(entropy))    
                 
-                if fit_order > 0:
-                    fit = np.polyfit(temps, fe, fit_order)
-                    temp_arr = np.arange(temps.min(), temps.max()+1, 1)
-                
-                    #estimate error
-                    fe_eval = np.polyval(fit, temps)
-                    error = np.sum((fe_eval-fe)**2)
-                
-                    fe_arr = np.polyval(fit, temp_arr)
+                if smooth:
+                    # Thermodynamic basis: F(T) = a + b*T + c*T*ln(T) + d*T²
+                    T_ = temps.astype(float)
+                    basis = np.column_stack([np.ones_like(T_), T_,
+                                            T_ * np.log(T_), T_**2])
+                    coeffs_t, _, _, _ = np.linalg.lstsq(basis, fe,
+                                                        rcond=None)
+
+                    fe_eval = basis @ coeffs_t
+                    error = float(np.sqrt(np.mean((fe_eval - fe)**2)))
+
+                    temp_arr = np.arange(temps.min(), temps.max()+1,
+                                         1).astype(float)
+                    basis_arr = np.column_stack([
+                        np.ones_like(temp_arr), temp_arr,
+                        temp_arr * np.log(temp_arr), temp_arr**2])
+                    fe_arr = basis_arr @ coeffs_t
                 else:
                     fe_arr = fe
                     temp_arr = temps
@@ -300,7 +310,8 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
                 errors.append(error)
                 entropies.append(entropy[0])
                 comps.append(float(exdf[reference_element].values[0]))
-                is_refs.append(np.abs(float(exdf[reference_element].values[0])-comp_ref[0])<1E-5)
+                # The fe job IS the reference by definition; composition_scaling jobs are not.
+                is_refs.append(unique_mode == 'fe')
 
                 mode_list.append(unique_mode)
             
@@ -313,29 +324,51 @@ def clean_df(df, reference_element, combine_direct_calculations=False, fit_order
         df_dict[phase.phase_name.values[0]] = df
     return df_dict
 
-def fix_composition_scaling(dfdict, fit_order=4, correct_entropy=True, add_ideal_entropy=False):
-    #NOTE: at the moment, the temperature ranges have to be same! but that should be fixed with fitting
-    #there could be calculations that failed, no?
-    #lets just fit, maybe a 2d?
+def fix_composition_scaling(dfdict, correct_entropy=True, add_ideal_entropy=False):
+    """
+    Correct composition-scaling free energies by adding the reference
+    free energy and (optionally) subtracting the ideal-entropy term.
+
+    Parameters
+    ----------
+    dfdict : dict of DataFrame
+        Output from ``clean_df``.
+    correct_entropy : bool
+        If True **and** *add_ideal_entropy* is True, subtract
+        ``T * S_ideal`` from the free energy.
+    add_ideal_entropy : bool
+        Controls whether the ideal-entropy correction is applied.
+    """
     for key, val in dfdict.items():
-        x=val
-        ref_fe = x.loc[x.is_reference==True].free_energy.values[0]
-        ref_temp = x.loc[x.is_reference==True].temperature.values[0]
-        ref_fe_fit = np.polyfit(ref_temp, ref_fe, fit_order)
+        x = val
+        ref_row = x.loc[x.is_reference == True]
+        ref_fe   = np.asarray(ref_row.free_energy.values[0], dtype=float)
+        ref_temp = np.asarray(ref_row.temperature.values[0], dtype=float)
+
+        # Fit reference F(T) with thermodynamic basis
+        basis_ref = np.column_stack([np.ones_like(ref_temp), ref_temp,
+                                     ref_temp * np.log(ref_temp),
+                                     ref_temp**2])
+        ref_coeffs, _, _, _ = np.linalg.lstsq(basis_ref, ref_fe, rcond=None)
 
         for index, row in x.iterrows():
             if (not row.is_reference) and (row.calculation_mode == 'composition_scaling'):
-                if correct_entropy:
-                    #note that we need a factor of 2, because the first one is directly coming in from the equations
-                    if add_ideal_entropy:
-                        x.at[index, 'free_energy'] =  row.free_energy - row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
-                    else:
-                        x.at[index, 'free_energy'] =  row.free_energy - row.temperature*row.ideal_entropy + np.polyval(ref_fe_fit, row.temperature)
+                T_row = np.asarray(row.temperature, dtype=float)
+                basis_row = np.column_stack([np.ones_like(T_row), T_row,
+                                             T_row * np.log(T_row),
+                                             T_row**2])
+                ref_at_T = basis_row @ ref_coeffs
+
+                if correct_entropy and add_ideal_entropy:
+                    x.at[index, 'free_energy'] = (
+                        row.free_energy
+                        - row.temperature * row.ideal_entropy
+                        + ref_at_T)
                 else:
-                    x.at[index, 'free_energy'] = row.free_energy + np.polyval(ref_fe_fit, row.temperature)
-                #x.at[index, 'free_energy'] = row.free_energy + np.polyval(ref_fe_fit, row.temperature)
+                    x.at[index, 'free_energy'] = row.free_energy + ref_at_T
+
         dfdict[key] = x
-    return dfdict        
+    return dfdict
 
 def find_transition_temperature(folder1, folder2, fit_order=4, plot=True):
     """
