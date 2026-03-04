@@ -1322,7 +1322,9 @@ class PhaseDiagram:
     composition_intervals : dict, optional
         Per-phase composition bounds, e.g.
         ``{'cufcc': (0, 0.5), 'agfcc': (0.7, 1.0)}``.
-        Phases not listed default to ``(0, 1)``.
+        Phases not listed are auto-detected from the data: the
+        interval is set to the ``(min, max)`` of available
+        compositions for that phase.
     smooth : bool
         If True (default), smooth F(T) data with thermodynamic basis
         during the ``clean_df`` step.
@@ -1332,7 +1334,6 @@ class PhaseDiagram:
     >>> pd = PhaseDiagram(
     ...     folders={'cufcc': 'cufcc', 'agfcc': 'agfcc', 'lqd': 'lqd'},
     ...     reference_element='Ag',
-    ...     composition_intervals={'cufcc': (0, 0.5), 'agfcc': (0.7, 1.0)},
     ... )
     >>> pd.calculate(T_range=(400, 1400), T_step=5, fit_order=4,
     ...              method='redlich-kister')
@@ -1366,6 +1367,14 @@ class PhaseDiagram:
             val['phase'] = key
 
         self.df = pd.concat([val for val in dfc.values()])
+
+        # ---- auto-detect composition intervals from data ----
+        for phase in self.phases:
+            if phase not in self.composition_intervals:
+                df_p = self.df.loc[self.df['phase'] == phase, 'composition']
+                if len(df_p) > 0:
+                    self.composition_intervals[phase] = (
+                        float(df_p.min()), float(df_p.max()))
 
         # ---- state filled by calculate() ----
         self.tangents = None
