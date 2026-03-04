@@ -734,6 +734,12 @@ def _get_free_energy_fit(composition,
     x0, x1 = x[0], x[-1]
     F0, F1 = F[0], F[-1]
 
+    # Determine which endpoints are actual pure components (x=0 or x=1).
+    # Only at pure-component boundaries should the excess be forced to zero.
+    tol = 1e-3
+    left_is_pure = (x0 < tol) or (x0 > 1.0 - tol)
+    right_is_pure = (x1 < tol) or (x1 > 1.0 - tol)
+
     # Linear reference between endpoints
     F_lin = F0 + (F1 - F0) * (x - x0) / (x1 - x0)
     F_excess = F - F_lin
@@ -741,18 +747,40 @@ def _get_free_energy_fit(composition,
     # Shifted coordinate so that x0->0, x1->1
     xi = (x - x0) / (x1 - x0)
 
-    # RK basis:  xi*(1-xi) * (1-2*xi)^k  for k=0..fit_order-1
-    n_coeffs = fit_order
-    prefactor = xi * (1 - xi)
-    basis = np.column_stack([
-        prefactor * (1 - 2 * xi)**k for k in range(n_coeffs)
-    ])
+    if left_is_pure and right_is_pure:
+        # Standard RK: excess vanishes at both endpoints via xi*(1-xi) prefactor
+        n_coeffs = fit_order
+        prefactor = xi * (1 - xi)
+        basis = np.column_stack([
+            prefactor * (1 - 2 * xi)**k for k in range(n_coeffs)
+        ])
+    elif right_is_pure:
+        # Only pin excess=0 at right endpoint (x1 is pure component)
+        # Use (1-xi) prefactor: vanishes at xi=1 but free at xi=0
+        n_coeffs = fit_order
+        prefactor = (1 - xi)
+        basis = np.column_stack([
+            prefactor * xi**k for k in range(n_coeffs)
+        ])
+    elif left_is_pure:
+        # Only pin excess=0 at left endpoint (x0 is pure component)
+        # Use xi prefactor: vanishes at xi=0 but free at xi=1
+        n_coeffs = fit_order
+        prefactor = xi
+        basis = np.column_stack([
+            prefactor * (1 - xi)**k for k in range(n_coeffs)
+        ])
+    else:
+        # Neither endpoint is pure — use unconstrained polynomial for excess
+        n_coeffs = fit_order
+        basis = np.column_stack([xi**k for k in range(n_coeffs)])
 
     # Weighted least-squares
     W = np.diag(weights)
     L_coeffs, _, _, _ = np.linalg.lstsq(W @ basis, W @ F_excess, rcond=None)
 
-    return {"L": L_coeffs, "F0": F0, "F1": F1, "x0": x0, "x1": x1}
+    return {"L": L_coeffs, "F0": F0, "F1": F1, "x0": x0, "x1": x1,
+            "left_is_pure": left_is_pure, "right_is_pure": right_is_pure}
 
 
 def _eval_free_energy_fit(fit, composition):
@@ -778,11 +806,24 @@ def _eval_free_energy_fit(fit, composition):
         x0, x1 = fit["x0"], fit["x1"]
         F0, F1 = fit["F0"], fit["F1"]
         L = fit["L"]
+        left_is_pure = fit.get("left_is_pure", True)
+        right_is_pure = fit.get("right_is_pure", True)
 
         F_lin = F0 + (F1 - F0) * (x - x0) / (x1 - x0)
         xi = (x - x0) / (x1 - x0)
-        prefactor = xi * (1 - xi)
-        F_excess = sum(L[k] * prefactor * (1 - 2 * xi)**k for k in range(len(L)))
+
+        if left_is_pure and right_is_pure:
+            prefactor = xi * (1 - xi)
+            F_excess = sum(L[k] * prefactor * (1 - 2 * xi)**k for k in range(len(L)))
+        elif right_is_pure:
+            prefactor = (1 - xi)
+            F_excess = sum(L[k] * prefactor * xi**k for k in range(len(L)))
+        elif left_is_pure:
+            prefactor = xi
+            F_excess = sum(L[k] * prefactor * (1 - xi)**k for k in range(len(L)))
+        else:
+            F_excess = sum(L[k] * xi**k for k in range(len(L)))
+
         return F_lin + F_excess
     else:
         return np.polyval(fit, composition)
