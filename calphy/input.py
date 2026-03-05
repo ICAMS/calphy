@@ -759,16 +759,29 @@ class Calculation(BaseModel, title="Main input class"):
 
     def fix_paths(self, potlist):
         """
-        Fix paths for potential files to complete ones
+        Fix paths for potential files to complete ones.
+
+        Also expands environment variables (e.g. ``$USER``, ``${USER}``) and
+        the home-directory shortcut ``~`` in potential file paths before
+        resolving them to absolute paths.  This allows input files to contain
+        portable paths such as ``/home/$USER/potentials/Cu.eam``.
         """
         fixedpots = []
         for pot in potlist:
             pcraw = pot.split()
             if len(pcraw) >= 3:
-                filename = pcraw[2]
-                filename = os.path.abspath(filename)
-                if os.path.exists(filename):
-                    pcnew = " ".join([*pcraw[:2], filename, *pcraw[3:]])
+                raw_filename = pcraw[2]
+                # Expand environment variables ($USER, ${USER}, $HOME, …) and ~
+                expanded = os.path.expandvars(os.path.expanduser(raw_filename))
+                abs_filename = os.path.abspath(expanded)
+                if os.path.exists(abs_filename):
+                    pcnew = " ".join([*pcraw[:2], abs_filename, *pcraw[3:]])
+                    fixedpots.append(pcnew)
+                elif expanded != raw_filename:
+                    # A variable was expanded even though the file was not found
+                    # at that location yet – still substitute so LAMMPS receives
+                    # the resolved path rather than a literal "$USER" string.
+                    pcnew = " ".join([*pcraw[:2], expanded, *pcraw[3:]])
                     fixedpots.append(pcnew)
                 else:
                     fixedpots.append(pot)
