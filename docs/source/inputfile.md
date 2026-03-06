@@ -858,7 +858,7 @@ _type_: string \
 _example_:
 ```
 options:
-  - memory: 3GB
+  memory: 3GB
 ```
 
 Extra options to be added to the submission script.
