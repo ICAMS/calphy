@@ -149,7 +149,13 @@ class SLURM:
         cmd = ["sbatch", self.script]
         proc = sub.Popen(cmd, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
         print(f'submitting {self.queueoptions["jobname"]}')
-        proc.communicate()
+        stdout, stderr = proc.communicate()
+        if proc.returncode != 0:
+            print("Failed to submit!")
+            print("= standard output")
+            print(stdout.decode("utf8"))
+            print("= standard error")
+            print(stderr.decode("utf8"))
         return proc
 
 
