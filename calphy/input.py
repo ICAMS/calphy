@@ -22,7 +22,7 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 """
 
 from typing_extensions import Annotated
-from typing import Any, Callable, List, ClassVar, Optional, Union
+from typing import Any, Callable, Dict, List, ClassVar, Optional, Union
 from pydantic import (
     BaseModel,
     Field,
@@ -217,7 +217,7 @@ class Queue(BaseModel, title="Options for configuring queue"):
     queuename: Annotated[str, Field(default="")]
     memory: Annotated[str, Field(default="3GB")]
     commands: Annotated[List, Field(default=[])]
-    options: Annotated[List, Field(default=[])]
+    options: Annotated[Dict[str, str], Field(default={})]
 
 
 class Tolerance(BaseModel, title="Tolerance settings for convergence"):

@@ -96,7 +96,7 @@ class SLURM:
             "cores": cores,
             "hint": "nomultithread",
             "directory": directory,
-            "options": [],
+            "options": {},
             "commands": [
                 "uss=$(whoami)",
                 "find /dev/shm/ -user $uss -type f -mmin +30 -delete",
@@ -132,8 +132,8 @@ class SLURM:
             fout.write("#SBATCH --chdir=%s\n" % self.queueoptions["directory"])
 
             # now write extra options
-            for option in self.queueoptions["options"]:
-                fout.write("#SBATCH %s\n" % option)
+            for key, value in self.queueoptions["options"].items():
+                fout.write(f"#SBATCH --{key}={value}\n")
 
             # now finally commands
             for command in self.queueoptions["commands"]:
