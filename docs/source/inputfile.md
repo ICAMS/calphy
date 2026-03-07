@@ -298,7 +298,6 @@ _default_: None \
 _example_:
 ```
 lattice: FCC
-lattice: [FCC, LQD]
 lattice: [FCC, conf.data]
 ```
    
