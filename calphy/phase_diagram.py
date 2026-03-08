@@ -1369,14 +1369,13 @@ class PhaseDiagram:
         # ---- gather & clean ----
         # Each value in `folders` can be a single path or a list of paths.
         # IMPORTANT: fix_composition_scaling anchors each composition_scaling
-        # row to its phase's reference (is_reference=True) row.  When two
-        # folders are merged into one phase they typically have *different*
-        # references (e.g. aufcc has reference at x=0, cufcc at x=1).
-        # To keep each folder's composition_scaling correctly anchored to its
-        # own reference we assign each folder a unique temporary phase_name so
-        # that clean_df and fix_composition_scaling process them separately.
-        # Only after both steps do we rename to the user's canonical key and
-        # concat the already-corrected DataFrames.
+        # row to its phase's reference (is_reference=True) row.  A single
+        # folder may contain calculations with *different* phase_name values
+        # (e.g. lqdAg + lqdCu in the same folder), each having its own
+        # reference point.  We therefore assign a unique temp name per
+        # (folder_index, original_phase_name) group so that clean_df and
+        # fix_composition_scaling always see exactly one reference per group.
+        # Only after both steps are all groups merged under the user's key.
         temp_to_user = {}   # temporary_phase_name -> user key
         dfs = []
         for phase, folder_spec in folders.items():
@@ -1384,11 +1383,16 @@ class PhaseDiagram:
                            if isinstance(folder_spec, str)
                            else list(folder_spec))
             for idx, folder in enumerate(folder_list):
-                temp_name = f"__calphy_{phase}_{idx}__"
                 df = gather_results(folder, reduce_composition=True,
                                     extract_phase_prefix=True)
-                df['phase_name'] = temp_name
-                temp_to_user[temp_name] = phase
+                # Assign one temp name per distinct original phase_name so
+                # each group (with its own reference row) is processed
+                # independently through fix_composition_scaling.
+                def _make_temp(orig, phase=phase, idx=idx):
+                    return f"__calphy_{phase}_{idx}_{orig}__"
+                for orig_name in df['phase_name'].unique():
+                    temp_to_user[_make_temp(orig_name)] = phase
+                df['phase_name'] = df['phase_name'].apply(_make_temp)
                 dfs.append(df)
 
         combined = pd.concat(dfs, ignore_index=True)
