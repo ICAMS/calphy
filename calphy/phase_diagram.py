@@ -8,6 +8,7 @@ from itertools import combinations
 import math
 import copy
 import os
+import pickle
 from calphy.composition_transformation import CompositionTransformation
 import yaml
 import matplotlib.patches as mpatches
@@ -1742,4 +1743,33 @@ class PhaseDiagram:
                   else "not calculated")
         return (f"PhaseDiagram(phases={self.phases}, "
                 f"ref='{self.reference_element}', {status})")
+
+    def save(self, filename):
+        """
+        Save the PhaseDiagram object to a file using pickle.
+
+        Parameters
+        ----------
+        filename : str
+            Path to the output file (e.g. ``'phase_diagram.pkl'``).
+        """
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename):
+        """
+        Load a PhaseDiagram object previously saved with :meth:`save`.
+
+        Parameters
+        ----------
+        filename : str
+            Path to the pickle file.
+
+        Returns
+        -------
+        PhaseDiagram
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
 
