@@ -1034,16 +1034,21 @@ def get_free_energy_mixing(dict_list, threshold=1E-3, boundary_trim=0.1):
             right_partial = c_max < max_comp - threshold
 
             if left_partial or right_partial:
-                trim = float(boundary_trim)
+                # Cap trim so it never exceeds 1/4 of the phase's own range,
+                # preventing narrow phases (e.g. ordered compounds) from being
+                # trimmed to an empty array.
+                phase_range = c_max - c_min
+                trim = min(float(boundary_trim), phase_range / 4.0)
 
                 mask = np.ones(len(comp), dtype=bool)
                 if left_partial:
                     mask &= comp >= c_min + trim
                 if right_partial:
                     mask &= comp <= c_max - trim
-                d["composition"] = comp[mask]
-                d["free_energy"] = d["free_energy"][mask]
-                d["free_energy_mix"] = d["free_energy_mix"][mask]
+                if mask.any():
+                    d["composition"] = comp[mask]
+                    d["free_energy"] = d["free_energy"][mask]
+                    d["free_energy_mix"] = d["free_energy_mix"][mask]
 
     return dict_list    
 
@@ -1085,6 +1090,8 @@ def get_tangent_type(dict_list, tangent, energy):
     right_phases = []
 
     for d in dict_list:
+        if len(d["composition"]) == 0:
+            continue
         diff = np.abs(left_c - d["composition"])
         arg = np.argsort(diff)[0]
         if diff[arg] < 1E-5:
@@ -1315,14 +1322,23 @@ class PhaseDiagram:
     Parameters
     ----------
     folders : dict
-        Mapping of phase name → folder path, e.g.
-        ``{'cufcc': 'cufcc', 'agfcc': 'agfcc', 'lqd': 'lqd'}``.
+        Mapping of phase name → folder path (or list of folder paths).
+        Pass a list to merge multiple simulation folders into a single
+        phase — the raw data is combined *before* any fitting, so there
+        are no cross-folder inconsistencies::
+
+            # single folder per phase
+            {'cufcc': 'cufcc', 'agfcc': 'agfcc', 'lqd': 'lqd'}
+
+            # aufcc and cufcc merged into one 'fcc' phase
+            {'fcc': ['aufcc_folder', 'cufcc_folder'], 'lqd': 'lqd'}
+
     reference_element : str
         The element whose fraction is used as the composition axis
         (e.g. ``'Ag'``).
     composition_intervals : dict, optional
         Per-phase composition bounds, e.g.
-        ``{'cufcc': (0, 0.5), 'agfcc': (0.7, 1.0)}``.
+        ``{'fcc': (0, 1), 'lqd': (0, 1)}``.
         Phases not listed are auto-detected from the data: the
         interval is set to the ``(min, max)`` of available
         compositions for that phase.
@@ -1333,8 +1349,8 @@ class PhaseDiagram:
     Examples
     --------
     >>> pd = PhaseDiagram(
-    ...     folders={'cufcc': 'cufcc', 'agfcc': 'agfcc', 'lqd': 'lqd'},
-    ...     reference_element='Ag',
+    ...     folders={'fcc': ['aufcc', 'cufcc'], 'lqd': 'lqd'},
+    ...     reference_element='Au',
     ... )
     >>> pd.calculate(T_range=(400, 1400), T_step=5, fit_order=4,
     ...              method='redlich-kister')
@@ -1351,11 +1367,29 @@ class PhaseDiagram:
         self.phases = list(folders.keys())
 
         # ---- gather & clean ----
+        # Each value in `folders` can be a single path or a list of paths.
+        # IMPORTANT: fix_composition_scaling anchors each composition_scaling
+        # row to its phase's reference (is_reference=True) row.  When two
+        # folders are merged into one phase they typically have *different*
+        # references (e.g. aufcc has reference at x=0, cufcc at x=1).
+        # To keep each folder's composition_scaling correctly anchored to its
+        # own reference we assign each folder a unique temporary phase_name so
+        # that clean_df and fix_composition_scaling process them separately.
+        # Only after both steps do we rename to the user's canonical key and
+        # concat the already-corrected DataFrames.
+        temp_to_user = {}   # temporary_phase_name -> user key
         dfs = []
-        for phase, folder in folders.items():
-            df = gather_results(folder, reduce_composition=True,
-                                extract_phase_prefix=True)
-            dfs.append(df)
+        for phase, folder_spec in folders.items():
+            folder_list = ([folder_spec]
+                           if isinstance(folder_spec, str)
+                           else list(folder_spec))
+            for idx, folder in enumerate(folder_list):
+                temp_name = f"__calphy_{phase}_{idx}__"
+                df = gather_results(folder, reduce_composition=True,
+                                    extract_phase_prefix=True)
+                df['phase_name'] = temp_name
+                temp_to_user[temp_name] = phase
+                dfs.append(df)
 
         combined = pd.concat(dfs, ignore_index=True)
         combined = combined.loc[combined.status == 'True']
@@ -1364,10 +1398,20 @@ class PhaseDiagram:
                        combine_direct_calculations=True, smooth=smooth)
         dfc = fix_composition_scaling(dfc, add_ideal_entropy=True)
 
-        for key, val in dfc.items():
+        # Merge temp-named groups back to user keys and label the phase column.
+        user_dfc = {}
+        for temp_name, phase_df in dfc.items():
+            user_key = temp_to_user[temp_name]
+            if user_key in user_dfc:
+                user_dfc[user_key] = pd.concat(
+                    [user_dfc[user_key], phase_df], ignore_index=True)
+            else:
+                user_dfc[user_key] = phase_df
+
+        for key, val in user_dfc.items():
             val['phase'] = key
 
-        self.df = pd.concat([val for val in dfc.values()])
+        self.df = pd.concat([val for val in user_dfc.values()])
 
         # ---- auto-detect composition intervals from data ----
         for phase in self.phases:
