@@ -331,3 +331,139 @@ def test_create_temperature_array_range_unchanged():
     assert temp_arr[0] == 1300.0
     assert temp_arr[-1] == 1500.0
 
+
+# ---------------------------------------------------------------------------
+# Helpers for PhaseDiagram save / load tests
+# ---------------------------------------------------------------------------
+
+def _make_phase_diagram(calculated=True):
+    """
+    Build a PhaseDiagram instance without touching the filesystem by
+    bypassing __init__ and setting attributes directly.
+
+    Parameters
+    ----------
+    calculated : bool
+        If True, populate the post-calculate() attributes with dummy data.
+        If False, leave them as None (pre-calculate state).
+    """
+    import pandas as _pd
+    from calphy.phase_diagram import PhaseDiagram
+
+    obj = object.__new__(PhaseDiagram)
+    obj.reference_element = "Ag"
+    obj.phases = ["cufcc", "agfcc", "lqd"]
+    obj.composition_intervals = {
+        "cufcc": (0.0, 0.5),
+        "agfcc": (0.5, 1.0),
+        "lqd":   (0.0, 1.0),
+    }
+    obj.df = _pd.DataFrame({
+        "phase": ["cufcc", "agfcc", "lqd"],
+        "composition": [0.2, 0.8, 0.5],
+        "temperature": [1000, 1000, 1000],
+        "free_energy": [-1.0, -1.2, -0.9],
+        "status": ["True", "True", "True"],
+    })
+
+    if calculated:
+        obj.tangents = [[[0.1, 0.4]], [[0.2, 0.6]]]
+        obj.temperatures = [800, 900]
+        obj.tangent_types = [["cufcc-lqd"], ["agfcc-lqd"]]
+        obj._calc_kwargs = {
+            "fit_order": 4,
+            "method": "polynomial",
+            "boundary_trim": 0.1,
+            "remove_self_tangents_for": [],
+            "ideal_configurational_entropy": True,
+            "end_weight": 3,
+            "end_indices": 4,
+        }
+    else:
+        obj.tangents = None
+        obj.temperatures = None
+        obj.tangent_types = None
+        obj._calc_kwargs = {}
+
+    return obj
+
+
+# ---------------------------------------------------------------------------
+# PhaseDiagram.save / PhaseDiagram.load tests
+# ---------------------------------------------------------------------------
+
+def test_phase_diagram_save_creates_file(tmp_path):
+    """save() should create a file at the given path."""
+    from calphy.phase_diagram import PhaseDiagram
+
+    pd_obj = _make_phase_diagram(calculated=True)
+    out = tmp_path / "pd.pkl"
+    pd_obj.save(str(out))
+    assert out.exists()
+    assert out.stat().st_size > 0
+
+
+def test_phase_diagram_load_restores_calculated(tmp_path):
+    """load() should restore a fully-calculated PhaseDiagram exactly."""
+    from calphy.phase_diagram import PhaseDiagram
+
+    pd_obj = _make_phase_diagram(calculated=True)
+    out = str(tmp_path / "pd.pkl")
+    pd_obj.save(out)
+
+    loaded = PhaseDiagram.load(out)
+
+    assert isinstance(loaded, PhaseDiagram)
+    assert loaded.reference_element == pd_obj.reference_element
+    assert loaded.phases == pd_obj.phases
+    assert loaded.composition_intervals == pd_obj.composition_intervals
+    assert loaded.tangents == pd_obj.tangents
+    assert loaded.temperatures == pd_obj.temperatures
+    assert loaded.tangent_types == pd_obj.tangent_types
+    assert loaded._calc_kwargs == pd_obj._calc_kwargs
+    assert loaded.df.shape == pd_obj.df.shape
+
+
+def test_phase_diagram_save_load_pre_calculate(tmp_path):
+    """save/load round-trip works even when calculate() has not been called."""
+    from calphy.phase_diagram import PhaseDiagram
+
+    pd_obj = _make_phase_diagram(calculated=False)
+    out = str(tmp_path / "pd_pre.pkl")
+    pd_obj.save(out)
+
+    loaded = PhaseDiagram.load(out)
+
+    assert loaded.tangents is None
+    assert loaded.temperatures is None
+    assert loaded.tangent_types is None
+    assert loaded.phases == pd_obj.phases
+    assert loaded.reference_element == pd_obj.reference_element
+
+
+def test_phase_diagram_load_missing_file(tmp_path):
+    """load() should raise FileNotFoundError for a non-existent path."""
+    from calphy.phase_diagram import PhaseDiagram
+
+    with pytest.raises(FileNotFoundError):
+        PhaseDiagram.load(str(tmp_path / "does_not_exist.pkl"))
+
+
+def test_phase_diagram_repr_after_load(tmp_path):
+    """__repr__ should reflect the correct state after loading."""
+    from calphy.phase_diagram import PhaseDiagram
+
+    pd_calc = _make_phase_diagram(calculated=True)
+    pd_uncalc = _make_phase_diagram(calculated=False)
+
+    out_calc = str(tmp_path / "calc.pkl")
+    out_uncalc = str(tmp_path / "uncalc.pkl")
+    pd_calc.save(out_calc)
+    pd_uncalc.save(out_uncalc)
+
+    loaded_calc = PhaseDiagram.load(out_calc)
+    loaded_uncalc = PhaseDiagram.load(out_uncalc)
+
+    assert "calculated" in repr(loaded_calc)
+    assert "not calculated" in repr(loaded_uncalc)
+
