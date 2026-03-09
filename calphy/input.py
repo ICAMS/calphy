@@ -170,7 +170,7 @@ class MonteCarlo(
             default=False,
             description="Whether to use the custom modified LAMMPS version",
         ),
-    ]]
+    ]
 
 
 class CompositionScaling(BaseModel, title="Composition scaling input options"):
