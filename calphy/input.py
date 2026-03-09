@@ -164,6 +164,13 @@ class MonteCarlo(
             description="allow swapping between all atom types including fictitious ones",
         ),
     ]
+    use_custom_lammps: Annotated[
+        bool,
+        Field(
+            default=False,
+            description="Whether to use the custom modified LAMMPS version",
+        ),
+    ]]
 
 
 class CompositionScaling(BaseModel, title="Composition scaling input options"):
