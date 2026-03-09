@@ -49,7 +49,7 @@ from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
-__version__ = "1.6.3"
+__version__ = "1.6.4"
 
 
 def _check_equal(val):
@@ -164,6 +164,13 @@ class MonteCarlo(
             description="allow swapping between all atom types including fictitious ones",
         ),
     ]
+    use_custom_lammps: Annotated[
+        bool,
+        Field(
+            default=False,
+            description="Whether to use the custom modified LAMMPS version",
+        ),
+    ]]
 
 
 class CompositionScaling(BaseModel, title="Composition scaling input options"):
