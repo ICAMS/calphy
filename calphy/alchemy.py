@@ -327,17 +327,30 @@ class Alchemy(cph.Phase):
 
             for idx, (type1, type2) in enumerate(swap_combos):
                 swap_str = f"{type1} {type2}"
-                lmp.command(
-                    "fix  swap%d all atom/swap %d %d %d %f ke no types %s"
-                    % (
-                        idx,
-                        self.calc.monte_carlo.n_steps,
-                        self.calc.monte_carlo.n_swaps,
-                        np.random.randint(1, 10000),
-                        self.calc._temperature,
-                        swap_str,
+                if self.calc.use_custom_lammps:
+                    lmp.command(
+                        "fix  swap%d all atom/swap %d %d %d %f ke no types %s noforce yes localE yes"
+                        % (
+                            idx,
+                            self.calc.monte_carlo.n_steps,
+                            self.calc.monte_carlo.n_swaps,
+                            np.random.randint(1, 10000),
+                            self.calc._temperature,
+                            swap_str,
+                        )
                     )
-                )
+                else:
+                    lmp.command(
+                        "fix  swap%d all atom/swap %d %d %d %f ke no types %s"
+                        % (
+                            idx,
+                            self.calc.monte_carlo.n_steps,
+                            self.calc.monte_carlo.n_swaps,
+                            np.random.randint(1, 10000),
+                            self.calc._temperature,
+                            swap_str,
+                        )
+                    )
 
             # Use the first swap fix for output tracking
             # lmp.command("variable a equal f_swap0[1]")
@@ -433,17 +446,30 @@ class Alchemy(cph.Phase):
 
             for idx, (type1, type2) in enumerate(swap_combos):
                 swap_str = f"{type1} {type2}"
-                lmp.command(
-                    "fix  swap%d all atom/swap %d %d %d %f ke no types %s"
-                    % (
-                        idx,
-                        self.calc.monte_carlo.n_steps,
-                        self.calc.monte_carlo.n_swaps,
-                        np.random.randint(1, 10000),
-                        self.calc._temperature,
-                        swap_str,
+                if self.calc.use_custom_lammps:
+                    lmp.command(
+                        "fix  swap%d all atom/swap %d %d %d %f ke no types %s noforce yes localE yes"
+                        % (
+                            idx,
+                            self.calc.monte_carlo.n_steps,
+                            self.calc.monte_carlo.n_swaps,
+                            np.random.randint(1, 10000),
+                            self.calc._temperature,
+                            swap_str,
+                        )
                     )
-                )
+                else:
+                    lmp.command(
+                        "fix  swap%d all atom/swap %d %d %d %f ke no types %s"
+                        % (
+                            idx,
+                            self.calc.monte_carlo.n_steps,
+                            self.calc.monte_carlo.n_swaps,
+                            np.random.randint(1, 10000),
+                            self.calc._temperature,
+                            swap_str,
+                        )
+                    )
 
             # Use the first swap fix for output tracking
             # lmp.command("variable a equal f_swap0[1]")
