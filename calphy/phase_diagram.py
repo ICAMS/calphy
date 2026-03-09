@@ -1286,6 +1286,68 @@ def get_common_tangents(
     )
 
 
+def _get_single_phase_boundaries(tangents, temperatures, tangent_types):
+    """
+    Derive single-phase region composition intervals from common-tangent data.
+
+    At each temperature the tangent construction identifies coexistence windows
+    ``(x_left, x_right)``.  The single-phase regions are the complementary
+    composition intervals that lie *outside* every coexistence window.
+
+    Returns
+    -------
+    dict[str, list[tuple]]
+        Mapping phase_name -> list of ``(T, x_lo, x_hi)`` sorted by temperature.
+    """
+    from collections import defaultdict
+
+    phase_intervals = defaultdict(list)
+
+    for count, T in enumerate(temperatures):
+        T_tangents = tangents[count]
+        T_types = np.atleast_1d(tangent_types[count])
+        if len(T_tangents) == 0:
+            continue
+
+        T_tangents = np.atleast_2d(T_tangents)
+        order = np.argsort(T_tangents[:, 0])
+        sorted_tangs = T_tangents[order]
+        sorted_types = T_types[order]
+
+        # Build a flat boundary list: alternating (x, phase) for left then right
+        # of each coexistence window, sorted by x.
+        boundaries = []
+        for tang, ttype in zip(sorted_tangs, sorted_types):
+            x_left, x_right = float(tang[0]), float(tang[1])
+            parts = str(ttype).split("-")
+            left_p = parts[0] if parts[0] != "None" else None
+            right_p = parts[1] if parts[1] != "None" else None
+            boundaries.append((x_left, left_p))
+            boundaries.append((x_right, right_p))
+
+        # Single-phase region before the first coexistence window
+        x0, p0 = boundaries[0]
+        if p0 is not None:
+            phase_intervals[p0].append((T, 0.0, x0))
+
+        # Single-phase regions *between* consecutive coexistence windows
+        for i in range(1, len(boundaries) - 1, 2):
+            x_start, p_start = boundaries[i]  # right edge of current window
+            x_end, p_end = boundaries[i + 1]  # left edge of next window
+            if p_start is not None and x_end > x_start:
+                phase_intervals[p_start].append((T, x_start, x_end))
+
+        # Single-phase region after the last coexistence window
+        x_last, p_last = boundaries[-1]
+        if p_last is not None:
+            phase_intervals[p_last].append((T, x_last, 1.0))
+
+    for p in phase_intervals:
+        phase_intervals[p].sort(key=lambda r: r[0])
+
+    return dict(phase_intervals)
+
+
 def plot_phase_diagram(
     tangents,
     temperature,
@@ -1298,6 +1360,7 @@ def plot_phase_diagram(
     alpha=0.35,
     border_lw=2,
     smooth_boundary=0,
+    color_phases=False,
     figsize=None,
     ax=None,
 ):
@@ -1332,6 +1395,11 @@ def plot_phase_diagram(
         Savitzky-Golay window size (odd integer) for smoothing polygon
         boundaries.  Set to 0 (default) to disable.  A value of 11
         is a good starting point.
+    color_phases : bool
+        If True, fill *single-phase* regions with per-phase colours instead
+        of filling two-phase coexistence regions.  Two-phase regions are
+        left uncoloured (white background), and the legend lists each phase
+        individually.  Default False (coexistence-region colouring).
     figsize : tuple or None
         Figure size.  Defaults to (7, 5).
     ax : matplotlib Axes or None
@@ -1346,11 +1414,47 @@ def plot_phase_diagram(
         figsize = (7, 5)
 
     color_dict = create_color_list(phases)
+    # Per-phase colour dict (used when color_phases=True)
+    phase_color_dict = {p: TABLEAU10[i % len(TABLEAU10)] for i, p in enumerate(phases)}
 
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     else:
         fig = ax.get_figure()
+
+    if color_phases:
+        # ---- single-phase region colouring ----
+        phase_intervals = _get_single_phase_boundaries(
+            tangents, temperature, tangent_types
+        )
+
+        for phase, intervals in phase_intervals.items():
+            color = phase_color_dict.get(phase, TABLEAU10[0])
+            intervals.sort(key=lambda r: r[0])
+            Ts = [r[0] for r in intervals]
+            x_lo = [r[1] for r in intervals]
+            x_hi = [r[2] for r in intervals]
+
+            if smooth_boundary > 0 and len(x_lo) > smooth_boundary:
+                x_lo = list(savgol_filter(x_lo, smooth_boundary, 3))
+                x_hi = list(savgol_filter(x_hi, smooth_boundary, 3))
+
+            poly_x = x_lo + x_hi[::-1]
+            poly_T = Ts + Ts[::-1]
+            ax.fill(poly_x, poly_T, color=color, alpha=alpha)
+            ax.plot(x_lo, Ts, color=edgecolor, lw=border_lw, solid_capstyle="round")
+            ax.plot(x_hi, Ts, color=edgecolor, lw=border_lw, solid_capstyle="round")
+
+        legend_patches = [
+            mpatches.Patch(color=phase_color_dict[p], label=p)
+            for p in phases
+            if p in phase_color_dict
+        ]
+        ax.legend(handles=legend_patches, loc="center left", bbox_to_anchor=(1, 0.5))
+        ax.set_xlabel("Composition")
+        ax.set_ylabel("T (K)")
+        fig.tight_layout()
+        return fig, ax
 
     if not fill:
         # ---- legacy: horizontal lines ----
@@ -1396,8 +1500,8 @@ def plot_phase_diagram(
             color = color_dict[label]
             ax.fill(poly_x, poly_T, color=color, alpha=alpha)
             # Draw the left and right boundary lines
-            ax.plot(x_left, Ts, color=color, lw=border_lw, solid_capstyle="round")
-            ax.plot(x_right, Ts, color=color, lw=border_lw, solid_capstyle="round")
+            ax.plot(x_left, Ts, color=edgecolor, lw=border_lw, solid_capstyle="round")
+            ax.plot(x_right, Ts, color=edgecolor, lw=border_lw, solid_capstyle="round")
 
     # Build legend only for regions that actually appear in the data
     seen_labels = set()
@@ -1564,7 +1668,7 @@ class PhaseDiagram:
         method="polynomial",
         boundary_trim=0.1,
         remove_self_tangents_for=None,
-        ideal_configurational_entropy=True,
+        ideal_configurational_entropy=False,
         end_weight=3,
         end_indices=4,
     ):
@@ -1589,7 +1693,10 @@ class PhaseDiagram:
             Phase names for which same-phase tangent constructions
             should be discarded.
         ideal_configurational_entropy : bool
-            Add ideal configurational entropy to free energies.
+            Add ideal configurational entropy to free energies during fitting.
+            Defaults to False because ``fix_composition_scaling`` (called in
+            ``__init__``) already applies this correction unconditionally for
+            composition-scaling data.
         end_weight : int
             Weight for endpoints in the fit.
         end_indices : int
@@ -1654,6 +1761,7 @@ class PhaseDiagram:
         alpha=0.2,
         border_lw=2,
         smooth_boundary=11,
+        color_phases=False,
         figsize=None,
         ax=None,
         **kwargs,
@@ -1661,7 +1769,13 @@ class PhaseDiagram:
         """
         Plot the full phase diagram.
 
-        All keyword arguments are forwarded to
+        Parameters
+        ----------
+        color_phases : bool
+            If True, fill single-phase regions with per-phase colours instead
+            of filling two-phase coexistence regions.  Default False.
+
+        All other keyword arguments are forwarded to
         :func:`plot_phase_diagram`.
 
         Returns
@@ -1679,6 +1793,7 @@ class PhaseDiagram:
             alpha=alpha,
             border_lw=border_lw,
             smooth_boundary=smooth_boundary,
+            color_phases=color_phases,
             figsize=figsize,
             ax=ax,
             **kwargs,
