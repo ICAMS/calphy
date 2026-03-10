@@ -327,7 +327,7 @@ class Alchemy(cph.Phase):
 
             for idx, (type1, type2) in enumerate(swap_combos):
                 swap_str = f"{type1} {type2}"
-                if self.calc.use_custom_lammps:
+                if self.calc.monte_carlo.use_custom_lammps:
                     lmp.command(
                         "fix  swap%d all atom/swap %d %d %d %f ke no types %s noforce yes localE yes"
                         % (
@@ -446,7 +446,7 @@ class Alchemy(cph.Phase):
 
             for idx, (type1, type2) in enumerate(swap_combos):
                 swap_str = f"{type1} {type2}"
-                if self.calc.use_custom_lammps:
+                if self.calc.monte_carlo.use_custom_lammps:
                     lmp.command(
                         "fix  swap%d all atom/swap %d %d %d %f ke no types %s noforce yes localE yes"
                         % (
