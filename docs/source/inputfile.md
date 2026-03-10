@@ -982,8 +982,8 @@ This block contains keywords that are used only for the mode `composition_scalin
 ```
 composition_scaling:
   output_chemical_composition:
-     - Cu: 513
-     - Zr: 511
+     Cu: 513
+     Zr: 511
 ```
 
 ---
@@ -995,8 +995,8 @@ _type_: list \
 _example_:
 ```
 output_chemical_composition:
-   - Cu: 513
-   - Zr: 511
+   Cu: 513
+   Zr: 511
 ```
 
 The output chemical composition in number of atoms. The total number of atoms should be equal to the input provided.
