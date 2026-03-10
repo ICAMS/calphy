@@ -114,8 +114,8 @@ class SLURM:
         """
         Write the script file
         """
-        jobout = os.path.join(self.queueoptions["directory"], "slurm.out")
-        joberr = os.path.join(self.queueoptions["directory"], "slurm.err")
+        jobout = os.path.join(self.queueoptions["directory"], f"{outfile}.slurm.out")
+        joberr = os.path.join(self.queueoptions["directory"], f"{outfile}.slurm.err")
 
         with open(outfile, "w") as fout:
             fout.write(self.queueoptions["header"])
