@@ -760,8 +760,7 @@ class Calculation(BaseModel, title="Main input class"):
             )
             if not (natoms1 == natoms2):
                 raise ValueError(
-                    f"Input and output number of atoms are not conserved! Input {self.dict_to_string(self.input_chemical_composition)}, output {self.dict_to_string(self.output_chemical_composition)}, total atoms in structure {structure.natoms}"
-                )
+                    f"Input and output number of atoms are not conserved! Input {self.composition_scaling._input_chemical_composition}, output {self.composition_scaling.output_chemical_composition}, total atoms in structure {len(structure)}")
         return self
 
     def fix_paths(self, potlist):

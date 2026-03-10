@@ -134,13 +134,6 @@ class CompositionTransformation:
         self.mappingdict = None
         self.prepare_mappings()
 
-    def dict_to_string(self, inputdict):
-        strlst = []
-        for key, val in inputdict.items():
-            strlst.append(str(key))
-            strlst.append(str(val))
-        return "".join(strlst)
-
     @property
     def entropy_contribution(self):
         """
