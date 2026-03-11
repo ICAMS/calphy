@@ -49,7 +49,7 @@ from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
-__version__ = "1.6.4"
+__version__ = "1.6.5"
 
 
 def _check_equal(val):
@@ -317,7 +317,7 @@ class Calculation(BaseModel, title="Main input class"):
     _temperature_stop: float = PrivateAttr(default=None)
     _temperature_input: float = PrivateAttr(default=None)
 
-    melting_cycle: Annotated[bool, Field(default=True)]
+    melting_cycle: Annotated[bool, Field(default=False)]
 
     pair_style: Annotated[
         Union[List[str], None], BeforeValidator(to_list), Field(default=None)
