@@ -317,7 +317,7 @@ class Calculation(BaseModel, title="Main input class"):
     _temperature_stop: float = PrivateAttr(default=None)
     _temperature_input: float = PrivateAttr(default=None)
 
-    melting_cycle: Annotated[bool, Field(default=True)]
+    melting_cycle: Annotated[bool, Field(default=False)]
 
     pair_style: Annotated[
         Union[List[str], None], BeforeValidator(to_list), Field(default=None)

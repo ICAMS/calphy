@@ -58,6 +58,36 @@ class Liquid(cph.Phase):
             calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen
         )
 
+    def rattle_structure(self, lmp):
+        """
+        Disorder the structure using random displacements followed by a
+        controlled NVT cool-down before liquid equilibration.
+
+        This is a lightweight alternative to :meth:`melt_structure`:
+        """
+        self.logger.info(
+            "Rattling structure: velocities at 2*thigh=%f, NVT cool-down to T=%f",
+            self.calc._temperature_high,
+            self.calc._temperature,
+        )
+        lmp.command(
+            "displace_atoms all random 0.1 0.1 0.1 %d" % np.random.randint(1, 10000)
+        )
+        lmp.velocity(
+            "all create",
+            2.0 * self.calc._temperature_high,
+            np.random.randint(1, 10000),
+        )
+        lmp.command(
+            "fix              nh_rattle all nvt temp %f %f %f"
+            % (
+                self.calc._temperature_high,
+                self.calc._temperature,
+            )
+        )
+        lmp.run(int(self.calc.md.n_small_steps))
+        lmp.command("unfix            nh_rattle")
+
     def melt_structure(self, lmp):
         """ """
         if self.calc._fix_lattice and self.calc.melting_cycle:
@@ -163,9 +193,11 @@ class Liquid(cph.Phase):
         lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press")
 
-        # MELT
+        # Disorder the structure before equilibration
         if self.calc.melting_cycle:
             self.melt_structure(lmp)
+        else:
+            self.rattle_structure(lmp)
 
         if not self.calc._fix_lattice:
             # now assign correct temperature and equilibrate
