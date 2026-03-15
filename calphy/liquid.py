@@ -83,6 +83,7 @@ class Liquid(cph.Phase):
             % (
                 self.calc._temperature_high,
                 self.calc._temperature,
+                self.calc.md.thermostat_damping[1],
             )
         )
         lmp.run(int(self.calc.md.n_small_steps))
