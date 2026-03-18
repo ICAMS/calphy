@@ -49,7 +49,7 @@ class LammpsScript:
 
 
 def create_object(
-    cores, directory, timestep, cmdargs="", init_commands=(), script_mode=False
+    cores, directory, timestep, cmdargs="", init_commands=(), script_mode=False, lmp=None,
 ):
     """
     Create LAMMPS object
@@ -71,7 +71,7 @@ def create_object(
     """
     if script_mode:
         lmp = LammpsScript()
-    else:
+    elif lmp is None:
         if cmdargs == "":
             cmdargs = None
         elif isinstance(cmdargs, str):

@@ -53,7 +53,7 @@ class Phase:
 
     """
 
-    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False, lmp=None):
 
         self.calc = copy.deepcopy(calculation)
 
@@ -225,6 +225,7 @@ class Phase:
             self.logger.info("pair_style or pair_coeff not provided")
             if self.calc.potential_file is not None:
                 self.logger.info("potential is being loaded from file instead")
+        self._lmp = lmp
 
     def __repr__(self):
         """
@@ -944,11 +945,13 @@ class Phase:
 
         # create lammps object
         lmp = ph.create_object(
-            self.cores,
-            self.simfolder,
-            self.calc.md.timestep,
-            self.calc.md.cmdargs,
-            self.calc.md.init_commands,
+            cores=self.cores,
+            directory=self.simfolder, 
+            timestep=self.calc.md.timestep, 
+            cmdargs=self.calc.md.cmdargs, 
+            init_commands=self.calc.md.init_commands, 
+            script_mode=False, 
+            lmp=self._lmp,
         )
 
         lmp.command("echo              log")
@@ -1327,11 +1330,13 @@ class Phase:
 
         # create lammps object
         lmp = ph.create_object(
-            self.cores,
-            self.simfolder,
-            self.calc.md.timestep,
-            self.calc.md.cmdargs,
-            self.calc.md.init_commands,
+            cores=self.cores,
+            directory=self.simfolder, 
+            timestep=self.calc.md.timestep, 
+            cmdargs=self.calc.md.cmdargs, 
+            init_commands=self.calc.md.init_commands, 
+            script_mode=False, 
+            lmp=self._lmp,
         )
 
         lmp.command("echo              log")
@@ -1473,11 +1478,13 @@ class Phase:
 
         # create lammps object
         lmp = ph.create_object(
-            self.cores,
-            self.simfolder,
-            self.calc.md.timestep,
-            self.calc.md.cmdargs,
-            self.calc.md.init_commands,
+            cores=self.cores,
+            directory=self.simfolder, 
+            timestep=self.calc.md.timestep, 
+            cmdargs=self.calc.md.cmdargs, 
+            init_commands=self.calc.md.init_commands, 
+            script_mode=False, 
+            lmp=self._lmp,
         )
 
         lmp.command("echo              log")

@@ -49,13 +49,13 @@ class Liquid(cph.Phase):
 
     """
 
-    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False, lmp=None):
         """
         Set up class
         """
         # call base class
         super().__init__(
-            calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen
+            calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen, lmp=lmp,
         )
 
     def rattle_structure(self, lmp):
@@ -166,11 +166,12 @@ class Liquid(cph.Phase):
         """
         # create lammps object
         lmp = ph.create_object(
-            self.cores,
-            self.simfolder,
-            self.calc.md.timestep,
-            self.calc.md.cmdargs,
-            self.calc.md.init_commands,
+            cores=self.cores,
+            directory=self.simfolder, 
+            timestep=self.calc.md.timestep, 
+            cmdargs=self.calc.md.cmdargs, 
+            init_commands=self.calc.md.init_commands, 
+            lmp=self._lmp,
         )
 
         lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
@@ -241,11 +242,12 @@ class Liquid(cph.Phase):
         the lambda parameter. See algorithm 4 in publication.
         """
         lmp = ph.create_object(
-            self.cores,
-            self.simfolder,
-            self.calc.md.timestep,
-            self.calc.md.cmdargs,
-            self.calc.md.init_commands,
+            cores=self.cores,
+            directory=self.simfolder, 
+            timestep=self.calc.md.timestep, 
+            cmdargs=self.calc.md.cmdargs, 
+            init_commands=self.calc.md.init_commands, 
+            lmp=self._lmp,
         )
 
         # Adiabatic switching parameters.
