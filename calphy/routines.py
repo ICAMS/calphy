@@ -392,6 +392,7 @@ def routine_ts(job):
         job.logger.info("TS integration cycle %d finished in %f s" % (i + 1, te))
 
     job.integrate_reversible_scaling(scale_energy=True)
+    job.submit_ts_report()
     job.clean_up()
     return job
 
