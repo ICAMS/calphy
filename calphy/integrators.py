@@ -226,7 +226,7 @@ def integrate_rs(
 
     Notes
     -----
-    Writes the output in a file reversible_scaling.dat
+    Writes the output in a file temperature_sweep.dat and temperature_sweep.npz
 
     """
     ws = []
@@ -269,6 +269,8 @@ def integrate_rs(
     if not return_values:
         outfile = os.path.join(simfolder, "temperature_sweep.dat")
         np.savetxt(outfile, np.column_stack((temp, f, werr)))
+        outfile = os.path.join(simfolder, "temperature_sweep.npz")
+        np.savez_compressed(outfile, (temp, f, werr))
         return None, e_diss
     else:
         return (temp, f, werr), e_diss
@@ -293,7 +295,7 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1, return_values=False):
 
     Notes
     -----
-    Writes the output in a file pressure_sweep.dat
+    Writes the output in a file pressure_sweep.dat and pressure_sweep.npz
 
     """
 
@@ -329,6 +331,8 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1, return_values=False):
     if not return_values:
         outfile = os.path.join(simfolder, "pressure_sweep.dat")
         np.savetxt(outfile, np.column_stack((press, f, werr)))
+        outfile = os.path.join(simfolder, "pressure_sweep.npz")
+        np.savez_compressed(outfile, (press, f, werr))
     else:
         return (press, f, werr)
 
