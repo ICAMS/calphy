@@ -8,7 +8,7 @@ dependencies:
   - mendeleev
   - openmpi 
   - mpi4py
-  - pylammpsmpi >=0.0.9
+  - pylammpsmpi >=0.3.0
   - pyscal3
   - matplotlib
   - tqdm

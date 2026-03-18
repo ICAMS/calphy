@@ -11,7 +11,7 @@ dependencies:
   - openmpi
   - numpy
   - mpi4py
-  - pylammpsmpi
+  - pylammpsmpi >=0.3.0
   - matplotlib
   - tqdm
   - uncertainties
