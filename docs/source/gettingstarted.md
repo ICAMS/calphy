@@ -87,7 +87,7 @@ The environment is now set up to run calphy.
 
 - lammps                            `conda install -c conda-forge lammps`
 - mendeleev           >=0.7.0       `pip install mendeleev`
-- pylammpsmpi         >=0.0.8       `pip install pylammpsmpi`
+- pylammpsmpi         >=0.3.0       `pip install pylammpsmpi`
 - pyscal              >=2.10.14     `pip install git+https://github.com/srmnitc/pyscal`
 - pyyaml              >=5.4.1       `pip install pyyaml`
 - scipy               >=1.7.0       `pip install scipy`

@@ -51,11 +51,11 @@ class Solid(cph.Phase):
 
     """
 
-    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False, lmp=None):
 
         # call base class
         super().__init__(
-            calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen
+            calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen, lmp=lmp,
         )
 
     def run_spring_constant_convergence(self, lmp):
@@ -236,12 +236,13 @@ class Solid(cph.Phase):
         """
 
         lmp = ph.create_object(
-            self.cores,
-            self.simfolder,
-            self.calc.md.timestep,
-            self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
+            cores=self.cores,
+            directory=self.simfolder, 
+            timestep=self.calc.md.timestep, 
+            cmdargs=self.calc.md.cmdargs, 
+            init_commands=self.calc.md.init_commands, 
             script_mode=self.calc.script_mode,
+            lmp=self._lmp,
         )
 
         # set up potential
@@ -324,12 +325,13 @@ class Solid(cph.Phase):
         At the end of the run, the averaged box dimensions are calculated.
         """
         lmp = ph.create_object(
-            self.cores,
-            self.simfolder,
-            self.calc.md.timestep,
-            self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
+            cores=self.cores,
+            directory=self.simfolder, 
+            timestep=self.calc.md.timestep, 
+            cmdargs=self.calc.md.cmdargs, 
+            init_commands=self.calc.md.init_commands, 
             script_mode=self.calc.script_mode,
+            lmp=self._lmp,
         )
 
         # set up potential
@@ -407,12 +409,13 @@ class Solid(cph.Phase):
         the lambda parameter. See algorithm 4 in publication.
         """
         lmp = ph.create_object(
-            self.cores,
-            self.simfolder,
-            self.calc.md.timestep,
-            self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
+            cores=self.cores,
+            directory=self.simfolder, 
+            timestep=self.calc.md.timestep, 
+            cmdargs=self.calc.md.cmdargs, 
+            init_commands=self.calc.md.init_commands, 
             script_mode=self.calc.script_mode,
+            lmp=self._lmp,
         )
 
         # set up potential
