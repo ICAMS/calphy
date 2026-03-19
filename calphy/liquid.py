@@ -131,7 +131,10 @@ class Liquid(cph.Phase):
 
         # if melting cycle is over and still not melted, raise error
         if not melted:
-            lmp.close()
+            if self._lmp is None:
+                lmp.close()
+            else:
+                lmp.clear()
             # Preserve log file
             logfile = os.path.join(self.simfolder, "log.lammps")
             try:
@@ -215,7 +218,10 @@ class Liquid(cph.Phase):
         self.check_if_solidfied(lmp, "traj.equilibration_stage1.dat")
         self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
         lmp = ph.write_data(lmp, "conf.equilibration.data")
-        lmp.close()
+        if self._lmp is None:
+            lmp.close()
+        else:
+            lmp.clear()
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         try:
@@ -437,7 +443,10 @@ class Liquid(cph.Phase):
         lmp.command("uncompute        c2")
 
         # close object
-        lmp.close()
+        if self._lmp is None:
+            lmp.close()
+        else:
+            lmp.clear()
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         try:
