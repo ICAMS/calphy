@@ -279,10 +279,7 @@ class Phase:
         """ """
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if solids / lmp.natoms < self.calc.tolerance.solid_fraction:
-            if self._lmp is None:
-                lmp.close()
-            else:
-                lmp.clear()
+            self.lammps_close(lmp=lmp)
             # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
             try:
@@ -299,10 +296,7 @@ class Phase:
         """ """
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if solids / lmp.natoms > self.calc.tolerance.liquid_fraction:
-            if self._lmp is None:
-                lmp.close()
-            else:
-                lmp.clear()
+            self.lammps_close(lmp=lmp)
             # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
             try:
@@ -617,10 +611,7 @@ class Phase:
             laststd = std
 
         if not converged:
-            if self._lmp is None:
-                lmp.close()
-            else:
-                lmp.clear()
+            self.lammps_close(lmp=lmp)
             # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
             try:
@@ -745,10 +736,7 @@ class Phase:
         lmp.command("unfix            2")
 
         if not converged:
-            if self._lmp is None:
-                lmp.close()
-            else:
-                lmp.clear()
+            self.lammps_close(lmp=lmp)
             # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
             try:
@@ -1261,10 +1249,7 @@ class Phase:
             lmp.command("undump           d1")
 
         # close the object
-        if self._lmp is None:
-            lmp.close()
-        else:
-            lmp.clear()
+        self.lammps_close(lmp=lmp)
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         if os.path.exists(logfile):
@@ -1464,10 +1449,7 @@ class Phase:
         )
         lmp.command("run               %d" % self.calc._n_sweep_steps)
 
-        if self._lmp is None:
-            lmp.close()
-        else:
-            lmp.clear()
+        self.lammps_close(lmp=lmp)
     # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         if os.path.exists(logfile):
@@ -1605,10 +1587,7 @@ class Phase:
         )
         lmp.command("run               %d" % self.calc._n_sweep_steps)
 
-        if self._lmp is None:
-            lmp.close()
-        else:
-            lmp.clear()
+        
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         if os.path.exists(logfile):
@@ -1664,3 +1643,9 @@ class Phase:
 
         with open(os.path.join(self.simfolder, "metadata.yaml"), "w") as fout:
             yaml.safe_dump(metadata, fout)
+
+    def lammps_close(self, lmp):
+        if self._lmp is None:
+            lmp.close()
+        else:
+            lmp.clear()
