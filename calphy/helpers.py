@@ -49,7 +49,13 @@ class LammpsScript:
 
 
 def create_object(
-    cores, directory, timestep, cmdargs="", init_commands=(), script_mode=False, lmp=None,
+    cores,
+    directory,
+    timestep,
+    cmdargs="",
+    init_commands=(),
+    script_mode=False,
+    lmp=None,
 ):
     """
     Create LAMMPS object
@@ -226,6 +232,40 @@ def find_solid_fraction(file):
     return solids
 
 
+def find_mean_q(file, l=6):
+    """
+    Compute the system-averaged Steinhardt bond-order parameter Q_l.
+
+    Uses the neighbor-averaged variant (Q̄_l) which has a cleaner liquid/solid
+    separation than the raw per-atom Q_l, and works for any crystal structure
+    without needing to identify the structure type.
+
+    Typical values:
+      Liquid  : Q6 ~ 0.05–0.15
+      Crystal : Q6 ~ 0.35–0.60  (FCC, HCP, BCC, Laves, Frank-Kasper, …)
+
+    Parameters
+    ----------
+    file : str
+        Path to the trajectory/dump file.
+    l : int, optional
+        Steinhardt parameter order. Default 6.
+
+    Returns
+    -------
+    mean_ql : float
+        Mean Q_l averaged over all atoms.
+    """
+    sys = pc.System(file)
+    try:
+        sys.find.neighbors(method="cutoff", cutoff=0)
+    except RuntimeError:
+        sys.find.neighbors(method="cutoff", cutoff=5.0)
+    sys.calculate.steinhardt_parameter(l, averaged=True)
+    mean_ql = np.mean(sys.atoms["avg_q%d" % l])
+    return mean_ql
+
+
 def write_data(lmp, file):
     lmp.command(f"write_data {file}")
     return lmp
@@ -240,7 +280,9 @@ def prepare_log(file, screen=False):
         logger.removeHandler(handler)
 
     handler = logging.FileHandler(file)
-    formatter = logging.Formatter("%(asctime)s calphy.helpers %(levelname)-8s %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s calphy.helpers %(levelname)-8s %(message)s"
+    )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)

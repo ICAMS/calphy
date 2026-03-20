@@ -403,24 +403,31 @@ class Phase:
             lmp.command("run               %d" % self.calc.n_equilibration_steps)
             lmp.command("unfix             f1")
 
-            # check phase stability
+            # check phase stability via mean Q6 — works for any crystal structure
+            # without requiring structure identification (FCC/HCP/BCC/…)
+            # liquid: mean Q6 ~ 0.05-0.15; solid: mean Q6 ~ 0.35-0.60
             self.dump_current_snapshot(lmp, "traj.adaptive_scan.dat")
-            solids = ph.find_solid_fraction(
-                os.path.join(self.simfolder, "traj.adaptive_scan.dat")
+            mean_q6 = ph.find_mean_q(
+                os.path.join(self.simfolder, "traj.adaptive_scan.dat"), l=6
             )
+            self.logger.info("Mean Q6 at %f K: %f" % (t_candidate, mean_q6))
+
+            # threshold separating solid (~>0.3) from liquid (~<0.2)
+            q6_threshold = 0.25
 
             phase_ok = True
             if solid:
-                if solids / lmp.natoms < self.calc.tolerance.solid_fraction:
+                if mean_q6 < q6_threshold:
                     self.logger.info(
-                        "System melted at %f K, reducing temperature" % t_candidate
+                        "System melted at %f K (Q6=%.3f), reducing temperature"
+                        % (t_candidate, mean_q6)
                     )
                     phase_ok = False
             else:
-                if solids / lmp.natoms > self.calc.tolerance.liquid_fraction:
+                if mean_q6 > q6_threshold:
                     self.logger.info(
-                        "System solidified at %f K, increasing temperature"
-                        % t_candidate
+                        "System solidified at %f K (Q6=%.3f), increasing temperature"
+                        % (t_candidate, mean_q6)
                     )
                     phase_ok = False
 
