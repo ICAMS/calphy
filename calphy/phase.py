@@ -277,6 +277,11 @@ class Phase:
 
     def check_if_melted(self, lmp, filename):
         """ """
+        if self.calc.mode == "adaptive_ts":
+            self.logger.info(
+                "adaptive_ts: skipping check_if_melted (temperature range validated by scan)"
+            )
+            return
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if solids / lmp.natoms < self.calc.tolerance.solid_fraction:
             lmp.close()
@@ -294,6 +299,11 @@ class Phase:
 
     def check_if_solidfied(self, lmp, filename):
         """ """
+        if self.calc.mode == "adaptive_ts":
+            self.logger.info(
+                "adaptive_ts: skipping check_if_solidfied (temperature range validated by scan)"
+            )
+            return
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if solids / lmp.natoms > self.calc.tolerance.liquid_fraction:
             lmp.close()
@@ -316,6 +326,11 @@ class Phase:
         For liquids: start at Tmin and increase by delta_t until the system
         does not solidify during equilibration.
 
+        For liquid, the rattle + equilibration at Tmax is done once before the
+        scan loop and saved to a file. Each iteration then loads that liquid
+        configuration and only re-equilibrates at the candidate temperature,
+        avoiding repeated expensive melt steps.
+
         Parameters
         ----------
         delta_t : float, optional
@@ -329,37 +344,25 @@ class Phase:
         t_start = self.calc._temperature
         t_stop = self.calc._temperature_stop
 
-        if solid:
-            t_candidate = t_start
-            t_limit = t_stop
-        else:
-            t_candidate = t_start
-            t_limit = t_stop
+        t_candidate = t_start
+        t_limit = t_stop
 
         self.logger.info("Starting adaptive temperature scan")
         self.logger.info(
-            "reference_phase: %s, candidate T: %f K, limit T: %f K"
-            % (self.calc.reference_phase, t_candidate, t_limit)
+            "reference_phase: %s, T_start: %f K, T_limit: %f K, delta_T: %f K"
+            % (self.calc.reference_phase, t_candidate, t_limit, delta_t)
         )
 
-        while True:
-            self.logger.info("Scanning temperature: %f K" % t_candidate)
+        # ------------------------------------------------------------------ #
+        # For liquid: rattle + equilibrate at Tmax once and save the conf     #
+        # ------------------------------------------------------------------ #
+        liquid_conf = os.path.join(self.simfolder, "conf.adaptive_scan_liquid.data")
 
-            # check if we have exhausted the range
-            if solid and t_candidate <= t_limit:
-                raise MeltedError(
-                    "Adaptive scan: could not find a safe temperature for solid. "
-                    "System melts at all temperatures in [%f, %f] K"
-                    % (t_limit, t_start)
-                )
-            elif (not solid) and t_candidate >= t_limit:
-                raise SolidifiedError(
-                    "Adaptive scan: could not find a safe temperature for liquid. "
-                    "System solidifies at all temperatures in [%f, %f] K"
-                    % (t_start, t_limit)
-                )
-
-            # create a lightweight lammps object for testing
+        if not solid:
+            self.logger.info(
+                "Adaptive scan liquid: preparing melted reference at Tmax=%f K"
+                % self.calc._temperature_stop
+            )
             lmp = ph.create_object(
                 cores=self.cores,
                 directory=self.simfolder,
@@ -375,18 +378,48 @@ class Phase:
             lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
             lmp = ph.set_mass(lmp, self.calc)
 
-            # equilibrate at candidate temperature
+            # Step 1: rattle — displace atoms and assign high-energy velocities
+            self.logger.info(
+                "Adaptive scan liquid step 1: rattling structure, velocities at T=%f K"
+                % (2.0 * self.calc._temperature_high)
+            )
             lmp.command(
-                "velocity          all create %f %d mom yes rot yes dist gaussian"
-                % (t_candidate, np.random.randint(1, 10000))
+                "displace_atoms    all random 0.1 0.1 0.1 %d"
+                % np.random.randint(1, 10000)
+            )
+            lmp.velocity(
+                "all create",
+                2.0 * self.calc._temperature_high,
+                np.random.randint(1, 10000),
             )
 
+            # Step 2: NVT ramp from Thigh to Tmax to disorder the crystal
+            self.logger.info(
+                "Adaptive scan liquid step 2: NVT ramp from T=%f K to Tmax=%f K"
+                % (self.calc._temperature_high, self.calc._temperature_stop)
+            )
+            lmp.command(
+                "fix               f_rattle all nvt temp %f %f %f"
+                % (
+                    self.calc._temperature_high,
+                    self.calc._temperature_stop,
+                    self.calc.md.thermostat_damping[1],
+                )
+            )
+            lmp.command("run               %d" % int(self.calc.md.n_small_steps))
+            lmp.command("unfix             f_rattle")
+
+            # Step 3: NPT equilibration at Tmax to ensure fully melted
+            self.logger.info(
+                "Adaptive scan liquid step 3: NPT equilibration at Tmax=%f K"
+                % self.calc._temperature_stop
+            )
             if self.calc.npt:
                 lmp.command(
-                    "fix               f1 all npt temp %f %f %f %s %f %f %f"
+                    "fix               f_tmax all npt temp %f %f %f %s %f %f %f"
                     % (
-                        t_candidate,
-                        t_candidate,
+                        self.calc._temperature_stop,
+                        self.calc._temperature_stop,
                         self.calc.md.thermostat_damping[1],
                         self.iso,
                         self.calc._pressure,
@@ -396,57 +429,177 @@ class Phase:
                 )
             else:
                 lmp.command(
-                    "fix               f1 all nvt temp %f %f %f"
-                    % (t_candidate, t_candidate, self.calc.md.thermostat_damping[1])
+                    "fix               f_tmax all nvt temp %f %f %f"
+                    % (
+                        self.calc._temperature_stop,
+                        self.calc._temperature_stop,
+                        self.calc.md.thermostat_damping[1],
+                    )
+                )
+            lmp.command("run               %d" % self.calc.n_equilibration_steps)
+            lmp.command("unfix             f_tmax")
+
+            # save the melted configuration — reused by each scan iteration
+            self.logger.info(
+                "Adaptive scan liquid: saving melted configuration to %s" % liquid_conf
+            )
+            lmp = ph.write_data(lmp, "conf.adaptive_scan_liquid.data")
+            lmp.close()
+
+        # ------------------------------------------------------------------ #
+        # Scan loop                                                            #
+        # ------------------------------------------------------------------ #
+        while True:
+            self.logger.info("Scanning candidate temperature: %f K" % t_candidate)
+
+            # check if the range is exhausted
+            if solid and t_candidate <= t_limit:
+                raise MeltedError(
+                    "Adaptive scan: could not find a safe temperature for solid. "
+                    "System melts at all temperatures in [%f, %f] K"
+                    % (t_limit, t_start)
+                )
+            elif (not solid) and t_candidate >= t_limit:
+                raise SolidifiedError(
+                    "Adaptive scan: could not find a safe temperature for liquid. "
+                    "System solidifies at all temperatures in [%f, %f] K"
+                    % (t_start, t_limit)
                 )
 
-            lmp.command("run               %d" % self.calc.n_equilibration_steps)
-            lmp.command("unfix             f1")
+            lmp = ph.create_object(
+                cores=self.cores,
+                directory=self.simfolder,
+                timestep=self.calc.md.timestep,
+                cmdargs=self.calc.md.cmdargs,
+                init_commands=self.calc.md.init_commands,
+                script_mode=False,
+                lmp=self._lmp,
+            )
 
-            # check phase stability via mean Q6 — works for any crystal structure
-            # without requiring structure identification (FCC/HCP/BCC/…)
+            lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+
+            if not solid:
+                # load the pre-melted liquid configuration at Tmax
+                lmp = ph.read_data(lmp, liquid_conf)
+                lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+                lmp = ph.set_mass(lmp, self.calc)
+
+                # ramp from Tmax down to candidate temperature
+                self.logger.info(
+                    "Adaptive scan liquid: NPT ramp from Tmax=%f K to T_candidate=%f K"
+                    % (self.calc._temperature_stop, t_candidate)
+                )
+                if self.calc.npt:
+                    lmp.command(
+                        "fix               f1 all npt temp %f %f %f %s %f %f %f"
+                        % (
+                            self.calc._temperature_stop,
+                            t_candidate,
+                            self.calc.md.thermostat_damping[1],
+                            self.iso,
+                            self.calc._pressure,
+                            self.calc._pressure,
+                            self.calc.md.barostat_damping[1],
+                        )
+                    )
+                else:
+                    lmp.command(
+                        "fix               f1 all nvt temp %f %f %f"
+                        % (
+                            self.calc._temperature_stop,
+                            t_candidate,
+                            self.calc.md.thermostat_damping[1],
+                        )
+                    )
+                lmp.command("run               %d" % self.calc.n_equilibration_steps)
+                lmp.command("unfix             f1")
+
+            else:
+                # solid: load the crystal structure and equilibrate at candidate temperature
+                lmp = ph.create_structure(lmp, self.calc)
+                lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+                lmp = ph.set_mass(lmp, self.calc)
+
+                self.logger.info(
+                    "Adaptive scan solid: NPT equilibration at T_candidate=%f K"
+                    % t_candidate
+                )
+                lmp.command(
+                    "velocity          all create %f %d mom yes rot yes dist gaussian"
+                    % (t_candidate, np.random.randint(1, 10000))
+                )
+                if self.calc.npt:
+                    lmp.command(
+                        "fix               f1 all npt temp %f %f %f %s %f %f %f"
+                        % (
+                            t_candidate,
+                            t_candidate,
+                            self.calc.md.thermostat_damping[1],
+                            self.iso,
+                            self.calc._pressure,
+                            self.calc._pressure,
+                            self.calc.md.barostat_damping[1],
+                        )
+                    )
+                else:
+                    lmp.command(
+                        "fix               f1 all nvt temp %f %f %f"
+                        % (t_candidate, t_candidate, self.calc.md.thermostat_damping[1])
+                    )
+                lmp.command("run               %d" % self.calc.n_equilibration_steps)
+                lmp.command("unfix             f1")
+
+            # measure mean Q6 — structure-agnostic liquid/solid indicator
             # liquid: mean Q6 ~ 0.05-0.15; solid: mean Q6 ~ 0.35-0.60
+            self.logger.info(
+                "Adaptive scan: measuring mean Q6 at T_candidate=%f K" % t_candidate
+            )
             self.dump_current_snapshot(lmp, "traj.adaptive_scan.dat")
             mean_q6 = ph.find_mean_q(
                 os.path.join(self.simfolder, "traj.adaptive_scan.dat"), l=6
             )
-            self.logger.info("Mean Q6 at %f K: %f" % (t_candidate, mean_q6))
+            self.logger.info(
+                "Adaptive scan: mean Q6 at %f K = %.4f" % (t_candidate, mean_q6)
+            )
 
-            # threshold separating solid (~>0.3) from liquid (~<0.2)
             q6_threshold = 0.25
 
             phase_ok = True
             if solid:
                 if mean_q6 < q6_threshold:
                     self.logger.info(
-                        "System melted at %f K (Q6=%.3f), reducing temperature"
-                        % (t_candidate, mean_q6)
+                        "Adaptive scan: solid melted at %f K (Q6=%.4f < %.2f), "
+                        "reducing by %f K"
+                        % (t_candidate, mean_q6, q6_threshold, delta_t)
                     )
                     phase_ok = False
             else:
                 if mean_q6 > q6_threshold:
                     self.logger.info(
-                        "System solidified at %f K (Q6=%.3f), increasing temperature"
-                        % (t_candidate, mean_q6)
+                        "Adaptive scan: liquid solidified at %f K (Q6=%.4f > %.2f), "
+                        "increasing by %f K"
+                        % (t_candidate, mean_q6, q6_threshold, delta_t)
                     )
                     phase_ok = False
 
             lmp.close()
 
             if phase_ok:
-                self.logger.info("Phase is stable at %f K" % t_candidate)
+                self.logger.info(
+                    "Adaptive scan: phase stable at %f K (Q6=%.4f)"
+                    % (t_candidate, mean_q6)
+                )
                 break
 
-            # adjust candidate temperature
             if solid:
                 t_candidate -= delta_t
             else:
                 t_candidate += delta_t
 
-        # update the calculation temperatures
+        # update the starting temperature used by routine_fe and reversible_scaling
         if t_candidate != self.calc._temperature:
             self.logger.info(
-                "Adaptive scan: adjusted start temperature from %f K to %f K"
+                "Adaptive scan: adjusted T_start from %f K to %f K"
                 % (self.calc._temperature, t_candidate)
             )
             self.calc._temperature = t_candidate
