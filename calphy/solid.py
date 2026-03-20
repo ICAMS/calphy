@@ -293,7 +293,7 @@ class Solid(cph.Phase):
         self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
         lmp = ph.write_data(lmp, "conf.equilibration.data")
         # close object and process traj
-        lmp.close()
+        self.lammps_close(lmp=lmp)
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         try:
@@ -593,7 +593,7 @@ class Solid(cph.Phase):
 
         # close object
         if not self.calc.script_mode:
-            lmp.close()
+            self.lammps_close(lmp=lmp)
             # Preserve log file
             logfile = os.path.join(self.simfolder, "log.lammps")
             try:
