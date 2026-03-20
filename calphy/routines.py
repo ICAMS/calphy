@@ -396,6 +396,52 @@ def routine_ts(job):
     return job
 
 
+def routine_adaptive_ts(job):
+    """
+    Perform adaptive ts routine
+
+    For solids, the temperature sweep direction is reversed (Tmax -> Tmin)
+    to avoid melting during the sweep. For liquids, the sweep goes Tmin -> Tmax
+    to avoid solidification. Before starting, the starting temperature is
+    scanned to find a safe value where the phase is stable.
+    """
+    # swap temperature direction based on reference phase
+    t0 = job.calc._temperature
+    tf = job.calc._temperature_stop
+
+    if job.calc.reference_phase == "solid":
+        # solid: start from Tmax, sweep down to Tmin
+        job.calc._temperature = max(t0, tf)
+        job.calc._temperature_stop = min(t0, tf)
+    else:
+        # liquid: start from Tmin, sweep up to Tmax
+        job.calc._temperature = min(t0, tf)
+        job.calc._temperature_stop = max(t0, tf)
+
+    job.logger.info(
+        "Adaptive TS: reference_phase=%s, T_start=%f K, T_stop=%f K"
+        % (job.calc.reference_phase, job.calc._temperature, job.calc._temperature_stop)
+    )
+
+    # scan for a safe starting temperature
+    job.scan_safe_temperature()
+
+    # now proceed with the standard ts routine
+    routine_fe(job)
+
+    for i in range(job.calc.n_iterations):
+        ts = time.time()
+        job.reversible_scaling(iteration=(i + 1))
+        te = time.time() - ts
+        job.logger.info(
+            "Adaptive TS integration cycle %d finished in %f s" % (i + 1, te)
+        )
+
+    job.integrate_reversible_scaling(scale_energy=True)
+    job.clean_up()
+    return job
+
+
 def routine_only_ts(job):
     """
     Perform sweep without free energy calculation

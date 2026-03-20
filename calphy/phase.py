@@ -307,6 +307,143 @@ class Phase:
                 self.logger.warning(f"Failed to rename log file: {e}")
             raise SolidifiedError("System solidified, increase temperature")
 
+    def scan_safe_temperature(self, delta_t=50):
+        """
+        Scan for a safe starting temperature for adaptive_ts mode.
+
+        For solids: start at Tmax and reduce by delta_t until the system
+        does not melt during equilibration.
+        For liquids: start at Tmin and increase by delta_t until the system
+        does not solidify during equilibration.
+
+        Parameters
+        ----------
+        delta_t : float, optional
+            temperature step for scanning. Default 50 K.
+
+        Returns
+        -------
+        None
+        """
+        solid = self.calc.reference_phase == "solid"
+        t_start = self.calc._temperature
+        t_stop = self.calc._temperature_stop
+
+        if solid:
+            t_candidate = t_start
+            t_limit = t_stop
+        else:
+            t_candidate = t_start
+            t_limit = t_stop
+
+        self.logger.info("Starting adaptive temperature scan")
+        self.logger.info(
+            "reference_phase: %s, candidate T: %f K, limit T: %f K"
+            % (self.calc.reference_phase, t_candidate, t_limit)
+        )
+
+        while True:
+            self.logger.info("Scanning temperature: %f K" % t_candidate)
+
+            # check if we have exhausted the range
+            if solid and t_candidate <= t_limit:
+                raise MeltedError(
+                    "Adaptive scan: could not find a safe temperature for solid. "
+                    "System melts at all temperatures in [%f, %f] K"
+                    % (t_limit, t_start)
+                )
+            elif (not solid) and t_candidate >= t_limit:
+                raise SolidifiedError(
+                    "Adaptive scan: could not find a safe temperature for liquid. "
+                    "System solidifies at all temperatures in [%f, %f] K"
+                    % (t_start, t_limit)
+                )
+
+            # create a lightweight lammps object for testing
+            lmp = ph.create_object(
+                cores=self.cores,
+                directory=self.simfolder,
+                timestep=self.calc.md.timestep,
+                cmdargs=self.calc.md.cmdargs,
+                init_commands=self.calc.md.init_commands,
+                script_mode=False,
+                lmp=self._lmp,
+            )
+
+            lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+            lmp = ph.create_structure(lmp, self.calc)
+            lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+            lmp = ph.set_mass(lmp, self.calc)
+
+            # equilibrate at candidate temperature
+            lmp.command(
+                "velocity          all create %f %d mom yes rot yes dist gaussian"
+                % (t_candidate, np.random.randint(1, 10000))
+            )
+
+            if self.calc.npt:
+                lmp.command(
+                    "fix               f1 all npt temp %f %f %f %s %f %f %f"
+                    % (
+                        t_candidate,
+                        t_candidate,
+                        self.calc.md.thermostat_damping[1],
+                        self.iso,
+                        self.calc._pressure,
+                        self.calc._pressure,
+                        self.calc.md.barostat_damping[1],
+                    )
+                )
+            else:
+                lmp.command(
+                    "fix               f1 all nvt temp %f %f %f"
+                    % (t_candidate, t_candidate, self.calc.md.thermostat_damping[1])
+                )
+
+            lmp.command("run               %d" % self.calc.n_equilibration_steps)
+            lmp.command("unfix             f1")
+
+            # check phase stability
+            self.dump_current_snapshot(lmp, "traj.adaptive_scan.dat")
+            solids = ph.find_solid_fraction(
+                os.path.join(self.simfolder, "traj.adaptive_scan.dat")
+            )
+
+            phase_ok = True
+            if solid:
+                if solids / lmp.natoms < self.calc.tolerance.solid_fraction:
+                    self.logger.info(
+                        "System melted at %f K, reducing temperature" % t_candidate
+                    )
+                    phase_ok = False
+            else:
+                if solids / lmp.natoms > self.calc.tolerance.liquid_fraction:
+                    self.logger.info(
+                        "System solidified at %f K, increasing temperature"
+                        % t_candidate
+                    )
+                    phase_ok = False
+
+            lmp.close()
+
+            if phase_ok:
+                self.logger.info("Phase is stable at %f K" % t_candidate)
+                break
+
+            # adjust candidate temperature
+            if solid:
+                t_candidate -= delta_t
+            else:
+                t_candidate += delta_t
+
+        # update the calculation temperatures
+        if t_candidate != self.calc._temperature:
+            self.logger.info(
+                "Adaptive scan: adjusted start temperature from %f K to %f K"
+                % (self.calc._temperature, t_candidate)
+            )
+            self.calc._temperature = t_candidate
+
     def fix_nose_hoover(
         self,
         lmp,
@@ -908,7 +1045,7 @@ class Phase:
         self.logger.info("- 10.1103/PhysRevMaterials.5.103801")
         self.publications.append("10.1103/PhysRevMaterials.5.103801")
 
-        if self.calc.mode == "fe":
+        if self.calc.mode == "fe" or self.calc.mode == "adaptive_ts":
             if self.calc.reference_phase == "solid":
                 self.logger.info("- 10.1016/j.commatsci.2015.10.050")
                 self.publications.append("10.1016/j.commatsci.2015.10.050")
@@ -946,11 +1083,11 @@ class Phase:
         # create lammps object
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
-            script_mode=False, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=False,
             lmp=self._lmp,
         )
 
@@ -1331,11 +1468,11 @@ class Phase:
         # create lammps object
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
-            script_mode=False, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=False,
             lmp=self._lmp,
         )
 
@@ -1479,11 +1616,11 @@ class Phase:
         # create lammps object
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
-            script_mode=False, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=False,
             lmp=self._lmp,
         )
 

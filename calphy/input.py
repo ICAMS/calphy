@@ -760,7 +760,8 @@ class Calculation(BaseModel, title="Main input class"):
             )
             if not (natoms1 == natoms2):
                 raise ValueError(
-                    f"Input and output number of atoms are not conserved! Input {self.composition_scaling._input_chemical_composition}, output {self.composition_scaling.output_chemical_composition}, total atoms in structure {len(structure)}")
+                    f"Input and output number of atoms are not conserved! Input {self.composition_scaling._input_chemical_composition}, output {self.composition_scaling.output_chemical_composition}, total atoms in structure {len(structure)}"
+                )
         return self
 
     def fix_paths(self, potlist):
@@ -1041,9 +1042,16 @@ def _convert_legacy_inputfile(file, return_calcs=False):
 
             if (mode == "fe") or (mode == "alchemy") or (mode == "composition_scaling"):
                 combos = itertools.product(lat_props, pressure, temperature)
-            elif mode == "ts" or mode == "tscale" or mode == "mts":
+            elif (
+                mode == "ts"
+                or mode == "tscale"
+                or mode == "mts"
+                or mode == "adaptive_ts"
+            ):
                 if not len(temperature) == 2:
-                    raise ValueError("ts/tscale mode needs 2 temperature values")
+                    raise ValueError(
+                        "ts/tscale/adaptive_ts mode needs 2 temperature values"
+                    )
                 temperature = [temperature]
                 combos = itertools.product(lat_props, pressure, temperature)
             elif mode == "pscale":

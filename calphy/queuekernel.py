@@ -43,6 +43,7 @@ from calphy.routines import (
     routine_tscale,
     routine_alchemy,
     routine_composition_scaling,
+    routine_adaptive_ts,
 )
 
 
@@ -108,9 +109,11 @@ def run_calculation(job):
         job = routine_pscale(job)
     elif job.calc.mode == "composition_scaling":
         job = routine_composition_scaling(job)
+    elif job.calc.mode == "adaptive_ts":
+        job = routine_adaptive_ts(job)
     else:
         raise ValueError(
-            "Mode should be either fe/ts/mts/alchemy/melting_temperature/tscale/pscale/composition_scaling"
+            "Mode should be either fe/ts/mts/alchemy/melting_temperature/tscale/pscale/composition_scaling/adaptive_ts"
         )
     return job
 
@@ -220,7 +223,9 @@ def main():
         _ = routine_pscale(job)
     elif job.calc.mode == "composition_scaling":
         _ = routine_composition_scaling(job)
+    elif job.calc.mode == "adaptive_ts":
+        _ = routine_adaptive_ts(job)
     else:
         raise ValueError(
-            "Mode should be either fe/ts/mts/alchemy/melting_temperature/tscale/pscale/composition_scaling"
+            "Mode should be either fe/ts/mts/alchemy/melting_temperature/tscale/pscale/composition_scaling/adaptive_ts"
         )
