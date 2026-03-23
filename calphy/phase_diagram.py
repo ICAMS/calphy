@@ -1861,10 +1861,23 @@ class PhaseDiagram:
     # Free-energy of mixing + tangent lines at one temperature
     # ------------------------------------------------------------------
 
-    def plot_free_energy_mixing(self, T, figsize=None, ax=None):
+    def plot_free_energy_mixing(self, T, figsize=None, ax=None, show_raw_points=True):
         """
         Plot free energy of mixing F_mix(x) with common-tangent lines
         at temperature *T*.
+
+        Parameters
+        ----------
+        T : float
+            Temperature in Kelvin.
+        figsize : tuple, optional
+            Figure size.
+        ax : matplotlib Axes, optional
+            Axes to plot on.
+        show_raw_points : bool, optional
+            If True (default), overlay the raw unfitted data points as
+            scatter markers so the quality of the polynomial fit can be
+            judged visually.
 
         Returns
         -------
@@ -1908,12 +1921,74 @@ class PhaseDiagram:
             dict_list, boundary_trim=kw.get("boundary_trim", 0.1)
         )
 
+        # Derive the global linear reference endpoints used in get_free_energy_mixing
+        # so we can apply the same subtraction to the raw points.
+        min_comp = np.min([np.min(d["composition"]) for d in dc])
+        max_comp = np.max([np.max(d["composition"]) for d in dc])
+        threshold = 1e-3
+        min_fe_raw, max_fe_raw = [], []
+        for d in dict_list:
+            comp_g = np.array(d["composition"])
+            fe_g = np.array(d["free_energy"])
+            diff_lo = np.abs(comp_g - min_comp)
+            arg_lo = np.argsort(diff_lo)[0]
+            if diff_lo[arg_lo] < threshold:
+                min_fe_raw.append(fe_g[arg_lo])
+            diff_hi = np.abs(comp_g - max_comp)
+            arg_hi = np.argsort(diff_hi)[0]
+            if diff_hi[arg_hi] < threshold:
+                max_fe_raw.append(fe_g[arg_hi])
+        left_ref = np.min(min_fe_raw) if min_fe_raw else 0.0
+        right_ref = np.min(max_fe_raw) if max_fe_raw else 0.0
+
         for d in dc:
             phase = d["phase"]
             color = color_dict.get(f"{phase}-{phase}", TABLEAU10[0])
             ax.plot(
                 d["composition"], d["free_energy_mix"], label=phase, color=color, lw=2
             )
+
+            if show_raw_points:
+                # Extract raw (unfitted) F values at temperature T for this phase
+                ci = self.composition_intervals.get(phase, (0, 1))
+                df_phase = self.df.loc[self.df["phase"] == phase].copy()
+                df_phase = df_phase.sort_values(by="composition")
+                df_phase = df_phase[
+                    (df_phase["composition"] >= ci[0])
+                    & (df_phase["composition"] <= ci[1])
+                ]
+                raw_comp = df_phase["composition"].values
+                args = df_phase["temperature"].apply(_get_temp_arg, args=(T,))
+                raw_fe = _get_fe_at_args(df_phase["free_energy"].values, args)
+
+                raw_comp = np.array(
+                    [raw_comp[i] for i, x in enumerate(raw_fe) if x is not None]
+                )
+                raw_fe = np.array([x for x in raw_fe if x is not None])
+
+                if len(raw_fe) == 0:
+                    continue
+
+                if kw.get("ideal_configurational_entropy", False):
+                    raw_fe = raw_fe - kb * T * _calculate_configurational_entropy(
+                        raw_comp
+                    )
+
+                # Apply the same linear reference as get_free_energy_mixing
+                scaled_comp = raw_comp / max_comp
+                raw_fe_mix = raw_fe - (
+                    right_ref * scaled_comp + left_ref * (1 - scaled_comp)
+                )
+
+                ax.scatter(
+                    raw_comp,
+                    raw_fe_mix,
+                    color=color,
+                    s=30,
+                    zorder=5,
+                    edgecolors="black",
+                    lw=0.8,
+                )
 
         tn, en, _, _ = get_common_tangents(
             dc, remove_self_tangents_for=kw.get("remove_self_tangents_for", [])

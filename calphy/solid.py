@@ -249,8 +249,15 @@ class Solid(cph.Phase):
         if self.calc.potential_file is None:
             lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
 
-        # set up structure
-        lmp = ph.create_structure(lmp, self.calc)
+        # set up structure — for adaptive_ts reuse the equilibrated scan snapshot
+        if self.calc.mode == "adaptive_ts" and getattr(self, "_adaptive_scan_conf", None) is not None:
+            self.logger.info(
+                "adaptive_ts: loading pre-equilibrated solid conf from %s"
+                % self._adaptive_scan_conf
+            )
+            lmp = ph.read_data(lmp, self._adaptive_scan_conf)
+        else:
+            lmp = ph.create_structure(lmp, self.calc)
 
         if self.calc.potential_file is None:
             lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")

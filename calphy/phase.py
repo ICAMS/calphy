@@ -278,9 +278,22 @@ class Phase:
     def check_if_melted(self, lmp, filename):
         """ """
         if self.calc.mode == "adaptive_ts":
+            mean_q6 = ph.find_mean_q(os.path.join(self.simfolder, filename))
             self.logger.info(
-                "adaptive_ts: skipping check_if_melted (temperature range validated by scan)"
+                "adaptive_ts check_if_melted: mean Q6 = %.4f (threshold %.2f)"
+                % (mean_q6, 0.25)
             )
+            if mean_q6 < 0.25:
+                lmp.close()
+                logfile = os.path.join(self.simfolder, "log.lammps")
+                try:
+                    os.rename(
+                        logfile,
+                        os.path.join(self.simfolder, "melted_error.log.lammps"),
+                    )
+                except OSError as e:
+                    self.logger.warning(f"Failed to rename log file: {e}")
+                raise MeltedError("System melted (mean Q6 = %.4f < 0.25)" % mean_q6)
             return
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if solids / lmp.natoms < self.calc.tolerance.solid_fraction:
@@ -300,9 +313,24 @@ class Phase:
     def check_if_solidfied(self, lmp, filename):
         """ """
         if self.calc.mode == "adaptive_ts":
+            mean_q6 = ph.find_mean_q(os.path.join(self.simfolder, filename))
             self.logger.info(
-                "adaptive_ts: skipping check_if_solidfied (temperature range validated by scan)"
+                "adaptive_ts check_if_solidfied: mean Q6 = %.4f (threshold %.2f)"
+                % (mean_q6, 0.25)
             )
+            if mean_q6 > 0.25:
+                lmp.close()
+                logfile = os.path.join(self.simfolder, "log.lammps")
+                try:
+                    os.rename(
+                        logfile,
+                        os.path.join(self.simfolder, "solidified_error.log.lammps"),
+                    )
+                except OSError as e:
+                    self.logger.warning(f"Failed to rename log file: {e}")
+                raise SolidifiedError(
+                    "System solidified (mean Q6 = %.4f > 0.25)" % mean_q6
+                )
             return
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if solids / lmp.natoms > self.calc.tolerance.liquid_fraction:
@@ -581,6 +609,16 @@ class Phase:
                         % (t_candidate, mean_q6, q6_threshold, delta_t)
                     )
                     phase_ok = False
+
+            # save the equilibrated solid structure before closing — reused by routine_fe
+            if phase_ok and solid:
+                self.logger.info(
+                    "Adaptive scan: saving stable solid configuration to conf.adaptive_scan_solid.data"
+                )
+                lmp = ph.write_data(lmp, "conf.adaptive_scan_solid.data")
+                self._adaptive_scan_conf = os.path.join(
+                    self.simfolder, "conf.adaptive_scan_solid.data"
+                )
 
             lmp.close()
 
