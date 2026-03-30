@@ -127,7 +127,7 @@ class Alchemy(cph.Phase):
 
         # close object and process traj
         lmp = ph.write_data(lmp, "conf.equilibration.data")
-        lmp.close()
+        self.lammps_close(lmp=lmp)
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         try:
@@ -503,7 +503,7 @@ class Alchemy(cph.Phase):
             for idx in range(len(swap_combos)):
                 lmp.command(f"unfix swap{idx}")
             # lmp.command("unfix swap_print")
-        lmp.close()
+        self.lammps_close(lmp=lmp)
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         try:
