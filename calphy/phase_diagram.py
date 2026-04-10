@@ -1233,11 +1233,11 @@ def get_common_tangents(
     hull = ConvexHull(points)
     convex_points = []
     convex_x = []
-    for simplex in hull.simplices:
-        ind = points[simplex, 1] <= 0.0
-        if all(ind):
-            convex_points.extend(points[simplex, 1][ind])
-            convex_x.extend(points[simplex, 0][ind])
+    for simplex, equation in zip(hull.simplices, hull.equations):
+        # Select lower convex hull facets: outward normal has negative y-component
+        if equation[1] < 0:
+            convex_points.extend(points[simplex, 1])
+            convex_x.extend(points[simplex, 0])
 
     dist = np.diff(np.sort(convex_x))
     dist = np.where(dist > peak_cutoff)[0]
@@ -1276,7 +1276,7 @@ def get_common_tangents(
             )
         for t, e in zip(tangents, energies):
             plt.plot(t, e, color="black", ls="dashed")
-        plt.ylim(top=0.0)
+        plt.ylim(top=max(0.0, np.max(convex_points) * 1.1))
 
     return (
         np.array(tangents),
