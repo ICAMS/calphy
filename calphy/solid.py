@@ -55,7 +55,10 @@ class Solid(cph.Phase):
 
         # call base class
         super().__init__(
-            calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen, lmp=lmp,
+            calculation=calculation,
+            simfolder=simfolder,
+            log_to_screen=log_to_screen,
+            lmp=lmp,
         )
 
     def run_spring_constant_convergence(self, lmp):
@@ -237,10 +240,10 @@ class Solid(cph.Phase):
 
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
             script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
@@ -250,7 +253,10 @@ class Solid(cph.Phase):
             lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
 
         # set up structure — for adaptive_ts reuse the equilibrated scan snapshot
-        if self.calc.mode == "adaptive_ts" and getattr(self, "_adaptive_scan_conf", None) is not None:
+        if (
+            self.calc.mode == "adaptive_ts"
+            and getattr(self, "_adaptive_scan_conf", None) is not None
+        ):
             self.logger.info(
                 "adaptive_ts: loading pre-equilibrated solid conf from %s"
                 % self._adaptive_scan_conf
@@ -333,10 +339,10 @@ class Solid(cph.Phase):
         """
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
             script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
@@ -417,10 +423,10 @@ class Solid(cph.Phase):
         """
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
             script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )

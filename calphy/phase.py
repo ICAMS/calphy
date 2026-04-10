@@ -627,6 +627,15 @@ class Phase:
                     "Adaptive scan: phase stable at %f K (Q6=%.4f)"
                     % (t_candidate, mean_q6)
                 )
+                if solid:
+                    # Apply one extra delta_t safety margin below the found temperature.
+                    # The scan uses n_equilibration_steps which may be too short —
+                    # run_averaging runs much longer and can melt a borderline structure.
+                    t_candidate -= delta_t
+                    self.logger.info(
+                        "Adaptive scan: safety margin applied, T_start set to %f K"
+                        % t_candidate
+                    )
                 break
 
             if solid:
