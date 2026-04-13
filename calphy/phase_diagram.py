@@ -974,10 +974,29 @@ def get_phase_free_energy(
     args = df_phase["temperature"].apply(_get_temp_arg, args=(temp,))
     fes = _get_fe_at_args(df_phase["free_energy"].values, args)
 
-    # print(fes)
+    # Track which rows already had ideal entropy applied by fix_composition_scaling
+    # and which rows are composition_scaling (the only ones we should touch).
+    if "_entropy_corrected" in df_phase.columns:
+        ec_flags_all = df_phase["_entropy_corrected"].values
+    else:
+        ec_flags_all = np.zeros(len(df_phase), dtype=bool)
+
+    if "calculation_mode" in df_phase.columns:
+        is_comp_scaling_all = (
+            df_phase["calculation_mode"] == "composition_scaling"
+        ).values
+    else:
+        is_comp_scaling_all = np.zeros(len(df_phase), dtype=bool)
+
     # filter out None values
     composition = np.array(
         [composition[count] for count, x in enumerate(fes) if x is not None]
+    )
+    ec_flags = np.array(
+        [ec_flags_all[count] for count, x in enumerate(fes) if x is not None]
+    )
+    is_comp_scaling = np.array(
+        [is_comp_scaling_all[count] for count, x in enumerate(fes) if x is not None]
     )
     fes = np.array([x for x in fes if x is not None])
 
@@ -990,16 +1009,27 @@ def get_phase_free_energy(
         )
         return None
     else:
-        if ideal_configurational_entropy:
-            entropy_term = (
-                kb
-                * temp
-                * _calculate_configurational_entropy(
-                    composition, correction=entropy_correction
-                )
+        entropy_term_arr = (
+            kb
+            * temp
+            * _calculate_configurational_entropy(
+                composition, correction=entropy_correction
             )
-            fes = fes - entropy_term
+        )
+        # Only modify composition_scaling rows; fe-mode rows (liquid or
+        # solid) already contain whatever configurational entropy the
+        # simulation sampled, so we never add/remove the analytical term.
+        if ideal_configurational_entropy:
+            # Add entropy to comp_scaling rows that don't have it yet
+            mask = is_comp_scaling & ~ec_flags
+            fes = fes.copy()
+            fes[mask] -= entropy_term_arr[mask]
+            entropy_term = entropy_term_arr
         else:
+            # Remove entropy from comp_scaling rows that already have it
+            mask = is_comp_scaling & ec_flags
+            fes = fes.copy()
+            fes[mask] += entropy_term_arr[mask]
             entropy_term = []
 
         fe_fit = _get_free_energy_fit(
@@ -1668,7 +1698,7 @@ class PhaseDiagram:
         method="polynomial",
         boundary_trim=0.1,
         remove_self_tangents_for=None,
-        ideal_configurational_entropy=False,
+        ideal_configurational_entropy=True,
         end_weight=3,
         end_indices=4,
     ):
@@ -1693,10 +1723,10 @@ class PhaseDiagram:
             Phase names for which same-phase tangent constructions
             should be discarded.
         ideal_configurational_entropy : bool
-            Add ideal configurational entropy to free energies during fitting.
-            Defaults to False because ``fix_composition_scaling`` (called in
-            ``__init__``) already applies this correction unconditionally for
-            composition-scaling data.
+            Include ideal configurational entropy in the free energies.
+            Defaults to True.  Set to False to remove the ideal
+            configurational-entropy contribution (e.g. for ordered phases
+            or when no swap moves were performed).
         end_weight : int
             Weight for endpoints in the fit.
         end_indices : int
@@ -1972,10 +2002,31 @@ class PhaseDiagram:
             warnings.warn(f"No data for phase '{phase}' at T={T}")
             return fig, ax
 
+        # Track which rows already had ideal entropy applied and which
+        # are composition_scaling (the only ones we should touch).
+        if "_entropy_corrected" in df_phase.columns:
+            ec_flags_all = df_phase["_entropy_corrected"].values
+        else:
+            ec_flags_all = np.zeros(len(df_phase), dtype=bool)
+        if "calculation_mode" in df_phase.columns:
+            is_cs_all = (df_phase["calculation_mode"] == "composition_scaling").values
+        else:
+            is_cs_all = np.zeros(len(df_phase), dtype=bool)
+        ec_flags = np.array(
+            [ec_flags_all[i] for i, x in enumerate(fes) if x is not None]
+        )
+        is_cs = np.array([is_cs_all[i] for i, x in enumerate(fes) if x is not None])
+
         ice = kw.get("ideal_configurational_entropy", True)
+        entropy_term = kb * T * _calculate_configurational_entropy(comp_raw)
         if ice:
-            entropy_term = kb * T * _calculate_configurational_entropy(comp_raw)
-            fe_raw = fe_raw - entropy_term
+            mask = is_cs & ~ec_flags
+            fe_raw = fe_raw.copy()
+            fe_raw[mask] -= entropy_term[mask]
+        else:
+            mask = is_cs & ec_flags
+            fe_raw = fe_raw.copy()
+            fe_raw[mask] += entropy_term[mask]
 
         # Plot raw data
         ax.scatter(
