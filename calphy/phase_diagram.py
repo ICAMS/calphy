@@ -1994,7 +1994,6 @@ class PhaseDiagram:
         ax.set_xlabel("Composition")
         ax.set_ylabel(r"$\Delta F_\mathrm{mix}$ (eV/atom)")
         ax.set_title(f"T = {T} K")
-        ax.set_ylim(top=0.0)
         ax.legend()
         fig.tight_layout()
         return fig, ax
