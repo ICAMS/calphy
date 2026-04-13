@@ -918,6 +918,17 @@ class Phase:
                 self.publications.append("10.1016/j.commatsci.2018.12.029")
                 self.publications.append("10.1063/1.4967775")
 
+    def submit_ts_report(self):
+        datafile = os.path.join(self.simfolder, "temperature_sweep.npz")
+        T, f, ferr = np.load(datafile).values()
+        report = {}
+        report["results"] = {}
+        report["temperature"] = T
+        report["free_energy"] = f
+        reportfile = os.path.join(self.simfolder, "report_ts.yaml")
+        with open(reportfile, "w") as f:
+            yaml.dump(report, f)
+
     def reversible_scaling(self, iteration=1):
         """
         Perform reversible scaling calculation in NPT
