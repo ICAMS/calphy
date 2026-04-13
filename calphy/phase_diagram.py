@@ -1078,6 +1078,8 @@ def get_phase_free_energy(
             "composition": compfine,
             "free_energy": fe,
             "entropy": entropy_term,
+            "raw_composition": composition,
+            "raw_free_energy": fes,
         }
     return None
 
@@ -1139,6 +1141,14 @@ def get_free_energy_mixing(dict_list, threshold=1e-3, boundary_trim=0.1):
         # print((right_ref_scaled + left_ref_scaled)[-1])
         ref = d["free_energy"] - (right_ref_scaled + left_ref_scaled)
         d["free_energy_mix"] = ref
+
+    # Compute mixing energy for raw data points (if present)
+    for d in dict_list:
+        if "raw_composition" in d and "raw_free_energy" in d:
+            rc = d["raw_composition"]
+            scaled_rc = rc / max_comp
+            raw_ref = right_ref * scaled_rc + left_ref * (1 - scaled_rc)
+            d["raw_free_energy_mix"] = d["raw_free_energy"] - raw_ref
 
     # Trim boundary points from partial-range phases
     if boundary_trim > 0:
@@ -1833,7 +1843,7 @@ class PhaseDiagram:
     # Free-energy curves at a single temperature
     # ------------------------------------------------------------------
 
-    def plot_free_energy(self, T, figsize=None, ax=None):
+    def plot_free_energy(self, T, show_data=False, figsize=None, ax=None):
         """
         Plot free-energy curves F(x) for all phases at temperature *T*.
 
@@ -1841,6 +1851,8 @@ class PhaseDiagram:
         ----------
         T : float
             Temperature in Kelvin.
+        show_data : bool
+            If True, overlay the raw data points on each phase curve.
         figsize : tuple, optional
         ax : matplotlib Axes, optional
 
@@ -1879,6 +1891,16 @@ class PhaseDiagram:
                 ax.plot(
                     d["composition"], d["free_energy"], label=phase, color=color, lw=2
                 )
+                if show_data and "raw_composition" in d:
+                    ax.scatter(
+                        d["raw_composition"],
+                        d["raw_free_energy"],
+                        s=40,
+                        zorder=5,
+                        color=color,
+                        edgecolors="black",
+                        lw=0.8,
+                    )
 
         ax.set_xlabel("Composition")
         ax.set_ylabel("F (eV/atom)")
@@ -1891,10 +1913,17 @@ class PhaseDiagram:
     # Free-energy of mixing + tangent lines at one temperature
     # ------------------------------------------------------------------
 
-    def plot_free_energy_mixing(self, T, figsize=None, ax=None):
+    def plot_free_energy_mixing(self, T, show_data=False, figsize=None, ax=None):
         """
         Plot free energy of mixing F_mix(x) with common-tangent lines
         at temperature *T*.
+
+        Parameters
+        ----------
+        T : float
+            Temperature in Kelvin.
+        show_data : bool
+            If True, overlay the raw data points on each phase curve.
 
         Returns
         -------
@@ -1944,6 +1973,16 @@ class PhaseDiagram:
             ax.plot(
                 d["composition"], d["free_energy_mix"], label=phase, color=color, lw=2
             )
+            if show_data and "raw_free_energy_mix" in d:
+                ax.scatter(
+                    d["raw_composition"],
+                    d["raw_free_energy_mix"],
+                    s=40,
+                    zorder=5,
+                    color=color,
+                    edgecolors="black",
+                    lw=0.8,
+                )
 
         tn, en, _, _ = get_common_tangents(
             dc, remove_self_tangents_for=kw.get("remove_self_tangents_for", [])
