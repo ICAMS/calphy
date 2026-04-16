@@ -1565,6 +1565,101 @@ def plot_phase_diagram(
     return fig, ax
 
 
+# ---------------------------------------------------------------------------
+# CALPHAD surface helpers
+# ---------------------------------------------------------------------------
+
+def _fit_calphad_poly6(T, G):
+    """
+    Fit the standard six-term CALPHAD polynomial to G(T) data.
+
+        G(T) = a + b·T + c·T·ln T + d·T² + e·T³ + f·T⁻¹
+
+    Parameters
+    ----------
+    T : array-like  Temperature in K.
+    G : array-like  Free energy in eV/atom.
+
+    Returns
+    -------
+    coeffs : ndarray, shape (6,)  [a, b, c, d, e, f]
+    """
+    T = np.asarray(T, dtype=float)
+    G = np.asarray(G, dtype=float)
+    A = np.column_stack(
+        [np.ones_like(T), T, T * np.log(T), T ** 2, T ** 3, 1.0 / T]
+    )
+    coeffs, _, _, _ = np.linalg.lstsq(A, G, rcond=None)
+    return coeffs
+
+
+def _eval_calphad_poly6(coeffs, T):
+    """
+    Evaluate the six-term CALPHAD polynomial.
+
+    Parameters
+    ----------
+    coeffs : array-like  [a, b, c, d, e, f] from :func:`_fit_calphad_poly6`.
+    T : float or array-like  Temperature in K.
+
+    Returns
+    -------
+    G : ndarray  Free energy in eV/atom.
+    """
+    T = np.atleast_1d(np.asarray(T, dtype=float))
+    return (
+        coeffs[0]
+        + coeffs[1] * T
+        + coeffs[2] * T * np.log(T)
+        + coeffs[3] * T ** 2
+        + coeffs[4] * T ** 3
+        + coeffs[5] / T
+    )
+
+
+def _eval_calphad_surface_at(surface, x, T):
+    """
+    Evaluate the CALPHAD-decomposed G(x, T) surface for a single phase at
+    temperature *T* over a composition array *x*.
+
+    The model is::
+
+        G(x, T) = (1-x)·G_A(T) + x·G_B(T)
+                  + k_B·T·[x·ln x + (1-x)·ln(1-x)]
+                  + x·(1-x)·Σ_k L_k·(1-2x)^k
+
+    Parameters
+    ----------
+    surface : dict  Output entry from :meth:`PhaseDiagram.build_calphad_surface`.
+    x : array-like  Composition grid (0 to 1).
+    T : float       Temperature in K.
+
+    Returns
+    -------
+    G : ndarray  Free energy in eV/atom.
+    """
+    x = np.asarray(x, dtype=float)
+    T = float(T)
+    coeffs_A = surface["coeffs_A"]
+    coeffs_B = surface["coeffs_B"]
+    L = surface["L_coeffs"]
+
+    G_A = float(_eval_calphad_poly6(coeffs_A, T))
+    G_B = float(_eval_calphad_poly6(coeffs_B, T))
+    G_lin = (1.0 - x) * G_A + x * G_B
+
+    # Ideal configurational entropy  (→ 0 at x=0 and x=1)
+    log_x = np.where(x > 0, np.log(np.maximum(x, 1e-300)), 0.0)
+    log_1mx = np.where(x < 1, np.log(np.maximum(1.0 - x, 1e-300)), 0.0)
+    G_ideal = kb * T * (x * log_x + (1.0 - x) * log_1mx)
+
+    # Redlich-Kister excess
+    pf = x * (1.0 - x)
+    G_xs = sum(L[k] * pf * (1.0 - 2.0 * x) ** k for k in range(len(L)))
+
+    return G_lin + G_ideal + G_xs
+
+
 class PhaseDiagram:
     """
     High-level class for computing and plotting a binary phase diagram.
@@ -1695,6 +1790,166 @@ class PhaseDiagram:
         self.temperatures = None
         self.tangent_types = None
         self._calc_kwargs = {}
+        self._calphad_surfaces = {}
+
+    # ------------------------------------------------------------------
+    # CALPHAD surface decomposition
+    # ------------------------------------------------------------------
+
+    def build_calphad_surface(self, rk_order=3, endpoint_tol=0.05):
+        """
+        Fit a CALPHAD-decomposed Gibbs energy surface G(x, T) for each phase.
+
+        The model mirrors the pycalphad/TDB representation::
+
+            G(x, T) = (1-x)·G_A(T) + x·G_B(T)
+                      + k_B·T·[x·ln x + (1-x)·ln(1-x)]
+                      + x·(1-x)·Σ_k L_k·(1-2x)^k
+
+        *G_A(T)* and *G_B(T)* are six-term CALPHAD polynomials fitted to the
+        pure-endpoint calphy data.  *L_k* are Redlich-Kister interaction
+        parameters fitted to temperature-averaged excess free energies at
+        intermediate compositions (T-independent RK approximation).
+
+        Because G(x, T) is a smooth analytic surface in both x and T, phase
+        boundaries computed from it via :meth:`calculate` (with
+        ``calphad_surface=True``) are substantially smoother and more
+        physically consistent than those from the per-temperature polynomial
+        fits in the default mode.  This is the root reason why the
+        pycalphad/TDB route yields better phase diagrams: it decomposes G into
+        physically motivated components rather than fitting a raw polynomial
+        slice-by-slice in composition at each T.
+
+        Call this method *before* ``calculate(calphad_surface=True)``, or pass
+        ``calphad_surface=True`` directly to ``calculate()`` (which will call
+        this automatically).
+
+        Parameters
+        ----------
+        rk_order : int
+            Number of Redlich-Kister parameters to fit (default 3).
+        endpoint_tol : float
+            Composition window for locating pure endpoints: rows with
+            ``composition <= endpoint_tol`` are candidates for the A endpoint
+            and rows with ``composition >= 1 - endpoint_tol`` for the B
+            endpoint (default 0.05).
+
+        Returns
+        -------
+        dict
+            Keyed by phase name.  Each value is either ``None`` (surface could
+            not be built) or a dict with keys ``'coeffs_A'``, ``'coeffs_B'``,
+            ``'L_coeffs'``, ``'x_data'``, ``'G_xs_data'``, ``'rk_order'``.
+        """
+        surfaces = {}
+
+        for phase in self.phases:
+            df_p = self.df.loc[self.df["phase"] == phase].copy()
+            df_p = df_p.sort_values("composition")
+
+            # --- Locate pure endpoints ---
+            left_rows = df_p.loc[df_p["composition"] <= endpoint_tol]
+            right_rows = df_p.loc[df_p["composition"] >= 1.0 - endpoint_tol]
+
+            if len(left_rows) == 0 or len(right_rows) == 0:
+                warnings.warn(
+                    f"Phase '{phase}': no pure endpoints found within "
+                    f"composition tolerance {endpoint_tol}. "
+                    "Skipping CALPHAD surface for this phase."
+                )
+                surfaces[phase] = None
+                continue
+
+            # Prefer is_reference (fe-mode) rows; fall back to closest-to-endpoint.
+            def _pick_ep(rows, target):
+                if "is_reference" in rows.columns:
+                    ref = rows.loc[rows["is_reference"] == True]
+                    if len(ref) > 0:
+                        rows = ref
+                return rows.iloc[
+                    (rows["composition"] - target).abs().argsort().iloc[0]
+                ]
+
+            left_row = _pick_ep(left_rows, 0.0)
+            right_row = _pick_ep(right_rows, 1.0)
+
+            T_A = np.asarray(left_row["temperature"], dtype=float)
+            G_A_data = np.asarray(left_row["free_energy"], dtype=float)
+            T_B = np.asarray(right_row["temperature"], dtype=float)
+            G_B_data = np.asarray(right_row["free_energy"], dtype=float)
+
+            # --- Fit CALPHAD 6-term polynomials to pure endpoints ---
+            coeffs_A = _fit_calphad_poly6(T_A, G_A_data)
+            coeffs_B = _fit_calphad_poly6(T_B, G_B_data)
+
+            # --- Extract excess free energy at intermediate compositions ---
+            x_data = []
+            G_xs_data = []
+            intermediate = df_p.loc[
+                (df_p["composition"] > endpoint_tol)
+                & (df_p["composition"] < 1.0 - endpoint_tol)
+            ]
+
+            for _, row in intermediate.iterrows():
+                x = float(row["composition"])
+                T_row = np.asarray(row["temperature"], dtype=float)
+                G_row = np.asarray(row["free_energy"], dtype=float)
+
+                # Linear (mechanical-mixture) reference
+                G_A_at_T = _eval_calphad_poly6(coeffs_A, T_row)
+                G_B_at_T = _eval_calphad_poly6(coeffs_B, T_row)
+                G_lin = (1.0 - x) * G_A_at_T + x * G_B_at_T
+
+                # Ideal configurational entropy
+                G_ideal = kb * T_row * (
+                    x * np.log(x) + (1.0 - x) * np.log(1.0 - x)
+                )
+
+                # Excess = total − linear reference − ideal entropy.
+                # Average over temperature (T-independent RK approximation).
+                G_xs_arr = G_row - G_lin - G_ideal
+                x_data.append(x)
+                G_xs_data.append(float(np.mean(G_xs_arr)))
+
+            if len(x_data) < rk_order:
+                warnings.warn(
+                    f"Phase '{phase}': only {len(x_data)} intermediate "
+                    f"compositions available, need ≥ {rk_order} for the RK "
+                    "fit. Skipping CALPHAD surface for this phase."
+                )
+                surfaces[phase] = None
+                continue
+
+            x_arr = np.array(x_data)
+            Gxs_arr = np.array(G_xs_data)
+
+            # --- Fit Redlich-Kister parameters ---
+            # G_xs(x) = x·(1-x)·Σ_k L_k·(1-2x)^k  enforces G_xs→0 at x=0,1
+            prefactor = x_arr * (1.0 - x_arr)
+            basis = np.column_stack(
+                [prefactor * (1.0 - 2.0 * x_arr) ** k for k in range(rk_order)]
+            )
+            L_coeffs, _, _, _ = np.linalg.lstsq(basis, Gxs_arr, rcond=None)
+
+            L_str = "  ".join(
+                f"L{k}={L_coeffs[k] * 96485:.1f} J/mol" for k in range(rk_order)
+            )
+            rms = float(
+                np.sqrt(np.mean((Gxs_arr - basis @ L_coeffs) ** 2)) * 96485
+            )
+            print(f"[{phase}]  {L_str}   RMS_xs={rms:.1f} J/mol")
+
+            surfaces[phase] = {
+                "coeffs_A": coeffs_A,
+                "coeffs_B": coeffs_B,
+                "L_coeffs": L_coeffs,
+                "x_data": x_arr,
+                "G_xs_data": Gxs_arr,
+                "rk_order": rk_order,
+            }
+
+        self._calphad_surfaces = surfaces
+        return surfaces
 
     # ------------------------------------------------------------------
     # Core computation
@@ -1711,6 +1966,9 @@ class PhaseDiagram:
         ideal_configurational_entropy=True,
         end_weight=3,
         end_indices=4,
+        calphad_surface=False,
+        rk_order=3,
+        composition_grid=10000,
     ):
         """
         Compute common-tangent constructions across a temperature range.
@@ -1741,9 +1999,34 @@ class PhaseDiagram:
             Weight for endpoints in the fit.
         end_indices : int
             Number of endpoint indices to weight.
+        calphad_surface : bool
+            If True, use a CALPHAD-decomposed G(x, T) surface for the phase
+            boundary calculation instead of the default per-temperature
+            polynomial fits.  The surface is::
+
+                G(x,T) = (1-x)·G_A(T) + x·G_B(T)
+                          + k_B·T·[x ln x + (1-x) ln(1-x)]
+                          + x(1-x)·Σ_k L_k·(1-2x)^k
+
+            This mirrors the pycalphad/TDB approach and yields smoother,
+            more physically consistent phase boundaries because G is smooth
+            in both x and T simultaneously.  If :meth:`build_calphad_surface`
+            has not been called yet it is invoked automatically using
+            *rk_order*.  Default False (legacy per-T polynomial mode).
+        rk_order : int
+            Number of Redlich-Kister parameters for the CALPHAD surface.
+            Only used when *calphad_surface* is True and the surface has not
+            been pre-built.  Default 3.
+        composition_grid : int
+            Number of composition points on the evaluation grid when
+            *calphad_surface* is True.  Default 10000.
         """
         if remove_self_tangents_for is None:
             remove_self_tangents_for = []
+
+        # Build the CALPHAD surface on demand.
+        if calphad_surface and not self._calphad_surfaces:
+            self.build_calphad_surface(rk_order=rk_order)
 
         self._calc_kwargs = dict(
             fit_order=fit_order,
@@ -1753,6 +2036,7 @@ class PhaseDiagram:
             ideal_configurational_entropy=ideal_configurational_entropy,
             end_weight=end_weight,
             end_indices=end_indices,
+            calphad_surface=calphad_surface,
         )
 
         temps_arr = np.arange(T_range[0], T_range[1], T_step)
@@ -1764,17 +2048,32 @@ class PhaseDiagram:
             dict_list = []
             for phase in self.phases:
                 ci = self.composition_intervals.get(phase, (0, 1))
-                d = get_phase_free_energy(
-                    self.df,
-                    phase,
-                    t,
-                    ideal_configurational_entropy=ideal_configurational_entropy,
-                    composition_interval=ci,
-                    fit_order=fit_order,
-                    method=method,
-                    end_weight=end_weight,
-                    end_indices=end_indices,
-                )
+
+                if calphad_surface and self._calphad_surfaces.get(phase) is not None:
+                    # Use the smooth analytical CALPHAD surface.
+                    compfine = np.linspace(ci[0], ci[1], composition_grid)
+                    G_arr = _eval_calphad_surface_at(
+                        self._calphad_surfaces[phase], compfine, t
+                    )
+                    d = {
+                        "phase": phase,
+                        "temperature": t,
+                        "composition": compfine,
+                        "free_energy": G_arr,
+                    }
+                else:
+                    d = get_phase_free_energy(
+                        self.df,
+                        phase,
+                        t,
+                        ideal_configurational_entropy=ideal_configurational_entropy,
+                        composition_interval=ci,
+                        fit_order=fit_order,
+                        method=method,
+                        end_weight=end_weight,
+                        end_indices=end_indices,
+                    )
+
                 if d is not None:
                     dict_list.append(d)
 
@@ -1790,6 +2089,7 @@ class PhaseDiagram:
         self.tangents = tangents
         self.temperatures = temps
         self.tangent_types = tangent_types
+
 
     # ------------------------------------------------------------------
     # Phase diagram plot
@@ -2101,6 +2401,129 @@ class PhaseDiagram:
         ax.legend()
         fig.tight_layout()
         return fig, ax
+
+    # ------------------------------------------------------------------
+    # CALPHAD surface diagnostics
+    # ------------------------------------------------------------------
+
+    def plot_calphad_surface_fit(self, figsize=None):
+        """
+        Diagnostic plot for the CALPHAD surface fit.
+
+        Shows two subplots per phase:
+
+        * **Left**: fitted CALPHAD G(T) polynomials for the pure endpoints
+          (A and B) overlaid on the raw calphy data.
+        * **Right**: Redlich-Kister excess G_xs(x) fitted curve overlaid on
+          the temperature-averaged excess data points.
+
+        Requires :meth:`build_calphad_surface` to have been called first.
+
+        Parameters
+        ----------
+        figsize : tuple or None
+
+        Returns
+        -------
+        fig : matplotlib Figure
+        axes : ndarray of Axes
+        """
+        if not self._calphad_surfaces:
+            raise RuntimeError(
+                "No CALPHAD surface data. Call build_calphad_surface() first."
+            )
+
+        n_phases = sum(
+            1 for v in self._calphad_surfaces.values() if v is not None
+        )
+        if n_phases == 0:
+            raise RuntimeError("No valid CALPHAD surfaces were built.")
+
+        if figsize is None:
+            figsize = (6 * n_phases, 4)
+        fig, axes = plt.subplots(1, n_phases * 2, figsize=figsize)
+        if n_phases * 2 == 1:
+            axes = [axes]
+        axes = np.atleast_1d(axes)
+
+        col = 0
+        for phase in self.phases:
+            surf = self._calphad_surfaces.get(phase)
+            if surf is None:
+                continue
+
+            df_p = self.df.loc[self.df["phase"] == phase]
+            endpoint_tol = 0.05
+
+            # --- Left panel: G(T) endpoint fits ---
+            ax_gt = axes[col]
+            col += 1
+
+            for label, comp_lo, comp_hi, coeffs, color in [
+                ("A (x≈0)", 0.0, endpoint_tol, surf["coeffs_A"], "#4E79A7"),
+                ("B (x≈1)", 1.0 - endpoint_tol, 1.0, surf["coeffs_B"], "#E15759"),
+            ]:
+                ep_rows = df_p.loc[
+                    (df_p["composition"] >= comp_lo)
+                    & (df_p["composition"] <= comp_hi)
+                ]
+                for _, row in ep_rows.iterrows():
+                    T_raw = np.asarray(row["temperature"], dtype=float)
+                    G_raw = np.asarray(row["free_energy"], dtype=float)
+                    ax_gt.scatter(T_raw, G_raw, s=12, alpha=0.6, color=color)
+                    T_fit = np.linspace(T_raw.min(), T_raw.max(), 300)
+                    ax_gt.plot(
+                        T_fit,
+                        _eval_calphad_poly6(coeffs, T_fit),
+                        lw=2,
+                        color=color,
+                        label=label,
+                    )
+
+            ax_gt.set_xlabel("T (K)")
+            ax_gt.set_ylabel("G (eV/atom)")
+            ax_gt.set_title(f"{phase} — endpoint G(T) fits")
+            ax_gt.legend(fontsize=8)
+
+            # --- Right panel: RK excess G_xs(x) ---
+            ax_rk = axes[col]
+            col += 1
+
+            x_data = surf["x_data"]
+            Gxs_data = surf["G_xs_data"]
+            L = surf["L_coeffs"]
+            rk_order = surf["rk_order"]
+
+            ax_rk.scatter(
+                x_data,
+                Gxs_data * 96485,
+                s=40,
+                zorder=5,
+                label="data (avg over T)",
+                edgecolors="black",
+                facecolors="white",
+                lw=1.5,
+            )
+
+            x_fine = np.linspace(0, 1, 500)
+            pf = x_fine * (1.0 - x_fine)
+            G_xs_fit = sum(L[k] * pf * (1.0 - 2.0 * x_fine) ** k for k in range(rk_order))
+            ax_rk.plot(
+                x_fine,
+                G_xs_fit * 96485,
+                lw=2,
+                color="#59A14F",
+                label=f"RK fit (order {rk_order})",
+            )
+
+            ax_rk.axhline(0, color="black", lw=0.8, ls="--")
+            ax_rk.set_xlabel("Composition")
+            ax_rk.set_ylabel(r"$G_{xs}$ (J/mol)")
+            ax_rk.set_title(f"{phase} — RK excess")
+            ax_rk.legend(fontsize=8)
+
+        fig.tight_layout()
+        return fig, axes
 
     # ------------------------------------------------------------------
     # Data convergence overview
