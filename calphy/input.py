@@ -49,7 +49,7 @@ from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
-__version__ = "1.6.8"
+__version__ = "1.6.9"
 
 
 def _check_equal(val):
@@ -232,7 +232,7 @@ class Tolerance(BaseModel, title="Tolerance settings for convergence"):
     spring_constant: Annotated[float, Field(default=0.1, gt=0)]
     solid_fraction: Annotated[float, Field(default=0.7, ge=0)]
     liquid_fraction: Annotated[float, Field(default=0.05, ge=0)]
-    pressure: Annotated[float, Field(default=0.5, ge=0)]
+    pressure: Annotated[float, Field(default=10.0, ge=0)]
 
 
 class MeltingTemperature(BaseModel, title="Input options for melting temperature mode"):
@@ -760,7 +760,8 @@ class Calculation(BaseModel, title="Main input class"):
             )
             if not (natoms1 == natoms2):
                 raise ValueError(
-                    f"Input and output number of atoms are not conserved! Input {self.composition_scaling._input_chemical_composition}, output {self.composition_scaling.output_chemical_composition}, total atoms in structure {len(structure)}")
+                    f"Input and output number of atoms are not conserved! Input {self.composition_scaling._input_chemical_composition}, output {self.composition_scaling.output_chemical_composition}, total atoms in structure {len(structure)}"
+                )
         return self
 
     def fix_paths(self, potlist):

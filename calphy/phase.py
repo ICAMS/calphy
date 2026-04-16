@@ -550,7 +550,13 @@ class Phase:
         Notes
         -----
         Take the equilibrated structure and rigorously check for pressure convergence.
-        The cycle is stopped when the average pressure is within the given cutoff of the target pressure.
+
+        Full-length NPT cycles are run throughout.  The first cycle is excluded
+        from the running average to discard the initial transient.  After
+        ``n_fit_warmup`` cycles (default 5), a linear P-V fit is used to
+        predict the equilibrium volume and rescale the box, accelerating
+        convergence.  The mean pressure (over all post-transient data) must
+        fall within ``tolerance.pressure`` of the target to declare convergence.
         """
 
         # apply fixes
@@ -559,42 +565,55 @@ class Phase:
         else:
             self.fix_berendsen(lmp)
 
+        ave_every = int(self.calc.md.n_every_steps)
+        ave_repeat = int(self.calc.md.n_repeat_steps)
+        ave_freq = ave_every * ave_repeat
+
         lmp.command(
             "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"
-            % (
-                int(self.calc.md.n_every_steps),
-                int(self.calc.md.n_repeat_steps),
-                int(self.calc.md.n_every_steps * self.calc.md.n_repeat_steps),
-            )
+            % (ave_every, ave_repeat, ave_freq)
         )
 
-        laststd = 0.00
+        ncount = int(self.calc.md.n_small_steps) // ave_freq
+        target_pressure = self.calc._pressure
         converged = False
+        pv_history = []  # [(vol_per_atom, mean_pressure), ...]
+        n_fit_warmup = 5  # run this many cycles before attempting linear P-V fit
+        n_skip = 1  # drop first cycle(s) from averaging (transient)
 
         for i in range(int(self.calc.md.n_cycles)):
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
-            ncount = int(self.calc.md.n_small_steps) // int(
-                self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
-            )
-            # now we can check if it converted
+
             file = os.path.join(self.simfolder, "avg.dat")
             lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
-
-            lxpc = ipress
+            # Average over all data after dropping the first cycle
+            skip_samples = n_skip * ncount
+            if len(ipress) <= skip_samples:
+                # not enough data yet (still in the skipped transient)
+                lxpc = ipress
+                lx_avg = lx
+                ly_avg = ly
+                lz_avg = lz
+            else:
+                lxpc = ipress[skip_samples:]
+                lx_avg = lx[skip_samples:]
+                ly_avg = ly[skip_samples:]
+                lz_avg = lz[skip_samples:]
             mean = np.mean(lxpc)
             std = np.std(lxpc)
-            volatom = np.mean((lx * ly * lz) / self.natoms)
+            volatom = np.mean((lx_avg * ly_avg * lz_avg) / self.natoms)
             self.logger.info(
-                "At count %d mean pressure is %f with %f vol/atom"
-                % (i + 1, mean, volatom)
+                "At count %d mean pressure is %.2f bar, std %.2f, vol/atom %.4f"
+                % (i + 1, mean, std, volatom)
             )
 
-            if (np.abs(mean - self.calc._pressure)) < self.calc.tolerance.pressure:
+            pv_history.append((volatom, mean))
 
-                # process other means
-                self.lx = np.round(np.mean(lx[-ncount + 1 :]), decimals=3)
-                self.ly = np.round(np.mean(ly[-ncount + 1 :]), decimals=3)
-                self.lz = np.round(np.mean(lz[-ncount + 1 :]), decimals=3)
+            if (np.abs(mean - target_pressure)) < self.calc.tolerance.pressure:
+                self.logger.info("Pressure within tolerance")
+                self.lx = np.round(np.mean(lx_avg), decimals=3)
+                self.ly = np.round(np.mean(ly_avg), decimals=3)
+                self.lz = np.round(np.mean(lz_avg), decimals=3)
                 self.volatom = volatom
                 self.vol = self.lx * self.ly * self.lz
                 self.rho = self.natoms / (self.lx * self.ly * self.lz)
@@ -608,7 +627,19 @@ class Phase:
                 )
                 converged = True
                 break
-            laststd = std
+            else:
+                # After enough warmup cycles, fit P(V) linearly and rescale box
+                if len(pv_history) >= n_fit_warmup:
+                    scale = self._fit_volume_scale(pv_history, target_pressure)
+                    if scale is not None:
+                        self.logger.info(
+                            "Applying linear P-V fit correction — scale factor %.6f"
+                            % scale
+                        )
+                        lmp.command(
+                            "change_box       all x scale %f y scale %f z scale %f remap"
+                            % (scale, scale, scale)
+                        )
 
         if not converged:
             self.lammps_close(lmp=lmp)
@@ -634,6 +665,54 @@ class Phase:
             self.unfix_berendsen(lmp)
 
         lmp.command("unfix            2")
+
+    @staticmethod
+    def _fit_volume_scale(pv_history, target_pressure):
+        """
+        Estimate a box scale factor by fitting a linear P(V) model to the
+        accumulated volume/pressure history and predicting the volume at
+        ``target_pressure``.
+
+        Parameters
+        ----------
+        pv_history : list of (vol_per_atom, pressure) tuples
+        target_pressure : float
+            Target pressure in bar.
+
+        Returns
+        -------
+        scale : float or None
+            Isotropic scale factor to apply to each box dimension, or None if
+            the fit is degenerate.  Clamped to [0.96, 1.04] to avoid large jumps.
+        """
+        vols = np.array([v for v, p in pv_history])
+        pres = np.array([p for v, p in pv_history])
+
+        # guard against NaN from early cycles
+        mask = np.isfinite(vols) & np.isfinite(pres)
+        vols, pres = vols[mask], pres[mask]
+
+        # need at least 2 distinct volumes for a meaningful fit
+        if len(vols) < 2 or np.ptp(vols) < 1e-12:
+            return None
+
+        # linear fit: P = slope * V + intercept
+        slope, intercept = np.polyfit(vols, pres, 1)
+
+        # slope must be negative (pressure decreases as volume increases)
+        if slope >= 0:
+            return None
+
+        V_target = (target_pressure - intercept) / slope
+        V_curr = vols[-1]
+
+        if V_target <= 0:
+            return None
+
+        scale = (V_target / V_curr) ** (1.0 / 3.0)
+        # clamp to prevent destructive jumps
+        scale = max(0.96, min(1.04, scale))
+        return scale
 
     def run_minimal_pressure_convergence(self, lmp):
         """
@@ -946,11 +1025,11 @@ class Phase:
         # create lammps object
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
-            script_mode=False, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=False,
             lmp=self._lmp,
         )
 
@@ -1331,11 +1410,11 @@ class Phase:
         # create lammps object
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
-            script_mode=False, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=False,
             lmp=self._lmp,
         )
 
@@ -1450,7 +1529,7 @@ class Phase:
         lmp.command("run               %d" % self.calc._n_sweep_steps)
 
         self.lammps_close(lmp=lmp)
-    # Preserve log file
+        # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         if os.path.exists(logfile):
             os.rename(
@@ -1479,11 +1558,11 @@ class Phase:
         # create lammps object
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
-            script_mode=False, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=False,
             lmp=self._lmp,
         )
 
@@ -1587,7 +1666,6 @@ class Phase:
         )
         lmp.command("run               %d" % self.calc._n_sweep_steps)
 
-        
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         if os.path.exists(logfile):
