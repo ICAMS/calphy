@@ -577,13 +577,17 @@ class Phase:
                 self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
             )
             # now we can check if it converted
+            # use only the last block to avoid early non-equilibrated samples biasing the mean
             file = os.path.join(self.simfolder, "avg.dat")
             lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
 
-            lxpc = ipress
+            lxpc = ipress[-ncount + 1 :]
+            lx_blk = lx[-ncount + 1 :]
+            ly_blk = ly[-ncount + 1 :]
+            lz_blk = lz[-ncount + 1 :]
             mean = np.mean(lxpc)
             std = np.std(lxpc)
-            volatom = np.mean((lx * ly * lz) / self.natoms)
+            volatom = np.mean((lx_blk * ly_blk * lz_blk) / self.natoms)
             self.logger.info(
                 "At count %d mean pressure is %f with %f vol/atom"
                 % (i + 1, mean, volatom)
@@ -592,9 +596,9 @@ class Phase:
             if (np.abs(mean - self.calc._pressure)) < self.calc.tolerance.pressure:
 
                 # process other means
-                self.lx = np.round(np.mean(lx[-ncount + 1 :]), decimals=3)
-                self.ly = np.round(np.mean(ly[-ncount + 1 :]), decimals=3)
-                self.lz = np.round(np.mean(lz[-ncount + 1 :]), decimals=3)
+                self.lx = np.round(np.mean(lx_blk), decimals=3)
+                self.ly = np.round(np.mean(ly_blk), decimals=3)
+                self.lz = np.round(np.mean(lz_blk), decimals=3)
                 self.volatom = volatom
                 self.vol = self.lx * self.ly * self.lz
                 self.rho = self.natoms / (self.lx * self.ly * self.lz)
@@ -946,11 +950,11 @@ class Phase:
         # create lammps object
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
-            script_mode=False, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=False,
             lmp=self._lmp,
         )
 
@@ -1331,11 +1335,11 @@ class Phase:
         # create lammps object
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
-            script_mode=False, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=False,
             lmp=self._lmp,
         )
 
@@ -1450,7 +1454,7 @@ class Phase:
         lmp.command("run               %d" % self.calc._n_sweep_steps)
 
         self.lammps_close(lmp=lmp)
-    # Preserve log file
+        # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         if os.path.exists(logfile):
             os.rename(
@@ -1479,11 +1483,11 @@ class Phase:
         # create lammps object
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
-            script_mode=False, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=False,
             lmp=self._lmp,
         )
 
@@ -1587,7 +1591,6 @@ class Phase:
         )
         lmp.command("run               %d" % self.calc._n_sweep_steps)
 
-        
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
         if os.path.exists(logfile):
