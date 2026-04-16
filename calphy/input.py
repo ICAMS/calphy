@@ -232,7 +232,7 @@ class Tolerance(BaseModel, title="Tolerance settings for convergence"):
     spring_constant: Annotated[float, Field(default=0.1, gt=0)]
     solid_fraction: Annotated[float, Field(default=0.7, ge=0)]
     liquid_fraction: Annotated[float, Field(default=0.05, ge=0)]
-    pressure: Annotated[float, Field(default=0.5, ge=0)]
+    pressure: Annotated[float, Field(default=10.0, ge=0)]
 
 
 class MeltingTemperature(BaseModel, title="Input options for melting temperature mode"):
