@@ -411,6 +411,38 @@ class Phase:
         lmp.command("unfix            b1b")
         lmp.command("unfix            b1c")
 
+    def run_box_relax(self, lmp):
+        """
+        Run a static box relaxation to pre-condition the volume before NPT equilibration.
+
+        Parameters
+        ----------
+        lmp: LAMMPS object
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Uses the LAMMPS box/relax fix to minimise energy at constant target pressure,
+        finding the 0 K equilibrium volume.  This gives the NPT barostat a much better
+        starting point so fewer pressure-convergence cycles are needed.
+
+        Should only be called for solid reference phases (not after the structure has
+        been melted/disordered).
+        """
+        self.logger.info(
+            "Running static box relaxation (fix box/relax) to pre-condition volume"
+        )
+        lmp.command(
+            "fix              br all box/relax %s %f vmax 0.001"
+            % (self.iso, self.calc._pressure)
+        )
+        lmp.command("minimize         1.0e-6 1.0e-8 1000 10000")
+        lmp.command("unfix            br")
+        lmp.command("reset_timestep   0")
+
     def run_zero_pressure_equilibration(self, lmp):
         """
         Run a zero pressure equilibration
@@ -570,12 +602,13 @@ class Phase:
 
         laststd = 0.00
         converged = False
+        consecutive_passes = 0
+        ncount = int(self.calc.md.n_small_steps) // int(
+            self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
+        )
 
         for i in range(int(self.calc.md.n_cycles)):
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
-            ncount = int(self.calc.md.n_small_steps) // int(
-                self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
-            )
             # now we can check if it converted
             # use only the last block to avoid early non-equilibrated samples biasing the mean
             file = os.path.join(self.simfolder, "avg.dat")
@@ -594,24 +627,31 @@ class Phase:
             )
 
             if (np.abs(mean - self.calc._pressure)) < self.calc.tolerance.pressure:
-
-                # process other means
-                self.lx = np.round(np.mean(lx_blk), decimals=3)
-                self.ly = np.round(np.mean(ly_blk), decimals=3)
-                self.lz = np.round(np.mean(lz_blk), decimals=3)
-                self.volatom = volatom
-                self.vol = self.lx * self.ly * self.lz
-                self.rho = self.natoms / (self.lx * self.ly * self.lz)
-
+                consecutive_passes += 1
                 self.logger.info(
-                    "finalized vol/atom %f at pressure %f" % (self.volatom, mean)
+                    "Pressure within tolerance (%d/2 consecutive passes)"
+                    % consecutive_passes
                 )
-                self.logger.info(
-                    "Avg box dimensions x: %f, y: %f, z:%f"
-                    % (self.lx, self.ly, self.lz)
-                )
-                converged = True
-                break
+                if consecutive_passes >= 2:
+                    # process other means
+                    self.lx = np.round(np.mean(lx_blk), decimals=3)
+                    self.ly = np.round(np.mean(ly_blk), decimals=3)
+                    self.lz = np.round(np.mean(lz_blk), decimals=3)
+                    self.volatom = volatom
+                    self.vol = self.lx * self.ly * self.lz
+                    self.rho = self.natoms / (self.lx * self.ly * self.lz)
+
+                    self.logger.info(
+                        "finalized vol/atom %f at pressure %f" % (self.volatom, mean)
+                    )
+                    self.logger.info(
+                        "Avg box dimensions x: %f, y: %f, z:%f"
+                        % (self.lx, self.ly, self.lz)
+                    )
+                    converged = True
+                    break
+            else:
+                consecutive_passes = 0
             laststd = std
 
         if not converged:

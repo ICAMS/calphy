@@ -55,7 +55,10 @@ class Solid(cph.Phase):
 
         # call base class
         super().__init__(
-            calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen, lmp=lmp,
+            calculation=calculation,
+            simfolder=simfolder,
+            log_to_screen=log_to_screen,
+            lmp=lmp,
         )
 
     def run_spring_constant_convergence(self, lmp):
@@ -237,10 +240,10 @@ class Solid(cph.Phase):
 
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
             script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
@@ -267,6 +270,8 @@ class Solid(cph.Phase):
 
         # Run if a constrained lattice is not needed
         if not self.calc._fix_lattice:
+            # pre-condition volume at 0 K before NPT equilibration
+            self.run_box_relax(lmp)
             if self.calc._pressure == 0:
                 self.run_zero_pressure_equilibration(lmp)
             else:
@@ -326,10 +331,10 @@ class Solid(cph.Phase):
         """
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
             script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
@@ -356,6 +361,8 @@ class Solid(cph.Phase):
 
         # Run if a constrained lattice is not needed
         if not self.calc._fix_lattice:
+            # pre-condition volume at 0 K before NPT equilibration
+            self.run_box_relax(lmp)
             if self.calc._pressure == 0:
                 self.run_zero_pressure_equilibration(lmp)
             else:
@@ -410,10 +417,10 @@ class Solid(cph.Phase):
         """
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
             script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
