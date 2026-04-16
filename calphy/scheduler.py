@@ -92,8 +92,9 @@ class SLURM:
             "jobname": "tis",
             "queuename": None,
             "walltime": "23:59:00",
-            "memory": "3GB",
+            "memory": None,
             "cores": cores,
+            "cpus_per_task": None,
             "hint": "nomultithread",
             "directory": directory,
             "options": {},
@@ -105,9 +106,7 @@ class SLURM:
         }
         for key, val in options.items():
             if key in self.queueoptions.keys():
-                if val is not None:
-                    if val != "":
-                        self.queueoptions[key] = val
+                self.queueoptions[key] = val
         self.maincommand = ""
 
     def write_script(self, outfile):
@@ -127,8 +126,15 @@ class SLURM:
             if self.queueoptions["queuename"] is not None:
                 fout.write("#SBATCH --partition=%s\n" % self.queueoptions["queuename"])
             fout.write("#SBATCH --ntasks=%s\n" % str(self.queueoptions["cores"]))
-            fout.write("#SBATCH --mem-per-cpu=%s\n" % self.queueoptions["memory"])
-            fout.write("#SBATCH --hint=%s\n" % self.queueoptions["hint"])
+            if self.queueoptions["cpus_per_task"] is not None:
+                fout.write(
+                    "#SBATCH --cpus-per-task=%s\n"
+                    % str(self.queueoptions["cpus_per_task"])
+                )
+            if self.queueoptions["memory"] is not None:
+                fout.write("#SBATCH --mem=%s\n" % self.queueoptions["memory"])
+            if self.queueoptions["hint"] is not None:
+                fout.write("#SBATCH --hint=%s\n" % self.queueoptions["hint"])
             fout.write("#SBATCH --chdir=%s\n" % self.queueoptions["directory"])
 
             # now write extra options
