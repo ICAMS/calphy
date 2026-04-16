@@ -1569,6 +1569,7 @@ def plot_phase_diagram(
 # CALPHAD surface helpers
 # ---------------------------------------------------------------------------
 
+
 def _fit_calphad_poly6(T, G):
     """
     Fit the standard six-term CALPHAD polynomial to G(T) data.
@@ -1586,9 +1587,7 @@ def _fit_calphad_poly6(T, G):
     """
     T = np.asarray(T, dtype=float)
     G = np.asarray(G, dtype=float)
-    A = np.column_stack(
-        [np.ones_like(T), T, T * np.log(T), T ** 2, T ** 3, 1.0 / T]
-    )
+    A = np.column_stack([np.ones_like(T), T, T * np.log(T), T**2, T**3, 1.0 / T])
     coeffs, _, _, _ = np.linalg.lstsq(A, G, rcond=None)
     return coeffs
 
@@ -1611,8 +1610,8 @@ def _eval_calphad_poly6(coeffs, T):
         coeffs[0]
         + coeffs[1] * T
         + coeffs[2] * T * np.log(T)
-        + coeffs[3] * T ** 2
-        + coeffs[4] * T ** 3
+        + coeffs[3] * T**2
+        + coeffs[4] * T**3
         + coeffs[5] / T
     )
 
@@ -1866,9 +1865,7 @@ class PhaseDiagram:
                     ref = rows.loc[rows["is_reference"] == True]
                     if len(ref) > 0:
                         rows = ref
-                return rows.iloc[
-                    (rows["composition"] - target).abs().argsort().iloc[0]
-                ]
+                return rows.iloc[(rows["composition"] - target).abs().argsort().iloc[0]]
 
             left_row = _pick_ep(left_rows, 0.0)
             right_row = _pick_ep(right_rows, 1.0)
@@ -1901,9 +1898,7 @@ class PhaseDiagram:
                 G_lin = (1.0 - x) * G_A_at_T + x * G_B_at_T
 
                 # Ideal configurational entropy
-                G_ideal = kb * T_row * (
-                    x * np.log(x) + (1.0 - x) * np.log(1.0 - x)
-                )
+                G_ideal = kb * T_row * (x * np.log(x) + (1.0 - x) * np.log(1.0 - x))
 
                 # Excess = total − linear reference − ideal entropy.
                 # Average over temperature (T-independent RK approximation).
@@ -1934,9 +1929,7 @@ class PhaseDiagram:
             L_str = "  ".join(
                 f"L{k}={L_coeffs[k] * 96485:.1f} J/mol" for k in range(rk_order)
             )
-            rms = float(
-                np.sqrt(np.mean((Gxs_arr - basis @ L_coeffs) ** 2)) * 96485
-            )
+            rms = float(np.sqrt(np.mean((Gxs_arr - basis @ L_coeffs) ** 2)) * 96485)
             print(f"[{phase}]  {L_str}   RMS_xs={rms:.1f} J/mol")
 
             surfaces[phase] = {
@@ -1966,7 +1959,7 @@ class PhaseDiagram:
         ideal_configurational_entropy=True,
         end_weight=3,
         end_indices=4,
-        calphad_surface=False,
+        calphad_surface=True,
         rk_order=3,
         composition_grid=10000,
     ):
@@ -2012,7 +2005,8 @@ class PhaseDiagram:
             more physically consistent phase boundaries because G is smooth
             in both x and T simultaneously.  If :meth:`build_calphad_surface`
             has not been called yet it is invoked automatically using
-            *rk_order*.  Default False (legacy per-T polynomial mode).
+            *rk_order*.  Default True.  Set to False to revert to the
+            legacy per-temperature polynomial mode.
         rk_order : int
             Number of Redlich-Kister parameters for the CALPHAD surface.
             Only used when *calphad_surface* is True and the surface has not
@@ -2089,7 +2083,6 @@ class PhaseDiagram:
         self.tangents = tangents
         self.temperatures = temps
         self.tangent_types = tangent_types
-
 
     # ------------------------------------------------------------------
     # Phase diagram plot
@@ -2433,9 +2426,7 @@ class PhaseDiagram:
                 "No CALPHAD surface data. Call build_calphad_surface() first."
             )
 
-        n_phases = sum(
-            1 for v in self._calphad_surfaces.values() if v is not None
-        )
+        n_phases = sum(1 for v in self._calphad_surfaces.values() if v is not None)
         if n_phases == 0:
             raise RuntimeError("No valid CALPHAD surfaces were built.")
 
@@ -2464,8 +2455,7 @@ class PhaseDiagram:
                 ("B (x≈1)", 1.0 - endpoint_tol, 1.0, surf["coeffs_B"], "#E15759"),
             ]:
                 ep_rows = df_p.loc[
-                    (df_p["composition"] >= comp_lo)
-                    & (df_p["composition"] <= comp_hi)
+                    (df_p["composition"] >= comp_lo) & (df_p["composition"] <= comp_hi)
                 ]
                 for _, row in ep_rows.iterrows():
                     T_raw = np.asarray(row["temperature"], dtype=float)
@@ -2507,7 +2497,9 @@ class PhaseDiagram:
 
             x_fine = np.linspace(0, 1, 500)
             pf = x_fine * (1.0 - x_fine)
-            G_xs_fit = sum(L[k] * pf * (1.0 - 2.0 * x_fine) ** k for k in range(rk_order))
+            G_xs_fit = sum(
+                L[k] * pf * (1.0 - 2.0 * x_fine) ** k for k in range(rk_order)
+            )
             ax_rk.plot(
                 x_fine,
                 G_xs_fit * 96485,
