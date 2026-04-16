@@ -270,8 +270,6 @@ class Solid(cph.Phase):
 
         # Run if a constrained lattice is not needed
         if not self.calc._fix_lattice:
-            # pre-condition volume at 0 K before NPT equilibration
-            self.run_box_relax(lmp)
             if self.calc._pressure == 0:
                 self.run_zero_pressure_equilibration(lmp)
             else:
@@ -361,8 +359,6 @@ class Solid(cph.Phase):
 
         # Run if a constrained lattice is not needed
         if not self.calc._fix_lattice:
-            # pre-condition volume at 0 K before NPT equilibration
-            self.run_box_relax(lmp)
             if self.calc._pressure == 0:
                 self.run_zero_pressure_equilibration(lmp)
             else:

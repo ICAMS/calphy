@@ -200,7 +200,7 @@ class MD(BaseModel, title="MD specific input options"):
     ]
     barostat_damping: Annotated[
         Union[float, conlist(float, min_length=2, max_length=2)],
-        Field(default=1.0, gt=0),
+        Field(default=0.1, gt=0),
     ]
     cmdargs: Annotated[str, Field(default="")]
     init_commands: Annotated[List, Field(default=[])]
@@ -208,7 +208,7 @@ class MD(BaseModel, title="MD specific input options"):
 
 class NoseHoover(BaseModel, title="Specific input options for Nose-Hoover thermostat"):
     thermostat_damping: Annotated[float, Field(default=0.1, gt=0)]
-    barostat_damping: Annotated[float, Field(default=1.0, gt=0)]
+    barostat_damping: Annotated[float, Field(default=0.1, gt=0)]
 
 
 class Berendsen(BaseModel, title="Specific input options for Berendsen thermostat"):
