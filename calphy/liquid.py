@@ -55,7 +55,10 @@ class Liquid(cph.Phase):
         """
         # call base class
         super().__init__(
-            calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen, lmp=lmp,
+            calculation=calculation,
+            simfolder=simfolder,
+            log_to_screen=log_to_screen,
+            lmp=lmp,
         )
 
     def rattle_structure(self, lmp):
@@ -167,20 +170,20 @@ class Liquid(cph.Phase):
         # create lammps object
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
             lmp=self._lmp,
         )
 
-        lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+        lmp = ph.set_pair_style(lmp, self.calc)
 
         # set up structure
         lmp = ph.create_structure(lmp, self.calc)
 
         # set up potential
-        lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+        lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
         # Melt regime for the liquid
@@ -243,10 +246,10 @@ class Liquid(cph.Phase):
         """
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
             lmp=self._lmp,
         )
 
@@ -254,7 +257,7 @@ class Liquid(cph.Phase):
         lmp.command("variable        li       equal   1.0")
         lmp.command("variable        lf       equal   0.0")
 
-        lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+        lmp = ph.set_pair_style(lmp, self.calc)
 
         # read in the conf file
         # conf = os.path.join(self.simfolder, "conf.equilibration.dump")
@@ -263,7 +266,7 @@ class Liquid(cph.Phase):
 
         # set hybrid ufm and normal potential
         # lmp = ph.set_hybrid_potential(lmp, self.options, self.eps)
-        lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+        lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
         # remap the box to get the correct pressure
@@ -292,33 +295,29 @@ class Liquid(cph.Phase):
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
         lmp.command(
-            "pair_style       hybrid/scaled v_flambda %s v_blambda ufm %f"
-            % (self.calc._pair_style_with_options[0], self.ufm_cutoff)
+            ph.scaled_pair_style_command(
+                self.calc,
+                ["v_flambda"],
+                extra_terms=["v_blambda ufm %f" % self.ufm_cutoff],
+            )
         )
 
-        pc = self.calc.pair_coeff[0]
-        pcraw = pc.split()
-        pcnew = " ".join(
-            [
-                *pcraw[:2],
-                *[
-                    self.calc._pair_style_names[0],
-                ],
-                *pcraw[2:],
-            ]
-        )
-
-        lmp.command("pair_coeff       %s" % pcnew)
+        for command in ph.hybrid_pair_coeff_commands(self.calc):
+            lmp.command(command)
         lmp.command(
             "pair_coeff       * * ufm %f %f"
             % (self.eps, self.calc.uhlenbeck_ford_model.sigma)
         )
 
-        lmp.command("compute          c1 all pair %s" % self.calc._pair_style_names[0])
+        compute_commands, real_energy, compute_ids = ph.real_pair_compute_commands(
+            self.calc
+        )
+        for command in compute_commands:
+            lmp.command(command)
         lmp.command("compute          c2 all pair ufm")
 
         lmp.command("variable         step equal step")
-        lmp.command("variable         dU1 equal c_c1/atoms")
+        lmp.command("variable         dU1 equal (%s)/atoms" % real_energy)
         lmp.command("variable         dU2 equal c_c2/atoms")
 
         lmp.command("thermo_style     custom step v_dU1 v_dU2")
@@ -351,7 +350,8 @@ class Liquid(cph.Phase):
         lmp.command("unfix            f1")
         lmp.command("unfix            f2")
         lmp.command("unfix            f3")
-        lmp.command("uncompute        c1")
+        for compute_id in compute_ids:
+            lmp.command("uncompute        %s" % compute_id)
         lmp.command("uncompute        c2")
 
         # ---------------------------------------------------------------
@@ -392,21 +392,29 @@ class Liquid(cph.Phase):
         lmp.command("variable         blambda equal 1.0-v_flambda")
 
         lmp.command(
-            "pair_style       hybrid/scaled v_flambda %s v_blambda ufm %f"
-            % (self.calc._pair_style_with_options[0], self.ufm_cutoff)
+            ph.scaled_pair_style_command(
+                self.calc,
+                ["v_flambda"],
+                extra_terms=["v_blambda ufm %f" % self.ufm_cutoff],
+            )
         )
 
-        lmp.command("pair_coeff       %s" % pcnew)
+        for command in ph.hybrid_pair_coeff_commands(self.calc):
+            lmp.command(command)
         lmp.command(
             "pair_coeff       * * ufm %f %f"
             % (self.eps, self.calc.uhlenbeck_ford_model.sigma)
         )
 
-        lmp.command("compute          c1 all pair %s" % self.calc._pair_style_names[0])
+        compute_commands, real_energy, compute_ids = ph.real_pair_compute_commands(
+            self.calc
+        )
+        for command in compute_commands:
+            lmp.command(command)
         lmp.command("compute          c2 all pair ufm")
 
         lmp.command("variable         step equal step")
-        lmp.command("variable         dU1 equal c_c1/atoms")
+        lmp.command("variable         dU1 equal (%s)/atoms" % real_energy)
         lmp.command("variable         dU2 equal c_c2/atoms")
 
         lmp.command("thermo_style     custom step v_dU1 v_dU2")
@@ -433,7 +441,8 @@ class Liquid(cph.Phase):
         lmp.command("unfix            f1")
         lmp.command("unfix            f2")
         lmp.command("unfix            f3")
-        lmp.command("uncompute        c1")
+        for compute_id in compute_ids:
+            lmp.command("uncompute        %s" % compute_id)
         lmp.command("uncompute        c2")
 
         # close object

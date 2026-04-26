@@ -49,7 +49,7 @@ from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
-__version__ = "1.6.9"
+__version__ = "1.7.0"
 
 
 def _check_equal(val):
@@ -325,6 +325,7 @@ class Calculation(BaseModel, title="Main input class"):
     pair_coeff: Annotated[
         Union[List[str], None], BeforeValidator(to_list), Field(default=None)
     ]
+    pair_mode: Annotated[Union[str, None], Field(default=None)]
     potential_file: Annotated[Union[str, None], Field(default=None)]
     fix_potential_path: Annotated[bool, Field(default=True)]
     _pair_style_with_options: List[str] = PrivateAttr(default=None)
@@ -371,6 +372,32 @@ class Calculation(BaseModel, title="Main input class"):
             raise ValueError("mass and elements should have same length")
 
         self.n_elements = len(self.element)
+
+        if self.potential_file is not None:
+            warnings.warn(
+                "potential_file is deprecated and will be removed in a future version. "
+                "Use pair_style/pair_coeff (with pair_mode: overlay for multi-potential setups) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        if self.pair_mode is not None:
+            self.pair_mode = self.pair_mode.lower()
+            if self.pair_mode not in ["overlay"]:
+                raise ValueError("pair_mode should be one of: overlay")
+
+        if self.pair_mode == "overlay":
+            if self.pair_style is None or self.pair_coeff is None:
+                raise ValueError("pair_mode overlay requires pair_style and pair_coeff")
+            if len(self.pair_style) != len(self.pair_coeff):
+                raise ValueError(
+                    "pair_mode overlay requires pair_style and pair_coeff to have the same length"
+                )
+            for ps in self.pair_style:
+                if ps.split()[0].startswith("hybrid"):
+                    raise ValueError(
+                        "pair_mode overlay expects component pair styles, not a hybrid pair_style"
+                    )
 
         # Validate element/mass/pair_coeff ordering consistency
         # This is critical for multi-element systems where LAMMPS type numbers
@@ -774,21 +801,34 @@ class Calculation(BaseModel, title="Main input class"):
         portable paths such as ``/home/$USER/potentials/Cu.eam``.
         """
         fixedpots = []
+        pair_mode = getattr(self, "pair_mode", None)
+        pair_style_names = getattr(self, "_pair_style_names", None) or []
         for pot in potlist:
             pcraw = pot.split()
-            if len(pcraw) >= 3:
-                raw_filename = pcraw[2]
+            path_index = 2
+            if (
+                pair_mode == "overlay"
+                and len(pcraw) >= 4
+                and pcraw[2] in pair_style_names
+            ):
+                path_index = 3
+            if len(pcraw) > path_index:
+                raw_filename = pcraw[path_index]
                 # Expand environment variables ($USER, ${USER}, $HOME, …) and ~
                 expanded = os.path.expandvars(os.path.expanduser(raw_filename))
                 abs_filename = os.path.abspath(expanded)
                 if os.path.exists(abs_filename):
-                    pcnew = " ".join([*pcraw[:2], abs_filename, *pcraw[3:]])
+                    pcnew = " ".join(
+                        [*pcraw[:path_index], abs_filename, *pcraw[path_index + 1 :]]
+                    )
                     fixedpots.append(pcnew)
                 elif expanded != raw_filename:
                     # A variable was expanded even though the file was not found
                     # at that location yet – still substitute so LAMMPS receives
                     # the resolved path rather than a literal "$USER" string.
-                    pcnew = " ".join([*pcraw[:2], expanded, *pcraw[3:]])
+                    pcnew = " ".join(
+                        [*pcraw[:path_index], expanded, *pcraw[path_index + 1 :]]
+                    )
                     fixedpots.append(pcnew)
                 else:
                     fixedpots.append(pot)
@@ -995,6 +1035,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
                 "mode",
                 "pair_style",
                 "pair_coeff",
+                "pair_mode",
                 "pair_style_options",
                 "npt",
                 "repeat",
@@ -1081,6 +1122,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
                     "mode",
                     "pair_style",
                     "pair_coeff",
+                    "pair_mode",
                     "pair_style_options",
                     "npt",
                     "repeat",

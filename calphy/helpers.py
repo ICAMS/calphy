@@ -26,6 +26,7 @@ import shutil
 import warnings
 import logging
 import numpy as np
+from collections import Counter, defaultdict
 
 from pylammpsmpi import LammpsLibrary
 from lammps import lammps
@@ -49,7 +50,13 @@ class LammpsScript:
 
 
 def create_object(
-    cores, directory, timestep, cmdargs="", init_commands=(), script_mode=False, lmp=None,
+    cores,
+    directory,
+    timestep,
+    cmdargs="",
+    init_commands=(),
+    script_mode=False,
+    lmp=None,
 ):
     """
     Create LAMMPS object
@@ -135,6 +142,129 @@ def set_mass(lmp, options):
     return lmp
 
 
+def is_overlay_potential(options):
+    return getattr(options, "pair_mode", None) == "overlay"
+
+
+def set_pair_style(lmp, options):
+    if is_overlay_potential(options):
+        lmp.command(
+            "pair_style hybrid/overlay %s" % " ".join(options._pair_style_with_options)
+        )
+    else:
+        lmp.command(f"pair_style {options._pair_style_with_options[0]}")
+    return lmp
+
+
+def _pair_coeff_style(pair_coeff, known_styles):
+    raw = pair_coeff.split()
+    if len(raw) >= 3 and raw[2] in known_styles:
+        return raw[2]
+    return None
+
+
+def _with_hybrid_pair_coeff_style(pair_coeff, style_name, style_index=None):
+    raw = pair_coeff.split()
+    if len(raw) < 2:
+        raise ValueError("pair_coeff should contain at least two atom type fields")
+
+    if len(raw) >= 3 and raw[2] == style_name:
+        if style_index is None:
+            return " ".join(raw)
+        return " ".join([*raw[:3], str(style_index), *raw[3:]])
+
+    if style_index is None:
+        return " ".join([*raw[:2], style_name, *raw[2:]])
+    return " ".join([*raw[:2], style_name, str(style_index), *raw[2:]])
+
+
+def _component_pair_coeffs(options):
+    known_styles = set(options._pair_style_names)
+    components = []
+    for idx, pair_coeff in enumerate(options.pair_coeff):
+        style_name = _pair_coeff_style(pair_coeff, known_styles)
+        if style_name is None:
+            style_name = options._pair_style_names[idx]
+        components.append((style_name, pair_coeff))
+    return components
+
+
+def hybrid_pair_coeff_commands(options, repeat_index=0, total_repeats=1):
+    components = _component_pair_coeffs(options)
+    active_style_names = []
+    for _ in range(total_repeats):
+        active_style_names.extend([style_name for style_name, _ in components])
+    total_counts = Counter(active_style_names)
+    seen = defaultdict(int)
+    for _ in range(repeat_index):
+        for style_name, _ in components:
+            seen[style_name] += 1
+
+    commands = []
+    for style_name, pair_coeff in components:
+        seen[style_name] += 1
+        style_index = seen[style_name] if total_counts[style_name] > 1 else None
+        commands.append(
+            "pair_coeff       %s"
+            % _with_hybrid_pair_coeff_style(pair_coeff, style_name, style_index)
+        )
+    return commands
+
+
+def set_pair_coeff(lmp, options):
+    if is_overlay_potential(options):
+        for command in hybrid_pair_coeff_commands(options):
+            lmp.command(command)
+    else:
+        lmp.command(f"pair_coeff {options.pair_coeff[0]}")
+    return lmp
+
+
+def scaled_pair_style_command(options, scale_names, extra_terms=None):
+    terms = []
+    for scale_name in scale_names:
+        for pair_style in options._pair_style_with_options:
+            terms.append("%s %s" % (scale_name, pair_style))
+    if extra_terms is not None:
+        terms.extend(extra_terms)
+    return "pair_style       hybrid/scaled %s" % " ".join(terms)
+
+
+def real_pair_compute_commands(
+    options, prefix="c_real", total_repeats=1, repeat_index=0
+):
+    components = _component_pair_coeffs(options)
+    active_style_names = []
+    for _ in range(total_repeats):
+        active_style_names.extend([style_name for style_name, _ in components])
+    total_counts = Counter(active_style_names)
+    seen = defaultdict(int)
+    for _ in range(repeat_index):
+        for style_name, _ in components:
+            seen[style_name] += 1
+
+    commands = []
+    terms = []
+    for idx, (style_name, _) in enumerate(components, start=1):
+        seen[style_name] += 1
+        compute_id = "%s%d" % (prefix, idx)
+        if total_counts[style_name] > 1:
+            commands.append(
+                "compute          %s all pair %s %d"
+                % (compute_id, style_name, seen[style_name])
+            )
+        else:
+            commands.append(
+                "compute          %s all pair %s" % (compute_id, style_name)
+            )
+        terms.append("c_%s" % compute_id)
+    return (
+        commands,
+        "+".join(terms),
+        ["%s%d" % (prefix, idx) for idx in range(1, len(components) + 1)],
+    )
+
+
 def set_potential(lmp, options):
     """
     Set the interatomic potential
@@ -149,10 +279,8 @@ def set_potential(lmp, options):
     -------
     lmp : LammpsLibrary object
     """
-    # lmp.pair_style(options.pair_style_with_options[0])
-    # lmp.pair_coeff(options.pair_coeff[0])
-    lmp.command(f"pair_style {options._pair_style_with_options[0]}")
-    lmp.command(f"pair_coeff {options.pair_coeff[0]}")
+    set_pair_style(lmp, options)
+    set_pair_coeff(lmp, options)
 
     lmp = set_mass(lmp, options)
 
@@ -240,7 +368,9 @@ def prepare_log(file, screen=False):
         logger.removeHandler(handler)
 
     handler = logging.FileHandler(file)
-    formatter = logging.Formatter("%(asctime)s calphy.helpers %(levelname)-8s %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s calphy.helpers %(levelname)-8s %(message)s"
+    )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)

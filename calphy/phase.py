@@ -223,8 +223,6 @@ class Phase:
                 self.logger.info("second pair_coeff: %s" % self.calc.pair_coeff[1])
         else:
             self.logger.info("pair_style or pair_coeff not provided")
-            if self.calc.potential_file is not None:
-                self.logger.info("potential is being loaded from file instead")
         self._lmp = lmp
 
     def __repr__(self):
@@ -1037,7 +1035,7 @@ class Phase:
         lmp.command("variable          li equal %f" % li)
         lmp.command("variable          lf equal %f" % lf)
 
-        lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+        lmp = ph.set_pair_style(lmp, self.calc)
 
         # read in conf file
         # conf = os.path.join(self.simfolder, "conf.equilibration.dump")
@@ -1045,7 +1043,7 @@ class Phase:
         lmp = ph.read_data(lmp, conf)
 
         # set up potential
-        lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+        lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
         # remap the box to get the correct pressure
@@ -1132,39 +1130,15 @@ class Phase:
             f"variable        btemp equal v_flambda*{self.calc._temperature_stop}"
         )
 
-        # set up potential
-        pc = self.calc.pair_coeff[0]
-        pcraw = pc.split()
-        pcnew1 = " ".join(
-            [
-                *pcraw[:2],
-                *[
-                    self.calc._pair_style_names[0],
-                ],
-                "1",
-                *pcraw[2:],
-            ]
-        )
-        pcnew2 = " ".join(
-            [
-                *pcraw[:2],
-                *[
-                    self.calc._pair_style_names[0],
-                ],
-                "2",
-                *pcraw[2:],
-            ]
-        )
-
-        lmp.command(
-            "pair_style       hybrid/scaled v_one %s v_fscale %s"
-            % (
-                self.calc._pair_style_with_options[0],
-                self.calc._pair_style_with_options[0],
-            )
-        )
-        lmp.command("pair_coeff       %s" % pcnew1)
-        lmp.command("pair_coeff       %s" % pcnew2)
+        lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_fscale"]))
+        for command in ph.hybrid_pair_coeff_commands(
+            self.calc, repeat_index=0, total_repeats=2
+        ):
+            lmp.command(command)
+        for command in ph.hybrid_pair_coeff_commands(
+            self.calc, repeat_index=1, total_repeats=2
+        ):
+            lmp.command(command)
 
         lmp.command(
             'fix               f3 all print 1 "${dU} $(press) $(vol) ${flambda}" screen no file ts.forward_%d.dat'
@@ -1255,15 +1229,15 @@ class Phase:
             f"variable        btemp equal v_flambda*{self.calc._temperature_stop}"
         )
 
-        lmp.command(
-            "pair_style       hybrid/scaled v_one %s v_bscale %s"
-            % (
-                self.calc._pair_style_with_options[0],
-                self.calc._pair_style_with_options[0],
-            )
-        )
-        lmp.command("pair_coeff       %s" % pcnew1)
-        lmp.command("pair_coeff       %s" % pcnew2)
+        lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_bscale"]))
+        for command in ph.hybrid_pair_coeff_commands(
+            self.calc, repeat_index=0, total_repeats=2
+        ):
+            lmp.command(command)
+        for command in ph.hybrid_pair_coeff_commands(
+            self.calc, repeat_index=1, total_repeats=2
+        ):
+            lmp.command(command)
 
         # apply fix and perform switching
         lmp.command(
@@ -1422,7 +1396,7 @@ class Phase:
         lmp.command("variable          li equal %f" % li)
         lmp.command("variable          lf equal %f" % lf)
 
-        lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+        lmp = ph.set_pair_style(lmp, self.calc)
 
         # read in conf
         # conf = os.path.join(self.simfolder, "conf.dump")
@@ -1430,7 +1404,7 @@ class Phase:
         lmp = ph.read_data(lmp, conf)
 
         # set up potential
-        lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+        lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
         # remap the box to get the correct pressure
@@ -1572,7 +1546,7 @@ class Phase:
         lmp.command("variable          p0 equal %f" % p0)
         lmp.command("variable          pf equal %f" % pf)
 
-        lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+        lmp = ph.set_pair_style(lmp, self.calc)
 
         # read in conf
         # conf = os.path.join(self.simfolder, "conf.dump")
@@ -1580,7 +1554,7 @@ class Phase:
         lmp = ph.read_data(lmp, conf)
 
         # set up potential
-        lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+        lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
         # remap the box to get the correct pressure
