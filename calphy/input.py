@@ -801,13 +801,15 @@ class Calculation(BaseModel, title="Main input class"):
         portable paths such as ``/home/$USER/potentials/Cu.eam``.
         """
         fixedpots = []
+        pair_mode = getattr(self, "pair_mode", None)
+        pair_style_names = getattr(self, "_pair_style_names", None) or []
         for pot in potlist:
             pcraw = pot.split()
             path_index = 2
             if (
-                self.pair_mode == "overlay"
+                pair_mode == "overlay"
                 and len(pcraw) >= 4
-                and pcraw[2] in self._pair_style_names
+                and pcraw[2] in pair_style_names
             ):
                 path_index = 3
             if len(pcraw) > path_index:
