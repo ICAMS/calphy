@@ -249,16 +249,12 @@ class Solid(cph.Phase):
         )
 
         # set up potential
-        if self.calc.potential_file is None:
-            lmp = ph.set_pair_style(lmp, self.calc)
+        lmp = ph.set_pair_style(lmp, self.calc)
 
         # set up structure
         lmp = ph.create_structure(lmp, self.calc)
 
-        if self.calc.potential_file is None:
-            lmp = ph.set_pair_coeff(lmp, self.calc)
-        else:
-            lmp.command("include %s" % self.calc.potential_file)
+        lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
         # add some computes
@@ -338,16 +334,12 @@ class Solid(cph.Phase):
         )
 
         # set up potential
-        if self.calc.potential_file is None:
-            lmp = ph.set_pair_style(lmp, self.calc)
+        lmp = ph.set_pair_style(lmp, self.calc)
 
         # set up structure
         lmp = ph.create_structure(lmp, self.calc)
 
-        if self.calc.potential_file is None:
-            lmp = ph.set_pair_coeff(lmp, self.calc)
-        else:
-            lmp.command("include %s" % self.calc.potential_file)
+        lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
         # add some computes
@@ -422,18 +414,14 @@ class Solid(cph.Phase):
         )
 
         # set up potential
-        if self.calc.potential_file is None:
-            lmp = ph.set_pair_style(lmp, self.calc)
+        lmp = ph.set_pair_style(lmp, self.calc)
 
         # read in the conf file
         # conf = os.path.join(self.simfolder, "conf.equilibration.dump")
         conf = os.path.join(self.simfolder, "conf.equilibration.data")
         lmp = ph.read_data(lmp, conf)
 
-        if self.calc.potential_file is None:
-            lmp = ph.set_pair_coeff(lmp, self.calc)
-        else:
-            lmp.command("include %s" % self.calc.potential_file)
+        lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
         # remap the box to get the correct pressure

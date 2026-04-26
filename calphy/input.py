@@ -373,6 +373,14 @@ class Calculation(BaseModel, title="Main input class"):
 
         self.n_elements = len(self.element)
 
+        if self.potential_file is not None:
+            warnings.warn(
+                "potential_file is deprecated and will be removed in a future version. "
+                "Use pair_style/pair_coeff (with pair_mode: overlay for multi-potential setups) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         if self.pair_mode is not None:
             self.pair_mode = self.pair_mode.lower()
             if self.pair_mode not in ["overlay"]:

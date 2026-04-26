@@ -223,8 +223,6 @@ class Phase:
                 self.logger.info("second pair_coeff: %s" % self.calc.pair_coeff[1])
         else:
             self.logger.info("pair_style or pair_coeff not provided")
-            if self.calc.potential_file is not None:
-                self.logger.info("potential is being loaded from file instead")
         self._lmp = lmp
 
     def __repr__(self):

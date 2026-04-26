@@ -50,7 +50,13 @@ class LammpsScript:
 
 
 def create_object(
-    cores, directory, timestep, cmdargs="", init_commands=(), script_mode=False, lmp=None,
+    cores,
+    directory,
+    timestep,
+    cmdargs="",
+    init_commands=(),
+    script_mode=False,
+    lmp=None,
 ):
     """
     Create LAMMPS object
@@ -143,8 +149,7 @@ def is_overlay_potential(options):
 def set_pair_style(lmp, options):
     if is_overlay_potential(options):
         lmp.command(
-            "pair_style hybrid/overlay %s"
-            % " ".join(options._pair_style_with_options)
+            "pair_style hybrid/overlay %s" % " ".join(options._pair_style_with_options)
         )
     else:
         lmp.command(f"pair_style {options._pair_style_with_options[0]}")
@@ -363,7 +368,9 @@ def prepare_log(file, screen=False):
         logger.removeHandler(handler)
 
     handler = logging.FileHandler(file)
-    formatter = logging.Formatter("%(asctime)s calphy.helpers %(levelname)-8s %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s calphy.helpers %(levelname)-8s %(message)s"
+    )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)
