@@ -406,9 +406,10 @@ pair_style: eam/alloy
 pair_style: [eam/alloy, eam/alloy]
 pair_style: eam/fs
 pair_style: pace
+pair_style: ["coul/long 11.0", "eam/alloy"]
 ```
 
-The [pair style](https://lammps.sandia.gov/doc/pair_style.html) command for LAMMPS. All styles supported in LAMMPS can be used with calphy. Except for mode `alchemy`, only the first value in the list will be used. For mode `alchemy`, there should be two pair styles specified, and the alchemical transformation is carried out between the two.
+The [pair style](https://lammps.sandia.gov/doc/pair_style.html) command for LAMMPS. All styles supported in LAMMPS can be used with calphy. Except for mode `alchemy` and `pair_mode: overlay`, only the first value in the list will be used. For mode `alchemy`, there should be two pair styles specified, and the alchemical transformation is carried out between the two. For `pair_mode: overlay`, list the component pair styles and include any pair-style options with the corresponding component.
 
 ---
 
@@ -425,6 +426,24 @@ pair_coeff: "* * CuZr_EAM/CuZr.eam.fs Cu Zr"
 ```
 
 The [pair coeff](https://lammps.sandia.gov/doc/pair_coeff.html) command for LAMMPS. It should be the same length as `pair_style`. Except for mode `alchemy`, only the first value in the list will be used. For mode `alchemy`, there should be two pair styles specified, and the alchemical transformation is carried out between the two.
+
+---
+
+(pair_mode)=
+#### `pair_mode`
+
+_type_: string \
+_default_: None \
+_example_:
+```
+pair_mode: overlay
+pair_style: ["coul/long 11.0", "eam/alloy"]
+pair_coeff:
+  - "* * coul/long"
+  - "* * eam/alloy /path/to/myfile elt1 elt2"
+```
+
+Set `pair_mode: overlay` to combine multiple component pair styles as a single physical potential using LAMMPS `hybrid/overlay`. The `pair_style` values should be the component styles, not the full `hybrid/overlay` command. The `pair_coeff` values may either include the component style name, as in native LAMMPS hybrid syntax, or omit it when the list order matches `pair_style`. In liquid free-energy integration and reversible scaling, calphy flattens this overlay into `hybrid/scaled` so all real-potential components are scaled together.
 
 ---
 

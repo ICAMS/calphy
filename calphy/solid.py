@@ -250,13 +250,13 @@ class Solid(cph.Phase):
 
         # set up potential
         if self.calc.potential_file is None:
-            lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+            lmp = ph.set_pair_style(lmp, self.calc)
 
         # set up structure
         lmp = ph.create_structure(lmp, self.calc)
 
         if self.calc.potential_file is None:
-            lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+            lmp = ph.set_pair_coeff(lmp, self.calc)
         else:
             lmp.command("include %s" % self.calc.potential_file)
         lmp = ph.set_mass(lmp, self.calc)
@@ -339,13 +339,13 @@ class Solid(cph.Phase):
 
         # set up potential
         if self.calc.potential_file is None:
-            lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+            lmp = ph.set_pair_style(lmp, self.calc)
 
         # set up structure
         lmp = ph.create_structure(lmp, self.calc)
 
         if self.calc.potential_file is None:
-            lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+            lmp = ph.set_pair_coeff(lmp, self.calc)
         else:
             lmp.command("include %s" % self.calc.potential_file)
         lmp = ph.set_mass(lmp, self.calc)
@@ -423,7 +423,7 @@ class Solid(cph.Phase):
 
         # set up potential
         if self.calc.potential_file is None:
-            lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+            lmp = ph.set_pair_style(lmp, self.calc)
 
         # read in the conf file
         # conf = os.path.join(self.simfolder, "conf.equilibration.dump")
@@ -431,7 +431,7 @@ class Solid(cph.Phase):
         lmp = ph.read_data(lmp, conf)
 
         if self.calc.potential_file is None:
-            lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+            lmp = ph.set_pair_coeff(lmp, self.calc)
         else:
             lmp.command("include %s" % self.calc.potential_file)
         lmp = ph.set_mass(lmp, self.calc)
