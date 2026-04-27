@@ -35,6 +35,8 @@ calculations:
 ```
 ```{grid-item} [](pressure)
 ```
+```{grid-item} [](pressure_coupling)
+```
 ```{grid-item} [](temperature_high)
 ```
 ```{grid-item} [](lattice_constant)
@@ -287,6 +289,32 @@ Pressure for the simulation in bars. Depending on the pressure input, other opti
 | `(3,)` | `pressure: [100, 100, 100]` | False | False | all except `pscale` | px=py=pz |
 | `(1,3)` | `pressure: [[100, 100, 100]]` | False | False | all except `pscale` | px=py=pz |
 | `(2,3)` | `pressure: [[100, 100, 100], [200, 200, 200]]` | False | False | `pscale` | px=py=pz |
+
+---
+
+(pressure_coupling)=
+#### `pressure_coupling`
+
+_type_: string \
+_default_: `iso` for scalar/1-D pressure, `aniso` for 3-component pressure \
+_example_:
+```
+pressure_coupling: iso
+pressure_coupling: aniso
+pressure_coupling: tri
+```
+
+Explicitly sets the LAMMPS barostat coupling style. When provided, this overrides the value that calphy would otherwise infer from the shape of the `pressure` input. The accepted values map directly to the LAMMPS `fix npt` keywords:
+
+- `iso` — all three box dimensions are scaled equally (isotropic coupling).
+- `aniso` — each box dimension is scaled independently, but off-diagonal (tilt) components are held fixed.
+- `tri` — all six cell components (three lengths and three tilt factors) are allowed to change independently. **Required for triclinic crystal systems.** The simulation box must already be triclinic (i.e. the input structure must have non-zero tilt factors).
+
+```{note}
+For triclinic systems, provide a LAMMPS data file as the `lattice` input and set `pressure_coupling: tri`.
+```
+
+.. versionadded:: TBD
 
 ---
 

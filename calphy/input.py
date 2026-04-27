@@ -306,7 +306,17 @@ class Calculation(BaseModel, title="Main input class"):
     _pressure_stop: float = PrivateAttr(default=None)
     _pressure_input: Any = PrivateAttr(default=None)
     _iso: bool = PrivateAttr(default=False)
+    _pressure_coupling: str = PrivateAttr(default="iso")
     _fix_lattice: bool = PrivateAttr(default=False)
+
+    pressure_coupling: Annotated[
+        Union[str, None],
+        Field(
+            default=None,
+            description="Pressure coupling style for LAMMPS barostat: 'iso', 'aniso', or 'tri'. "
+            "If not set, 'iso' is used for scalar/1D pressure and 'aniso' for 3-component pressure.",
+        ),
+    ]
 
     temperature: Annotated[
         Union[float, conlist(float, min_length=1, max_length=2)], Field(default=0)
@@ -436,6 +446,13 @@ class Calculation(BaseModel, title="Main input class"):
                         f"all use the same element ordering."
                     )
 
+        if self.pressure_coupling is not None:
+            self.pressure_coupling = self.pressure_coupling.lower()
+            if self.pressure_coupling not in ("iso", "aniso", "tri"):
+                raise ValueError(
+                    "pressure_coupling must be one of 'iso', 'aniso', or 'tri'"
+                )
+
         self._pressure_input = copy.copy(self.pressure)
         if self.pressure is None:
             self._iso = True
@@ -473,6 +490,14 @@ class Calculation(BaseModel, title="Main input class"):
             self._pressure_stop = self.pressure[1][0]
         else:
             raise ValueError("Unknown format for pressure")
+
+        # Resolve the final LAMMPS barostat keyword.
+        # An explicit pressure_coupling always takes priority; otherwise
+        # fall back to the legacy _iso flag (True → "iso", False → "aniso").
+        if self.pressure_coupling is not None:
+            self._pressure_coupling = self.pressure_coupling
+        else:
+            self._pressure_coupling = "iso" if self._iso else "aniso"
 
         self._temperature_input = copy.copy(self.temperature)
         # guess a melting temp of the system, this will be mostly ignored
