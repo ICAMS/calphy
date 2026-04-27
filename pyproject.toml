@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "calphy"
-version = "1.7.0"
+version = "1.7.1"
 description = "free energy calculation for python"
 readme = "README.md"
 license = "GPL-3.0-only"
@@ -23,6 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
+    "numpy>=2",
     "matplotlib",
     "pyyaml",
     "mendeleev",
