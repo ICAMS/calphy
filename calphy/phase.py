@@ -79,10 +79,7 @@ class Phase:
             % (self.calc._temperature, self.calc._temperature_stop, pressure_string)
         )
 
-        if self.calc._iso:
-            self.iso = "iso"
-        else:
-            self.iso = "aniso"
+        self.iso = self.calc._pressure_coupling
         self.logger.info("Pressure adjusted in %s" % self.iso)
 
         self.logger.info("Reference phase is %s" % self.calc.reference_phase)
