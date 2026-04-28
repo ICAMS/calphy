@@ -1,0 +1,22 @@
+calculations:
+- element: Al
+  lattice: FCC
+  lattice_constant: 0.0
+  mass: 26.98
+  mode: fe
+  n_equilibration_steps: 1000
+  n_iterations: 1
+  n_switching_steps: 1000
+  pair_coeff: '* * tests/Al99.eam.alloy Al'
+  pair_style: eam/alloy
+  pressure: 0.0
+  pressure_coupling: tri
+  queue:
+    cores: 2
+    scheduler: local
+  reference_phase: solid
+  repeat:
+  - 3
+  - 3
+  - 3
+  temperature: 800.0
