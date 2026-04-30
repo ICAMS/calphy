@@ -1108,7 +1108,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
 
             if (mode == "fe") or (mode == "alchemy") or (mode == "composition_scaling"):
                 combos = itertools.product(lat_props, pressure, temperature)
-            elif mode == "ts" or mode == "tscale" or mode == "mts":
+            elif mode == "ts" or mode == "tscale":
                 if not len(temperature) == 2:
                     raise ValueError("ts/tscale mode needs 2 temperature values")
                 temperature = [temperature]

@@ -20,6 +20,5 @@ alchemy-*
 *.npy
 *.data
 *.dump
-mts-*
 melting_temperature-*
 composition_scaling-*

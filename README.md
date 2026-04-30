@@ -5,7 +5,6 @@
 - <img src="https://render.githubusercontent.com/render/math?math=F(V_i,T_i)"> and <img src="https://render.githubusercontent.com/render/math?math=G(P_i,T_i)"> for both solid and liquid phases at the given thermodynamic conditions using [non-equilibrium Hamiltonian interpolation](https://linkinghub.elsevier.com/retrieve/pii/S0927025615007089).
 - <img src="https://render.githubusercontent.com/render/math?math=F(T_i \to T_f)"> and <img src="https://render.githubusercontent.com/render/math?math=G(T_i \to T_f)">, temperature dependence of Gibbs and Helmholtz free energies using the [reversible scaling](https://link.aps.org/doi/10.1103/PhysRevLett.83.3973) approach.
 - Calculation of solid-solid or solid-liquid phase transition temperatures.
-- Calculation of coexistence lines using [dynamic Clausius-Clapeyron integration](http://aip.scitation.org/doi/10.1063/1.1420486).
 - Calculation of specific heat <img src="https://render.githubusercontent.com/render/math?math=c_P(T)"> as a function of temperature.
 - Calculation of <img src="https://render.githubusercontent.com/render/math?math=F(x, T)"> and <img src="https://render.githubusercontent.com/render/math?math=G(x, T)"> for multicomponent systems using [alchemical transformations](https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.5.103801).
 - [Upsampling calculations](https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.5.103801).

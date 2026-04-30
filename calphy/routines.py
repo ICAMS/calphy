@@ -396,23 +396,6 @@ def routine_ts(job):
     return job
 
 
-def routine_only_ts(job):
-    """
-    Perform sweep without free energy calculation
-    """
-    ts = time.time()
-    job.run_averaging()
-    te = time.time() - ts
-    job.logger.info("Averaging routine finished in %f s" % te)
-
-    for i in range(job.calc.n_iterations):
-        ts = time.time()
-        job.reversible_scaling(iteration=(i + 1))
-        te = time.time() - ts
-        job.logger.info("TS integration cycle %d finished in %f s" % (i + 1, te))
-    return job
-
-
 def routine_tscale(job):
     """
     Perform tscale routine
