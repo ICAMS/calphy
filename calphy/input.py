@@ -126,7 +126,7 @@ def _extract_elements_from_pair_coeff(pair_coeff_string):
                 _ = mendeleev.element(p)
                 elements.append(p)
                 started = True
-            except:
+            except Exception:
                 # Not a valid element, might be done collecting
                 if started:
                     # We already started collecting elements and hit a non-element
@@ -506,7 +506,7 @@ class Calculation(BaseModel, title="Main input class"):
         try:
             chem = mendeleev.element(self.element[0])
             self._melting_temperature = chem.melting_point
-        except:
+        except Exception:
             self._melting_temperature = None
 
         if self.temperature == 0:

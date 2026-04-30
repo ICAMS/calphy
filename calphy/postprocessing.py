@@ -39,7 +39,7 @@ def _extract_error(errfile):
                     if "calphy.errors" in line:
                         break
                     error_code = line.split(":")[0].split(".")[-1]
-    except:
+    except (OSError, IndexError):
         pass
     return error_code
 

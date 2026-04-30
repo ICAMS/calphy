@@ -383,7 +383,7 @@ class CompositionTransformation:
         try:
             _ = element(symbol)
             return True
-        except:
+        except Exception:
             return False
 
     def update_pair_coeff(self, pair_coeff):

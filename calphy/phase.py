@@ -842,7 +842,7 @@ class Phase:
         lx, ly, lz, lxpc = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
         lx = lx[-ncount + 1 :]
         ly = ly[-ncount + 1 :]
-        lz = lx[-ncount + 1 :]
+        lz = lz[-ncount + 1 :]
         lxpc = lxpc[-ncount + 1 :]
         mean = np.mean(lxpc)
         std = np.std(lxpc)
@@ -865,7 +865,7 @@ class Phase:
         lx, ly, lz, lxpc = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
         lx = lx[-ncount + 1 :]
         ly = ly[-ncount + 1 :]
-        lz = lx[-ncount + 1 :]
+        lz = lz[-ncount + 1 :]
         lxpc = lxpc[-ncount + 1 :]
 
         mean = np.mean(lxpc)

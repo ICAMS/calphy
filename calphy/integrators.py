@@ -475,8 +475,9 @@ def integrate_dcc(
     xp = fsl * (pressure / (10000 * 160.21766208)) - wmean
     temp = temperature / fsl
 
-    # convert back
-    xp = xp * 160.217 * 10000
+    # convert back (use the same constant as the forward conversion above
+    # to avoid asymmetric round-off)
+    xp = xp * 160.21766208 * 10000
 
     # fit if needed
     if fit_order is not None:
