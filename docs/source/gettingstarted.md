@@ -18,7 +18,7 @@
 ```{tab} from repository
 `git clone https://github.com/ICAMS/calphy.git`  
 `cd calphy`  
-`python setup.py install`
+`pip install .`
 ```
 
 ```{tab} Singularity
@@ -79,24 +79,28 @@ conda activate calphy
 then, install `calphy` using,
 
 ```
-python setup.py install
+pip install .
 ```
 The environment is now set up to run calphy.
 
 ### Dependencies
 
-- lammps                            `conda install -c conda-forge lammps`
-- mendeleev           >=0.7.0       `pip install mendeleev`
-- pylammpsmpi         >=0.3.0       `pip install pylammpsmpi`
-- pyscal              >=2.10.14     `pip install git+https://github.com/srmnitc/pyscal`
-- pyyaml              >=5.4.1       `pip install pyyaml`
-- scipy               >=1.7.0       `pip install scipy`
-- tqdm                >=4.61.2      `pip install tqdm`
+calphy requires Python ≥ 3.10 and the following packages (all installed automatically when using `pip install` or the supplied conda environment file):
+
+- [LAMMPS](https://www.lammps.org/) compiled as a Python library (`conda install -c conda-forge lammps`)
+- `numpy >= 2`
+- `scipy`
+- `matplotlib`
+- `pyyaml`
+- `tqdm`
+- `pydantic`
+- `mendeleev`
+- [`pyscal3`](https://pyscal.org/)
 
 #### Optional
 
-- matplotlib          >=3.4.2       `pip install matplotlib`
-- pytest              >=6.2.4       `pip install pytest`
+- `pytest >= 7` for running the test-suite
+- `mp_api` for fetching structures from the [Materials Project](https://materialsproject.org/)
 
 ### About [LAMMPS](https://www.lammps.org/) for `calphy`
 
@@ -106,7 +110,7 @@ calphy uses LAMMPS as the driver for molecular dynamics simulations. For calphy 
 conda install -c conda-forge lammps
 ```
 
-Alternatively, when interatomic potentials with special compilation needs are to be used, LAMMPS (Stable release 29 Sept 2021 and above) can be compiled manually using the following set of instructions.
+Alternatively, when interatomic potentials with special compilation needs are to be used, a recent stable release of LAMMPS can be compiled manually using the following set of instructions.
 
 In order to help with installing all the prerequisites, an environment file which does not include the LAMMPS distribution is also provided. **This is only required if you want use a conda environment.** This environment can be installed using:
 
@@ -166,17 +170,11 @@ from lammps import lammps
 lmp = lammps()
 ```
 
-Now, we install pylammpsmpi using,
-
-```
-pip install pylammpsmpi
-```
-
-And finally calphy:
+Finally install calphy:
 
 ```
 cd calphy
-python setup.py install --user
+pip install .
 ```
 
 

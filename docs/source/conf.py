@@ -43,7 +43,7 @@ shutil.copytree("../../examples", "examples")
 # -- Project information -----------------------------------------------------
 
 project = 'calphy'
-copyright = '2021, Sarath Menon, Yury Lysogorskiy, Ralf Drautz'
+copyright = '2021-2026, Sarath Menon, Yury Lysogorskiy, Ralf Drautz'
 author = 'Sarath Menon'
 
 
