@@ -53,6 +53,12 @@ Na = const.physical_constants["Avogadro constant"][0]
 eV2J = const.eV
 J2eV = 6.242e18
 
+# Pressure unit conversion: 1 eV/A^3 = e * 1e25 bar (exactly, given the SI
+# definition of the electron volt). Used to convert LAMMPS pressures (bar)
+# to the eV/A^3 units that the rest of the integrators work in.
+#   pressure_in_eV_per_A3 = pressure_in_bar / EV_A3_TO_BAR
+EV_A3_TO_BAR = const.e * 1e25
+
 # --------------------------------------------------------------------
 #             TI PATH INTEGRATION ROUTINES
 # --------------------------------------------------------------------
@@ -223,7 +229,7 @@ def integrate_rs(
     """
     ws = []
     es = []
-    p = p / (10000 * 160.21766208)
+    p = p / EV_A3_TO_BAR
 
     for i in range(1, nsims + 1):
         fdx, fp, fvol, flambda = np.loadtxt(
@@ -302,8 +308,8 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1, return_values=False):
         fvol = fvol / natoms
         bvol = bvol / natoms
 
-        fp = fp / (10000 * 160.21766208)
-        bp = bp / (10000 * 160.21766208)
+        fp = fp / EV_A3_TO_BAR
+        bp = bp / EV_A3_TO_BAR
 
         wf = cumtrapz(fvol, fp, initial=0)
         wb = cumtrapz(bvol[::-1], bp[::-1], initial=0)
@@ -439,10 +445,10 @@ def integrate_dcc(
             blu = blu / bll
 
         # now convert the pressure units
-        fsp = fsp / (10000 * 160.21766208)
-        bsp = bsp / (10000 * 160.21766208)
-        flp = flp / (10000 * 160.21766208)
-        blp = blp / (10000 * 160.21766208)
+        fsp = fsp / EV_A3_TO_BAR
+        bsp = bsp / EV_A3_TO_BAR
+        flp = flp / EV_A3_TO_BAR
+        blp = blp / EV_A3_TO_BAR
 
         # scale volume per number of atoms
         fsv = fsv / natoms1
@@ -472,12 +478,11 @@ def integrate_dcc(
     # return ws
     wmean = np.mean(ws, axis=0)
     werr = np.std(ws, axis=0)
-    xp = fsl * (pressure / (10000 * 160.21766208)) - wmean
+    xp = fsl * (pressure / EV_A3_TO_BAR) - wmean
     temp = temperature / fsl
 
-    # convert back (use the same constant as the forward conversion above
-    # to avoid asymmetric round-off)
-    xp = xp * 160.21766208 * 10000
+    # convert back to bar
+    xp = xp * EV_A3_TO_BAR
 
     # fit if needed
     if fit_order is not None:
