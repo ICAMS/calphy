@@ -11,9 +11,8 @@ dependencies:
   - openmpi
   - numpy
   - mpi4py
-  - pylammpsmpi >=0.3.0
+  - pylammpsmpi
   - matplotlib
   - tqdm
-  - uncertainties
   - pydantic >=2.3.0
   - pyscal3
