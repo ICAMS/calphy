@@ -1,7 +1,7 @@
 calculations:
 - element: Fe
-  lattice: LQD
-  lattice_constant: 0.0
+  lattice: bcc
+  lattice_constant: 2.8842
   mass: 55.845
   mode: fe
   n_equilibration_steps: 10000

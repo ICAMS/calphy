@@ -1,18 +1,20 @@
-name: calphy
+name: calphy-docs
 channels:
   - conda-forge
 dependencies:
+  - python
   - pytest
   - scipy
   - pyyaml
   - mendeleev
   - openmpi 
+  - numpy
   - mpi4py
-  - pylammpsmpi >=0.3.0
+  - pylammpsmpi
   - pyscal3
   - matplotlib
   - tqdm
-  - uncertainties
+  - pydantic >=2.3.0
   - pip:
     - sphinx==5.3.0
     - sphinx_rtd_theme

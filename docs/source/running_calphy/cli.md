@@ -21,7 +21,7 @@ calculations:
 - mode: ts 
   temperature: [1200, 1400]
   pressure: [0]
-  lattice: [FCC, LQD]
+  lattice: [fcc, fcc]
   repeat: [5, 5, 5]
   reference_phase: [solid, liquid]
   n_iterations: 1
@@ -33,7 +33,7 @@ Specify `-k 0` will run a calculation block equivalent to:
 - mode: ts 
   temperature: [1200, 1400]
   pressure: [0]
-  lattice: [FCC]
+  lattice: [fcc]
   repeat: [5, 5, 5]
   reference_phase: [solid]
   n_iterations: 1
@@ -44,7 +44,7 @@ and `-k 1` will run:
 - mode: ts 
   temperature: [1200, 1400]
   pressure: [0]
-  lattice: [LQD]
+  lattice: [fcc]
   repeat: [5, 5, 5]
   reference_phase: [liquid]
   n_iterations: 1

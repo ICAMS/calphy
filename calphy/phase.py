@@ -842,7 +842,7 @@ class Phase:
         lx, ly, lz, lxpc = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
         lx = lx[-ncount + 1 :]
         ly = ly[-ncount + 1 :]
-        lz = lx[-ncount + 1 :]
+        lz = lz[-ncount + 1 :]
         lxpc = lxpc[-ncount + 1 :]
         mean = np.mean(lxpc)
         std = np.std(lxpc)
@@ -865,7 +865,7 @@ class Phase:
         lx, ly, lz, lxpc = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
         lx = lx[-ncount + 1 :]
         ly = ly[-ncount + 1 :]
-        lz = lx[-ncount + 1 :]
+        lz = lz[-ncount + 1 :]
         lxpc = lxpc[-ncount + 1 :]
 
         mean = np.mean(lxpc)
@@ -1308,12 +1308,8 @@ class Phase:
             )
 
         self.logger.info("Please cite the following publications:")
-        if self.calc.mode == "mts":
-            self.logger.info("- 10.1063/1.1420486")
-            self.publications.append("10.1063/1.1420486")
-        else:
-            self.logger.info("- 10.1103/PhysRevLett.83.3973")
-            self.publications.append("10.1103/PhysRevLett.83.3973")
+        self.logger.info("- 10.1103/PhysRevLett.83.3973")
+        self.publications.append("10.1103/PhysRevLett.83.3973")
 
     def integrate_reversible_scaling(self, scale_energy=True, return_values=False):
         """

@@ -133,6 +133,11 @@ class Solid(cph.Phase):
             mean_quant = np.round(np.mean(quant), decimals=2)
             std_quant = np.round(np.std(quant), decimals=2)
             if mean_quant == 0:
+                self.logger.warning(
+                    "MSD for element index %d averaged to ~0; spring-constant "
+                    "estimation is unreliable. Consider increasing equilibration "
+                    "time or providing spring_constants explicitly." % i
+                )
                 mean_quant = 1.00
             mean_quant = 3 * kb * self.calc._temperature / mean_quant
             k_mean.append(mean_quant)
@@ -629,7 +634,7 @@ class Solid(cph.Phase):
 
         # add pressure contribution if required
         if self.calc._pressure != 0:
-            p = self.calc._pressure / (10000 * 160.21766208)
+            p = self.calc._pressure / EV_A3_TO_BAR
             v = self.vol / self.natoms
             self.pv = p * v
         else:

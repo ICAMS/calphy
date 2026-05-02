@@ -126,7 +126,7 @@ def _extract_elements_from_pair_coeff(pair_coeff_string):
                 _ = mendeleev.element(p)
                 elements.append(p)
                 started = True
-            except:
+            except Exception:
                 # Not a valid element, might be done collecting
                 if started:
                     # We already started collecting elements and hit a non-element
@@ -506,7 +506,7 @@ class Calculation(BaseModel, title="Main input class"):
         try:
             chem = mendeleev.element(self.element[0])
             self._melting_temperature = chem.melting_point
-        except:
+        except Exception:
             self._melting_temperature = None
 
         if self.temperature == 0:
@@ -1108,7 +1108,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
 
             if (mode == "fe") or (mode == "alchemy") or (mode == "composition_scaling"):
                 combos = itertools.product(lat_props, pressure, temperature)
-            elif mode == "ts" or mode == "tscale" or mode == "mts":
+            elif mode == "ts" or mode == "tscale":
                 if not len(temperature) == 2:
                     raise ValueError("ts/tscale mode needs 2 temperature values")
                 temperature = [temperature]

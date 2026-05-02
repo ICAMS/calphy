@@ -7,7 +7,7 @@ name = "calphy"
 version = "1.7.2"
 description = "free energy calculation for python"
 readme = "README.md"
-license = "GPL-3.0-only"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [
     { name = "Sarath Menon", email = "sarathmenon@mailbox.org" },
@@ -29,12 +29,14 @@ dependencies = [
     "mendeleev",
     "tqdm",
     "scipy",
-    "pydantic",
+    "pydantic>=2",
     "pyscal3",
+    "pylammpsmpi",
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
+materials-project = ["mp_api"]
 
 [project.urls]
 Homepage = "https://github.com/ICAMS/calphy"

@@ -25,7 +25,7 @@ with local feature development.
 
 ### Setting up local environment
 
-1.  The first step is to fork pyscal. A detailed tutorial on forking can
+1.  The first step is to fork calphy. A detailed tutorial on forking can
     be found [here](https://help.github.com/en/articles/fork-a-repo).
     After forking, clone the repository to your local machine.
 2.  We recommend creating a virtual environment to test new features or
@@ -35,7 +35,8 @@ with local feature development.
 3.  Once the environment is set up, you can create a new branch for your
     feature by `git checkout -b new_feauture`.
 4.  Now implement the necessary feature.
-5.  Once done, you can reinstall pyscal by `python setup.py install`.
+5.  Once done, you can install your local copy of calphy in editable mode with
+    `pip install -e .`.
     After that please make sure that the existing tests work by running
     `pytest tests/` from the main module folder.
 6.  If the tests work, you are almost done! If the new feature is not

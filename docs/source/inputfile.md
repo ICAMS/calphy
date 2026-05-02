@@ -53,9 +53,15 @@ calculations:
 ```
 ```{grid-item} [](pair_coeff)
 ```
+```{grid-item} [](pair_mode)
+```
 ```{grid-item} [](n_print_steps)
 ```
 ```{grid-item} [](potential_file)
+```
+```{grid-item} [](fix_potential_path)
+```
+```{grid-item} [](file_format)
 ```
 ```{grid-item} [](spring_constants)
 ```
@@ -72,6 +78,10 @@ calculations:
 ```{grid-item} [](mpi_executable)
 ```
 ```{grid-item} [](npt)
+```
+```{grid-item} [](phase_name)
+```
+```{grid-item} [](reference_composition)
 ```
 ````
 
@@ -92,6 +102,8 @@ calculations:
 ```{grid-item} [](thermostat_damping)
 ```
 ```{grid-item} [](barostat_damping)
+```
+```{grid-item} [](cmdargs)
 ```
 ```{grid-item} [](init_commands)
 ```
@@ -115,8 +127,6 @@ calculations:
 ```
 ```{grid-item} [](commands)
 ```
-```{grid-item} [](modules)
-```
 ```{grid-item} [](options)
 ```
 ````
@@ -125,6 +135,8 @@ calculations:
 
 ````{grid} 1 2 3 4
 :outline:
+```{grid-item} [](tol_lattice_constant)
+```
 ```{grid-item} [](tol_spring_constant)
 ```
 ```{grid-item} [](tol_solid_fraction)
@@ -139,6 +151,8 @@ calculations:
 
 ````{grid} 1 2 3 4
 :outline:
+```{grid-item} [](mt_guess)
+```
 ```{grid-item} [](step)
 ```
 ```{grid-item} [](attempts)
@@ -150,6 +164,48 @@ calculations:
 ````{grid} 1 2 3 4
 :outline:
 ```{grid-item} [](output_chemical_composition)
+```
+```{grid-item} [](compscaling_restrictions)
+```
+````
+
+### `monte_carlo` 
+
+````{grid} 1 2 3 4
+:outline:
+```{grid-item} [](mc_n_steps)
+```
+```{grid-item} [](mc_n_swaps)
+```
+```{grid-item} [](mc_forward_swap_types)
+```
+```{grid-item} [](mc_reverse_swap_types)
+```
+```{grid-item} [](mc_allow_all_swaps)
+```
+```{grid-item} [](mc_use_custom_lammps)
+```
+````
+
+### `uhlenbeck_ford_model` 
+
+````{grid} 1 2 3 4
+:outline:
+```{grid-item} [](ufm_p)
+```
+```{grid-item} [](ufm_sigma)
+```
+````
+
+### `materials_project` 
+
+````{grid} 1 2 3 4
+:outline:
+```{grid-item} [](mp_api_key)
+```
+```{grid-item} [](mp_conventional)
+```
+```{grid-item} [](mp_target_natoms)
 ```
 ````
 
@@ -329,7 +385,11 @@ lattice: FCC
 lattice: [FCC, conf.data]
 ```
    
-Lattice to be used for the calculations. The `lattice` option can use either LAMMPS for creation of input structure or use an input file in the LAMMPS data format. To use LAMMPS to create the structure, the keyword specified should be from the following: `bcc`, `fcc`, `hcp`, `diamond`, and `sc`. Lattice creation can **only be used for single species**. The preferred method is to provide a LAMMPS data file can be specified which contains the configuration.
+Lattice to be used for the calculations. The `lattice` option supports three forms:
+
+- A built-in unit cell name: one of `bcc`, `fcc`, `hcp`, `diamond`, or `sc`. calphy will build the cell with [pyscal3](https://pyscal.org/) using `lattice_constant` and `repeat`. **Single-species only.**
+- A path to a LAMMPS data file (`file_format: lammps-data`). This is the preferred form for multi-element systems and for triclinic cells.
+- A [Materials Project](https://materialsproject.org/) ID, e.g. `mp-30`. The structure is fetched via `mp_api` and replicated to roughly `materials_project.target_natoms`. Requires the [`materials_project`](mp_api_key) block to be configured.
 
 ---
 
@@ -482,10 +542,42 @@ _type_: string \
 _default_: None \
 _example_:
 ```
-pair_coeff: "/home/calc/potential.inp"
+potential_file: "/home/calc/potential.inp"
 ```
 
-If specified, the `pair_style` and `pair_coeff` commands are not used, but rather the potential is read in from the provided input file using `include` command in LAMMPS. This allows the use of more complex or multiple potential files. Due to the `hybrid/scaled` styles employed in calphy, **this option only works with mode `fe` and `reference_phase` solid.**
+```{deprecated}
+`potential_file` is deprecated and will be removed in a future release. Use `pair_style` and `pair_coeff` (with [`pair_mode: overlay`](pair_mode) for multi-potential setups) instead.
+```
+
+If specified, the `pair_style` and `pair_coeff` commands are not used, but rather the potential is read in from the provided input file using the `include` command in LAMMPS. Due to the `hybrid/scaled` styles employed in calphy, **this option only works with mode `fe` and `reference_phase: solid`.**
+
+---
+
+(fix_potential_path)=
+#### `fix_potential_path`
+
+_type_: bool \
+_default_: True \
+_example_:
+```
+fix_potential_path: True
+```
+
+If True (the default), calphy expands `~`, environment variables (e.g. `$USER`, `${HOME}`), and converts the potential filename in each `pair_coeff` entry to an absolute path before it is passed to LAMMPS. Set this to `False` if you want to pass `pair_coeff` strings to LAMMPS verbatim.
+
+---
+
+(file_format)=
+#### `file_format`
+
+_type_: string \
+_default_: `lammps-data` \
+_example_:
+```
+file_format: lammps-data
+```
+
+File format used to read the input structure when `lattice` is a path to a file on disk. Currently only `lammps-data` is supported.
 
 ---
 
@@ -568,7 +660,7 @@ The barostat and thermostat combination to be used for the equilibration stage. 
 #### `melting_cycle`        
 
 _type_: bool \
-_default_: True \
+_default_: False \
 _example_:
 ```
 melting_cycle: True
@@ -644,6 +736,34 @@ MPI executable to run the LAMMPS with.
 Works only with `reference_phase: solid`, and `mode: fe`.
 Works only if [`script_mode`](script_mode) is `True`.
 
+
+---
+
+(phase_name)=
+#### `phase_name`
+
+_type_: string \
+_default_: "" \
+_example_:
+```
+phase_name: bcc_AB
+```
+
+Label attached to a calculation when it is part of a phase-diagram workflow (see the [`phase_diagram`](phase_diagram_block) module). Calculations belonging to the same physical phase share a `phase_name`, and post-processing utilities (`gather_results`, `find_transition_temperature`, …) group rows by this column.
+
+---
+
+(reference_composition)=
+#### `reference_composition`
+
+_type_: float \
+_default_: 0.0 \
+_example_:
+```
+reference_composition: 0.25
+```
+
+For composition sweeps in the phase-diagram workflow this records the *target* composition that the structure has been transformed to (used by composition-scaling integration). Normally set automatically by the phase-diagram driver and rarely supplied by hand.
 
 ---
 ---
@@ -757,6 +877,21 @@ n_cycles: 100
 
 Number of cycles to try converging the pressure of the system. If the pressure is not converged after `n_cycles`, an error will be raised. In each `n_cycle`, `n_small_steps` MD steps will be run.
 
+
+---
+
+(cmdargs)=
+#### `cmdargs`
+
+_type_: string \
+_default_: "" \
+_example_:
+```
+md:
+  cmdargs: "-k on g 1 -sf kk -pk kokkos newton on neigh half"
+```
+
+Extra command-line arguments passed verbatim to the LAMMPS Python library when the LAMMPS object is created. Most commonly used to enable accelerator packages such as `KOKKOS`, `GPU` or `INTEL`.
 
 ---
 
@@ -918,11 +1053,26 @@ This block helps to tune the internal convergence parameters that `calphy` uses.
 
 ```
 tolerance:
-   spring_constant: 0.01
+   lattice_constant: 0.0002
+   spring_constant: 0.1
    solid_fraction: 0.7
    liquid_fraction: 0.05
-   pressure: 0.5
+   pressure: 10.0
 ```
+
+---
+
+(tol_lattice_constant)=
+#### `lattice_constant`
+
+_type_: float \
+_default_: 0.0002 \
+_example_:
+```
+lattice_constant: 0.0002
+```
+
+Convergence tolerance (in Å) on the average lattice constant during the equilibration / volume-averaging stage.
 
 ---
 
@@ -930,10 +1080,10 @@ tolerance:
 #### `spring_constant`
 
 _type_: float \
-_default_: 0.01 \
+_default_: 0.1 \
 _example_:
 ```
-spring_constant: 0.01
+spring_constant: 0.1
 ```
 
 tolerance for the convergence of spring constant calculation.
@@ -972,13 +1122,13 @@ Maximum fraction of solid atoms allowed in liquid after melting.
 #### `pressure`
 
 _type_: float \
-_default_: 0.5 \
+_default_: 10.0 \
 _example_:
 ```
-pressure: 0.5
+pressure: 10.0
 ```
 
-tolerance for the convergence of pressure.
+Tolerance (in bars) for the convergence of the average pressure during the equilibration / volume-averaging stage.
 
 ---
 ---
@@ -989,9 +1139,24 @@ This block contains keywords that are used only for the mode `melting_temperatur
 
 ```
 melting_temperature:
+   guess: 1300
    step: 200
    attempts: 5
 ```
+
+---
+
+(mt_guess)=
+#### `guess`
+
+_type_: float \
+_default_: None (uses experimental melting point of `element[0]` from `mendeleev`) \
+_example_:
+```
+guess: 1300
+```
+
+Initial guess (in Kelvin) for the melting temperature search. If not provided, calphy uses the experimental melting point of the first element from the [mendeleev](https://mendeleev.readthedocs.io/) database. Only used if mode is `melting_temperature`.
 
 ---
 
@@ -1047,6 +1212,27 @@ output_chemical_composition:
 ```
 
 The output chemical composition in number of atoms. The total number of atoms should be equal to the input provided.
+
+---
+
+(compscaling_restrictions)=
+#### `restrictions`
+
+_type_: list of strings \
+_default_: `[]` \
+_example_:
+```
+composition_scaling:
+  output_chemical_composition:
+    Al: 494
+    Li: 2
+    O: 3
+    C: 1
+  restrictions:
+    - "Al-O"
+```
+
+List of `"A-B"` pair strings that **must not be transformed into one another** during composition scaling. In the example above, the algorithm is forbidden from converting any Al atom directly into an O atom (or vice-versa). If no valid transformation chain can be found that respects all restrictions, an error is raised.
 
 ---
 ---
@@ -1131,5 +1317,207 @@ barostat_damping: 100.0
 ```
 
 Pressure damping for equilibration MD. 
+
+---
+---
+
+## `monte_carlo` block
+
+This block configures Monte Carlo particle-swap moves that can be interleaved with the molecular-dynamics integration during alchemical / composition-scaling calculations. By default no swaps are performed (`n_swaps: 0`).
+
+```
+monte_carlo:
+  n_steps: 100
+  n_swaps: 10
+  forward_swap_types: [1, 2]
+  reverse_swap_types: [1, 2]
+  allow_all_swaps: True
+  use_custom_lammps: False
+```
+
+---
+
+(mc_n_steps)=
+#### `n_steps`
+
+_type_: int \
+_default_: 1 \
+_example_:
+```
+n_steps: 100
+```
+
+Attempt a batch of swap moves every `n_steps` MD steps.
+
+---
+
+(mc_n_swaps)=
+#### `n_swaps`
+
+_type_: int \
+_default_: 0 \
+_example_:
+```
+n_swaps: 10
+```
+
+Number of swap moves to attempt in each batch. The default of `0` disables Monte Carlo swaps entirely.
+
+---
+
+(mc_forward_swap_types)=
+#### `forward_swap_types`
+
+_type_: list of ints \
+_default_: `[]` \
+_example_:
+```
+forward_swap_types: [1, 2]
+```
+
+LAMMPS atom-type IDs that are eligible for swapping during the forward integration leg.
+
+---
+
+(mc_reverse_swap_types)=
+#### `reverse_swap_types`
+
+_type_: list of ints \
+_default_: `[]` \
+_example_:
+```
+reverse_swap_types: [1, 2]
+```
+
+LAMMPS atom-type IDs eligible for swapping during the backward integration leg.
+
+---
+
+(mc_allow_all_swaps)=
+#### `allow_all_swaps`
+
+_type_: bool \
+_default_: True \
+_example_:
+```
+allow_all_swaps: True
+```
+
+If True, swaps between any pair of allowed types are accepted, including the auxiliary "fictitious" types introduced for alchemical interpolation. Set to False to restrict swaps to only the real species.
+
+---
+
+(mc_use_custom_lammps)=
+#### `use_custom_lammps`
+
+_type_: bool \
+_default_: False \
+_example_:
+```
+use_custom_lammps: True
+```
+
+Use the custom LAMMPS build that ships with the modified `fix atom/swap` patch required for some swap topologies. Leave at the default unless you have built that LAMMPS variant.
+
+---
+---
+
+## `uhlenbeck_ford_model` block
+
+Parameters of the Uhlenbeck–Ford reference fluid used as the reference state for **liquid** free-energy calculations. The defaults reproduce the values used in the [original calphy paper](https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.5.103801) and rarely need to be touched.
+
+```
+uhlenbeck_ford_model:
+  p: 50.0
+  sigma: 1.5
+```
+
+---
+
+(ufm_p)=
+#### `p`
+
+_type_: float \
+_default_: 50.0 \
+_example_:
+```
+p: 50.0
+```
+
+Strength parameter of the Uhlenbeck–Ford pair potential. Larger values make the reference fluid more repulsive.
+
+---
+
+(ufm_sigma)=
+#### `sigma`
+
+_type_: float \
+_default_: 1.5 \
+_example_:
+```
+sigma: 1.5
+```
+
+Length parameter (in Å) of the Uhlenbeck–Ford pair potential.
+
+---
+---
+
+## `materials_project` block
+
+Configuration for fetching input structures directly from the [Materials Project](https://materialsproject.org/) using `mp_api`. Only used when `lattice` is given as a Materials Project ID such as `mp-30`.
+
+```
+materials_project:
+  api_key: MP_API_KEY
+  conventional: True
+  target_natoms: 1500
+```
+
+---
+
+(mp_api_key)=
+#### `api_key`
+
+_type_: string \
+_default_: "" \
+_example_:
+```
+api_key: MP_API_KEY
+```
+
+Name of an environment variable holding your Materials Project API key (for example `MP_API_KEY`). calphy reads `os.environ[api_key]` at runtime so the key itself is never written into input files or log output. Set the variable in your shell before running:
+
+```
+export MP_API_KEY="your_api_key_here"
+```
+
+---
+
+(mp_conventional)=
+#### `conventional`
+
+_type_: bool \
+_default_: True \
+_example_:
+```
+conventional: True
+```
+
+If True, the conventional cell is used; if False, the primitive cell is used.
+
+---
+
+(mp_target_natoms)=
+#### `target_natoms`
+
+_type_: int \
+_default_: 1500 \
+_example_:
+```
+target_natoms: 1500
+```
+
+The structure parsed from Materials Project is replicated isotropically until it contains approximately this many atoms (ignored if `repeat` is set to anything other than `[1, 1, 1]`).
 
 ---

@@ -74,7 +74,7 @@ def create_job_from_inputfile(pr, inputfile, potential, kernel=None):
                     job.status.finished = True
                 else:
                     print(f'parsing {basedir_path} failed, skipping')   
-            except:
+            except Exception:
                 #delete job
                 pr.remove_job(basedir.replace('-', '_'))
                 print(f'parsing {basedir_path} failed, skipping')
@@ -98,7 +98,7 @@ def get_phase(job):
 
 def get_composition(job):
     chem = job.project.db.get_item_by_id(job.id)['chemicalformula']
-    comp_split = re.split('(\d+)', chem)[:-1]
+    comp_split = re.split(r'(\d+)', chem)[:-1]
     if len(comp_split) == 2:
         if comp_split[0] == 'Al':
             return 0.00

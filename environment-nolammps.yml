@@ -1,7 +1,8 @@
-name: calphy2
+name: calphy-nolammps
 channels:
   - conda-forge
 dependencies:
+  - python
   - cmake
   - gcc_linux-64
   - gxx_linux-64
@@ -11,9 +12,10 @@ dependencies:
   - pyyaml
   - mendeleev
   - openmpi 
+  - numpy
   - mpi4py
+  - pylammpsmpi
   - matplotlib
   - tqdm
-  - uncertainties  
   - pydantic >=2.3.0
   - pyscal3

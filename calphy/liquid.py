@@ -497,7 +497,7 @@ class Liquid(cph.Phase):
 
         # add pressure contribution if required
         if self.calc._pressure != 0:
-            p = self.calc._pressure / (10000 * 160.21766208)
+            p = self.calc._pressure / EV_A3_TO_BAR
             v = self.vol / self.natoms
             self.pv = p * v
         else:
