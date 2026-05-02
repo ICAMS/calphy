@@ -1256,7 +1256,7 @@ def get_tangent_type(dict_list, tangent, energy):
 
 
 def get_common_tangents(
-    dict_list, peak_cutoff=0.01, plot=False, remove_self_tangents_for=[]
+    dict_list, peak_cutoff=0.003, plot=False, remove_self_tangents_for=[]
 ):
     """
     Get common tangent constructions using convex hull method
@@ -1605,7 +1605,7 @@ def _eval_calphad_poly6(coeffs, T):
     -------
     G : ndarray  Free energy in eV/atom.
     """
-    T = np.atleast_1d(np.asarray(T, dtype=float))
+    T = np.asarray(T, dtype=float)
     return (
         coeffs[0]
         + coeffs[1] * T
@@ -1652,9 +1652,15 @@ def _eval_calphad_surface_at(surface, x, T):
     log_1mx = np.where(x < 1, np.log(np.maximum(1.0 - x, 1e-300)), 0.0)
     G_ideal = kb * T * (x * log_x + (1.0 - x) * log_1mx)
 
-    # Redlich-Kister excess
+    # Redlich-Kister excess — L can be 1-D (T-independent) or 2-D (T-dependent)
+    # Shape (rk_order,)   → L_k constant
+    # Shape (rk_order, 2) → L_k(T) = a_k + b_k·T
     pf = x * (1.0 - x)
-    G_xs = sum(L[k] * pf * (1.0 - 2.0 * x) ** k for k in range(len(L)))
+    L = np.asarray(L)
+    if L.ndim == 2:
+        G_xs = sum((L[k, 0] + L[k, 1] * T) * pf * (1.0 - 2.0 * x) ** k for k in range(len(L)))
+    else:
+        G_xs = sum(L[k] * pf * (1.0 - 2.0 * x) ** k for k in range(len(L)))
 
     return G_lin + G_ideal + G_xs
 
@@ -1880,8 +1886,12 @@ class PhaseDiagram:
             coeffs_B = _fit_calphad_poly6(T_B, G_B_data)
 
             # --- Extract excess free energy at intermediate compositions ---
-            x_data = []
-            G_xs_data = []
+            # Collect one row per (composition, T) point so we can fit
+            # temperature-dependent RK parameters: L_k(T) = a_k + b_k·T
+            x_data = []    # unique composition values (for the count check)
+            xs_all = []    # composition for each data point
+            Ts_all = []    # temperature for each data point
+            Gxs_all = []   # G_xs for each data point
             intermediate = df_p.loc[
                 (df_p["composition"] > endpoint_tol)
                 & (df_p["composition"] < 1.0 - endpoint_tol)
@@ -1901,10 +1911,12 @@ class PhaseDiagram:
                 G_ideal = kb * T_row * (x * np.log(x) + (1.0 - x) * np.log(1.0 - x))
 
                 # Excess = total − linear reference − ideal entropy.
-                # Average over temperature (T-independent RK approximation).
                 G_xs_arr = G_row - G_lin - G_ideal
+
                 x_data.append(x)
-                G_xs_data.append(float(np.mean(G_xs_arr)))
+                xs_all.extend([x] * len(T_row))
+                Ts_all.extend(T_row.tolist())
+                Gxs_all.extend(G_xs_arr.tolist())
 
             if len(x_data) < rk_order:
                 warnings.warn(
@@ -1915,29 +1927,39 @@ class PhaseDiagram:
                 surfaces[phase] = None
                 continue
 
-            x_arr = np.array(x_data)
-            Gxs_arr = np.array(G_xs_data)
+            x_fit = np.array(xs_all)
+            T_fit = np.array(Ts_all)
+            Gxs_vec = np.array(Gxs_all)
+            pf_fit = x_fit * (1.0 - x_fit)
 
-            # --- Fit Redlich-Kister parameters ---
-            # G_xs(x) = x·(1-x)·Σ_k L_k·(1-2x)^k  enforces G_xs→0 at x=0,1
-            prefactor = x_arr * (1.0 - x_arr)
-            basis = np.column_stack(
-                [prefactor * (1.0 - 2.0 * x_arr) ** k for k in range(rk_order)]
-            )
-            L_coeffs, _, _, _ = np.linalg.lstsq(basis, Gxs_arr, rcond=None)
+            # --- Fit temperature-dependent Redlich-Kister parameters ---
+            # G_xs(x,T) = x(1-x) · Σ_k [a_k + b_k·T] · (1-2x)^k
+            # Build 2*rk_order column design matrix:
+            # cols: pf·(1-2x)^k  (→ a_k),  pf·(1-2x)^k·T  (→ b_k)
+            cols = []
+            for k in range(rk_order):
+                pk = pf_fit * (1.0 - 2.0 * x_fit) ** k
+                cols.append(pk)
+                cols.append(pk * T_fit)
+            basis = np.column_stack(cols)
+            L_flat, _, _, _ = np.linalg.lstsq(basis, Gxs_vec, rcond=None)
+            # Shape (rk_order, 2): each row is [a_k, b_k]
+            L_coeffs = L_flat.reshape(rk_order, 2)
 
+            Gxs_pred = basis @ L_flat
+            rms = float(np.sqrt(np.mean((Gxs_vec - Gxs_pred) ** 2)) * 96485)
             L_str = "  ".join(
-                f"L{k}={L_coeffs[k] * 96485:.1f} J/mol" for k in range(rk_order)
+                f"L{k}={L_coeffs[k,0]*96485:.1f}{L_coeffs[k,1]*96485:+.3f}*T J/mol"
+                for k in range(rk_order)
             )
-            rms = float(np.sqrt(np.mean((Gxs_arr - basis @ L_coeffs) ** 2)) * 96485)
             print(f"[{phase}]  {L_str}   RMS_xs={rms:.1f} J/mol")
 
             surfaces[phase] = {
                 "coeffs_A": coeffs_A,
                 "coeffs_B": coeffs_B,
                 "L_coeffs": L_coeffs,
-                "x_data": x_arr,
-                "G_xs_data": Gxs_arr,
+                "x_data": np.array(x_data),
+                "G_xs_data": np.array([np.mean(Gxs_vec[np.array(xs_all) == x]) for x in x_data]),
                 "rk_order": rk_order,
             }
 
@@ -1962,6 +1984,7 @@ class PhaseDiagram:
         calphad_surface=True,
         rk_order=3,
         composition_grid=10000,
+        peak_cutoff=0.003,
     ):
         """
         Compute common-tangent constructions across a temperature range.
@@ -2014,6 +2037,12 @@ class PhaseDiagram:
         composition_grid : int
             Number of composition points on the evaluation grid when
             *calphad_surface* is True.  Default 10000.
+        peak_cutoff : float
+            Minimum composition-gap width required to report a two-phase
+            coexistence region from the convex-hull construction.  Reduce
+            this to catch narrow coexistence regions near pure endpoints
+            (e.g. the fcc-liquid window close to the melting point of a
+            pure component).  Default 0.003.
         """
         if remove_self_tangents_for is None:
             remove_self_tangents_for = []
@@ -2074,7 +2103,7 @@ class PhaseDiagram:
             if len(dict_list) > 0:
                 dc = get_free_energy_mixing(dict_list, boundary_trim=boundary_trim)
                 tn, _, cn, _ = get_common_tangents(
-                    dc, remove_self_tangents_for=remove_self_tangents_for
+                    dc, peak_cutoff=peak_cutoff, remove_self_tangents_for=remove_self_tangents_for
                 )
                 tangents.append(tn)
                 temps.append(t)
