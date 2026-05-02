@@ -2627,3 +2627,107 @@ class PhaseDiagram:
             Path to the output file (e.g. ``'raw_data.pkl'``).
         """
         self.df.to_pickle(filename)
+
+    def save_parquet(self, filename):
+        """
+        Save the processed DataFrame to a Parquet file (version-independent).
+
+        Columns that hold numpy arrays (``temperature``, ``free_energy``) are
+        flattened to one row per temperature point; a ``row_id`` column tracks
+        which rows belong together.  Object-level metadata
+        (``reference_element``, ``phases``, ``composition_intervals``) is
+        embedded in the Parquet schema so the full object can be reconstructed
+        by :meth:`load_parquet`.
+
+        Parameters
+        ----------
+        filename : str
+            Output path (e.g. ``'phase_diagram.parquet'``).
+        """
+        import json
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        scalar_cols = [
+            c for c in self.df.columns if c not in ("temperature", "free_energy")
+        ]
+
+        rows = []
+        for row_id, (_, row) in enumerate(self.df.iterrows()):
+            temps = np.asarray(row["temperature"], dtype=float)
+            fes = np.asarray(row["free_energy"], dtype=float)
+            scalars = {c: row[c] for c in scalar_cols}
+            for t, fe in zip(temps, fes):
+                rows.append({"row_id": row_id, "temperature": t, "free_energy": fe, **scalars})
+
+        flat_df = pd.DataFrame(rows)
+        table = pa.Table.from_pandas(flat_df, preserve_index=False)
+
+        meta = {
+            b"calphy_reference_element": self.reference_element.encode(),
+            b"calphy_phases": json.dumps(self.phases).encode(),
+            b"calphy_composition_intervals": json.dumps(
+                {k: list(v) for k, v in self.composition_intervals.items()}
+            ).encode(),
+        }
+        existing = table.schema.metadata or {}
+        table = table.replace_schema_metadata({**existing, **meta})
+        pq.write_table(table, filename)
+
+    @staticmethod
+    def load_parquet(filename):
+        """
+        Load a :class:`PhaseDiagram` previously saved with :meth:`save_parquet`.
+
+        The original folder structure is not required; only the processed
+        DataFrame and metadata stored inside the Parquet file are used.
+
+        Parameters
+        ----------
+        filename : str
+            Path to the Parquet file.
+
+        Returns
+        -------
+        PhaseDiagram
+        """
+        import json
+        import pyarrow.parquet as pq
+
+        table = pq.read_table(filename)
+        meta = table.schema.metadata or {}
+
+        reference_element = meta[b"calphy_reference_element"].decode()
+        phases = json.loads(meta[b"calphy_phases"].decode())
+        composition_intervals = {
+            k: tuple(v)
+            for k, v in json.loads(meta[b"calphy_composition_intervals"].decode()).items()
+        }
+
+        flat_df = table.to_pandas()
+
+        # Reconstruct array columns by grouping on the integer row_id.
+        scalar_cols = [
+            c for c in flat_df.columns if c not in ("row_id", "temperature", "free_energy")
+        ]
+        rows = []
+        for row_id, grp in flat_df.groupby("row_id", sort=True):
+            grp = grp.sort_values("temperature")
+            row = {c: grp[c].iloc[0] for c in scalar_cols}
+            row["temperature"] = grp["temperature"].to_numpy()
+            row["free_energy"] = grp["free_energy"].to_numpy()
+            rows.append(row)
+
+        reconstructed_df = pd.DataFrame(rows)
+
+        obj = object.__new__(PhaseDiagram)
+        obj.reference_element = reference_element
+        obj.phases = phases
+        obj.composition_intervals = composition_intervals
+        obj.df = reconstructed_df
+        obj.tangents = None
+        obj.temperatures = None
+        obj.tangent_types = None
+        obj._calc_kwargs = {}
+        obj._calphad_surfaces = {}
+        return obj
