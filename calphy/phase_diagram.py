@@ -3682,8 +3682,8 @@ class PhaseDiagram:
         return obj
 
 
-def plot_phase_diagram(ax, pd_obj, phase_colors=None, two_phase_alpha=0.35,
-                       boundary_lw=1.2, boundary_color='k'):
+def plot_pd(ax, pd_obj, phase_colors=None, two_phase_alpha=0.35,
+            boundary_lw=1.2, boundary_color='k'):
     """
     Plot a phase diagram onto an existing matplotlib Axes.
 
