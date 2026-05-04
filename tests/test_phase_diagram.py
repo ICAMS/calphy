@@ -467,3 +467,133 @@ def test_phase_diagram_repr_after_load(tmp_path):
     assert "calculated" in repr(loaded_calc)
     assert "not calculated" in repr(loaded_uncalc)
 
+
+def test_phase_diagram_to_tdb_writes_solution_and_limited_compound(tmp_path):
+    import numpy as _np
+    import pandas as _pd
+    from calphy.phase_diagram import PhaseDiagram
+
+    obj = object.__new__(PhaseDiagram)
+    obj.reference_element = "Cu"
+    obj.phases = ["fcc", "aucu", "aucu3", "au2cu"]
+    obj.composition_intervals = {
+        "fcc": (0.0, 1.0),
+        "aucu": (0.45, 0.55),
+        "aucu3": (0.75, 0.75),
+        "au2cu": (0.2, 0.4),
+    }
+    temperatures = _np.array([400.0, 600.0, 800.0, 1000.0])
+    rows = []
+    for x in [0.0, 0.5, 1.0]:
+        rows.append(
+            {
+                "phase": "fcc",
+                "composition": x,
+                "temperature": temperatures,
+                "free_energy": -3.0 + 0.2 * x - 2e-4 * temperatures + 0.05 * x * (1 - x),
+            }
+        )
+    for x in [0.45, 0.5, 0.55]:
+        rows.append(
+            {
+                "phase": "aucu",
+                "composition": x,
+                "temperature": temperatures,
+                "free_energy": -3.2 - 1e-4 * temperatures + 0.2 * (x - 0.5) ** 2,
+            }
+        )
+    rows.append(
+        {
+            "phase": "aucu3",
+            "composition": 0.75,
+            "temperature": temperatures,
+            "free_energy": -3.15 - 1.5e-4 * temperatures,
+        }
+    )
+    rows.append(
+        {
+            "phase": "au2cu",
+            "composition": 1.0 / 3.0,
+            "temperature": temperatures[:3],
+            "free_energy": -3.1 - 1.2e-4 * temperatures[:3],
+        }
+    )
+    obj.df = _pd.DataFrame(rows)
+    obj.tangents = None
+    obj.temperatures = None
+    obj.tangent_types = None
+    obj._calc_kwargs = {}
+    obj._calphad_surfaces = {}
+
+    out = tmp_path / "aucu.tdb"
+    text = obj.to_tdb(
+        out,
+        elements=("Au", "Cu"),
+        solution_phases=["fcc"],
+        compound_phases=["aucu"],
+        line_compound_phases=["aucu3", "au2cu"],
+        compound_sublattice_models={"aucu": [1, 1, 1]},
+        compound_stoichiometries={"aucu": (1, 1)},
+        rk_order=1,
+        max_pseudo_points=12,
+        pseudo_grid_points=9,
+    )
+
+    assert out.exists()
+    assert "PHASE FCC % 1 1.0 !" in text
+    assert "CONSTITUENT FCC : AU,CU : !" in text
+    assert "PARAMETER L(FCC,AU,CU;0)" in text
+    assert "PHASE AUCU % 3 1 1 1 !" in text
+    assert "CONSTITUENT AUCU : AU,CU : AU,CU : AU,CU : !" in text
+    assert "PARAMETER G(AUCU,AU:AU:CU;0)" in text
+    assert "PHASE AUCU3 % 2 1 3 !" in text
+    assert "CONSTITUENT AUCU3 : AU : CU : !" in text
+    assert "PARAMETER G(AUCU3,AU:CU;0)" in text
+    assert "PHASE AU2CU % 2 2 1 !" in text
+    assert "PARAMETER G(AU2CU,AU:CU;0)" in text
+    assert "PARAMETER G(AU2CU,AU:CU;0) 298.15" in text
+    assert "; 1000.00 N !" in text
+
+
+def test_phase_diagram_to_tdb_requires_manual_classification(tmp_path):
+    import numpy as _np
+    import pandas as _pd
+    from calphy.phase_diagram import PhaseDiagram
+
+    obj = object.__new__(PhaseDiagram)
+    obj.reference_element = "Cu"
+    obj.phases = ["fcc"]
+    obj.composition_intervals = {"fcc": (0.0, 1.0)}
+    temperatures = _np.array([400.0, 600.0])
+    obj.df = _pd.DataFrame(
+        [
+            {
+                "phase": "fcc",
+                "composition": 0.0,
+                "temperature": temperatures,
+                "free_energy": -3.0 - 1e-4 * temperatures,
+            }
+        ]
+    )
+    obj._calphad_surfaces = {}
+
+    with pytest.raises(ValueError, match="Manual phase classification"):
+        obj.to_tdb(tmp_path / "missing.tdb", elements=("Au", "Cu"))
+
+
+def test_phase_diagram_from_tdb_reads_embedded_metadata(tmp_path):
+    from calphy.phase_diagram import PhaseDiagram
+
+    tdb = tmp_path / "simple.tdb"
+    tdb.write_text(
+        "$ CALPHY_TDB_METADATA {\"elements\": [\"AU\", \"CU\"], \"reference_element\": \"Cu\"}\n"
+        "PARAMETER G(FCC,AU;0) 298.15 -1.0+2.0*T; 1000.00 N !\n"
+    )
+
+    parsed = PhaseDiagram.from_tdb(tdb)
+
+    assert parsed["metadata"]["elements"] == ["AU", "CU"]
+    assert parsed["metadata"]["reference_element"] == "Cu"
+    assert parsed["parameters"][0]["kind"] == "G"
+    assert parsed["parameters"][0]["phase"] == "FCC"
+

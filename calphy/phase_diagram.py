@@ -12,6 +12,10 @@ import pickle
 from calphy.composition_transformation import CompositionTransformation
 import yaml
 import matplotlib.patches as mpatches
+import re
+import json
+from fractions import Fraction
+from datetime import datetime
 
 from calphy.integrators import kb
 
@@ -19,6 +23,49 @@ from scipy.spatial import ConvexHull
 from scipy.interpolate import splrep, splev
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
+
+
+EV_TO_J_MOL = 96485.33212331002
+R_GAS_CONSTANT = 8.31446261815324
+
+_SER_REF = {
+    "AG": "FCC_A1",
+    "AL": "FCC_A1",
+    "AU": "FCC_A1",
+    "CO": "HCP_A3",
+    "CR": "BCC_A2",
+    "CU": "FCC_A1",
+    "FE": "BCC_A2",
+    "MG": "HCP_A3",
+    "MN": "BCC_A2",
+    "MO": "BCC_A2",
+    "NI": "FCC_A1",
+    "PB": "FCC_A1",
+    "PD": "FCC_A1",
+    "PT": "FCC_A1",
+    "SI": "DIA_A4",
+    "SN": "BCT_A5",
+    "TI": "HCP_A3",
+    "V": "BCC_A2",
+    "W": "BCC_A2",
+    "ZN": "HCP_A3",
+    "ZR": "HCP_A3",
+}
+
+_ELEMENT_SYMBOLS = [
+    "AC", "AG", "AL", "AM", "AR", "AS", "AT", "AU", "B", "BA", "BE", "BH",
+    "BI", "BK", "BR", "C", "CA", "CD", "CE", "CF", "CL", "CM", "CN", "CO",
+    "CR", "CS", "CU", "DB", "DS", "DY", "ER", "ES", "EU", "F", "FE", "FL",
+    "FM", "FR", "GA", "GD", "GE", "H", "HE", "HF", "HG", "HO", "HS", "I",
+    "IN", "IR", "K", "KR", "LA", "LI", "LR", "LU", "LV", "MC", "MD", "MG",
+    "MN", "MO", "MT", "N", "NA", "NB", "ND", "NE", "NH", "NI", "NO", "NP",
+    "O", "OG", "OS", "P", "PA", "PB", "PD", "PM", "PO", "PR", "PT", "PU",
+    "RA", "RB", "RE", "RF", "RG", "RH", "RN", "RU", "S", "SB", "SC", "SE",
+    "SG", "SI", "SM", "SN", "SR", "TA", "TB", "TC", "TE", "TH", "TI", "TL",
+    "TM", "TS", "U", "V", "W", "XE", "Y", "YB", "ZN", "ZR",
+]
+
+_TDB_METADATA_PREFIX = "$ CALPHY_TDB_METADATA "
 
 
 colors = [
@@ -1654,15 +1701,463 @@ def _eval_calphad_surface_at(surface, x, T):
 
     # Redlich-Kister excess — L can be 1-D (T-independent) or 2-D (T-dependent)
     # Shape (rk_order,)   → L_k constant
-    # Shape (rk_order, 2) → L_k(T) = a_k + b_k·T
+    # Shape (rk_order, 2) → L_k(T) = a_k + b_k·T  (legacy)
+    # Shape (rk_order, 6) → L_k(T) = CALPHAD poly6 (preferred)
     pf = x * (1.0 - x)
     L = np.asarray(L)
-    if L.ndim == 2:
+    if L.ndim == 2 and L.shape[1] == 6:
+        G_xs = sum(_eval_calphad_poly6(L[k], T) * pf * (1.0 - 2.0 * x) ** k for k in range(len(L)))
+    elif L.ndim == 2:
         G_xs = sum((L[k, 0] + L[k, 1] * T) * pf * (1.0 - 2.0 * x) ** k for k in range(len(L)))
     else:
         G_xs = sum(L[k] * pf * (1.0 - 2.0 * x) ** k for k in range(len(L)))
 
     return G_lin + G_ideal + G_xs
+
+
+def _tdb_phase_name(name):
+    phase_name = re.sub(r"[^0-9A-Za-z_]+", "_", str(name).upper()).strip("_")
+    if not phase_name:
+        raise ValueError("Phase names must not be empty")
+    if phase_name[0].isdigit():
+        phase_name = f"P_{phase_name}"
+    return phase_name
+
+
+def _format_tdb_expr_poly6(coeffs):
+    a, b, c, d, e, f = np.asarray(coeffs, dtype=float)
+    terms = []
+    if abs(a) > 1e-10:
+        terms.append(f"{a:+.8g}")
+    if abs(b) > 1e-10:
+        terms.append(f"{b:+.8g}*T")
+    if abs(c) > 1e-10:
+        terms.append(f"{c:+.8g}*T*LN(T)")
+    if abs(d) > 1e-14:
+        terms.append(f"{d:+.8g}*T**2")
+    if abs(e) > 1e-18:
+        terms.append(f"{e:+.8g}*T**3")
+    if abs(f) > 1e-6:
+        terms.append(f"{f:+.8g}*T**(-1)")
+    return "".join(terms) if terms else "0"
+
+
+def _format_tdb_expr_linear(a, b):
+    terms = []
+    if abs(a) > 1e-10:
+        terms.append(f"{a:+.8g}")
+    if abs(b) > 1e-10:
+        terms.append(f"{b:+.8g}*T")
+    return "".join(terms) if terms else "0"
+
+
+def _phase_data_as_points(df, phase):
+    rows = []
+    df_phase = df.loc[df["phase"] == phase]
+    for _, row in df_phase.iterrows():
+        temperatures = np.atleast_1d(np.asarray(row["temperature"], dtype=float))
+        free_energies = np.atleast_1d(np.asarray(row["free_energy"], dtype=float))
+        if len(temperatures) != len(free_energies):
+            continue
+        composition = float(row["composition"])
+        for temperature, free_energy in zip(temperatures, free_energies):
+            if np.isfinite(temperature) and np.isfinite(free_energy):
+                rows.append((composition, float(temperature), float(free_energy)))
+    return pd.DataFrame(rows, columns=["composition", "temperature", "free_energy"])
+
+
+def _infer_binary_elements(phases, reference_element):
+    ref = reference_element.upper()
+    found = set()
+    element_set = set(_ELEMENT_SYMBOLS)
+    for phase in phases:
+        token = re.sub(r"[^A-Za-z]", "", str(phase)).upper()
+        if ref not in token:
+            continue
+        pos = 0
+        while pos < len(token):
+            two = token[pos : pos + 2]
+            one = token[pos : pos + 1]
+            if two in element_set:
+                found.add(two)
+                pos += 2
+            elif one in element_set:
+                found.add(one)
+                pos += 1
+            else:
+                pos += 1
+    found.add(ref)
+    others = sorted(found - {ref})
+    if len(others) == 1:
+        return [others[0], ref]
+    raise ValueError(
+        "Could not infer both binary elements from phase names. "
+        "Pass elements=('A', reference_element) explicitly."
+    )
+
+
+def _stoichiometry_from_reference_composition(x_reference, max_denominator=8):
+    frac = Fraction(float(x_reference)).limit_denominator(max_denominator)
+    n_ref = frac.numerator
+    total = frac.denominator
+    m_other = total - n_ref
+    if m_other <= 0 or n_ref <= 0:
+        raise ValueError("Limited-range compound phases require an interior stoichiometry")
+    return int(m_other), int(n_ref)
+
+
+def _stoichiometry_from_phase_formula(phase, el_a, el_b):
+    token = re.sub(r"[^0-9A-Za-z]", "", str(phase)).upper()
+    pattern = re.compile(f"({re.escape(el_a)}|{re.escape(el_b)})([0-9]*)")
+    counts = {el_a: 0, el_b: 0}
+    matched = ""
+    for element, number in pattern.findall(token):
+        counts[element] += int(number) if number else 1
+        matched += element + number
+    if matched != token or counts[el_a] <= 0 or counts[el_b] <= 0:
+        return None
+    return int(counts[el_a]), int(counts[el_b])
+
+
+def _infer_compound_stoichiometry(phase, points, el_a, el_b):
+    from_formula = _stoichiometry_from_phase_formula(phase, el_a, el_b)
+    if from_formula is not None:
+        return from_formula
+    x_ref = float(np.median(points["composition"]))
+    return _stoichiometry_from_reference_composition(x_ref)
+
+
+def _safe_xlogx(y):
+    y = np.asarray(y, dtype=float)
+    return np.where(y > 0.0, y * np.log(np.maximum(y, 1e-300)), 0.0)
+
+
+def _site_ratio_weights(site_ratios):
+    site_ratios = np.asarray(site_ratios, dtype=float)
+    if site_ratios.ndim != 1 or len(site_ratios) < 2:
+        raise ValueError("A pseudo-sublattice compound model needs at least two sublattices")
+    if np.any(site_ratios <= 0):
+        raise ValueError("Sublattice site ratios must be positive")
+    return site_ratios / np.sum(site_ratios)
+
+
+def _normalise_compound_sublattice_model(model):
+    if isinstance(model, dict):
+        model = model.get("site_ratios")
+    if model is None:
+        raise ValueError("compound_sublattice_models entries must define site_ratios")
+    site_ratios = tuple(int(x) if float(x).is_integer() else float(x) for x in model)
+    _site_ratio_weights(site_ratios)
+    return site_ratios
+
+
+def _infer_compound_sublattice_model(m_other, n_ref, mode="compact"):
+    if mode == "compact":
+        return (int(m_other), int(n_ref))
+    if mode == "expanded":
+        return tuple([1] * int(m_other + n_ref))
+    raise ValueError("compound_sublattice_mode must be 'compact' or 'expanded'")
+
+
+def _sublattice_endmember_bits(n_sublattices):
+    return np.asarray(list(itertools.product([0, 1], repeat=n_sublattices)), dtype=int)
+
+
+def _sublattice_grid(n_sublattices, grid_points):
+    grid = np.linspace(0.0, 1.0, int(grid_points))
+    if n_sublattices == 2:
+        return grid[:, None]
+    n_combinations = int(grid_points) ** (n_sublattices - 1)
+    if n_combinations > 250000:
+        raise ValueError(
+            "Pseudo-sublattice grid is too large. Reduce pseudo_grid_points or use fewer sublattices."
+        )
+    return np.asarray(list(itertools.product(grid, repeat=n_sublattices - 1)), dtype=float)
+
+
+def _pseudo_sublattice_minimum(theta, x_reference, temperature, site_ratios, grid_points):
+    x_reference = np.asarray(x_reference, dtype=float)
+    temperature = np.asarray(temperature, dtype=float)
+    ratios = _site_ratio_weights(site_ratios)
+    n_sublattices = len(ratios)
+    endmember_bits = _sublattice_endmember_bits(n_sublattices)
+    theta = np.asarray(theta, dtype=float).reshape(len(endmember_bits), 2)
+
+    known_grid = _sublattice_grid(n_sublattices, grid_points)
+    y_known = np.broadcast_to(known_grid[None, :, :], (len(x_reference), len(known_grid), n_sublattices - 1))
+    y_last = (
+        x_reference[:, None]
+        - np.sum(y_known * ratios[:-1][None, None, :], axis=2)
+    ) / ratios[-1]
+    y_ref = np.concatenate([y_known, y_last[:, :, None]], axis=2)
+    valid = (y_ref >= -1e-12) & (y_ref <= 1.0 + 1e-12)
+    valid = np.all(valid, axis=2)
+    y_ref = np.clip(y_ref, 0.0, 1.0)
+    y_other = 1.0 - y_ref
+
+    g_ref = np.zeros((len(x_reference), len(known_grid)), dtype=float)
+    for idx, bits in enumerate(endmember_bits):
+        probability = np.prod(np.where(bits[None, None, :] == 1, y_ref, y_other), axis=2)
+        g_ref += probability * (theta[idx, 0] + theta[idx, 1] * temperature[:, None])
+    g_id = R_GAS_CONSTANT * temperature[:, None] * (
+        np.sum(ratios[None, None, :] * (_safe_xlogx(y_ref) + _safe_xlogx(y_other)), axis=2)
+    )
+    values = g_ref + g_id
+    values[~valid] = np.inf
+    result = np.min(values, axis=1)
+    return result
+
+
+def _fit_linear_tdb_parameter(temperature, free_energy_j_mol):
+    design = np.column_stack([np.ones_like(temperature), temperature])
+    coeffs, _, _, _ = np.linalg.lstsq(design, free_energy_j_mol, rcond=None)
+    return coeffs
+
+
+def _fit_pseudo_sublattice_phase(
+    points,
+    site_ratios,
+    target_x_reference=None,
+    max_points=600,
+    grid_points=81,
+    wrong_endmember_penalty=50000.0,
+    regularization=1e-8,
+):
+    from scipy.optimize import least_squares
+
+    if len(points) < 4:
+        raise ValueError("At least four finite points are needed to fit a pseudo-sublattice phase")
+
+    fit_points = points.sort_values(["composition", "temperature"]).copy()
+    if len(fit_points) > max_points:
+        keep = np.linspace(0, len(fit_points) - 1, max_points).round().astype(int)
+        fit_points = fit_points.iloc[np.unique(keep)]
+
+    x = fit_points["composition"].to_numpy(dtype=float)
+    temperature = fit_points["temperature"].to_numpy(dtype=float)
+    target = fit_points["free_energy"].to_numpy(dtype=float) * EV_TO_J_MOL
+    site_ratios = _normalise_compound_sublattice_model(site_ratios)
+    ratios = _site_ratio_weights(site_ratios)
+    if target_x_reference is None:
+        target_x_reference = float(np.median(points["composition"]))
+    stoich = float(target_x_reference)
+    distances = np.abs(points["composition"].to_numpy(dtype=float) - stoich)
+    ordered_points = points.iloc[distances <= max(np.min(distances), 1e-12)]
+    ordered_temperature = ordered_points["temperature"].to_numpy(dtype=float)
+    ordered_energy = ordered_points["free_energy"].to_numpy(dtype=float) * EV_TO_J_MOL
+    ordered_a, ordered_b = _fit_linear_tdb_parameter(ordered_temperature, ordered_energy)
+    high_a = ordered_a + float(wrong_endmember_penalty)
+    endmember_bits = _sublattice_endmember_bits(len(site_ratios))
+    endmember_compositions = endmember_bits @ ratios
+    ordered_mask = np.abs(endmember_compositions - stoich) <= max(
+        np.min(np.abs(endmember_compositions - stoich)), 1e-12
+    )
+    theta0 = []
+    for is_ordered in ordered_mask:
+        theta0.extend([ordered_a if is_ordered else high_a, ordered_b])
+    theta0 = np.asarray(theta0, dtype=float)
+    scale = max(1000.0, float(np.nanstd(target)))
+
+    def residual(theta):
+        pred = _pseudo_sublattice_minimum(theta, x, temperature, site_ratios, grid_points)
+        resid = (pred - target) / scale
+        if regularization > 0:
+            denom = np.maximum(np.abs(theta0), 1.0)
+            reg = np.sqrt(regularization) * (theta - theta0) / denom
+            resid = np.concatenate([resid, reg])
+        return resid
+
+    result = least_squares(residual, theta0, max_nfev=400)
+    pred = _pseudo_sublattice_minimum(result.x, x, temperature, site_ratios, grid_points)
+    rms = float(np.sqrt(np.mean((pred - target) ** 2)))
+    return {
+        "theta": result.x,
+        "site_ratios": list(site_ratios),
+        "rms_j_mol": rms,
+        "n_fit_points": int(len(fit_points)),
+        "success": bool(result.success),
+        "message": result.message,
+    }
+
+
+def _fit_compound_two_sublattice(points, host_surface, m_first, n_second,
+                                  anti_site_penalty_j_mol=80000.0,
+                                  pure_sublattice_penalty_j_mol=80000.0):
+    """
+    Fit a 2-sublattice ``(A,B):(A,B)`` compound with site ratios ``(m, n)``
+    where the stoichiometric endmember ``A:B`` corresponds to mole fraction
+    ``x_A = m / (m + n)``.
+
+    Only the stoichiometric endmember ``G(A:B; 0)`` is fit to calphy data
+    (linear in T). The pure-element-on-each-sublattice endmembers ``A:A``
+    and ``B:B`` are set to the host solution phase's ``G_A(T)`` and
+    ``G_B(T)`` plus a large per-atom penalty ``pure_sublattice_penalty_j_mol``
+    so that the CEF cannot lower G below the host through configurational
+    disordering away from the stoichiometric column. The anti-site
+    endmember ``G(B:A; 0)`` equals the stoichiometric one plus
+    ``anti_site_penalty_j_mol``. Together these two penalties confine the
+    compound to a narrow stability window around ``x_A = m/(m+n)``.
+
+    All endmember energies are returned in J / mol-formula-unit (multiplied
+    by ``m + n``) since pycalphad's TDB convention writes ``PARAMETER
+    G(phase, ...; 0)`` per formula unit.
+    """
+    m, n = int(m_first), int(n_second)
+    N = m + n
+    # Composition convention: data column is mole fraction of the reference
+    # element (the second-sublattice element), so the stoichiometric
+    # composition in data coordinates is n/(m+n).
+    x_stoich_data = n / N
+    x_stoich_first = m / N  # x of the first (non-reference) element
+
+    x = points["composition"].to_numpy(dtype=float)
+    T_all = points["temperature"].to_numpy(dtype=float)
+    G_all = points["free_energy"].to_numpy(dtype=float)  # eV / atom
+
+    distances = np.abs(x - x_stoich_data)
+    near = distances <= max(np.min(distances), 1e-12)
+    T_stoich = T_all[near]
+    G_stoich = G_all[near] * EV_TO_J_MOL  # J / mol-atom
+
+    G_per_formula = G_stoich * N
+    a_AB, b_AB = _fit_linear_tdb_parameter(T_stoich, G_per_formula)
+
+    coeffs_A_per_formula = np.asarray(host_surface["coeffs_A"], dtype=float) * EV_TO_J_MOL * N
+    coeffs_B_per_formula = np.asarray(host_surface["coeffs_B"], dtype=float) * EV_TO_J_MOL * N
+    pure_penalty_per_formula = float(pure_sublattice_penalty_j_mol) * N
+
+    pred = a_AB + b_AB * T_stoich
+    rms = float(np.sqrt(np.mean((pred - G_per_formula) ** 2)) / N)
+
+    return {
+        "site_ratios": (m, n),
+        "stoichiometry": (m, n),
+        "x_stoich": x_stoich_first,
+        "theta_AB": (a_AB, b_AB),  # stoichiometric endmember, fit to data
+        "theta_AA_poly6": coeffs_A_per_formula,  # pure A on both: host G_A * N
+        "theta_BB_poly6": coeffs_B_per_formula,  # pure B on both: host G_B * N
+        "pure_sublattice_penalty": pure_penalty_per_formula,
+        "anti_site_penalty": float(anti_site_penalty_j_mol) * N,
+        "rms_j_mol": rms,
+        "n_fit_points": int(len(T_stoich)),
+    }
+
+
+def _fit_limited_range_surface(points, host_surface, rk_order=3,
+                                anchor_outside_window=True,
+                                anchor_margin=0.02,
+                                anchor_count=8,
+                                anchor_weight=1.0):
+    """
+    Fit a 1-sublattice (A,B) CALPHAD surface to a limited-composition-range
+    phase, sharing the pure-element reference functions ``G_A(T)`` and
+    ``G_B(T)`` with a host solution phase.
+
+    Only the temperature-dependent Redlich-Kister excess parameters
+    ``L_k(T) = a_k + b_k T`` are fit. This mirrors
+    :meth:`PhaseDiagram.build_calphad_surface` but for phases that do not
+    span the full composition range. The shared SER guarantees a consistent
+    reference state with the host phase so the compound's stability against
+    the host is determined purely by the excess term, which is exactly the
+    quantity calphy data resolves in the compound's window.
+
+    To keep the polynomial from blowing up outside the data window, anchor
+    points are appended at evenly spaced compositions in
+    ``[0, x_min - anchor_margin]`` and ``[x_max + anchor_margin, 1]`` where
+    the compound's free energy is set equal to the host's free energy at the
+    same ``(x, T)``. This sets the excess to zero outside the window so the
+    compound coincides with the host (and is therefore not spuriously stable
+    far from its stoichiometric range).
+
+    The model evaluated by pycalphad is::
+
+        G(x, T) = (1-x) G_A(T) + x G_B(T)
+                  + R T [x ln x + (1-x) ln(1-x)]
+                  + x (1-x) Sum_k (a_k + b_k T) (1 - 2x)^k
+    """
+    x = points["composition"].to_numpy(dtype=float)
+    T = points["temperature"].to_numpy(dtype=float)
+    G_data = points["free_energy"].to_numpy(dtype=float)  # eV/atom
+
+    coeffs_A = host_surface["coeffs_A"]
+    coeffs_B = host_surface["coeffs_B"]
+
+    def _g_lin_ideal(x_arr, T_arr):
+        G_A = _eval_calphad_poly6(coeffs_A, T_arr)
+        G_B = _eval_calphad_poly6(coeffs_B, T_arr)
+        G_lin = (1.0 - x_arr) * G_A + x_arr * G_B
+        log_x = np.where(x_arr > 0, np.log(np.maximum(x_arr, 1e-300)), 0.0)
+        log_1mx = np.where(x_arr < 1, np.log(np.maximum(1.0 - x_arr, 1e-300)), 0.0)
+        G_ideal = kb * T_arr * (x_arr * log_x + (1.0 - x_arr) * log_1mx)
+        return G_lin, G_ideal
+
+    G_lin, G_ideal = _g_lin_ideal(x, T)
+    G_xs = G_data - G_lin - G_ideal
+    weights = np.ones_like(G_xs)
+
+    if anchor_outside_window:
+        x_min = float(np.min(x))
+        x_max = float(np.max(x))
+        unique_T = np.unique(T)
+        anchors_x = []
+        if x_min - anchor_margin > 1e-3:
+            anchors_x.extend(np.linspace(1e-3, x_min - anchor_margin, anchor_count))
+        if 1.0 - (x_max + anchor_margin) > 1e-3:
+            anchors_x.extend(np.linspace(x_max + anchor_margin, 1.0 - 1e-3, anchor_count))
+        if anchors_x:
+            anchor_x = np.repeat(anchors_x, len(unique_T))
+            anchor_T = np.tile(unique_T, len(anchors_x))
+            # Anchor: compound G == host G at (x, T) -> excess == 0.
+            x = np.concatenate([x, anchor_x])
+            T = np.concatenate([T, anchor_T])
+            G_xs = np.concatenate([G_xs, np.zeros_like(anchor_x)])
+            weights = np.concatenate([weights, anchor_weight * np.ones_like(anchor_x)])
+
+    pf = x * (1.0 - x)
+    cols = []
+    for k in range(rk_order):
+        pk = pf * (1.0 - 2.0 * x) ** k
+        cols.append(pk)
+        cols.append(pk * T)
+    basis = np.column_stack(cols)
+    W = np.sqrt(weights)
+    L_flat, _, _, _ = np.linalg.lstsq(basis * W[:, None], G_xs * W, rcond=None)
+    L_coeffs = L_flat.reshape(rk_order, 2)
+    rms = float(np.sqrt(np.mean((basis @ L_flat - G_xs) ** 2)) * EV_TO_J_MOL)
+    return {
+        "coeffs_A": np.asarray(coeffs_A, dtype=float),
+        "coeffs_B": np.asarray(coeffs_B, dtype=float),
+        "L_coeffs": L_coeffs,
+        "rms_j_mol": rms,
+        "n_fit_points": int(len(x)),
+        "rk_order": int(rk_order),
+    }
+
+
+def _fit_line_compound_phase(points, x_reference=None):
+    if len(points) < 2:
+        raise ValueError("At least two finite temperature points are needed to fit a line compound")
+    if x_reference is None:
+        x_reference = float(np.median(points["composition"]))
+    distances = np.abs(points["composition"].to_numpy(dtype=float) - x_reference)
+    line_points = points.iloc[distances <= max(np.min(distances), 1e-12)]
+    coeffs = _fit_calphad_poly6(
+        line_points["temperature"].to_numpy(dtype=float),
+        line_points["free_energy"].to_numpy(dtype=float),
+    )
+    predicted = _eval_calphad_poly6(coeffs, line_points["temperature"].to_numpy(dtype=float))
+    rms = float(
+        np.sqrt(
+            np.mean((predicted - line_points["free_energy"].to_numpy(dtype=float)) ** 2)
+        )
+        * EV_TO_J_MOL
+    )
+    return {
+        "coeffs": coeffs,
+        "x_reference": float(x_reference),
+        "rms_j_mol": rms,
+        "n_fit_points": int(len(line_points)),
+    }
 
 
 class PhaseDiagram:
@@ -1933,23 +2428,30 @@ class PhaseDiagram:
             pf_fit = x_fit * (1.0 - x_fit)
 
             # --- Fit temperature-dependent Redlich-Kister parameters ---
-            # G_xs(x,T) = x(1-x) · Σ_k [a_k + b_k·T] · (1-2x)^k
-            # Build 2*rk_order column design matrix:
-            # cols: pf·(1-2x)^k  (→ a_k),  pf·(1-2x)^k·T  (→ b_k)
+            # G_xs(x,T) = x(1-x) · Σ_k L_k(T) · (1-2x)^k
+            # L_k(T) uses the same 6-term CALPHAD polynomial as G_A/G_B:
+            #   L_k(T) = a + b·T + c·T·lnT + d·T² + e·T³ + f·T⁻¹
+            # Build 6*rk_order column design matrix.
             cols = []
+            log_T_fit = np.log(T_fit)
             for k in range(rk_order):
                 pk = pf_fit * (1.0 - 2.0 * x_fit) ** k
                 cols.append(pk)
                 cols.append(pk * T_fit)
+                cols.append(pk * T_fit * log_T_fit)
+                cols.append(pk * T_fit ** 2)
+                cols.append(pk * T_fit ** 3)
+                cols.append(pk / T_fit)
             basis = np.column_stack(cols)
             L_flat, _, _, _ = np.linalg.lstsq(basis, Gxs_vec, rcond=None)
-            # Shape (rk_order, 2): each row is [a_k, b_k]
-            L_coeffs = L_flat.reshape(rk_order, 2)
+            # Shape (rk_order, 6): each row is [a, b, c, d, e, f] for L_k(T)
+            L_coeffs = L_flat.reshape(rk_order, 6)
 
             Gxs_pred = basis @ L_flat
             rms = float(np.sqrt(np.mean((Gxs_vec - Gxs_pred) ** 2)) * 96485)
+            T_ref = float(np.mean(T_fit))
             L_str = "  ".join(
-                f"L{k}={L_coeffs[k,0]*96485:.1f}{L_coeffs[k,1]*96485:+.3f}*T J/mol"
+                f"L{k}(T_ref={T_ref:.0f})={_eval_calphad_poly6(L_coeffs[k], T_ref)*96485:.0f} J/mol"
                 for k in range(rk_order)
             )
             print(f"[{phase}]  {L_str}   RMS_xs={rms:.1f} J/mol")
@@ -2526,8 +3028,17 @@ class PhaseDiagram:
 
             x_fine = np.linspace(0, 1, 500)
             pf = x_fine * (1.0 - x_fine)
+            # Evaluate L_k at a representative temperature for the composition plot
+            L = np.asarray(L)
+            T_ref_plot = float(np.mean(surf["x_data"]) * 0 + 1000.0)  # use 1000 K as reference
+            if L.ndim == 2 and L.shape[1] == 6:
+                Lk_at_T = [_eval_calphad_poly6(L[k], T_ref_plot) for k in range(rk_order)]
+            elif L.ndim == 2:
+                Lk_at_T = [L[k, 0] + L[k, 1] * T_ref_plot for k in range(rk_order)]
+            else:
+                Lk_at_T = [L[k] for k in range(rk_order)]
             G_xs_fit = sum(
-                L[k] * pf * (1.0 - 2.0 * x_fine) ** k for k in range(rk_order)
+                Lk_at_T[k] * pf * (1.0 - 2.0 * x_fine) ** k for k in range(rk_order)
             )
             ax_rk.plot(
                 x_fine,
@@ -2703,6 +3214,341 @@ class PhaseDiagram:
         table = table.replace_schema_metadata({**existing, **meta})
         pq.write_table(table, filename)
 
+    def to_tdb(
+        self,
+        filename=None,
+        elements=None,
+        phase_name_map=None,
+        solution_phases=None,
+        compound_phases=None,
+        line_compound_phases=None,
+        compound_stoichiometries=None,
+        line_compound_stoichiometries=None,
+        compound_host_phases=None,
+        compound_rk_orders=None,
+        rk_order=3,
+        endpoint_tol=0.05,
+        tdb_t_min=298.15,
+        tdb_t_max=None,
+        description=None,
+    ):
+        """
+        Convert the processed phase-diagram DataFrame to a binary TDB string.
+
+        All exported phases use the same one-sublattice (A,B) CALPHAD surface
+        form
+
+        .. code-block:: text
+
+            G(x, T) = (1-x) G_A(T) + x G_B(T)
+                      + R T [x ln x + (1-x) ln(1-x)]
+                      + x (1-x) Sum_k (a_k + b_k T) (1 - 2x)^k
+
+        Solution phases use their own pure-element references ``G_A(T)`` and
+        ``G_B(T)`` fitted from calphy data at ``x = 0`` and ``x = 1`` and fit
+        Redlich-Kister parameters across the full composition range. Limited
+        composition-range compounds and "line" compounds reuse a host
+        solution phase's pure-element references and fit only their own
+        Redlich-Kister parameters to the data inside their composition
+        window. Sharing the SER guarantees the compound is on the same
+        reference state as the host so its stability is determined purely by
+        the excess term in the window where calphy data is available.
+
+        Parameters
+        ----------
+        filename : str, optional
+            If given, write the TDB text to this path.
+        elements : sequence of str, optional
+            Binary element order ``(A, B)`` where ``B`` is the reference element
+            used by the composition axis.
+        phase_name_map : dict, optional
+            Mapping from calphy phase names to TDB phase names.
+        solution_phases, compound_phases, line_compound_phases : sequence of str
+            Explicit phase classification. Required; pass ``[]`` for absent
+            categories. ``compound_phases`` are finite-range compounds whose
+            calphy data spans more than one composition. ``line_compound_phases``
+            are treated identically (same one-sublattice surface) but typically
+            have data at a single composition.
+        compound_stoichiometries, line_compound_stoichiometries : dict, optional
+            Mapping ``phase -> (m, n)`` (non-reference, reference). Used only to
+            label and validate; the surface itself is not stoichiometry-fixed.
+        compound_host_phases : dict, optional
+            Mapping ``compound_phase -> host_solution_phase`` selecting which
+            solution phase's ``G_A(T)`` and ``G_B(T)`` are reused as the
+            compound's pure-element references. Defaults to the first solution
+            phase for every compound.
+        compound_rk_orders : dict, optional
+            Per-compound Redlich-Kister order. Defaults to ``rk_order``.
+        rk_order : int
+            Default Redlich-Kister order for solution phases and compounds.
+        endpoint_tol : float
+            Composition tolerance for selecting pure-endpoint rows when
+            building the solution-phase surface.
+        tdb_t_min, tdb_t_max : float
+            Parameter validity range. ``tdb_t_max`` defaults to the largest
+            temperature in any phase's calphy data.
+        description : str, optional
+            Free-text comment placed near the top of the file.
+        """
+        if phase_name_map is None:
+            phase_name_map = {}
+        if compound_stoichiometries is None:
+            compound_stoichiometries = {}
+        if line_compound_stoichiometries is None:
+            line_compound_stoichiometries = {}
+        if compound_host_phases is None:
+            compound_host_phases = {}
+        if compound_rk_orders is None:
+            compound_rk_orders = {}
+
+        if elements is None:
+            el_a, el_b = _infer_binary_elements(self.phases, self.reference_element)
+        else:
+            if len(elements) != 2:
+                raise ValueError("elements must contain exactly two element symbols")
+            el_a, el_b = [str(el).upper() for el in elements]
+            if el_b != self.reference_element.upper():
+                raise ValueError("elements must be ordered as (non_reference, reference_element)")
+
+        if solution_phases is None or compound_phases is None or line_compound_phases is None:
+            raise ValueError(
+                "Manual phase classification is required. Pass solution_phases, "
+                "compound_phases, and line_compound_phases; use [] for absent categories."
+            )
+
+        solution_phases = list(solution_phases)
+        compound_phases = list(compound_phases)
+        line_compound_phases = list(line_compound_phases)
+        all_compounds = compound_phases + line_compound_phases
+        all_exported = solution_phases + all_compounds
+        duplicate_phases = sorted({p for p in all_exported if all_exported.count(p) > 1})
+        if duplicate_phases:
+            raise ValueError(f"Phases can only appear in one TDB category: {duplicate_phases}")
+        unknown_phases = sorted(set(all_exported) - set(self.phases))
+        if unknown_phases:
+            raise ValueError(f"TDB phase classification includes unknown phase(s): {unknown_phases}")
+        if all_compounds and not solution_phases:
+            raise ValueError(
+                "At least one solution_phase is required to host the pure-element "
+                "references shared by compound and line-compound phases."
+            )
+        tdb_names = {
+            phase: _tdb_phase_name(phase_name_map.get(phase, phase))
+            for phase in all_exported
+        }
+
+        phase_points = {phase: _phase_data_as_points(self.df, phase) for phase in all_exported}
+        empty_phases = [phase for phase, points in phase_points.items() if points.empty]
+        if empty_phases:
+            raise ValueError(f"No finite data points found for TDB phase(s): {empty_phases}")
+        database_t_max = float(
+            tdb_t_max
+            if tdb_t_max is not None
+            else max(points["temperature"].max() for points in phase_points.values())
+        )
+
+        if solution_phases:
+            original_phases = self.phases
+            try:
+                self.phases = solution_phases
+                self.build_calphad_surface(rk_order=rk_order, endpoint_tol=endpoint_tol)
+            finally:
+                self.phases = original_phases
+
+        default_host = solution_phases[0] if solution_phases else None
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        lines = [
+            "$",
+            f"$ TDB generated from calphy PhaseDiagram data: {el_a}-{el_b}",
+            f"$ Generated: {timestamp}",
+        ]
+        if description:
+            lines.append(f"$ {description}")
+
+        metadata = {
+            "format": "calphy.phase_diagram.to_tdb.v2",
+            "elements": [el_a, el_b],
+            "reference_element": self.reference_element,
+            "phases": list(self.phases),
+            "solution_phases": solution_phases,
+            "compound_phases": compound_phases,
+            "line_compound_phases": line_compound_phases,
+            "phase_name_map": tdb_names,
+            "composition_intervals": {
+                phase: list(self.composition_intervals.get(phase, (0.0, 1.0)))
+                for phase in all_exported
+            },
+            "units": "J/mol-atoms",
+        }
+        lines.append(_TDB_METADATA_PREFIX + json.dumps(metadata, sort_keys=True))
+        lines.extend(["$", "", "TYPE_DEFINITION % SEQ *!", ""])
+
+        for sym in ["/-", "VA", el_a, el_b]:
+            ref = {"/-": "ELECTRON_GAS", "VA": "VACUUM"}.get(sym, _SER_REF.get(sym, "FCC_A1"))
+            lines.append(f"ELEMENT {sym:<4s} {ref:<16s} 0.0 0.0 0.0 !")
+        lines.append("")
+
+        for phase in solution_phases:
+            tdb_phase = tdb_names[phase]
+            lines.append(f"PHASE {tdb_phase} % 1 1.0 !")
+            lines.append(f"CONSTITUENT {tdb_phase} : {el_a},{el_b} : !")
+            lines.append("")
+
+        # Fit 2-sublattice CEF compounds (host SER + stoichiometric endmember
+        # fit + anti-site penalty + pure-element-on-each-sublattice = host).
+        compound_surfaces = {}
+        for phase in all_compounds:
+            host = compound_host_phases.get(phase, default_host)
+            host_surface = self._calphad_surfaces.get(host)
+            if host_surface is None:
+                raise ValueError(
+                    f"Compound phase '{phase}': host solution phase '{host}' has no fitted "
+                    "CALPHAD surface; cannot share pure-element references."
+                )
+            points = phase_points[phase]
+            if phase in compound_stoichiometries:
+                stoich = tuple(int(v) for v in compound_stoichiometries[phase])
+            elif phase in line_compound_stoichiometries:
+                stoich = tuple(int(v) for v in line_compound_stoichiometries[phase])
+            else:
+                stoich = _infer_compound_stoichiometry(phase, points, el_a, el_b)
+            m_first, n_second = int(stoich[0]), int(stoich[1])
+            fit = _fit_compound_two_sublattice(points, host_surface, m_first, n_second)
+            fit["host"] = host
+            compound_surfaces[phase] = fit
+            print(
+                f"[{phase}] 2-sublattice CEF (host={host}, ratios=({m_first},{n_second}), "
+                f"x_stoich={fit['x_stoich']:.3f}): RMS={fit['rms_j_mol']:.1f} J/mol over "
+                f"{fit['n_fit_points']} points"
+            )
+
+            tdb_phase = tdb_names[phase]
+            lines.append(f"PHASE {tdb_phase} % 2 {m_first} {n_second} !")
+            lines.append(f"CONSTITUENT {tdb_phase} : {el_a},{el_b} : {el_a},{el_b} : !")
+            lines.append("")
+
+        # Emit PARAMETER blocks for solution phases.
+        for phase in solution_phases:
+            surface = self._calphad_surfaces.get(phase)
+            if surface is None:
+                warnings.warn(f"Skipping solution phase '{phase}' because no CALPHAD surface was fit")
+                continue
+            tdb_phase = tdb_names[phase]
+            for el_sym, coeff_key in [(el_a, "coeffs_A"), (el_b, "coeffs_B")]:
+                expr = _format_tdb_expr_poly6(np.asarray(surface[coeff_key]) * EV_TO_J_MOL)
+                lines.append(
+                    f"PARAMETER G({tdb_phase},{el_sym};0) {tdb_t_min:.2f} "
+                    f"{expr}; {database_t_max:.2f} N !"
+                )
+            L = np.asarray(surface["L_coeffs"], dtype=float) * EV_TO_J_MOL
+            for order, coeff in enumerate(L):
+                coeff = np.asarray(coeff)
+                if coeff.ndim == 0:
+                    expr = _format_tdb_expr_linear(float(coeff), 0.0)
+                elif coeff.shape == (6,):
+                    expr = _format_tdb_expr_poly6(coeff)
+                else:
+                    expr = _format_tdb_expr_linear(float(coeff[0]), float(coeff[1]))
+                if expr == "0":
+                    continue
+                lines.append(
+                    f"PARAMETER L({tdb_phase},{el_a},{el_b};{order}) {tdb_t_min:.2f} "
+                    f"{expr}; {database_t_max:.2f} N !"
+                )
+            lines.append("")
+
+        # Emit PARAMETER blocks for compounds: 4 endmembers + anti-site penalty.
+        for phase in all_compounds:
+            surface = compound_surfaces[phase]
+            tdb_phase = tdb_names[phase]
+            # Pure-A on both sublattices = host G_A * N + per-atom penalty * N
+            aa_coeffs = np.asarray(surface["theta_AA_poly6"], dtype=float).copy()
+            aa_coeffs[0] += float(surface["pure_sublattice_penalty"])
+            bb_coeffs = np.asarray(surface["theta_BB_poly6"], dtype=float).copy()
+            bb_coeffs[0] += float(surface["pure_sublattice_penalty"])
+            expr_AA = _format_tdb_expr_poly6(aa_coeffs)
+            expr_BB = _format_tdb_expr_poly6(bb_coeffs)
+            a_AB, b_AB = surface["theta_AB"]
+            expr_AB = _format_tdb_expr_linear(float(a_AB), float(b_AB))
+            penalty = float(surface["anti_site_penalty"])
+            # Anti-site (B on first sublattice, A on second): stoich + penalty
+            expr_BA = _format_tdb_expr_linear(float(a_AB) + penalty, float(b_AB))
+            lines.append(
+                f"PARAMETER G({tdb_phase},{el_a}:{el_a};0) {tdb_t_min:.2f} "
+                f"{expr_AA}; {database_t_max:.2f} N !"
+            )
+            lines.append(
+                f"PARAMETER G({tdb_phase},{el_a}:{el_b};0) {tdb_t_min:.2f} "
+                f"{expr_AB}; {database_t_max:.2f} N !"
+            )
+            lines.append(
+                f"PARAMETER G({tdb_phase},{el_b}:{el_a};0) {tdb_t_min:.2f} "
+                f"{expr_BA}; {database_t_max:.2f} N !"
+            )
+            lines.append(
+                f"PARAMETER G({tdb_phase},{el_b}:{el_b};0) {tdb_t_min:.2f} "
+                f"{expr_BB}; {database_t_max:.2f} N !"
+            )
+            lines.append("")
+
+        tdb_text = "\n".join(lines).rstrip() + "\n"
+        if filename is not None:
+            with open(filename, "w") as handle:
+                handle.write(tdb_text)
+        return tdb_text
+
+    @staticmethod
+    def from_tdb(filename):
+        """
+        Read metadata and parameter records from a TDB file.
+
+        A TDB is a fitted thermodynamic model, so the original calphy
+        DataFrame cannot be reconstructed exactly. For TDB files written by
+        :meth:`to_tdb`, this method returns the embedded calphy metadata plus
+        a lightweight list of parsed ``PARAMETER`` records.
+
+        Parameters
+        ----------
+        filename : str
+            Path to a TDB file.
+
+        Returns
+        -------
+        dict
+            Metadata and parsed parameter records.
+        """
+        with open(filename, "r") as handle:
+            text = handle.read()
+
+        metadata = None
+        for line in text.splitlines():
+            if line.startswith(_TDB_METADATA_PREFIX):
+                metadata = json.loads(line[len(_TDB_METADATA_PREFIX):])
+                break
+
+        parameter_re = re.compile(
+            r"PARAMETER\s+([GL])\(([^,]+),([^;]+);(\d+)\)\s+"
+            r"([0-9.]+)\s+(.+?);\s+([0-9.]+)\s+([NY])\s+!",
+            re.IGNORECASE,
+        )
+        parameters = []
+        for match in parameter_re.finditer(text):
+            parameters.append(
+                {
+                    "kind": match.group(1).upper(),
+                    "phase": match.group(2).strip(),
+                    "constituents": match.group(3).strip(),
+                    "order": int(match.group(4)),
+                    "T_min": float(match.group(5)),
+                    "expression": match.group(6).strip(),
+                    "T_max": float(match.group(7)),
+                    "extrapolate": match.group(8).upper(),
+                }
+            )
+
+        return {"metadata": metadata, "parameters": parameters, "text": text}
+
     @staticmethod
     def load_parquet(filename):
         """
@@ -2754,6 +3600,79 @@ class PhaseDiagram:
         obj.phases = phases
         obj.composition_intervals = composition_intervals
         obj.df = reconstructed_df
+        obj.tangents = None
+        obj.temperatures = None
+        obj.tangent_types = None
+        obj._calc_kwargs = {}
+        obj._calphad_surfaces = {}
+        return obj
+
+    @classmethod
+    def from_dataframe(cls, df, reference_element, phases=None, composition_intervals=None):
+        """
+        Construct a :class:`PhaseDiagram` directly from a DataFrame.
+
+        This bypasses folder reading and all pre-processing (``gather_results``,
+        ``clean_df``, etc.).  Use it when you already have a tidy DataFrame
+        — e.g. one previously obtained from :attr:`PhaseDiagram.df` or
+        assembled manually.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            Must contain at least the columns:
+
+            * ``phase`` — str, phase label (e.g. ``'fcc'``, ``'lqd'``).
+            * ``composition`` — float, reference-element mole fraction.
+            * ``temperature`` — array-like of floats (one per row).
+            * ``free_energy`` — array-like of floats (one per row).
+
+            Any additional columns are preserved unchanged.
+
+        reference_element : str
+            The element whose fraction defines the composition axis
+            (e.g. ``'Ag'``).
+
+        phases : list of str, optional
+            Ordered list of phase names.  Defaults to the unique values of
+            ``df['phase']`` in the order they first appear.
+
+        composition_intervals : dict, optional
+            ``{phase: (x_lo, x_hi)}`` bounds for each phase.  Phases not
+            supplied are auto-detected from the data.
+
+        Returns
+        -------
+        PhaseDiagram
+        """
+        import numpy as np
+
+        df = df.copy()
+
+        # Ensure array columns are numpy arrays
+        for col in ("temperature", "free_energy"):
+            if col in df.columns:
+                df[col] = df[col].apply(np.asarray)
+
+        if phases is None:
+            # Preserve insertion order
+            seen = {}
+            for p in df["phase"]:
+                seen[p] = None
+            phases = list(seen)
+
+        comp_intervals = dict(composition_intervals or {})
+        for phase in phases:
+            if phase not in comp_intervals:
+                df_p = df.loc[df["phase"] == phase, "composition"]
+                if len(df_p) > 0:
+                    comp_intervals[phase] = (float(df_p.min()), float(df_p.max()))
+
+        obj = object.__new__(cls)
+        obj.reference_element = reference_element
+        obj.phases = phases
+        obj.composition_intervals = comp_intervals
+        obj.df = df.reset_index(drop=True)
         obj.tangents = None
         obj.temperatures = None
         obj.tangent_types = None

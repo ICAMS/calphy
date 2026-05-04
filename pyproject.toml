@@ -24,7 +24,9 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=2",
+    "pandas",
     "matplotlib",
+    "pyarrow",
     "pyyaml",
     "mendeleev",
     "tqdm",
