@@ -3123,7 +3123,7 @@ class PhaseDiagram:
             f"ref='{self.reference_element}', {status})"
         )
 
-    def save(self, filename):
+    def to_pickle(self, filename):
         """
         Save the PhaseDiagram object to a file using pickle.
 
@@ -3136,9 +3136,9 @@ class PhaseDiagram:
             pickle.dump(self, f)
 
     @staticmethod
-    def load(filename):
+    def from_pickle(filename):
         """
-        Load a PhaseDiagram object previously saved with :meth:`save`.
+        Load a PhaseDiagram object previously saved with :meth:`to_pickle`.
 
         Parameters
         ----------
@@ -3152,7 +3152,7 @@ class PhaseDiagram:
         with open(filename, "rb") as f:
             return pickle.load(f)
 
-    def dump_df(self, filename):
+    def to_df(self, filename):
         """
         Save the merged, reference-corrected DataFrame to a pickle file.
 
@@ -3169,7 +3169,7 @@ class PhaseDiagram:
         """
         self.df.to_pickle(filename)
 
-    def save_parquet(self, filename):
+    def to_parquet(self, filename):
         """
         Save the processed DataFrame to a Parquet file (version-independent).
 
@@ -3178,7 +3178,7 @@ class PhaseDiagram:
         which rows belong together.  Object-level metadata
         (``reference_element``, ``phases``, ``composition_intervals``) is
         embedded in the Parquet schema so the full object can be reconstructed
-        by :meth:`load_parquet`.
+        by :meth:`from_parquet`.
 
         Parameters
         ----------
@@ -3215,345 +3215,17 @@ class PhaseDiagram:
         table = table.replace_schema_metadata({**existing, **meta})
         pq.write_table(table, filename)
 
-    def to_tdb(
-        self,
-        filename=None,
-        elements=None,
-        phase_name_map=None,
-        solution_phases=None,
-        compound_phases=None,
-        line_compound_phases=None,
-        compound_stoichiometries=None,
-        line_compound_stoichiometries=None,
-        compound_host_phases=None,
-        compound_rk_orders=None,
-        rk_order=3,
-        endpoint_tol=0.05,
-        tdb_t_min=298.15,
-        tdb_t_max=None,
-        description=None,
-    ):
-        """
-        Convert the processed phase-diagram DataFrame to a binary TDB string.
-
-        All exported phases use the same one-sublattice (A,B) CALPHAD surface
-        form
-
-        .. code-block:: text
-
-            G(x, T) = (1-x) G_A(T) + x G_B(T)
-                      + R T [x ln x + (1-x) ln(1-x)]
-                      + x (1-x) Sum_k (a_k + b_k T) (1 - 2x)^k
-
-        Solution phases use their own pure-element references ``G_A(T)`` and
-        ``G_B(T)`` fitted from calphy data at ``x = 0`` and ``x = 1`` and fit
-        Redlich-Kister parameters across the full composition range. Limited
-        composition-range compounds and "line" compounds reuse a host
-        solution phase's pure-element references and fit only their own
-        Redlich-Kister parameters to the data inside their composition
-        window. Sharing the SER guarantees the compound is on the same
-        reference state as the host so its stability is determined purely by
-        the excess term in the window where calphy data is available.
-
-        Parameters
-        ----------
-        filename : str, optional
-            If given, write the TDB text to this path.
-        elements : sequence of str, optional
-            Binary element order ``(A, B)`` where ``B`` is the reference element
-            used by the composition axis.
-        phase_name_map : dict, optional
-            Mapping from calphy phase names to TDB phase names.
-        solution_phases, compound_phases, line_compound_phases : sequence of str
-            Explicit phase classification. Required; pass ``[]`` for absent
-            categories. ``compound_phases`` are finite-range compounds whose
-            calphy data spans more than one composition. ``line_compound_phases``
-            are treated identically (same one-sublattice surface) but typically
-            have data at a single composition.
-        compound_stoichiometries, line_compound_stoichiometries : dict, optional
-            Mapping ``phase -> (m, n)`` (non-reference, reference). Used only to
-            label and validate; the surface itself is not stoichiometry-fixed.
-        compound_host_phases : dict, optional
-            Mapping ``compound_phase -> host_solution_phase`` selecting which
-            solution phase's ``G_A(T)`` and ``G_B(T)`` are reused as the
-            compound's pure-element references. Defaults to the first solution
-            phase for every compound.
-        compound_rk_orders : dict, optional
-            Per-compound Redlich-Kister order. Defaults to ``rk_order``.
-        rk_order : int
-            Default Redlich-Kister order for solution phases and compounds.
-        endpoint_tol : float
-            Composition tolerance for selecting pure-endpoint rows when
-            building the solution-phase surface.
-        tdb_t_min, tdb_t_max : float
-            Parameter validity range. ``tdb_t_max`` defaults to the largest
-            temperature in any phase's calphy data.
-        description : str, optional
-            Free-text comment placed near the top of the file.
-        """
-        if phase_name_map is None:
-            phase_name_map = {}
-        if compound_stoichiometries is None:
-            compound_stoichiometries = {}
-        if line_compound_stoichiometries is None:
-            line_compound_stoichiometries = {}
-        if compound_host_phases is None:
-            compound_host_phases = {}
-        if compound_rk_orders is None:
-            compound_rk_orders = {}
-
-        if elements is None:
-            el_a, el_b = _infer_binary_elements(self.phases, self.reference_element)
-        else:
-            if len(elements) != 2:
-                raise ValueError("elements must contain exactly two element symbols")
-            el_a, el_b = [str(el).upper() for el in elements]
-            if el_b != self.reference_element.upper():
-                raise ValueError("elements must be ordered as (non_reference, reference_element)")
-
-        if solution_phases is None or compound_phases is None or line_compound_phases is None:
-            raise ValueError(
-                "Manual phase classification is required. Pass solution_phases, "
-                "compound_phases, and line_compound_phases; use [] for absent categories."
-            )
-
-        solution_phases = list(solution_phases)
-        compound_phases = list(compound_phases)
-        line_compound_phases = list(line_compound_phases)
-        all_compounds = compound_phases + line_compound_phases
-        all_exported = solution_phases + all_compounds
-        duplicate_phases = sorted({p for p in all_exported if all_exported.count(p) > 1})
-        if duplicate_phases:
-            raise ValueError(f"Phases can only appear in one TDB category: {duplicate_phases}")
-        unknown_phases = sorted(set(all_exported) - set(self.phases))
-        if unknown_phases:
-            raise ValueError(f"TDB phase classification includes unknown phase(s): {unknown_phases}")
-        if all_compounds and not solution_phases:
-            raise ValueError(
-                "At least one solution_phase is required to host the pure-element "
-                "references shared by compound and line-compound phases."
-            )
-        tdb_names = {
-            phase: _tdb_phase_name(phase_name_map.get(phase, phase))
-            for phase in all_exported
-        }
-
-        phase_points = {phase: _phase_data_as_points(self.df, phase) for phase in all_exported}
-        empty_phases = [phase for phase, points in phase_points.items() if points.empty]
-        if empty_phases:
-            raise ValueError(f"No finite data points found for TDB phase(s): {empty_phases}")
-        database_t_max = float(
-            tdb_t_max
-            if tdb_t_max is not None
-            else max(points["temperature"].max() for points in phase_points.values())
-        )
-
-        if solution_phases:
-            original_phases = self.phases
-            try:
-                self.phases = solution_phases
-                self.build_calphad_surface(rk_order=rk_order, endpoint_tol=endpoint_tol)
-            finally:
-                self.phases = original_phases
-
-        default_host = solution_phases[0] if solution_phases else None
-
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-        lines = [
-            "$",
-            f"$ TDB generated from calphy PhaseDiagram data: {el_a}-{el_b}",
-            f"$ Generated: {timestamp}",
-        ]
-        if description:
-            lines.append(f"$ {description}")
-
-        metadata = {
-            "format": "calphy.phase_diagram.to_tdb.v2",
-            "elements": [el_a, el_b],
-            "reference_element": self.reference_element,
-            "phases": list(self.phases),
-            "solution_phases": solution_phases,
-            "compound_phases": compound_phases,
-            "line_compound_phases": line_compound_phases,
-            "phase_name_map": tdb_names,
-            "composition_intervals": {
-                phase: list(self.composition_intervals.get(phase, (0.0, 1.0)))
-                for phase in all_exported
-            },
-            "units": "J/mol-atoms",
-        }
-        lines.append(_TDB_METADATA_PREFIX + json.dumps(metadata, sort_keys=True))
-        lines.extend(["$", "", "TYPE_DEFINITION % SEQ *!", ""])
-
-        for sym in ["/-", "VA", el_a, el_b]:
-            ref = {"/-": "ELECTRON_GAS", "VA": "VACUUM"}.get(sym, _SER_REF.get(sym, "FCC_A1"))
-            lines.append(f"ELEMENT {sym:<4s} {ref:<16s} 0.0 0.0 0.0 !")
-        lines.append("")
-
-        for phase in solution_phases:
-            tdb_phase = tdb_names[phase]
-            lines.append(f"PHASE {tdb_phase} % 1 1.0 !")
-            lines.append(f"CONSTITUENT {tdb_phase} : {el_a},{el_b} : !")
-            lines.append("")
-
-        # Fit 2-sublattice CEF compounds (host SER + stoichiometric endmember
-        # fit + anti-site penalty + pure-element-on-each-sublattice = host).
-        compound_surfaces = {}
-        for phase in all_compounds:
-            host = compound_host_phases.get(phase, default_host)
-            host_surface = self._calphad_surfaces.get(host)
-            if host_surface is None:
-                raise ValueError(
-                    f"Compound phase '{phase}': host solution phase '{host}' has no fitted "
-                    "CALPHAD surface; cannot share pure-element references."
-                )
-            points = phase_points[phase]
-            if phase in compound_stoichiometries:
-                stoich = tuple(int(v) for v in compound_stoichiometries[phase])
-            elif phase in line_compound_stoichiometries:
-                stoich = tuple(int(v) for v in line_compound_stoichiometries[phase])
-            else:
-                stoich = _infer_compound_stoichiometry(phase, points, el_a, el_b)
-            m_first, n_second = int(stoich[0]), int(stoich[1])
-            fit = _fit_compound_two_sublattice(points, host_surface, m_first, n_second)
-            fit["host"] = host
-            compound_surfaces[phase] = fit
-            print(
-                f"[{phase}] 2-sublattice CEF (host={host}, ratios=({m_first},{n_second}), "
-                f"x_stoich={fit['x_stoich']:.3f}): RMS={fit['rms_j_mol']:.1f} J/mol over "
-                f"{fit['n_fit_points']} points"
-            )
-
-            tdb_phase = tdb_names[phase]
-            lines.append(f"PHASE {tdb_phase} % 2 {m_first} {n_second} !")
-            lines.append(f"CONSTITUENT {tdb_phase} : {el_a},{el_b} : {el_a},{el_b} : !")
-            lines.append("")
-
-        # Emit PARAMETER blocks for solution phases.
-        for phase in solution_phases:
-            surface = self._calphad_surfaces.get(phase)
-            if surface is None:
-                warnings.warn(f"Skipping solution phase '{phase}' because no CALPHAD surface was fit")
-                continue
-            tdb_phase = tdb_names[phase]
-            for el_sym, coeff_key in [(el_a, "coeffs_A"), (el_b, "coeffs_B")]:
-                expr = _format_tdb_expr_poly6(np.asarray(surface[coeff_key]) * EV_TO_J_MOL)
-                lines.append(
-                    f"PARAMETER G({tdb_phase},{el_sym};0) {tdb_t_min:.2f} "
-                    f"{expr}; {database_t_max:.2f} N !"
-                )
-            L = np.asarray(surface["L_coeffs"], dtype=float) * EV_TO_J_MOL
-            for order, coeff in enumerate(L):
-                coeff = np.asarray(coeff)
-                if coeff.ndim == 0:
-                    expr = _format_tdb_expr_linear(float(coeff), 0.0)
-                elif coeff.shape == (6,):
-                    expr = _format_tdb_expr_poly6(coeff)
-                else:
-                    expr = _format_tdb_expr_linear(float(coeff[0]), float(coeff[1]))
-                if expr == "0":
-                    continue
-                lines.append(
-                    f"PARAMETER L({tdb_phase},{el_a},{el_b};{order}) {tdb_t_min:.2f} "
-                    f"{expr}; {database_t_max:.2f} N !"
-                )
-            lines.append("")
-
-        # Emit PARAMETER blocks for compounds: 4 endmembers + anti-site penalty.
-        for phase in all_compounds:
-            surface = compound_surfaces[phase]
-            tdb_phase = tdb_names[phase]
-            # Pure-A on both sublattices = host G_A * N + per-atom penalty * N
-            aa_coeffs = np.asarray(surface["theta_AA_poly6"], dtype=float).copy()
-            aa_coeffs[0] += float(surface["pure_sublattice_penalty"])
-            bb_coeffs = np.asarray(surface["theta_BB_poly6"], dtype=float).copy()
-            bb_coeffs[0] += float(surface["pure_sublattice_penalty"])
-            expr_AA = _format_tdb_expr_poly6(aa_coeffs)
-            expr_BB = _format_tdb_expr_poly6(bb_coeffs)
-            a_AB, b_AB = surface["theta_AB"]
-            expr_AB = _format_tdb_expr_linear(float(a_AB), float(b_AB))
-            penalty = float(surface["anti_site_penalty"])
-            # Anti-site (B on first sublattice, A on second): stoich + penalty
-            expr_BA = _format_tdb_expr_linear(float(a_AB) + penalty, float(b_AB))
-            lines.append(
-                f"PARAMETER G({tdb_phase},{el_a}:{el_a};0) {tdb_t_min:.2f} "
-                f"{expr_AA}; {database_t_max:.2f} N !"
-            )
-            lines.append(
-                f"PARAMETER G({tdb_phase},{el_a}:{el_b};0) {tdb_t_min:.2f} "
-                f"{expr_AB}; {database_t_max:.2f} N !"
-            )
-            lines.append(
-                f"PARAMETER G({tdb_phase},{el_b}:{el_a};0) {tdb_t_min:.2f} "
-                f"{expr_BA}; {database_t_max:.2f} N !"
-            )
-            lines.append(
-                f"PARAMETER G({tdb_phase},{el_b}:{el_b};0) {tdb_t_min:.2f} "
-                f"{expr_BB}; {database_t_max:.2f} N !"
-            )
-            lines.append("")
-
-        tdb_text = "\n".join(lines).rstrip() + "\n"
-        if filename is not None:
-            with open(filename, "w") as handle:
-                handle.write(tdb_text)
-        return tdb_text
+    def to_tdb(self, *args, **kwargs):
+        raise NotImplementedError("to_tdb is not yet implemented")
 
     @staticmethod
     def from_tdb(filename):
-        """
-        Read metadata and parameter records from a TDB file.
-
-        A TDB is a fitted thermodynamic model, so the original calphy
-        DataFrame cannot be reconstructed exactly. For TDB files written by
-        :meth:`to_tdb`, this method returns the embedded calphy metadata plus
-        a lightweight list of parsed ``PARAMETER`` records.
-
-        Parameters
-        ----------
-        filename : str
-            Path to a TDB file.
-
-        Returns
-        -------
-        dict
-            Metadata and parsed parameter records.
-        """
-        with open(filename, "r") as handle:
-            text = handle.read()
-
-        metadata = None
-        for line in text.splitlines():
-            if line.startswith(_TDB_METADATA_PREFIX):
-                metadata = json.loads(line[len(_TDB_METADATA_PREFIX):])
-                break
-
-        parameter_re = re.compile(
-            r"PARAMETER\s+([GL])\(([^,]+),([^;]+);(\d+)\)\s+"
-            r"([0-9.]+)\s+(.+?);\s+([0-9.]+)\s+([NY])\s+!",
-            re.IGNORECASE,
-        )
-        parameters = []
-        for match in parameter_re.finditer(text):
-            parameters.append(
-                {
-                    "kind": match.group(1).upper(),
-                    "phase": match.group(2).strip(),
-                    "constituents": match.group(3).strip(),
-                    "order": int(match.group(4)),
-                    "T_min": float(match.group(5)),
-                    "expression": match.group(6).strip(),
-                    "T_max": float(match.group(7)),
-                    "extrapolate": match.group(8).upper(),
-                }
-            )
-
-        return {"metadata": metadata, "parameters": parameters, "text": text}
+        raise NotImplementedError("from_tdb is not yet implemented")
 
     @staticmethod
-    def load_parquet(filename):
+    def from_parquet(filename):
         """
-        Load a :class:`PhaseDiagram` previously saved with :meth:`save_parquet`.
+        Load a :class:`PhaseDiagram` previously saved with :meth:`to_parquet`.
 
         The original folder structure is not required; only the processed
         DataFrame and metadata stored inside the Parquet file are used.
@@ -3609,7 +3281,7 @@ class PhaseDiagram:
         return obj
 
     @classmethod
-    def from_dataframe(cls, df, reference_element, phases=None, composition_intervals=None):
+    def from_df(cls, df, reference_element, phases=None, composition_intervals=None):
         """
         Construct a :class:`PhaseDiagram` directly from a DataFrame.
 
