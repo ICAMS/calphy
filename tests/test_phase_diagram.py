@@ -468,7 +468,7 @@ def test_phase_diagram_repr_after_load(tmp_path):
     assert "not calculated" in repr(loaded_uncalc)
 
 
-def test_phase_diagram_to_tdb_writes_solution_and_limited_compound(tmp_path):
+def test_phase_diagram_to_tdb_not_implemented(tmp_path):
     from calphy.phase_diagram import PhaseDiagram
 
     obj = object.__new__(PhaseDiagram)
@@ -480,7 +480,7 @@ def test_phase_diagram_to_tdb_writes_solution_and_limited_compound(tmp_path):
         obj.to_tdb(tmp_path / "aucu.tdb", elements=("Au", "Cu"))
 
 
-def test_phase_diagram_to_tdb_requires_manual_classification(tmp_path):
+def test_phase_diagram_to_tdb_not_implemented_no_phases(tmp_path):
     from calphy.phase_diagram import PhaseDiagram
 
     obj = object.__new__(PhaseDiagram)
@@ -492,7 +492,7 @@ def test_phase_diagram_to_tdb_requires_manual_classification(tmp_path):
         obj.to_tdb(tmp_path / "missing.tdb", elements=("Au", "Cu"))
 
 
-def test_phase_diagram_from_tdb_reads_embedded_metadata(tmp_path):
+def test_phase_diagram_from_tdb_not_implemented(tmp_path):
     from calphy.phase_diagram import PhaseDiagram
 
     with pytest.raises(NotImplementedError):
