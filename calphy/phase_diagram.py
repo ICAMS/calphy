@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import warnings
 import itertools
 from itertools import combinations
+from collections import defaultdict
 import math
 import copy
 import os
@@ -2448,13 +2449,13 @@ class PhaseDiagram:
             L_coeffs = L_flat.reshape(rk_order, 6)
 
             Gxs_pred = basis @ L_flat
-            rms = float(np.sqrt(np.mean((Gxs_vec - Gxs_pred) ** 2)) * 96485)
+            rms = float(np.sqrt(np.mean((Gxs_vec - Gxs_pred) ** 2)))
             T_ref = float(np.mean(T_fit))
             L_str = "  ".join(
-                f"L{k}(T_ref={T_ref:.0f})={_eval_calphad_poly6(L_coeffs[k], T_ref)*96485:.0f} J/mol"
+                f"L{k}(T_ref={T_ref:.0f})={_eval_calphad_poly6(L_coeffs[k], T_ref):.4f} eV/atom"
                 for k in range(rk_order)
             )
-            print(f"[{phase}]  {L_str}   RMS_xs={rms:.1f} J/mol")
+            print(f"[{phase}]  {L_str}   RMS_xs={rms:.4f} eV/atom")
 
             surfaces[phase] = {
                 "coeffs_A": coeffs_A,
@@ -3679,3 +3680,57 @@ class PhaseDiagram:
         obj._calc_kwargs = {}
         obj._calphad_surfaces = {}
         return obj
+
+
+def plot_phase_diagram(ax, pd_obj, phase_colors=None, two_phase_alpha=0.35,
+                       boundary_lw=1.2, boundary_color='k'):
+    """
+    Plot a phase diagram onto an existing matplotlib Axes.
+
+    Only two-phase regions are colored; single-phase regions are uncolored.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+    pd_obj : PhaseDiagram
+        After calculate() has been called.
+    phase_colors : dict, optional
+        Mapping from tangent-type string ``'phaseA-phaseB'`` to a colour.
+        Regions not listed fall back to ``'#cccccc'``.
+    two_phase_alpha : float
+        Alpha for the two-phase fill regions.
+    boundary_lw : float
+        Line width of the two-phase boundary lines.
+    boundary_color : str
+        Colour of the two-phase boundary lines.
+    """
+    if phase_colors is None:
+        phase_colors = {}
+
+    if pd_obj.temperatures is None:
+        raise ValueError("pd_obj.calculate() must be called before plotting.")
+
+    temps    = np.array(pd_obj.temperatures)
+    tangents = pd_obj.tangents
+    ttypes   = pd_obj.tangent_types
+
+    two_phase = defaultdict(list)
+
+    for T, tlist, typlist in zip(temps, tangents, ttypes):
+        if len(tlist) == 0:
+            continue
+        order   = np.argsort(tlist[:, 0])
+        tlist   = tlist[order]
+        typlist = typlist[order]
+
+        for (xl, xr), ttype in zip(tlist, typlist):
+            two_phase[ttype].append((T, xl, xr))
+
+    for ttype, entries in two_phase.items():
+        arr = np.array(entries)
+        T_vals, xl_vals, xr_vals = arr[:, 0], arr[:, 1], arr[:, 2]
+        color = phase_colors.get(ttype, '#cccccc')
+        ax.fill_betweenx(T_vals, xl_vals, xr_vals,
+                         color=color, alpha=two_phase_alpha, label=ttype)
+        ax.plot(xl_vals, T_vals, color=boundary_color, lw=boundary_lw)
+        ax.plot(xr_vals, T_vals, color=boundary_color, lw=boundary_lw)
