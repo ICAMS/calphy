@@ -333,7 +333,7 @@ def test_create_temperature_array_range_unchanged():
 
 
 # ---------------------------------------------------------------------------
-# Helpers for PhaseDiagram save / load tests
+# Helpers for PhaseDiagram to_pickle / from_pickle tests
 # ---------------------------------------------------------------------------
 
 def _make_phase_diagram(calculated=True):
@@ -389,29 +389,29 @@ def _make_phase_diagram(calculated=True):
 
 
 # ---------------------------------------------------------------------------
-# PhaseDiagram.save / PhaseDiagram.load tests
+# PhaseDiagram.to_pickle / PhaseDiagram.from_pickle tests
 # ---------------------------------------------------------------------------
 
 def test_phase_diagram_save_creates_file(tmp_path):
-    """save() should create a file at the given path."""
+    """to_pickle() should create a file at the given path."""
     from calphy.phase_diagram import PhaseDiagram
 
     pd_obj = _make_phase_diagram(calculated=True)
     out = tmp_path / "pd.pkl"
-    pd_obj.save(str(out))
+    pd_obj.to_pickle(str(out))
     assert out.exists()
     assert out.stat().st_size > 0
 
 
 def test_phase_diagram_load_restores_calculated(tmp_path):
-    """load() should restore a fully-calculated PhaseDiagram exactly."""
+    """from_pickle() should restore a fully-calculated PhaseDiagram exactly."""
     from calphy.phase_diagram import PhaseDiagram
 
     pd_obj = _make_phase_diagram(calculated=True)
     out = str(tmp_path / "pd.pkl")
-    pd_obj.save(out)
+    pd_obj.to_pickle(out)
 
-    loaded = PhaseDiagram.load(out)
+    loaded = PhaseDiagram.from_pickle(out)
 
     assert isinstance(loaded, PhaseDiagram)
     assert loaded.reference_element == pd_obj.reference_element
@@ -425,14 +425,14 @@ def test_phase_diagram_load_restores_calculated(tmp_path):
 
 
 def test_phase_diagram_save_load_pre_calculate(tmp_path):
-    """save/load round-trip works even when calculate() has not been called."""
+    """to_pickle/from_pickle round-trip works even when calculate() has not been called."""
     from calphy.phase_diagram import PhaseDiagram
 
     pd_obj = _make_phase_diagram(calculated=False)
     out = str(tmp_path / "pd_pre.pkl")
-    pd_obj.save(out)
+    pd_obj.to_pickle(out)
 
-    loaded = PhaseDiagram.load(out)
+    loaded = PhaseDiagram.from_pickle(out)
 
     assert loaded.tangents is None
     assert loaded.temperatures is None
@@ -442,11 +442,11 @@ def test_phase_diagram_save_load_pre_calculate(tmp_path):
 
 
 def test_phase_diagram_load_missing_file(tmp_path):
-    """load() should raise FileNotFoundError for a non-existent path."""
+    """from_pickle() should raise FileNotFoundError for a non-existent path."""
     from calphy.phase_diagram import PhaseDiagram
 
     with pytest.raises(FileNotFoundError):
-        PhaseDiagram.load(str(tmp_path / "does_not_exist.pkl"))
+        PhaseDiagram.from_pickle(str(tmp_path / "does_not_exist.pkl"))
 
 
 def test_phase_diagram_repr_after_load(tmp_path):
@@ -458,12 +458,43 @@ def test_phase_diagram_repr_after_load(tmp_path):
 
     out_calc = str(tmp_path / "calc.pkl")
     out_uncalc = str(tmp_path / "uncalc.pkl")
-    pd_calc.save(out_calc)
-    pd_uncalc.save(out_uncalc)
+    pd_calc.to_pickle(out_calc)
+    pd_uncalc.to_pickle(out_uncalc)
 
-    loaded_calc = PhaseDiagram.load(out_calc)
-    loaded_uncalc = PhaseDiagram.load(out_uncalc)
+    loaded_calc = PhaseDiagram.from_pickle(out_calc)
+    loaded_uncalc = PhaseDiagram.from_pickle(out_uncalc)
 
     assert "calculated" in repr(loaded_calc)
     assert "not calculated" in repr(loaded_uncalc)
+
+
+def test_phase_diagram_to_tdb_not_implemented(tmp_path):
+    from calphy.phase_diagram import PhaseDiagram
+
+    obj = object.__new__(PhaseDiagram)
+    obj.reference_element = "Cu"
+    obj.phases = ["fcc"]
+    obj.composition_intervals = {"fcc": (0.0, 1.0)}
+
+    with pytest.raises(NotImplementedError):
+        obj.to_tdb(tmp_path / "aucu.tdb", elements=("Au", "Cu"))
+
+
+def test_phase_diagram_to_tdb_not_implemented_no_phases(tmp_path):
+    from calphy.phase_diagram import PhaseDiagram
+
+    obj = object.__new__(PhaseDiagram)
+    obj.reference_element = "Cu"
+    obj.phases = ["fcc"]
+    obj.composition_intervals = {"fcc": (0.0, 1.0)}
+
+    with pytest.raises(NotImplementedError):
+        obj.to_tdb(tmp_path / "missing.tdb", elements=("Au", "Cu"))
+
+
+def test_phase_diagram_from_tdb_not_implemented(tmp_path):
+    from calphy.phase_diagram import PhaseDiagram
+
+    with pytest.raises(NotImplementedError):
+        PhaseDiagram.from_tdb(tmp_path / "simple.tdb")
 
