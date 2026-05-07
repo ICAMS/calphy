@@ -230,9 +230,31 @@ class Queue(BaseModel, title="Options for configuring queue"):
 class Tolerance(BaseModel, title="Tolerance settings for convergence"):
     lattice_constant: Annotated[float, Field(default=0.0002, ge=0)]
     spring_constant: Annotated[float, Field(default=0.1, gt=0)]
-    solid_fraction: Annotated[float, Field(default=0.7, ge=0)]
-    liquid_fraction: Annotated[float, Field(default=0.05, ge=0)]
+    solid_fraction: Annotated[float, Field(default=0.0, ge=0)]
+    liquid_fraction: Annotated[float, Field(default=0.0, ge=0)]
     pressure: Annotated[float, Field(default=10.0, ge=0)]
+
+
+class TransitionDetector(BaseModel, title="Settings for fluctuation-based phase transition detection"):
+    enabled: Annotated[bool, Field(default=True)]
+    signals: Annotated[
+        List[str],
+        Field(
+            default=[
+                "var_pe", "var_H", "var_vol", "var_etotal",
+                "cv", "cp", "alpha", "kappa_T",
+                "mean_H", "mean_pe", "mean_vol",
+            ],
+            description="Fluctuation signals to use for detection",
+        ),
+    ]
+    min_agreement: Annotated[int, Field(default=2, ge=1)]
+    variance_ratio_threshold: Annotated[float, Field(default=5.0, gt=0)]
+    mean_shift_threshold: Annotated[float, Field(default=5.0, gt=0)]
+    cv_peak_threshold: Annotated[float, Field(default=5.0, gt=0)]
+    baseline_window: Annotated[int, Field(default=50, ge=5)]
+    recent_window: Annotated[int, Field(default=50, ge=5)]
+    min_samples_before_check: Annotated[int, Field(default=100, ge=10)]
 
 
 class MeltingTemperature(BaseModel, title="Input options for melting temperature mode"):
@@ -273,6 +295,7 @@ class Calculation(BaseModel, title="Main input class"):
     berendsen: Optional[Berendsen] = Berendsen()
     queue: Optional[Queue] = Queue()
     tolerance: Optional[Tolerance] = Tolerance()
+    transition_detector: Optional[TransitionDetector] = TransitionDetector()
     uhlenbeck_ford_model: Optional[UFMP] = UFMP()
     melting_temperature: Optional[MeltingTemperature] = MeltingTemperature()
     materials_project: Optional[MaterialsProject] = MaterialsProject()

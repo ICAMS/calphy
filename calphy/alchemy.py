@@ -105,6 +105,9 @@ class Alchemy(cph.Phase):
         lmp.command("variable         mly equal ly")
         lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press")
+        lmp.command("variable         mpe equal pe/atoms")
+        lmp.command("variable         metotal equal etotal/atoms")
+        lmp.command("variable         mtemp equal temp")
 
         # add some computes
         if not self.calc._fix_lattice:

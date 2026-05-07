@@ -197,6 +197,9 @@ class Liquid(cph.Phase):
         lmp.command("variable         mly equal ly")
         lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press")
+        lmp.command("variable         mpe equal pe/atoms")
+        lmp.command("variable         metotal equal etotal/atoms")
+        lmp.command("variable         mtemp equal temp")
 
         # Disorder the structure before equilibration
         if self.calc.melting_cycle:
@@ -207,6 +210,9 @@ class Liquid(cph.Phase):
         if not self.calc._fix_lattice:
             # now assign correct temperature and equilibrate
             self.run_zero_pressure_equilibration(lmp)
+
+            # create the fluctuation monitor before the pressure-convergence cycle loop
+            self._create_monitor("liquid")
 
             # converge pressure
             self.run_pressure_convergence(lmp)

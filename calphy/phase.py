@@ -37,6 +37,10 @@ from calphy.integrators import *
 import calphy.helpers as ph
 from calphy.errors import *
 from calphy.input import generate_metadata
+from calphy.transition_detector import (
+    PhaseTransitionMonitor,
+    ThermoRecord,
+)
 
 
 class Phase:
@@ -207,6 +211,10 @@ class Phase:
         self.ly = None
         self.lz = None
 
+        # phase transition monitor (created in _create_monitor)
+        self._monitor = None
+        self._monitor_fed_rows = 0
+
         # now manually tune pair styles
         if self.calc.pair_style is not None:
             self.logger.info("pair_style: %s" % self.calc._pair_style_with_options[0])
@@ -270,12 +278,135 @@ class Phase:
 
         return structures
 
+    def _create_monitor(self, expected_phase):
+        """
+        Instantiate a PhaseTransitionMonitor for the current calculation.
+
+        Parameters
+        ----------
+        expected_phase : 'solid' or 'liquid'
+        """
+        td = self.calc.transition_detector
+        if not td.enabled:
+            self._monitor = None
+            self._monitor_fed_rows = 0
+            self.logger.info("Phase transition detector: disabled")
+            return
+
+        self.logger.info(
+            "Phase transition detector: enabled for %s phase "
+            "(T=%.1f K, P=%.3f bar, signals=%s, min_agreement=%d)",
+            expected_phase,
+            float(self.calc._temperature),
+            float(self.calc._pressure) if self.calc._pressure is not None else 0.0,
+            ",".join(td.signals),
+            td.min_agreement,
+        )
+        self._monitor = PhaseTransitionMonitor(
+            expected_phase=expected_phase,
+            target_pressure=float(self.calc._pressure) if self.calc._pressure is not None else 0.0,
+            temperature=float(self.calc._temperature),
+            active_signals=list(td.signals),
+            baseline_window=td.baseline_window,
+            recent_window=td.recent_window,
+            min_samples_before_check=td.min_samples_before_check,
+            variance_ratio_threshold=td.variance_ratio_threshold,
+            mean_shift_threshold=td.mean_shift_threshold,
+            cv_peak_threshold=td.cv_peak_threshold,
+            min_agreement=td.min_agreement,
+        )
+        self._monitor_fed_rows = 0
+
+    def _feed_monitor_from_avg_dat(self, avg_file):
+        """
+        Read any new rows from avg.dat (columns: step, lx, ly, lz, press,
+        pe/atom, etotal/atom, temp) and append them to the monitor buffer.
+
+        avg.dat column layout (1-indexed in LAMMPS output, 0-indexed here):
+          0: TimeStep
+          1: v_mlx,  2: v_mly,  3: v_mlz
+          4: v_mpress
+          5: v_mpe      (pe/atoms)
+          6: v_metotal  (etotal/atoms)
+          7: v_mtemp    (temp)
+
+        Returns the updated number of fed rows so the caller can track
+        how many rows have already been processed.
+        """
+        if self._monitor is None:
+            return
+
+        if not os.path.exists(avg_file):
+            return
+
+        try:
+            data = np.loadtxt(avg_file, usecols=(0, 1, 2, 3, 4, 5, 6, 7), unpack=False)
+        except (ValueError, IndexError):
+            # File may not yet have enough columns (e.g. first run of older code path)
+            return
+
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+
+        n_rows = data.shape[0]
+        new_rows = data[self._monitor_fed_rows:]
+        self._monitor_fed_rows = n_rows
+
+        if len(new_rows) > 0:
+            self.logger.info(
+                "Phase transition detector: fed %d new rows from %s "
+                "(total buffer size: %d)",
+                len(new_rows),
+                os.path.basename(avg_file),
+                n_rows,
+            )
+
+        for row in new_rows:
+            step, lx, ly, lz, press, pe, etotal, temp = row
+            vol_per_atom = (lx * ly * lz) / self.natoms
+            record = ThermoRecord(
+                step=step,
+                temp=temp,
+                pe=pe,
+                etotal=etotal,
+                vol=vol_per_atom,
+                press=press,
+            )
+            # update() returns a TransitionEvent but we don't raise here;
+            # we let evaluate_final() do that at the checkpoint call sites
+            self._monitor.update(record, raise_on_transition=False)
+
     def check_if_melted(self, lmp, filename):
-        """ """
-        solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
-        if solids / lmp.natoms < self.calc.tolerance.solid_fraction:
+        """
+        Check whether the solid has melted, using fluctuation-based detection.
+
+        The monitor buffer is evaluated using the data accumulated during the
+        preceding pressure-convergence cycles.  If the buffer is too small for
+        reliable detection (fewer than min_samples_before_check samples), the
+        check is silently skipped — consistent with the previous behaviour of
+        setting tolerance.solid_fraction: 0.
+        """
+        if self._monitor is None:
+            return
+
+        buf_size = len(self._monitor.buffer)
+        self.logger.info(
+            "Phase transition detector: checking solid — buffer has %d samples",
+            buf_size,
+        )
+        event = self._monitor.evaluate_final(raise_on_transition=False)
+        if event is None:
+            self.logger.info(
+                "Phase transition detector: no melting detected (confidence N/A)"
+            )
+        else:
+            self.logger.warning(
+                "Phase transition detector: MELTING detected! "
+                "signals=%s confidence=%.2f",
+                event.triggered_signals,
+                event.confidence,
+            )
             self.lammps_close(lmp=lmp)
-            # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
             try:
                 os.rename(
@@ -283,16 +414,35 @@ class Phase:
                 )
             except OSError as e:
                 self.logger.warning(f"Failed to rename log file: {e}")
-            raise MeltedError(
-                "System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting:\n tolerance.solid_fraction: 0"
-            )
+            self._monitor._raise_for_event(event)
 
     def check_if_solidfied(self, lmp, filename):
-        """ """
-        solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
-        if solids / lmp.natoms > self.calc.tolerance.liquid_fraction:
+        """
+        Check whether the liquid has solidified, using fluctuation-based detection.
+
+        See check_if_melted for details on behaviour when the buffer is small.
+        """
+        if self._monitor is None:
+            return
+
+        buf_size = len(self._monitor.buffer)
+        self.logger.info(
+            "Phase transition detector: checking liquid — buffer has %d samples",
+            buf_size,
+        )
+        event = self._monitor.evaluate_final(raise_on_transition=False)
+        if event is None:
+            self.logger.info(
+                "Phase transition detector: no solidification detected (confidence N/A)"
+            )
+        else:
+            self.logger.warning(
+                "Phase transition detector: SOLIDIFICATION detected! "
+                "signals=%s confidence=%.2f",
+                event.triggered_signals,
+                event.confidence,
+            )
             self.lammps_close(lmp=lmp)
-            # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
             try:
                 os.rename(
@@ -300,7 +450,7 @@ class Phase:
                 )
             except OSError as e:
                 self.logger.warning(f"Failed to rename log file: {e}")
-            raise SolidifiedError("System solidified, increase temperature")
+            self._monitor._raise_for_event(event)
 
     def fix_nose_hoover(
         self,
@@ -565,7 +715,7 @@ class Phase:
         ave_freq = ave_every * ave_repeat
 
         lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"
+            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat"
             % (ave_every, ave_repeat, ave_freq)
         )
 
@@ -580,6 +730,10 @@ class Phase:
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
 
             file = os.path.join(self.simfolder, "avg.dat")
+
+            # feed any new avg.dat rows into the phase-transition monitor
+            self._feed_monitor_from_avg_dat(file)
+
             lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
             # Average over all data after dropping the first cycle
             skip_samples = n_skip * ncount
@@ -734,7 +888,7 @@ class Phase:
             self.fix_berendsen(lmp)
 
         lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"
+            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat"
             % (
                 int(self.calc.md.n_every_steps),
                 int(self.calc.md.n_repeat_steps),
@@ -778,7 +932,7 @@ class Phase:
 
         # this is when the averaging routine starts
         lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"
+            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat"
             % (
                 int(self.calc.md.n_every_steps),
                 int(self.calc.md.n_repeat_steps),
@@ -903,7 +1057,7 @@ class Phase:
 
         # this is when the averaging routine starts
         lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"
+            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat"
             % (
                 int(self.calc.md.n_every_steps),
                 int(self.calc.md.n_repeat_steps),
@@ -1010,6 +1164,10 @@ class Phase:
         if self.calc.reference_phase == "solid":
             solid = True
 
+        # reset the monitor for each reversible-scaling iteration
+        expected_phase = "solid" if solid else "liquid"
+        self._create_monitor(expected_phase)
+
         t0 = self.calc._temperature
         tf = self.calc._temperature_stop
         li = 1
@@ -1046,6 +1204,15 @@ class Phase:
         # remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
+        # variables for phase-transition monitoring during equilibration
+        lmp.command("variable         rs_mlx equal lx")
+        lmp.command("variable         rs_mly equal ly")
+        lmp.command("variable         rs_mlz equal lz")
+        lmp.command("variable         rs_mpress equal press")
+        lmp.command("variable         rs_mpe equal pe/atoms")
+        lmp.command("variable         rs_metotal equal etotal/atoms")
+        lmp.command("variable         rs_mtemp equal temp")
+
         # set thermostat and run equilibrium
         if self.calc.npt:
             lmp.command(
@@ -1067,8 +1234,23 @@ class Phase:
             )
 
         self.logger.info(f"Starting equilibration: {iteration}")
+        # ave/time to capture thermodynamic data for phase-transition monitoring
+        _rs_ave_every  = int(self.calc.md.n_every_steps)
+        _rs_ave_repeat = int(self.calc.md.n_repeat_steps)
+        _rs_ave_freq   = _rs_ave_every * _rs_ave_repeat
+        lmp.command(
+            "fix               rs_ave all ave/time %d %d %d "
+            "v_rs_mlx v_rs_mly v_rs_mlz v_rs_mpress v_rs_mpe v_rs_metotal v_rs_mtemp "
+            "file rs_equil_avg.dat"
+            % (_rs_ave_every, _rs_ave_repeat, _rs_ave_freq)
+        )
         lmp.command("run               %d" % self.calc.n_equilibration_steps)
+        lmp.command("unfix             rs_ave")
         self.logger.info(f"Finished equilibration: {iteration}")
+        # feed equilibration data into the monitor
+        self._monitor_fed_rows = 0  # reset counter for the new file
+        rs_avg_file = os.path.join(self.simfolder, "rs_equil_avg.dat")
+        self._feed_monitor_from_avg_dat(rs_avg_file)
 
         lmp.command("unfix             f1")
 
