@@ -206,6 +206,94 @@ def _rolling_cov(x: np.ndarray, y: np.ndarray, w: int) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# Temperature-block planner
+# ---------------------------------------------------------------------------
+
+def plan_temperature_blocks(
+    t0: float,
+    tf: float,
+    total_steps: int,
+    window_K: float,
+) -> List[dict]:
+    """
+    Partition a reversible-scaling sweep into temperature-based blocks.
+
+    Each block covers ``window_K`` Kelvin of the sweep.  The sweep direction
+    (heating vs. cooling) is inferred from ``t0`` and ``tf``.
+
+    The mapping from temperature to step number uses the relationship
+    ``λ = T0 / T`` and the linear ramp ``λ(step) = li + (lf - li) * step / total_steps``,
+    where ``li = 1`` and ``lf = T0 / Tf``.
+
+    Parameters
+    ----------
+    t0 : float
+        Starting temperature of the sweep (K).  This is always
+        ``self.calc._temperature`` (the reference temperature).
+    tf : float
+        Ending temperature of the sweep (K).
+    total_steps : int
+        Total number of MD steps in the sweep (``_n_sweep_steps``).
+    window_K : float
+        Desired temperature width of each block (K).  Must be > 0.
+
+    Returns
+    -------
+    list of dict
+        Each entry has keys ``"temp"`` (K), ``"lambda"`` (dimensionless),
+        and ``"step"`` (int, clamped to [0, total_steps]).  The list includes
+        both the starting and ending checkpoints, so there are
+        ``len(result) - 1`` blocks.  The final entry always has
+        ``"step" == total_steps`` and ``"temp" == tf``.
+
+    Examples
+    --------
+    >>> plan_temperature_blocks(1200, 2000, 100000, 400)
+    [{'temp': 1200, 'lambda': 1.0, 'step': 0},
+     {'temp': 1600, 'lambda': 0.75, 'step': 33333},
+     {'temp': 2000, 'lambda': 0.6,  'step': 100000}]
+    """
+    if window_K <= 0:
+        raise ValueError("window_K must be > 0")
+    if total_steps <= 0:
+        raise ValueError("total_steps must be > 0")
+
+    li = 1.0
+    lf = t0 / tf
+
+    # Generate temperature checkpoints
+    checkpoints: List[float] = []
+    if tf > t0:
+        # Heating: t0 → tf
+        cur = t0
+        while cur < tf:
+            checkpoints.append(cur)
+            cur += window_K
+    else:
+        # Cooling: t0 → tf
+        cur = t0
+        while cur > tf:
+            checkpoints.append(cur)
+            cur -= window_K
+
+    # Always include the final temperature exactly
+    if not checkpoints or checkpoints[-1] != tf:
+        checkpoints.append(tf)
+
+    result = []
+    for temp in checkpoints:
+        lam = t0 / temp
+        # λ(step) = li + (lf - li) * step / total_steps  →  solve for step
+        step = int((lam - li) * total_steps / (lf - li))
+        step = max(0, min(step, total_steps))
+        result.append({"temp": temp, "lambda": lam, "step": step})
+
+    # Guarantee the last checkpoint lands exactly on total_steps
+    result[-1]["step"] = total_steps
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Post-hoc ts-sweep transition detector
 # ---------------------------------------------------------------------------
 

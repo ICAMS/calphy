@@ -606,14 +606,6 @@ class Phase:
             key = (sweep_label, round(event.temperature / 50.0) * 50)
             if key not in already_warned:
                 already_warned.add(key)
-                msg = (
-                    f"Phase transition detected in {sweep_label} at "
-                    f"T ~ {event.temperature:.1f} K "
-                    f"(signals: {', '.join(event.triggered_signals)}, "
-                    f"confidence {event.confidence:.0%}). "
-                    "Verify output files for structural changes."
-                )
-                _warnings.warn(msg, UserWarning, stacklevel=2)
                 self.logger.warning(
                     "ts-sweep transition detector: possible transition in %s at "
                     "T ~ %.1f K. Signals: %s (confidence %.0f%%). "
@@ -1443,36 +1435,213 @@ class Phase:
                 self.publications.append("10.1016/j.commatsci.2018.12.029")
                 self.publications.append("10.1063/1.4967775")
 
-    def reversible_scaling(self, iteration=1):
+    # ------------------------------------------------------------------
+    # Internal helpers for temperature-window block sweeps
+    # ------------------------------------------------------------------
+
+    def _run_split_sweep(
+        self,
+        lmp,
+        lambda_var: str,
+        output_file_pattern: str,
+        sweep_label: str,
+        t0: float,
+        tf: float,
+        iteration: int,
+    ) -> None:
         """
-        Perform reversible scaling calculation in NPT
+        Run a forward or backward reversible-scaling sweep split into
+        temperature-based blocks, writing a cycle file per block, then
+        merging them into the canonical output file.
 
         Parameters
         ----------
-        iteration : int, optional
-            iteration of the calculation. Default 1
-
-        Returns
-        -------
-        None
+        lmp : lammps object
+            Active LAMMPS instance.  The pair style and the ``flambda`` /
+            ``blambda`` ramp variables must already be defined *before* this
+            method is called.  The ramp *will* be reset (``reset_timestep 0``)
+            here so that ``run N start 0 stop total_steps`` works correctly.
+        lambda_var : str
+            Name of the LAMMPS variable to record, e.g. ``"flambda"`` or
+            ``"blambda"``.
+        output_file_pattern : str
+            Base name for the output data file, e.g.
+            ``"ts.forward_1.dat"``.  Cycle files will be named by appending
+            ``_cycle_{k}`` before the ``.dat`` suffix.
+        sweep_label : str
+            Human-readable label used in log messages, e.g.
+            ``"forward (iteration 1)"``.
+        t0, tf : float
+            Temperature endpoints of the sweep (K).  Used for the block
+            planner and the transition detector.
+        iteration : int
+            Current reversible-scaling iteration number.
         """
-        self.logger.info(f"Starting temperature sweep cycle: {iteration}")
-        solid = False
-        if self.calc.reference_phase == "solid":
-            solid = True
+        import shutil as _shutil
+        from calphy.transition_detector import plan_temperature_blocks as _plan
 
-        # reset the monitor for each reversible-scaling iteration
-        expected_phase = "solid" if solid else "liquid"
-        self._create_monitor(expected_phase)
+        td = self.calc.transition_detector
+        n_sweep = self.calc._n_sweep_steps
+        t_win = td.temperature_window if (td.enabled and td.temperature_window > 0) else 0.0
 
+        if t_win <= 0:
+            # ── Single-run path (no block splitting) ──────────────────────
+            lmp.command(
+                'fix               f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+                'screen no file %s' % (lambda_var, output_file_pattern)
+            )
+            lmp.command("fix_modify        f3 flush yes")
+            self.logger.info("ts-sweep %s: single run, %d steps", sweep_label, n_sweep)
+            lmp.command("run               %d" % n_sweep)
+            lmp.command("unfix             f3")
+            return
+
+        # ── Block-splitting path ──────────────────────────────────────────
+        blocks = _plan(t0, tf, n_sweep, t_win)
+        n_blocks = len(blocks) - 1
+        self.logger.info(
+            "ts-sweep %s: %d steps split into %d blocks of ~%.0f K "
+            "(T %.1f → %.1f K, λ %.4f → %.4f)",
+            sweep_label, n_sweep, n_blocks, t_win,
+            t0, tf, blocks[0]["lambda"], blocks[-1]["lambda"],
+        )
+        for k, cp in enumerate(blocks):
+            self.logger.info(
+                "  checkpoint %d: T=%.2f K  λ=%.6f  step=%d",
+                k, cp["temp"], cp["lambda"], cp["step"],
+            )
+
+        # Reset timestep so ramp(li,lf) + "run N start 0 stop total" is
+        # consistent across all block commands.
+        lmp.command("reset_timestep 0")
+
+        # Strip the .dat extension, append _cycle_k.dat
+        base, ext = output_file_pattern.rsplit(".", 1)
+        cycle_files = []
+        already_warned: set = set()
+        current_step = 0
+
+        for k in range(n_blocks):
+            block_steps = blocks[k + 1]["step"] - blocks[k]["step"]
+            if block_steps <= 0:
+                self.logger.debug(
+                    "ts-sweep %s block %d has 0 steps — skipping", sweep_label, k
+                )
+                continue
+
+            t_block_start = blocks[k]["temp"]
+            t_block_end   = blocks[k + 1]["temp"]
+            lam_start     = blocks[k]["lambda"]
+            lam_end       = blocks[k + 1]["lambda"]
+
+            cycle_fname = "%s_cycle_%d.%s" % (base, k, ext)
+            cycle_files.append(cycle_fname)
+
+            lmp.command(
+                'fix               f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+                'screen no file %s' % (lambda_var, cycle_fname)
+            )
+            lmp.command("fix_modify        f3 flush yes")
+
+            self.logger.info(
+                "ts-sweep %s block %d/%d: T %.1f→%.1f K  λ %.4f→%.4f  steps %d–%d",
+                sweep_label, k, n_blocks - 1,
+                t_block_start, t_block_end, lam_start, lam_end,
+                current_step, current_step + block_steps,
+            )
+
+            lmp.command(
+                "run %d start 0 stop %d" % (block_steps, n_sweep)
+            )
+            current_step += block_steps
+            lmp.command("unfix             f3")
+
+            # Run the transition detector on the data accumulated so far in
+            # this cycle file.
+            if td.enabled:
+                cycle_path = os.path.join(self.simfolder, cycle_fname)
+                self._check_ts_file_incrementally(
+                    cycle_path, sweep_label, t0, tf, already_warned
+                )
+
+        # Handle any remaining steps (numerical rounding)
+        remaining = n_sweep - current_step
+        if remaining > 0:
+            k_last = n_blocks
+            cycle_fname = "%s_cycle_%d.%s" % (base, k_last, ext)
+            cycle_files.append(cycle_fname)
+            lmp.command(
+                'fix               f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+                'screen no file %s' % (lambda_var, cycle_fname)
+            )
+            lmp.command("fix_modify        f3 flush yes")
+            self.logger.info(
+                "ts-sweep %s remainder block: %d steps", sweep_label, remaining
+            )
+            lmp.command(
+                "run %d start 0 stop %d" % (remaining, n_sweep)
+            )
+            lmp.command("unfix             f3")
+            if td.enabled:
+                cycle_path = os.path.join(self.simfolder, cycle_fname)
+                self._check_ts_file_incrementally(
+                    cycle_path, sweep_label, t0, tf, already_warned
+                )
+
+        # Merge cycle files into the canonical output file
+        self.logger.info(
+            "ts-sweep %s: merging %d cycle files → %s",
+            sweep_label, len(cycle_files), output_file_pattern,
+        )
+        final_path = os.path.join(self.simfolder, output_file_pattern)
+        with open(final_path, "w") as outfile:
+            for idx, fname in enumerate(cycle_files):
+                fpath = os.path.join(self.simfolder, fname)
+                if not os.path.exists(fpath):
+                    self.logger.warning(
+                        "ts-sweep %s: cycle file missing: %s", sweep_label, fname
+                    )
+                    continue
+                with open(fpath, "r") as infile:
+                    if idx == 0:
+                        _shutil.copyfileobj(infile, outfile)
+                    else:
+                        next(infile, None)  # skip header
+                        next(infile, None)  # skip duplicate boundary row
+                        _shutil.copyfileobj(infile, outfile)
+                os.remove(fpath)
+        self.logger.info("ts-sweep %s: merge complete", sweep_label)
+
+    def _reversible_scaling_forward(self, iteration: int = 1) -> None:
+        """
+        Perform the forward sweep of a reversible-scaling calculation.
+
+        1. Initial NPT equilibration at T0 (records thermodynamics for the
+           online phase-transition monitor).
+        2. COM-constrained equilibration at T0.
+        3. Forward sweep: λ 1 → T0/Tf (optionally split into temperature
+           windows).
+        4. Write ``conf.ts.forward_{iteration}.data`` for the backward sweep.
+
+        Parameters
+        ----------
+        iteration : int
+            Reversible-scaling iteration index.
+        """
+        solid = self.calc.reference_phase == "solid"
         t0 = self.calc._temperature
         tf = self.calc._temperature_stop
-        li = 1
+        li = 1.0
         lf = t0 / tf
         pi = self.calc._pressure
         pf = lf * pi
 
-        # create lammps object
+        self.logger.info(
+            "forward sweep (iteration %d): T %.1f → %.1f K, "
+            "λ %.4f → %.4f, P %.4f → %.4f bar",
+            iteration, t0, tf, li, lf, pi, pf,
+        )
+
         lmp = ph.create_object(
             cores=self.cores,
             directory=self.simfolder,
@@ -1489,19 +1658,15 @@ class Phase:
 
         lmp = ph.set_pair_style(lmp, self.calc)
 
-        # read in conf file
-        # conf = os.path.join(self.simfolder, "conf.equilibration.dump")
         conf = os.path.join(self.simfolder, "conf.equilibration.data")
         lmp = ph.read_data(lmp, conf)
 
-        # set up potential
         lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
-        # remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
-        # variables for phase-transition monitoring during equilibration
+        # ── Phase-transition monitor variables ────────────────────────────
         lmp.command("variable         rs_mlx equal lx")
         lmp.command("variable         rs_mly equal ly")
         lmp.command("variable         rs_mlz equal lz")
@@ -1510,19 +1675,12 @@ class Phase:
         lmp.command("variable         rs_metotal equal etotal/atoms")
         lmp.command("variable         rs_mtemp equal temp")
 
-        # set thermostat and run equilibrium
+        # ── Initial equilibration ──────────────────────────────────────────
         if self.calc.npt:
             lmp.command(
                 "fix               f1 all npt temp %f %f %f %s %f %f %f"
-                % (
-                    t0,
-                    t0,
-                    self.calc.md.thermostat_damping[1],
-                    self.iso,
-                    pi,
-                    pi,
-                    self.calc.md.barostat_damping[1],
-                )
+                % (t0, t0, self.calc.md.thermostat_damping[1],
+                   self.iso, pi, pi, self.calc.md.barostat_damping[1])
             )
         else:
             lmp.command(
@@ -1530,8 +1688,7 @@ class Phase:
                 % (t0, t0, self.calc.md.thermostat_damping[1])
             )
 
-        self.logger.info(f"Starting equilibration: {iteration}")
-        # ave/time to capture thermodynamic data for phase-transition monitoring
+        self.logger.info("forward sweep (iteration %d): initial equilibration start", iteration)
         _rs_ave_every  = int(self.calc.md.n_every_steps)
         _rs_ave_repeat = int(self.calc.md.n_repeat_steps)
         _rs_ave_freq   = _rs_ave_every * _rs_ave_repeat
@@ -1543,146 +1700,235 @@ class Phase:
         )
         lmp.command("run               %d" % self.calc.n_equilibration_steps)
         lmp.command("unfix             rs_ave")
-        self.logger.info(f"Finished equilibration: {iteration}")
-        # feed equilibration data into the monitor
-        self._monitor_fed_rows = 0  # reset counter for the new file
+        self.logger.info("forward sweep (iteration %d): initial equilibration done", iteration)
+
         rs_avg_file = os.path.join(self.simfolder, "rs_equil_avg.dat")
+        self._monitor_fed_rows = 0
         self._feed_monitor_from_avg_dat(rs_avg_file)
 
         lmp.command("unfix             f1")
 
-        # now fix com
+        # ── COM-constrained equilibration ──────────────────────────────────
         lmp.command("variable         xcm equal xcm(all,x)")
         lmp.command("variable         ycm equal xcm(all,y)")
         lmp.command("variable         zcm equal xcm(all,z)")
 
         if self.calc.npt:
             lmp.command(
-                "fix               f1 all npt temp %f %f %f %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"
-                % (
-                    t0,
-                    t0,
-                    self.calc.md.thermostat_damping[1],
-                    self.iso,
-                    pi,
-                    pi,
-                    self.calc.md.barostat_damping[1],
-                )
+                "fix               f1 all npt temp %f %f %f %s %f %f %f "
+                "fixedpoint ${xcm} ${ycm} ${zcm}"
+                % (t0, t0, self.calc.md.thermostat_damping[1],
+                   self.iso, pi, pi, self.calc.md.barostat_damping[1])
             )
         else:
             lmp.command(
-                "fix               f1 all nvt temp %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"
+                "fix               f1 all nvt temp %f %f %f "
+                "fixedpoint ${xcm} ${ycm} ${zcm}"
                 % (t0, t0, self.calc.md.thermostat_damping[1])
             )
 
-        # compute com and modify fix
         lmp.command("compute           tcm all temp/com")
         lmp.command("fix_modify        f1 temp tcm")
-
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU      equal c_thermo_pe/atoms")
         lmp.command("thermo_style      custom step pe c_tcm press vol")
         lmp.command("thermo            10000")
 
-        # create velocity and equilibriate
         lmp.command(
             "velocity          all create %f %d mom yes rot yes dist gaussian"
             % (t0, np.random.randint(1, 10000))
         )
-
-        self.logger.info(f"Starting equilibration with constrained com: {iteration}")
+        self.logger.info(
+            "forward sweep (iteration %d): COM-constrained equilibration start", iteration
+        )
         lmp.command("run               %d" % self.calc.n_equilibration_steps)
-        self.logger.info(f"Finished equilibration with constrained com: {iteration}")
+        self.logger.info(
+            "forward sweep (iteration %d): COM-constrained equilibration done", iteration
+        )
 
+        # ── Define scaling variables ────────────────────────────────────────
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
         lmp.command("variable         fscale equal v_flambda-1.0")
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
         lmp.command(
-            f"variable        ftemp equal v_blambda*{self.calc._temperature_stop}"
+            "variable        ftemp equal v_blambda*%f" % self.calc._temperature_stop
         )
         lmp.command(
-            f"variable        btemp equal v_flambda*{self.calc._temperature_stop}"
+            "variable        btemp equal v_flambda*%f" % self.calc._temperature_stop
         )
 
         lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_fscale"]))
-        for command in ph.hybrid_pair_coeff_commands(
-            self.calc, repeat_index=0, total_repeats=2
-        ):
-            lmp.command(command)
-        for command in ph.hybrid_pair_coeff_commands(
-            self.calc, repeat_index=1, total_repeats=2
-        ):
-            lmp.command(command)
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
+            lmp.command(cmd)
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=1, total_repeats=2):
+            lmp.command(cmd)
 
-        lmp.command(
-            'fix               f3 all print 1 "${dU} $(press) $(vol) ${flambda}" screen no file ts.forward_%d.dat'
-            % iteration
-        )
-
-        # add swaps if n_swap is > 0 - forward sweep
+        # ── Optional MC swaps ───────────────────────────────────────────────
         if (
             self.calc.monte_carlo.n_swaps > 0
             and len(self.calc.monte_carlo.forward_swap_types) >= 2
         ):
-            swap_types = self.calc.monte_carlo.forward_swap_types
+            swap_types  = self.calc.monte_carlo.forward_swap_types
             swap_combos = list(itertools.combinations(swap_types, 2))
             self.logger.info(
-                f"Forward sweep: {self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
+                "forward sweep (iteration %d): %d swap moves/combo, "
+                "%d combinations every %d steps",
+                iteration, self.calc.monte_carlo.n_swaps,
+                len(swap_combos), self.calc.monte_carlo.n_steps,
             )
             for combo in swap_combos:
-                self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
-
+                self.logger.info("  swapping types %s ↔ %s", combo[0], combo[1])
             for idx, (type1, type2) in enumerate(swap_combos):
-                swap_str = f"{type1} {type2}"
                 lmp.command(
-                    "fix  swap%d all atom/swap %d %d %d ${ftemp} ke yes types %s"
-                    % (
-                        idx,
-                        self.calc.monte_carlo.n_steps,
-                        self.calc.monte_carlo.n_swaps,
-                        np.random.randint(1, 10000),
-                        swap_str,
-                    )
+                    "fix  swap%d all atom/swap %d %d %d ${ftemp} ke yes types %s %s"
+                    % (idx, self.calc.monte_carlo.n_steps,
+                       self.calc.monte_carlo.n_swaps,
+                       np.random.randint(1, 10000), type1, type2)
                 )
-
-            # Use the first swap fix for output tracking
-            # lmp.command("variable a equal f_swap0[1]")
-            # lmp.command("variable b equal f_swap0[2]")
-            # lmp.command(
-            #    'fix             swap_print all print 1 "${a} ${b} ${ftemp}" screen no file swap.rs.forward_%d.dat'
-            #    % iteration
-            # )
 
         if self.calc.n_print_steps > 0:
             lmp.command(
-                "dump              d1 all custom %d traj.ts.forward_%d.dat id type mass x y z vx vy vz"
+                "dump              d1 all custom %d traj.ts.forward_%d.dat "
+                "id type mass x y z vx vy vz"
                 % (self.calc.n_print_steps, iteration)
             )
 
-        self.logger.info(f"Started forward sweep: {iteration}")
-        lmp.command("run               %d" % self.calc._n_sweep_steps)
-        self.logger.info(f"Finished forward sweep: {iteration}")
+        # ── Forward sweep ───────────────────────────────────────────────────
+        self.logger.info("forward sweep (iteration %d): sweep start", iteration)
+        self._run_split_sweep(
+            lmp=lmp,
+            lambda_var="flambda",
+            output_file_pattern="ts.forward_%d.dat" % iteration,
+            sweep_label="forward (iteration %d)" % iteration,
+            t0=t0,
+            tf=tf,
+            iteration=iteration,
+        )
+        self.logger.info("forward sweep (iteration %d): sweep done", iteration)
 
+        # ── Cleanup swaps / dump ────────────────────────────────────────────
         if self.calc.monte_carlo.n_swaps > 0:
-            swap_types = self.calc.monte_carlo.forward_swap_types
+            swap_types  = self.calc.monte_carlo.forward_swap_types
             swap_combos = list(itertools.combinations(swap_types, 2))
             for idx in range(len(swap_combos)):
-                lmp.command(f"unfix swap{idx}")
-            # lmp.command("unfix swap_print")
-
-        # unfix
-        lmp.command("unfix             f3")
-        # lmp.command("unfix             f1")
+                lmp.command("unfix swap%d" % idx)
 
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
 
-        # switch potential
-        lmp.command("run               %d" % self.calc.n_equilibration_steps)
+        # ── Save forward-sweep end configuration ────────────────────────────
+        conf_forward = os.path.join(
+            self.simfolder, "conf.ts.forward_%d.data" % iteration
+        )
+        lmp.command("write_data        %s" % conf_forward)
+        self.logger.info(
+            "forward sweep (iteration %d): configuration saved to %s",
+            iteration, os.path.basename(conf_forward),
+        )
 
-        # check melting or freezing
+        self.lammps_close(lmp=lmp)
+
+        logfile = os.path.join(self.simfolder, "log.lammps")
+        if os.path.exists(logfile):
+            os.rename(
+                logfile,
+                os.path.join(
+                    self.simfolder, "reversible_scaling_forward.log.lammps"
+                ),
+            )
+
+    def _reversible_scaling_backward(self, iteration: int = 1) -> None:
+        """
+        Perform the backward sweep of a reversible-scaling calculation.
+
+        1. Load ``conf.ts.forward_{iteration}.data`` written by the forward
+           sweep.
+        2. Middle equilibration at Tf (phase-stability check).
+        3. Backward sweep: λ T0/Tf → 1 (optionally split into temperature
+           windows).
+
+        Parameters
+        ----------
+        iteration : int
+            Reversible-scaling iteration index.
+        """
+        solid = self.calc.reference_phase == "solid"
+        t0 = self.calc._temperature
+        tf = self.calc._temperature_stop
+        li = 1.0
+        lf = t0 / tf
+        pi = self.calc._pressure
+        pf = lf * pi
+
+        self.logger.info(
+            "backward sweep (iteration %d): T %.1f → %.1f K, "
+            "λ %.4f → %.4f, P %.4f → %.4f bar",
+            iteration, tf, t0, lf, li, pf, pi,
+        )
+
+        lmp = ph.create_object(
+            cores=self.cores,
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=False,
+            lmp=self._lmp,
+        )
+
+        lmp.command("echo              log")
+        lmp.command("variable          li equal %f" % li)
+        lmp.command("variable          lf equal %f" % lf)
+
+        lmp = ph.set_pair_style(lmp, self.calc)
+
+        conf = os.path.join(
+            self.simfolder, "conf.ts.forward_%d.data" % iteration
+        )
+        lmp = ph.read_data(lmp, conf)
+
+        lmp = ph.set_pair_coeff(lmp, self.calc)
+        lmp = ph.set_mass(lmp, self.calc)
+
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+
+        lmp.command("variable         xcm equal xcm(all,x)")
+        lmp.command("variable         ycm equal xcm(all,y)")
+        lmp.command("variable         zcm equal xcm(all,z)")
+
+        if self.calc.npt:
+            lmp.command(
+                "fix               f1 all npt temp %f %f %f %s %f %f %f "
+                "fixedpoint ${xcm} ${ycm} ${zcm}"
+                % (t0, t0, self.calc.md.thermostat_damping[1],
+                   self.iso, pi, pi, self.calc.md.barostat_damping[1])
+            )
+        else:
+            lmp.command(
+                "fix               f1 all nvt temp %f %f %f "
+                "fixedpoint ${xcm} ${ycm} ${zcm}"
+                % (t0, t0, self.calc.md.thermostat_damping[1])
+            )
+
+        lmp.command("compute           tcm all temp/com")
+        lmp.command("fix_modify        f1 temp tcm")
+        lmp.command("variable          step    equal step")
+        lmp.command("variable          dU      equal c_thermo_pe/atoms")
+        lmp.command("thermo_style      custom step pe c_tcm press vol")
+        lmp.command("thermo            10000")
+
+        # ── Middle equilibration at Tf ──────────────────────────────────────
+        self.logger.info(
+            "backward sweep (iteration %d): middle equilibration start", iteration
+        )
+        lmp.command("run               %d" % self.calc.n_equilibration_steps)
+        self.logger.info(
+            "backward sweep (iteration %d): middle equilibration done", iteration
+        )
+
+        # Phase-stability check at Tf
         if not self.calc.script_mode:
             self.dump_current_snapshot(lmp, "traj.temp.dat")
             if solid:
@@ -1690,102 +1936,115 @@ class Phase:
             else:
                 self.check_if_solidfied(lmp, "traj.temp.dat")
 
+        # ── Switch to scaling potential ─────────────────────────────────────
         lmp = ph.set_potential(lmp, self.calc)
 
-        # reverse scaling
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
         lmp.command("variable         fscale equal v_flambda-1.0")
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
         lmp.command(
-            f"variable        ftemp equal v_blambda*{self.calc._temperature_stop}"
+            "variable        ftemp equal v_blambda*%f" % self.calc._temperature_stop
         )
         lmp.command(
-            f"variable        btemp equal v_flambda*{self.calc._temperature_stop}"
+            "variable        btemp equal v_flambda*%f" % self.calc._temperature_stop
         )
 
         lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_bscale"]))
-        for command in ph.hybrid_pair_coeff_commands(
-            self.calc, repeat_index=0, total_repeats=2
-        ):
-            lmp.command(command)
-        for command in ph.hybrid_pair_coeff_commands(
-            self.calc, repeat_index=1, total_repeats=2
-        ):
-            lmp.command(command)
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
+            lmp.command(cmd)
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=1, total_repeats=2):
+            lmp.command(cmd)
 
-        # apply fix and perform switching
-        lmp.command(
-            'fix               f3 all print 1 "${dU} $(press) $(vol) ${blambda}" screen no file ts.backward_%d.dat'
-            % iteration
-        )
-
-        if self.calc.n_print_steps > 0:
-            lmp.command(
-                "dump              d1 all custom %d traj.ts.backward_%d.dat id type mass x y z vx vy vz"
-                % (self.calc.n_print_steps, iteration)
-            )
-
-        # add swaps if n_swap is > 0 - backward sweep
+        # ── Optional MC swaps ───────────────────────────────────────────────
         if (
             self.calc.monte_carlo.n_swaps > 0
             and len(self.calc.monte_carlo.reverse_swap_types) >= 2
         ):
-            swap_types = self.calc.monte_carlo.reverse_swap_types
+            swap_types  = self.calc.monte_carlo.reverse_swap_types
             swap_combos = list(itertools.combinations(swap_types, 2))
             self.logger.info(
-                f"Backward sweep: {self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
+                "backward sweep (iteration %d): %d swap moves/combo, "
+                "%d combinations every %d steps",
+                iteration, self.calc.monte_carlo.n_swaps,
+                len(swap_combos), self.calc.monte_carlo.n_steps,
             )
             for combo in swap_combos:
-                self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
-
+                self.logger.info("  swapping types %s ↔ %s", combo[0], combo[1])
             for idx, (type1, type2) in enumerate(swap_combos):
-                swap_str = f"{type1} {type2}"
                 lmp.command(
-                    "fix  swap%d all atom/swap %d %d %d ${btemp} ke yes types %s"
-                    % (
-                        idx,
-                        self.calc.monte_carlo.n_steps,
-                        self.calc.monte_carlo.n_swaps,
-                        np.random.randint(1, 10000),
-                        swap_str,
-                    )
+                    "fix  swap%d all atom/swap %d %d %d ${btemp} ke yes types %s %s"
+                    % (idx, self.calc.monte_carlo.n_steps,
+                       self.calc.monte_carlo.n_swaps,
+                       np.random.randint(1, 10000), type1, type2)
                 )
 
-            # Use the first swap fix for output tracking
-            # lmp.command("variable a equal f_swap0[1]")
-            # lmp.command("variable b equal f_swap0[2]")
-            # lmp.command(
-            #    'fix             swap_print all print 1 "${a} ${b} ${btemp}" screen no file swap.rs.backward_%d.dat'
-            #    % iteration
-            # )
+        if self.calc.n_print_steps > 0:
+            lmp.command(
+                "dump              d1 all custom %d traj.ts.backward_%d.dat "
+                "id type mass x y z vx vy vz"
+                % (self.calc.n_print_steps, iteration)
+            )
 
-        self.logger.info(f"Started backward sweep: {iteration}")
-        lmp.command("run               %d" % self.calc._n_sweep_steps)
-        self.logger.info(f"Finished backward sweep: {iteration}")
+        # ── Backward sweep ──────────────────────────────────────────────────
+        self.logger.info("backward sweep (iteration %d): sweep start", iteration)
+        self._run_split_sweep(
+            lmp=lmp,
+            lambda_var="blambda",
+            output_file_pattern="ts.backward_%d.dat" % iteration,
+            sweep_label="backward (iteration %d)" % iteration,
+            t0=tf,
+            tf=t0,
+            iteration=iteration,
+        )
+        self.logger.info("backward sweep (iteration %d): sweep done", iteration)
 
+        # ── Cleanup swaps / dump ────────────────────────────────────────────
         if self.calc.monte_carlo.n_swaps > 0:
-            swap_types = self.calc.monte_carlo.reverse_swap_types
+            swap_types  = self.calc.monte_carlo.reverse_swap_types
             swap_combos = list(itertools.combinations(swap_types, 2))
             for idx in range(len(swap_combos)):
-                lmp.command(f"unfix swap{idx}")
-            # lmp.command("unfix swap_print")
-
-        lmp.command("unfix             f3")
+                lmp.command("unfix swap%d" % idx)
 
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
 
-        # close the object
         self.lammps_close(lmp=lmp)
-        # Preserve log file
+
         logfile = os.path.join(self.simfolder, "log.lammps")
         if os.path.exists(logfile):
             os.rename(
-                logfile, os.path.join(self.simfolder, "reversible_scaling.log.lammps")
+                logfile,
+                os.path.join(
+                    self.simfolder, "reversible_scaling_backward.log.lammps"
+                ),
             )
 
+    def reversible_scaling(self, iteration=1):
+        """
+        Perform reversible scaling calculation in NPT.
+
+        Calls :meth:`_reversible_scaling_forward` (initial equilibration +
+        forward sweep, saves ``conf.ts.forward_{iteration}.data``) followed by
+        :meth:`_reversible_scaling_backward` (middle equilibration at Tf +
+        backward sweep).
+
+        Parameters
+        ----------
+        iteration : int, optional
+            Iteration of the calculation.  Default 1.
+        """
+        self.logger.info("Starting temperature sweep cycle: %d", iteration)
+
+        solid = self.calc.reference_phase == "solid"
+        expected_phase = "solid" if solid else "liquid"
+        self._create_monitor(expected_phase)
+
+        self._reversible_scaling_forward(iteration=iteration)
+        self._reversible_scaling_backward(iteration=iteration)
+
+        self.logger.info("Finished temperature sweep cycle: %d", iteration)
         self.logger.info("Please cite the following publications:")
         self.logger.info("- 10.1103/PhysRevLett.83.3973")
         self.publications.append("10.1103/PhysRevLett.83.3973")
@@ -1813,11 +2072,11 @@ class Phase:
         # is skipped to avoid duplicate warnings.
         td = self.calc.transition_detector
         if td.enabled:
-            if td.check_interval > 0:
+            if td.temperature_window > 0:
                 self.logger.info(
-                    "ts-sweep transition detector: incremental checking was active "
-                    "(check_interval=%d); post-hoc sweep skipped.",
-                    td.check_interval,
+                    "ts-sweep transition detector: block-by-block checking was active "
+                    "(temperature_window=%.1f K); post-hoc sweep skipped.",
+                    td.temperature_window,
                 )
             else:
                 self._detect_ts_transitions()
@@ -1933,47 +2192,23 @@ class Phase:
                 self.calc.md.barostat_damping[1],
             )
         )
-        lmp.command(
-            'fix               f3 all print 1 "${dU} $(press) $(vol) ${lambda}" screen no file ts.forward_%d.dat'
-            % iteration
+
+        self.logger.info(
+            "ts-sweep tscale forward (iteration %d): T %.1f → %.1f K, "
+            "%d steps",
+            iteration, t0, tf, self.calc._n_sweep_steps,
         )
-        lmp.command("fix_modify        f3 flush yes")
-
-        td = self.calc.transition_detector
-        n_sweep = self.calc._n_sweep_steps
-        _check_interval = td.check_interval if (td.enabled and td.check_interval > 0) else 0
-
-        if _check_interval > 0:
-            self.logger.info(
-                "ts-sweep forward (iteration %d): %d steps, checking every %d steps",
-                iteration, n_sweep, _check_interval,
-            )
-            _fwd_warned: set = set()
-            _steps_done = 0
-            while _steps_done < n_sweep:
-                _chunk = min(_check_interval, n_sweep - _steps_done)
-                # Redefine lambda for this chunk so that ramp() covers only
-                # the proportional slice [steps_done, steps_done+chunk] of
-                # the full li→lf ramp.  Without this, LAMMPS restarts the
-                # ramp from li on every run command.
-                _lam_s = li + (lf - li) * _steps_done / n_sweep
-                _lam_e = li + (lf - li) * (_steps_done + _chunk) / n_sweep
-                lmp.command("variable lambda equal ramp(%f,%f)" % (_lam_s, _lam_e))
-                lmp.command("run               %d" % _chunk)
-                _steps_done += _chunk
-                _fpath = os.path.join(
-                    self.simfolder, "ts.forward_%d.dat" % iteration
-                )
-                self._check_ts_file_incrementally(
-                    _fpath,
-                    "forward (iteration %d)" % iteration,
-                    t0, tf, _fwd_warned,
-                )
-        else:
-            lmp.command("run               %d" % n_sweep)
+        self._run_split_sweep(
+            lmp=lmp,
+            lambda_var="lambda",
+            output_file_pattern="ts.forward_%d.dat" % iteration,
+            sweep_label="tscale forward (iteration %d)" % iteration,
+            t0=t0,
+            tf=tf,
+            iteration=iteration,
+        )
 
         lmp.command("unfix             f2")
-        lmp.command("unfix             f3")
 
         lmp.command(
             "fix               1 all npt temp %f %f %f %s %f %f %f"
@@ -2005,8 +2240,6 @@ class Phase:
                 self.check_if_solidfied(lmp, "traj.temp.dat")
 
         # start reverse loop
-        # (lambda is redefined per chunk below when incremental checking is on;
-        # this initial definition is used only in the non-incremental branch)
         lmp.command("variable          lambda equal ramp(${lf},${li})")
 
         lmp.command(
@@ -2021,37 +2254,23 @@ class Phase:
                 self.calc.md.barostat_damping[1],
             )
         )
-        lmp.command(
-            'fix               f3 all print 1 "${dU} $(press) $(vol) ${lambda}" screen no file ts.backward_%d.dat'
-            % iteration
-        )
-        lmp.command("fix_modify        f3 flush yes")
 
-        if _check_interval > 0:
-            self.logger.info(
-                "ts-sweep backward (iteration %d): %d steps, checking every %d steps",
-                iteration, n_sweep, _check_interval,
-            )
-            _bwd_warned: set = set()
-            _steps_done = 0
-            while _steps_done < n_sweep:
-                _chunk = min(_check_interval, n_sweep - _steps_done)
-                # Correct lambda slice for backward sweep (lf→li)
-                _lam_s = lf + (li - lf) * _steps_done / n_sweep
-                _lam_e = lf + (li - lf) * (_steps_done + _chunk) / n_sweep
-                lmp.command("variable lambda equal ramp(%f,%f)" % (_lam_s, _lam_e))
-                lmp.command("run               %d" % _chunk)
-                _steps_done += _chunk
-                _fpath = os.path.join(
-                    self.simfolder, "ts.backward_%d.dat" % iteration
-                )
-                self._check_ts_file_incrementally(
-                    _fpath,
-                    "backward (iteration %d)" % iteration,
-                    t0, tf, _bwd_warned,
-                )
-        else:
-            lmp.command("run               %d" % n_sweep)
+        self.logger.info(
+            "ts-sweep tscale backward (iteration %d): T %.1f → %.1f K, "
+            "%d steps",
+            iteration, tf, t0, self.calc._n_sweep_steps,
+        )
+        self._run_split_sweep(
+            lmp=lmp,
+            lambda_var="lambda",
+            output_file_pattern="ts.backward_%d.dat" % iteration,
+            sweep_label="tscale backward (iteration %d)" % iteration,
+            t0=tf,
+            tf=t0,
+            iteration=iteration,
+        )
+
+        lmp.command("unfix             f2")
 
         self.lammps_close(lmp=lmp)
         # Preserve log file

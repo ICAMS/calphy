@@ -18,6 +18,7 @@ from calphy.transition_detector import (
     TransitionEvent,
     PhaseTransitionMonitor,
     detect_ts_transitions,
+    plan_temperature_blocks,
     KB_EV,
     BAR_ANG3_TO_EV,
     _window_response_functions,
@@ -470,3 +471,75 @@ class TestDetectTsTransitions:
         )
         for ev in events:
             assert 1100.0 <= ev.temperature <= 2600.0
+
+
+# ---------------------------------------------------------------------------
+# plan_temperature_blocks
+# ---------------------------------------------------------------------------
+
+class TestPlanTemperatureBlocks:
+    """Tests for plan_temperature_blocks() block planner."""
+
+    def test_heating_exact_multiple(self):
+        """Heating with window that divides range exactly."""
+        blocks = plan_temperature_blocks(1200.0, 2000.0, 100_000, 400.0)
+        temps = [b["temp"] for b in blocks]
+        assert temps == [1200.0, 1600.0, 2000.0]
+        # First step must be 0, last must equal total_steps
+        assert blocks[0]["step"] == 0
+        assert blocks[-1]["step"] == 100_000
+
+    def test_cooling_exact_multiple(self):
+        """Cooling with window that divides range exactly."""
+        blocks = plan_temperature_blocks(2000.0, 1200.0, 100_000, 400.0)
+        temps = [b["temp"] for b in blocks]
+        assert temps == [2000.0, 1600.0, 1200.0]
+        assert blocks[0]["step"] == 0
+        assert blocks[-1]["step"] == 100_000
+
+    def test_endpoint_always_included(self):
+        """Final checkpoint must be exactly tf regardless of window alignment."""
+        blocks = plan_temperature_blocks(1200.0, 2000.0, 50_000, 300.0)
+        assert blocks[-1]["temp"] == 2000.0
+        assert blocks[-1]["step"] == 50_000
+
+    def test_lambda_correct(self):
+        """λ values must equal t0/T."""
+        t0 = 1200.0
+        blocks = plan_temperature_blocks(t0, 2400.0, 100_000, 600.0)
+        for b in blocks:
+            assert abs(b["lambda"] - t0 / b["temp"]) < 1e-10
+
+    def test_steps_monotone_heating(self):
+        """Step numbers must be non-decreasing for a heating sweep."""
+        blocks = plan_temperature_blocks(1000.0, 3000.0, 200_000, 250.0)
+        steps = [b["step"] for b in blocks]
+        assert steps == sorted(steps)
+
+    def test_steps_monotone_cooling(self):
+        """Step numbers must be non-decreasing for a cooling sweep."""
+        blocks = plan_temperature_blocks(3000.0, 1000.0, 200_000, 250.0)
+        steps = [b["step"] for b in blocks]
+        assert steps == sorted(steps)
+
+    def test_single_block_large_window(self):
+        """Window larger than total range → two checkpoints (start + end)."""
+        blocks = plan_temperature_blocks(1200.0, 2000.0, 50_000, 5000.0)
+        assert len(blocks) == 2
+        assert blocks[0]["temp"] == 1200.0
+        assert blocks[-1]["temp"] == 2000.0
+        assert blocks[-1]["step"] == 50_000
+
+    def test_invalid_window_raises(self):
+        with pytest.raises(ValueError):
+            plan_temperature_blocks(1200.0, 2000.0, 50_000, 0.0)
+
+    def test_invalid_steps_raises(self):
+        with pytest.raises(ValueError):
+            plan_temperature_blocks(1200.0, 2000.0, 0, 100.0)
+
+    def test_step_bounds_clamped(self):
+        """No step value should fall outside [0, total_steps]."""
+        blocks = plan_temperature_blocks(1500.0, 2500.0, 75_000, 123.7)
+        for b in blocks:
+            assert 0 <= b["step"] <= 75_000

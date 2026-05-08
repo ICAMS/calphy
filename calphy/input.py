@@ -260,16 +260,15 @@ class TransitionDetector(BaseModel, title="Settings for fluctuation-based phase 
     baseline_window: Annotated[int, Field(default=50, ge=5)]
     recent_window: Annotated[int, Field(default=50, ge=5)]
     min_samples_before_check: Annotated[int, Field(default=100, ge=10)]
-    check_interval: Annotated[
-        int,
+    temperature_window: Annotated[
+        float,
         Field(
-            default=1000,
+            default=50.0,
             ge=0,
             description=(
-                "Number of TS steps between incremental transition checks during "
-                "a reversible-scaling sweep.  Set to 0 to disable incremental "
-                "checking (detection runs once at the end via "
-                "integrate_reversible_scaling)."
+                "Split each TS sweep into blocks of this width (in Kelvin). "
+                "The transition detector is called at each block boundary. "
+                "Set to 0 to run a single sweep with post-hoc detection only."
             ),
         ),
     ]
