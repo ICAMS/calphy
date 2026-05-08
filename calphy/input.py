@@ -237,24 +237,42 @@ class Tolerance(BaseModel, title="Tolerance settings for convergence"):
 
 class TransitionDetector(BaseModel, title="Settings for fluctuation-based phase transition detection"):
     enabled: Annotated[bool, Field(default=True)]
-    signals: Annotated[
-        List[str],
+    peak_threshold: Annotated[
+        float,
         Field(
-            default=[
-                "var_pe", "var_H", "var_vol", "var_etotal",
-                "cv", "cp", "alpha", "kappa_T",
-                "mean_H", "mean_pe", "mean_vol",
-            ],
-            description="Fluctuation signals to use for detection",
+            default=5.0,
+            gt=0,
+            description=(
+                "Flag a transition when any response function peak exceeds "
+                "peak_threshold times its baseline median.  The three signals "
+                "evaluated are Cp, kappa_T, and alpha_P."
+            ),
         ),
     ]
-    min_agreement: Annotated[int, Field(default=2, ge=1)]
-    variance_ratio_threshold: Annotated[float, Field(default=5.0, gt=0)]
-    mean_shift_threshold: Annotated[float, Field(default=5.0, gt=0)]
-    cv_peak_threshold: Annotated[float, Field(default=5.0, gt=0)]
+    min_agreement: Annotated[
+        int,
+        Field(
+            default=2,
+            ge=1,
+            description="Number of signals (Cp, kappa_T, alpha_P) that must peak simultaneously",
+        ),
+    ]
     baseline_window: Annotated[int, Field(default=50, ge=5)]
     recent_window: Annotated[int, Field(default=50, ge=5)]
     min_samples_before_check: Annotated[int, Field(default=100, ge=10)]
+    check_interval: Annotated[
+        int,
+        Field(
+            default=1000,
+            ge=0,
+            description=(
+                "Number of TS steps between incremental transition checks during "
+                "a reversible-scaling sweep.  Set to 0 to disable incremental "
+                "checking (detection runs once at the end via "
+                "integrate_reversible_scaling)."
+            ),
+        ),
+    ]
 
 
 class MeltingTemperature(BaseModel, title="Input options for melting temperature mode"):

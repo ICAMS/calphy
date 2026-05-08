@@ -295,25 +295,22 @@ class Phase:
 
         self.logger.info(
             "Phase transition detector: enabled for %s phase "
-            "(T=%.1f K, P=%.3f bar, signals=%s, min_agreement=%d)",
+            "(T=%.1f K, P=%.3f bar, peak_threshold=%.1f, min_agreement=%d)",
             expected_phase,
             float(self.calc._temperature),
             float(self.calc._pressure) if self.calc._pressure is not None else 0.0,
-            ",".join(td.signals),
+            td.peak_threshold,
             td.min_agreement,
         )
         self._monitor = PhaseTransitionMonitor(
             expected_phase=expected_phase,
             target_pressure=float(self.calc._pressure) if self.calc._pressure is not None else 0.0,
             temperature=float(self.calc._temperature),
-            active_signals=list(td.signals),
             baseline_window=td.baseline_window,
             recent_window=td.recent_window,
             min_samples_before_check=td.min_samples_before_check,
-            variance_ratio_threshold=td.variance_ratio_threshold,
-            mean_shift_threshold=td.mean_shift_threshold,
-            cv_peak_threshold=td.cv_peak_threshold,
-            min_agreement=td.min_agreement,
+            peak_threshold=td.peak_threshold,
+            min_signal_agreement=td.min_agreement,
         )
         self._monitor_fed_rows = 0
 
@@ -397,14 +394,15 @@ class Phase:
         event = self._monitor.evaluate_final(raise_on_transition=False)
         if event is None:
             self.logger.info(
-                "Phase transition detector: no melting detected (confidence N/A)"
+                "Phase transition detector: solid phase stable (%d samples analysed)",
+                buf_size,
             )
         else:
             self.logger.warning(
                 "Phase transition detector: MELTING detected! "
-                "signals=%s confidence=%.2f",
+                "triggered_signals=%s confidence=%.0f%%",
                 event.triggered_signals,
-                event.confidence,
+                event.confidence * 100,
             )
             self.lammps_close(lmp=lmp)
             logfile = os.path.join(self.simfolder, "log.lammps")
@@ -433,14 +431,15 @@ class Phase:
         event = self._monitor.evaluate_final(raise_on_transition=False)
         if event is None:
             self.logger.info(
-                "Phase transition detector: no solidification detected (confidence N/A)"
+                "Phase transition detector: liquid phase stable (%d samples analysed)",
+                buf_size,
             )
         else:
             self.logger.warning(
                 "Phase transition detector: SOLIDIFICATION detected! "
-                "signals=%s confidence=%.2f",
+                "triggered_signals=%s confidence=%.0f%%",
                 event.triggered_signals,
-                event.confidence,
+                event.confidence * 100,
             )
             self.lammps_close(lmp=lmp)
             logfile = os.path.join(self.simfolder, "log.lammps")
@@ -451,6 +450,304 @@ class Phase:
             except OSError as e:
                 self.logger.warning(f"Failed to rename log file: {e}")
             self._monitor._raise_for_event(event)
+
+    def _detect_ts_transitions(self):
+        """
+        Analyse ts.forward / ts.backward files for phase transitions via
+        rolling response-function peaks (Cp, kappa_T, alpha_P).
+
+        Called from integrate_reversible_scaling after the MD run completes.
+        Emits a Python UserWarning and logs at WARNING level when a transition
+        is detected.  The calculation is not interrupted; the warning is
+        informational so the user can inspect output files.
+        """
+        from calphy.transition_detector import detect_ts_transitions as _dts
+
+        td      = self.calc.transition_detector
+        t_start = float(self.calc._temperature)
+        t_stop  = float(self.calc._temperature_stop)
+
+        self.logger.info(
+            "ts-sweep transition detector: scanning %d iteration(s) "
+            "(T %.1f K -> %.1f K, peak_threshold=%.1f, min_agreement=%d)",
+            self.calc.n_iterations,
+            t_start, t_stop,
+            td.peak_threshold,
+            td.min_agreement,
+        )
+
+        for i in range(1, self.calc.n_iterations + 1):
+            for sweep_label, fname in [
+                ("forward",  f"ts.forward_{i}.dat"),
+                ("backward", f"ts.backward_{i}.dat"),
+            ]:
+                fpath = os.path.join(self.simfolder, fname)
+                if not os.path.exists(fpath):
+                    self.logger.debug(
+                        "ts-sweep detector: %s not found, skipping", fname
+                    )
+                    continue
+                try:
+                    dU, press, vol_total, lam = np.loadtxt(
+                        fpath, unpack=True, comments="#"
+                    )
+                except Exception as exc:
+                    self.logger.debug(
+                        "ts-sweep detector: could not read %s (%s)", fname, exc
+                    )
+                    continue
+
+                label = f"{sweep_label} (iteration {i})"
+                self.logger.info(
+                    "ts-sweep transition detector: analysing %s (%d rows)",
+                    label, len(dU),
+                )
+                events = _dts(
+                    dU=dU,
+                    press=press,
+                    vol_total=vol_total,
+                    lam=lam,
+                    t_start=t_start,
+                    t_stop=t_stop,
+                    natoms=self.natoms,
+                    peak_threshold=td.peak_threshold,
+                    min_signal_agreement=td.min_agreement,
+                    sweep_label=label,
+                )
+
+                if not events:
+                    self.logger.info(
+                        "ts-sweep transition detector: no transition detected in %s",
+                        label,
+                    )
+                for event in events:
+                    self.logger.warning(
+                        "ts-sweep transition detector: transition in %s at "
+                        "T ~ %.1f K. Signals: %s (confidence %.0f%%). "
+                        "Verify output files for structural changes.",
+                        label,
+                        event.temperature,
+                        ", ".join(event.triggered_signals),
+                        event.confidence * 100,
+                    )
+
+    def _check_ts_file_incrementally(
+        self,
+        fpath: str,
+        sweep_label: str,
+        t_start: float,
+        t_stop: float,
+        already_warned: set,
+    ) -> None:
+        """
+        Read the ts file written so far and run the transition detector on the
+        current (partial) data.  Logs a WARNING the first time a transition is
+        detected for a given temperature region; subsequent calls for the same
+        sweep that find the same peak are silently ignored.
+
+        Parameters
+        ----------
+        fpath : str
+            Path to the ts.forward_N.dat / ts.backward_N.dat file.
+        sweep_label : str
+            Human-readable label used in log messages.
+        t_start, t_stop : float
+            Temperature endpoints passed to detect_ts_transitions.
+        already_warned : set
+            Mutable set of ``(sweep_label, rounded_T)`` tuples.  Passed in
+            by the caller so duplicate warnings are suppressed across repeated
+            calls for the same sweep.
+        """
+        import warnings as _warnings
+        from calphy.transition_detector import detect_ts_transitions as _dts
+
+        if not os.path.exists(fpath):
+            return
+        try:
+            data = np.loadtxt(fpath, comments="#")
+        except Exception as exc:
+            self.logger.debug(
+                "ts incremental check: could not read %s (%s)", fpath, exc
+            )
+            return
+        if data.ndim < 2 or data.shape[0] < 1:
+            return
+
+        dU        = data[:, 0]
+        press     = data[:, 1]
+        vol_total = data[:, 2]
+        lam       = data[:, 3]
+
+        td = self.calc.transition_detector
+        self.logger.debug(
+            "ts-sweep incremental check: %s — %d rows read", sweep_label, len(dU)
+        )
+
+        # Suppress the UserWarning emitted inside detect_ts_transitions; we
+        # emit our own logger.warning below (with deduplication).
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("ignore", UserWarning)
+            events = _dts(
+                dU=dU,
+                press=press,
+                vol_total=vol_total,
+                lam=lam,
+                t_start=t_start,
+                t_stop=t_stop,
+                natoms=self.natoms,
+                peak_threshold=td.peak_threshold,
+                min_signal_agreement=td.min_agreement,
+                sweep_label=sweep_label,
+            )
+
+        for event in events:
+            # Round to nearest 50 K so the same peak doesn't re-trigger as
+            # more data accumulates and the estimated temperature shifts slightly.
+            key = (sweep_label, round(event.temperature / 50.0) * 50)
+            if key not in already_warned:
+                already_warned.add(key)
+                msg = (
+                    f"Phase transition detected in {sweep_label} at "
+                    f"T ~ {event.temperature:.1f} K "
+                    f"(signals: {', '.join(event.triggered_signals)}, "
+                    f"confidence {event.confidence:.0%}). "
+                    "Verify output files for structural changes."
+                )
+                _warnings.warn(msg, UserWarning, stacklevel=2)
+                self.logger.warning(
+                    "ts-sweep transition detector: possible transition in %s at "
+                    "T ~ %.1f K. Signals: %s (confidence %.0f%%). "
+                    "Verify output files for structural changes.",
+                    sweep_label,
+                    event.temperature,
+                    ", ".join(event.triggered_signals),
+                    event.confidence * 100,
+                )
+
+    def _plot_ts_response_functions(self):
+        """
+        Plot Cp, kappa_T, alpha_P vs temperature for every ts sweep file and
+        save the figures to the simulation folder.
+
+        Called from integrate_reversible_scaling after the MD run completes.
+        A PNG file named ``ts_response_<sweep>_<iteration>.png`` is written for
+        each forward/backward sweep.  Detected transition temperatures are
+        marked with vertical dashed lines.
+        """
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+        except ImportError:
+            self.logger.warning(
+                "matplotlib not available; skipping response function plots"
+            )
+            return
+
+        import warnings as _warnings
+        from calphy.transition_detector import (
+            compute_ts_response_arrays as _compute,
+            detect_ts_transitions as _dts,
+        )
+
+        td      = self.calc.transition_detector
+        t_start = float(self.calc._temperature)
+        t_stop  = float(self.calc._temperature_stop)
+
+        for i in range(1, self.calc.n_iterations + 1):
+            for sweep_label, fname in [
+                ("forward",  f"ts.forward_{i}.dat"),
+                ("backward", f"ts.backward_{i}.dat"),
+            ]:
+                fpath = os.path.join(self.simfolder, fname)
+                if not os.path.exists(fpath):
+                    continue
+                try:
+                    dU, press, vol_total, lam = np.loadtxt(
+                        fpath, unpack=True, comments="#"
+                    )
+                except Exception as exc:
+                    self.logger.debug(
+                        "response plot: could not read %s (%s)", fname, exc
+                    )
+                    continue
+
+                arrs = _compute(
+                    dU, press, vol_total, lam, t_start, t_stop, self.natoms
+                )
+                vs = arrs["valid_start"]
+                if vs >= len(arrs["T"]):
+                    self.logger.debug(
+                        "response plot: %s too short for rolling windows, skipping",
+                        fname,
+                    )
+                    continue
+
+                T     = arrs["T"][vs:]
+                Cp    = arrs["Cp"][vs:]
+                kappa = arrs["kappa_T"][vs:]
+                alpha = arrs["alpha_P"][vs:]
+
+                # Detect transitions to mark on the plot
+                with _warnings.catch_warnings():
+                    _warnings.simplefilter("ignore", UserWarning)
+                    events = _dts(
+                        dU=dU,
+                        press=press,
+                        vol_total=vol_total,
+                        lam=lam,
+                        t_start=t_start,
+                        t_stop=t_stop,
+                        natoms=self.natoms,
+                        peak_threshold=td.peak_threshold,
+                        min_signal_agreement=td.min_agreement,
+                        sweep_label=sweep_label,
+                    )
+
+                fig, axes = plt.subplots(3, 1, figsize=(8, 9), sharex=True)
+                fig.suptitle(
+                    f"Thermodynamic response functions\n"
+                    f"{sweep_label} sweep, iteration {i}  "
+                    f"(T: {t_start:.0f} K \u2192 {t_stop:.0f} K)",
+                    fontsize=11,
+                )
+
+                axes[0].plot(T, Cp, lw=0.8, color="C0")
+                axes[0].set_ylabel("$C_P$ (eV K$^{-1}$ atom$^{-1}$)")
+
+                axes[1].plot(T, kappa, lw=0.8, color="C1")
+                axes[1].set_ylabel(r"$\kappa_T$ (eV$^{-1}$)")
+
+                axes[2].plot(T, alpha, lw=0.8, color="C2")
+                axes[2].set_ylabel(r"$\alpha_P$ (K$^{-1}$)")
+                axes[2].set_xlabel("Temperature (K)")
+
+                for event in events:
+                    for ax in axes:
+                        ax.axvline(
+                            event.temperature,
+                            color="red",
+                            lw=1.2,
+                            ls="--",
+                            alpha=0.8,
+                            label=f"transition ~{event.temperature:.0f} K",
+                        )
+                    axes[0].legend(fontsize=8, loc="upper left")
+
+                plt.tight_layout()
+                outname = f"ts_response_{sweep_label}_{i}.png"
+                outpath = os.path.join(self.simfolder, outname)
+                try:
+                    fig.savefig(outpath, dpi=150)
+                    self.logger.info(
+                        "Response function plot saved: %s", outpath
+                    )
+                except Exception as exc:
+                    self.logger.warning(
+                        "Could not save response plot %s: %s", outpath, exc
+                    )
+                finally:
+                    plt.close(fig)
 
     def fix_nose_hoover(
         self,
@@ -1510,6 +1807,24 @@ class Phase:
         res : list of lists of shape 1x3
             Only returned if `return_values` is True.
         """
+        # Detect phase transitions in the ts sweep files before integration.
+        # When incremental checking was active during the MD run (check_interval > 0)
+        # the detection already happened step-by-step; a redundant post-hoc scan
+        # is skipped to avoid duplicate warnings.
+        td = self.calc.transition_detector
+        if td.enabled:
+            if td.check_interval > 0:
+                self.logger.info(
+                    "ts-sweep transition detector: incremental checking was active "
+                    "(check_interval=%d); post-hoc sweep skipped.",
+                    td.check_interval,
+                )
+            else:
+                self._detect_ts_transitions()
+
+        # Always plot the response functions so the user can inspect them.
+        self._plot_ts_response_functions()
+
         res, ediss = integrate_rs(
             self.simfolder,
             self.fe,
@@ -1622,7 +1937,40 @@ class Phase:
             'fix               f3 all print 1 "${dU} $(press) $(vol) ${lambda}" screen no file ts.forward_%d.dat'
             % iteration
         )
-        lmp.command("run               %d" % self.calc._n_sweep_steps)
+        lmp.command("fix_modify        f3 flush yes")
+
+        td = self.calc.transition_detector
+        n_sweep = self.calc._n_sweep_steps
+        _check_interval = td.check_interval if (td.enabled and td.check_interval > 0) else 0
+
+        if _check_interval > 0:
+            self.logger.info(
+                "ts-sweep forward (iteration %d): %d steps, checking every %d steps",
+                iteration, n_sweep, _check_interval,
+            )
+            _fwd_warned: set = set()
+            _steps_done = 0
+            while _steps_done < n_sweep:
+                _chunk = min(_check_interval, n_sweep - _steps_done)
+                # Redefine lambda for this chunk so that ramp() covers only
+                # the proportional slice [steps_done, steps_done+chunk] of
+                # the full li→lf ramp.  Without this, LAMMPS restarts the
+                # ramp from li on every run command.
+                _lam_s = li + (lf - li) * _steps_done / n_sweep
+                _lam_e = li + (lf - li) * (_steps_done + _chunk) / n_sweep
+                lmp.command("variable lambda equal ramp(%f,%f)" % (_lam_s, _lam_e))
+                lmp.command("run               %d" % _chunk)
+                _steps_done += _chunk
+                _fpath = os.path.join(
+                    self.simfolder, "ts.forward_%d.dat" % iteration
+                )
+                self._check_ts_file_incrementally(
+                    _fpath,
+                    "forward (iteration %d)" % iteration,
+                    t0, tf, _fwd_warned,
+                )
+        else:
+            lmp.command("run               %d" % n_sweep)
 
         lmp.command("unfix             f2")
         lmp.command("unfix             f3")
@@ -1657,6 +2005,8 @@ class Phase:
                 self.check_if_solidfied(lmp, "traj.temp.dat")
 
         # start reverse loop
+        # (lambda is redefined per chunk below when incremental checking is on;
+        # this initial definition is used only in the non-incremental branch)
         lmp.command("variable          lambda equal ramp(${lf},${li})")
 
         lmp.command(
@@ -1675,7 +2025,33 @@ class Phase:
             'fix               f3 all print 1 "${dU} $(press) $(vol) ${lambda}" screen no file ts.backward_%d.dat'
             % iteration
         )
-        lmp.command("run               %d" % self.calc._n_sweep_steps)
+        lmp.command("fix_modify        f3 flush yes")
+
+        if _check_interval > 0:
+            self.logger.info(
+                "ts-sweep backward (iteration %d): %d steps, checking every %d steps",
+                iteration, n_sweep, _check_interval,
+            )
+            _bwd_warned: set = set()
+            _steps_done = 0
+            while _steps_done < n_sweep:
+                _chunk = min(_check_interval, n_sweep - _steps_done)
+                # Correct lambda slice for backward sweep (lf→li)
+                _lam_s = lf + (li - lf) * _steps_done / n_sweep
+                _lam_e = lf + (li - lf) * (_steps_done + _chunk) / n_sweep
+                lmp.command("variable lambda equal ramp(%f,%f)" % (_lam_s, _lam_e))
+                lmp.command("run               %d" % _chunk)
+                _steps_done += _chunk
+                _fpath = os.path.join(
+                    self.simfolder, "ts.backward_%d.dat" % iteration
+                )
+                self._check_ts_file_incrementally(
+                    _fpath,
+                    "backward (iteration %d)" % iteration,
+                    t0, tf, _bwd_warned,
+                )
+        else:
+            lmp.command("run               %d" % n_sweep)
 
         self.lammps_close(lmp=lmp)
         # Preserve log file
