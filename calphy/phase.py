@@ -513,6 +513,7 @@ class Phase:
                     peak_threshold=td.peak_threshold,
                     min_signal_agreement=td.min_agreement,
                     sweep_label=label,
+                    sweep_mode="ts",
                 )
 
                 if not events:
@@ -538,6 +539,7 @@ class Phase:
         t_start: float,
         t_stop: float,
         already_warned: set,
+        sweep_mode: str = "ts",
     ) -> None:
         """
         Read the ts file written so far and run the transition detector on the
@@ -557,6 +559,8 @@ class Phase:
             Mutable set of ``(sweep_label, rounded_T)`` tuples.  Passed in
             by the caller so duplicate warnings are suppressed across repeated
             calls for the same sweep.
+        sweep_mode : str
+            ``'ts'`` or ``'tscale'`` — forwarded to detect_ts_transitions.
         """
         import warnings as _warnings
         from calphy.transition_detector import detect_ts_transitions as _dts
@@ -598,6 +602,7 @@ class Phase:
                 peak_threshold=td.peak_threshold,
                 min_signal_agreement=td.min_agreement,
                 sweep_label=sweep_label,
+                sweep_mode=sweep_mode,
             )
 
         for event in events:
@@ -665,7 +670,8 @@ class Phase:
                     continue
 
                 arrs = _compute(
-                    dU, press, vol_total, lam, t_start, t_stop, self.natoms
+                    dU, press, vol_total, lam, t_start, t_stop, self.natoms,
+                    sweep_mode="ts",
                 )
                 vs = arrs["valid_start"]
                 if vs >= len(arrs["T"]):
@@ -694,6 +700,7 @@ class Phase:
                         peak_threshold=td.peak_threshold,
                         min_signal_agreement=td.min_agreement,
                         sweep_label=sweep_label,
+                        sweep_mode="ts",
                     )
 
                 fig, axes = plt.subplots(3, 1, figsize=(8, 9), sharex=True)
@@ -1448,49 +1455,57 @@ class Phase:
         t0: float,
         tf: float,
         iteration: int,
+        sweep_mode: str = "ts",
     ) -> None:
         """
         Run a forward or backward reversible-scaling sweep split into
-        temperature-based blocks, writing a cycle file per block, then
-        merging them into the canonical output file.
+        temperature-based blocks.
+
+        Uses a **single** ``fix print ... flush yes`` output file that grows
+        continuously across all blocks; no per-cycle files are written and no
+        post-run merging is needed.  Between consecutive ``run`` commands,
+        LAMMPS is idle and the file is fully written to disk (guaranteed by
+        ``flush yes``), allowing the incremental transition detector to read the
+        accumulated data with the correct full-sweep baseline.
 
         Parameters
         ----------
         lmp : lammps object
-            Active LAMMPS instance.  The pair style and the ``flambda`` /
-            ``blambda`` ramp variables must already be defined *before* this
-            method is called.  The ramp *will* be reset (``reset_timestep 0``)
-            here so that ``run N start 0 stop total_steps`` works correctly.
+            Active LAMMPS instance.  The pair style and the lambda ramp
+            variables must already be defined *before* this method is called.
+            The ramp *will* be reset (``reset_timestep 0``) here so that
+            ``run N start 0 stop total_steps`` works correctly.
         lambda_var : str
             Name of the LAMMPS variable to record, e.g. ``"flambda"`` or
             ``"blambda"``.
         output_file_pattern : str
-            Base name for the output data file, e.g.
-            ``"ts.forward_1.dat"``.  Cycle files will be named by appending
-            ``_cycle_{k}`` before the ``.dat`` suffix.
+            Name for the output data file, e.g. ``"ts.forward_1.dat"``.
         sweep_label : str
-            Human-readable label used in log messages, e.g.
-            ``"forward (iteration 1)"``.
+            Human-readable label used in log messages.
         t0, tf : float
-            Temperature endpoints of the sweep (K).  Used for the block
-            planner and the transition detector.
+            Temperature endpoints of the sweep (K) used for the block planner.
         iteration : int
             Current reversible-scaling iteration number.
+        sweep_mode : str
+            ``'ts'`` (reversible scaling, fixed thermostat) or ``'tscale'``
+            (temperature scaling, ramping thermostat).  Used for the correct
+            temperature formula in the transition detector.
         """
-        import shutil as _shutil
         from calphy.transition_detector import plan_temperature_blocks as _plan
 
         td = self.calc.transition_detector
         n_sweep = self.calc._n_sweep_steps
         t_win = td.temperature_window if (td.enabled and td.temperature_window > 0) else 0.0
 
+        # Single fix print with flush yes — file is fully flushed after every
+        # step, so it can be read safely between run commands.
+        lmp.command(
+            'fix               f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+            'screen no file %s flush yes' % (lambda_var, output_file_pattern)
+        )
+
         if t_win <= 0:
             # ── Single-run path (no block splitting) ──────────────────────
-            lmp.command(
-                'fix               f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
-                'screen no file %s' % (lambda_var, output_file_pattern)
-            )
-            lmp.command("fix_modify        f3 flush yes")
             self.logger.info("ts-sweep %s: single run, %d steps", sweep_label, n_sweep)
             lmp.command("run               %d" % n_sweep)
             lmp.command("unfix             f3")
@@ -1515,12 +1530,12 @@ class Phase:
         # consistent across all block commands.
         lmp.command("reset_timestep 0")
 
-        # Strip the .dat extension, append _cycle_k.dat
-        base, ext = output_file_pattern.rsplit(".", 1)
-        cycle_files = []
         already_warned: set = set()
-        current_step = 0
+        # t_ref is always the calculation's reference (thermostat) temperature,
+        # used for T = t_ref / lambda in the detector (ts mode).
+        t_ref = self.calc._temperature
 
+        current_step = 0
         for k in range(n_blocks):
             block_steps = blocks[k + 1]["step"] - blocks[k]["step"]
             if block_steps <= 0:
@@ -1529,24 +1544,11 @@ class Phase:
                 )
                 continue
 
-            t_block_start = blocks[k]["temp"]
-            t_block_end   = blocks[k + 1]["temp"]
-            lam_start     = blocks[k]["lambda"]
-            lam_end       = blocks[k + 1]["lambda"]
-
-            cycle_fname = "%s_cycle_%d.%s" % (base, k, ext)
-            cycle_files.append(cycle_fname)
-
-            lmp.command(
-                'fix               f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
-                'screen no file %s' % (lambda_var, cycle_fname)
-            )
-            lmp.command("fix_modify        f3 flush yes")
-
             self.logger.info(
                 "ts-sweep %s block %d/%d: T %.1f→%.1f K  λ %.4f→%.4f  steps %d–%d",
                 sweep_label, k, n_blocks - 1,
-                t_block_start, t_block_end, lam_start, lam_end,
+                blocks[k]["temp"], blocks[k + 1]["temp"],
+                blocks[k]["lambda"], blocks[k + 1]["lambda"],
                 current_step, current_step + block_steps,
             )
 
@@ -1554,63 +1556,35 @@ class Phase:
                 "run %d start 0 stop %d" % (block_steps, n_sweep)
             )
             current_step += block_steps
-            lmp.command("unfix             f3")
 
-            # Run the transition detector on the data accumulated so far in
-            # this cycle file.
+            # After each run LAMMPS is idle; flush yes ensures the growing
+            # output file is fully on disk.  Run the detector on the full
+            # accumulated data (baseline always from sweep start at λ~1).
             if td.enabled:
-                cycle_path = os.path.join(self.simfolder, cycle_fname)
+                fpath = os.path.join(self.simfolder, output_file_pattern)
                 self._check_ts_file_incrementally(
-                    cycle_path, sweep_label, t0, tf, already_warned
+                    fpath, sweep_label, t_ref, tf, already_warned,
+                    sweep_mode=sweep_mode,
                 )
 
         # Handle any remaining steps (numerical rounding)
         remaining = n_sweep - current_step
         if remaining > 0:
-            k_last = n_blocks
-            cycle_fname = "%s_cycle_%d.%s" % (base, k_last, ext)
-            cycle_files.append(cycle_fname)
-            lmp.command(
-                'fix               f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
-                'screen no file %s' % (lambda_var, cycle_fname)
-            )
-            lmp.command("fix_modify        f3 flush yes")
             self.logger.info(
                 "ts-sweep %s remainder block: %d steps", sweep_label, remaining
             )
             lmp.command(
                 "run %d start 0 stop %d" % (remaining, n_sweep)
             )
-            lmp.command("unfix             f3")
             if td.enabled:
-                cycle_path = os.path.join(self.simfolder, cycle_fname)
+                fpath = os.path.join(self.simfolder, output_file_pattern)
                 self._check_ts_file_incrementally(
-                    cycle_path, sweep_label, t0, tf, already_warned
+                    fpath, sweep_label, t_ref, tf, already_warned,
+                    sweep_mode=sweep_mode,
                 )
 
-        # Merge cycle files into the canonical output file
-        self.logger.info(
-            "ts-sweep %s: merging %d cycle files → %s",
-            sweep_label, len(cycle_files), output_file_pattern,
-        )
-        final_path = os.path.join(self.simfolder, output_file_pattern)
-        with open(final_path, "w") as outfile:
-            for idx, fname in enumerate(cycle_files):
-                fpath = os.path.join(self.simfolder, fname)
-                if not os.path.exists(fpath):
-                    self.logger.warning(
-                        "ts-sweep %s: cycle file missing: %s", sweep_label, fname
-                    )
-                    continue
-                with open(fpath, "r") as infile:
-                    if idx == 0:
-                        _shutil.copyfileobj(infile, outfile)
-                    else:
-                        next(infile, None)  # skip header
-                        next(infile, None)  # skip duplicate boundary row
-                        _shutil.copyfileobj(infile, outfile)
-                os.remove(fpath)
-        self.logger.info("ts-sweep %s: merge complete", sweep_label)
+        lmp.command("unfix             f3")
+        self.logger.info("ts-sweep %s: sweep complete (%d steps)", sweep_label, n_sweep)
 
     def _reversible_scaling_forward(self, iteration: int = 1) -> None:
         """
@@ -2066,20 +2040,15 @@ class Phase:
         res : list of lists of shape 1x3
             Only returned if `return_values` is True.
         """
-        # Detect phase transitions in the ts sweep files before integration.
-        # When incremental checking was active during the MD run (check_interval > 0)
-        # the detection already happened step-by-step; a redundant post-hoc scan
-        # is skipped to avoid duplicate warnings.
+        # Post-hoc transition detection on the final merged ts files.
+        # When temperature_window > 0, the incremental detector already checked
+        # the growing output file after every block, including the last block
+        # (which contains the full sweep).  Run post-hoc anyway to ensure the
+        # correct full-sweep baseline is used and to update the response-function
+        # plots with accurate transition markers.
         td = self.calc.transition_detector
         if td.enabled:
-            if td.temperature_window > 0:
-                self.logger.info(
-                    "ts-sweep transition detector: block-by-block checking was active "
-                    "(temperature_window=%.1f K); post-hoc sweep skipped.",
-                    td.temperature_window,
-                )
-            else:
-                self._detect_ts_transitions()
+            self._detect_ts_transitions()
 
         # Always plot the response functions so the user can inspect them.
         self._plot_ts_response_functions()
@@ -2206,6 +2175,7 @@ class Phase:
             t0=t0,
             tf=tf,
             iteration=iteration,
+            sweep_mode="tscale",
         )
 
         lmp.command("unfix             f2")
@@ -2268,6 +2238,7 @@ class Phase:
             t0=tf,
             tf=t0,
             iteration=iteration,
+            sweep_mode="tscale",
         )
 
         lmp.command("unfix             f2")

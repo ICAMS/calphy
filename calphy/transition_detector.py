@@ -311,6 +311,7 @@ def detect_ts_transitions(
     baseline_frac: float = 0.2,
     min_signal_agreement: int = 2,
     sweep_label: str = "forward",
+    sweep_mode: str = "ts",
 ) -> List[TransitionEvent]:
     """
     Detect phase transitions in a reversible-scaling ts sweep.
@@ -330,6 +331,10 @@ def detect_ts_transitions(
     baseline_frac        : fraction of valid data to use as baseline
     min_signal_agreement : signals (Cp, kappa_T, alpha_P) that must peak simultaneously
     sweep_label          : label for warning messages
+    sweep_mode           : ``'ts'`` (reversible scaling, fixed thermostat at
+                           t_start, equivalent T = t_start / lambda) or
+                           ``'tscale'`` (temperature scaling, ramping thermostat,
+                           actual T = t_start + t_stop * (1 - lambda))
 
     Returns
     -------
@@ -338,20 +343,30 @@ def detect_ts_transitions(
 
     Notes
     -----
-    The actual simulation temperature during a reversible-scaling sweep is::
+    For ``sweep_mode='ts'`` (reversible scaling) the thermostat is fixed at
+    *t_start* throughout the sweep; lambda scales the Hamiltonian.  The
+    equivalent free-energy reference temperature is::
+
+        T = t_start / lambda
+
+    For ``sweep_mode='tscale'`` (temperature scaling) the thermostat ramps
+    from *t_start* to *t_stop* and the actual simulation temperature is::
 
         T = t_start + t_stop * (1 - lambda)
-
-    This is consistent with the LAMMPS thermostat variable
-    ``blambda * t_stop`` (forward sweep) or ``flambda * t_stop`` (backward).
     """
     if len(dU) < window_fluct:
         return []
 
     vol_atom = vol_total / natoms
 
-    # Actual simulation temperature: T = t_start + t_stop * (1 - lambda)
-    T = t_start + t_stop * (1.0 - lam)
+    # Equivalent / actual temperature depending on sweep mode
+    if sweep_mode == "ts":
+        # Fixed thermostat at t_start; equivalent free-energy T = t_start / lambda
+        lam_safe_T = np.where(np.abs(lam) > 1e-30, lam, np.nan)
+        T = t_start / lam_safe_T
+    else:
+        # Ramping thermostat: T = t_start + t_stop * (1 - lambda)
+        T = t_start + t_stop * (1.0 - lam)
 
     H = dU + press * vol_atom * BAR_ANG3_TO_EV  # eV/atom
 
@@ -457,6 +472,7 @@ def compute_ts_response_arrays(
     natoms: int,
     window_smooth: int = 500,
     window_fluct: int = 1000,
+    sweep_mode: str = "ts",
 ) -> dict:
     """
     Compute rolling response functions from a ts sweep file.
@@ -472,6 +488,8 @@ def compute_ts_response_arrays(
     natoms                    : number of atoms
     window_smooth             : smoothing window (rows)
     window_fluct              : fluctuation window (rows)
+    sweep_mode                : ``'ts'`` or ``'tscale'`` (see
+                                :func:`detect_ts_transitions`)
 
     Returns
     -------
@@ -483,7 +501,11 @@ def compute_ts_response_arrays(
       valid_start – index from which the rolling windows are fully populated
     """
     vol_atom = vol_total / natoms
-    T = t_start + t_stop * (1.0 - lam)
+    if sweep_mode == "ts":
+        lam_safe_T = np.where(np.abs(lam) > 1e-30, lam, np.nan)
+        T = t_start / lam_safe_T
+    else:
+        T = t_start + t_stop * (1.0 - lam)
 
     H = dU + press * vol_atom * BAR_ANG3_TO_EV
 
