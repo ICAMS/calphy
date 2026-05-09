@@ -240,11 +240,15 @@ class TransitionDetector(BaseModel, title="Settings for fluctuation-based phase 
     peak_threshold: Annotated[
         float,
         Field(
-            default=5.0,
+            default=8.0,
             gt=0,
             description=(
-                "Flag a transition when any response function peak exceeds "
-                "peak_threshold times its baseline median.  The three signals "
+                "Flag a transition when the modified Z-score of any response "
+                "function peak exceeds this value, where "
+                "mod_z = (peak - median) / (1.4826 * MAD) is computed over "
+                "all accumulated data. Default 8.0 cleanly separates real "
+                "transitions (mod_z > 25) from the natural ~8x growth of Cp "
+                "across a 200 K solid window (mod_z ~ 2-7). The three signals "
                 "evaluated are Cp, kappa_T, and alpha_P."
             ),
         ),
@@ -272,7 +276,17 @@ class TransitionDetector(BaseModel, title="Settings for fluctuation-based phase 
             ),
         ),
     ]
-
+    abort_on_detection: Annotated[
+        bool,
+        Field(
+            default=True,
+            description=(
+                "If True, raise PhaseTransitionError to terminate the "
+                "calculation as soon as the per-block detector flags a "
+                "transition.  If False, only emit a warning and continue."
+            ),
+        ),
+    ]
 
 class MeltingTemperature(BaseModel, title="Input options for melting temperature mode"):
     guess: Annotated[Union[float, None], Field(default=None, gt=0)]

@@ -621,6 +621,28 @@ class Phase:
                     event.confidence * 100,
                 )
 
+        # Hard-abort the calculation if requested and at least one event fired.
+        if events and getattr(td, "abort_on_detection", True):
+            from calphy.errors import PhaseTransitionError
+            ev = events[0]
+            msg = (
+                "Phase transition detected in %s at T ~ %.1f K "
+                "(signals: %s).  Aborting calculation. "
+                "Set transition_detector.abort_on_detection=false to continue "
+                "past detections, or narrow the temperature range to stay in "
+                "the desired phase."
+            ) % (sweep_label, ev.temperature, ", ".join(ev.triggered_signals))
+            self.logger.error(msg)
+            # Generate diagnostic plots with data collected so far before
+            # propagating the error.
+            try:
+                self._plot_ts_response_functions()
+            except Exception as _plot_exc:
+                self.logger.debug(
+                    "ts response plot failed before abort: %s", _plot_exc
+                )
+            raise PhaseTransitionError(msg)
+
     def _plot_ts_response_functions(self):
         """
         Plot Cp, kappa_T, alpha_P vs temperature for every ts sweep file and
@@ -1497,15 +1519,12 @@ class Phase:
         n_sweep = self.calc._n_sweep_steps
         t_win = td.temperature_window if (td.enabled and td.temperature_window > 0) else 0.0
 
-        # Single fix print with flush yes — file is fully flushed after every
-        # step, so it can be read safely between run commands.
-        lmp.command(
-            'fix               f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
-            'screen no file %s flush yes' % (lambda_var, output_file_pattern)
-        )
-
         if t_win <= 0:
             # ── Single-run path (no block splitting) ──────────────────────
+            lmp.command(
+                'fix               f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+                'screen no file %s' % (lambda_var, output_file_pattern)
+            )
             self.logger.info("ts-sweep %s: single run, %d steps", sweep_label, n_sweep)
             lmp.command("run               %d" % n_sweep)
             lmp.command("unfix             f3")
@@ -1530,11 +1549,18 @@ class Phase:
         # consistent across all block commands.
         lmp.command("reset_timestep 0")
 
+        # Strategy: unfix f3 after every block so LAMMPS closes and flushes
+        # the output file. Block 0 creates the file; blocks 1+ append to it.
+        # After every block we run the transition detector on the full
+        # accumulated file. The detector uses a robust modified-Z criterion
+        # (median + MAD over all valid data) which is insensitive to the
+        # natural ~8x rise of Cp across a 200 K solid window: that rise gives
+        # mod_z ~ 2, while a real transition gives mod_z > 25.
+        # If a transition is detected the calculation is aborted via
+        # PhaseTransitionError so the user can re-run with a tighter range.
+        fpath = os.path.join(self.simfolder, output_file_pattern)
         already_warned: set = set()
-        # t_ref is always the calculation's reference (thermostat) temperature,
-        # used for T = t_ref / lambda in the detector (ts mode).
         t_ref = self.calc._temperature
-
         current_step = 0
         for k in range(n_blocks):
             block_steps = blocks[k + 1]["step"] - blocks[k]["step"]
@@ -1552,16 +1578,23 @@ class Phase:
                 current_step, current_step + block_steps,
             )
 
-            lmp.command(
-                "run %d start 0 stop %d" % (block_steps, n_sweep)
-            )
-            current_step += block_steps
+            if k == 0:
+                lmp.command(
+                    'fix f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+                    'screen no file %s' % (lambda_var, output_file_pattern)
+                )
+            else:
+                lmp.command(
+                    'fix f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+                    'screen no append %s' % (lambda_var, output_file_pattern)
+                )
 
-            # After each run LAMMPS is idle; flush yes ensures the growing
-            # output file is fully on disk.  Run the detector on the full
-            # accumulated data (baseline always from sweep start at λ~1).
+            lmp.command("run %d start 0 stop %d" % (block_steps, n_sweep))
+            current_step += block_steps
+            lmp.command("unfix f3")
+
+            # File closed/flushed by unfix. Run detector on the growing file.
             if td.enabled:
-                fpath = os.path.join(self.simfolder, output_file_pattern)
                 self._check_ts_file_incrementally(
                     fpath, sweep_label, t_ref, tf, already_warned,
                     sweep_mode=sweep_mode,
@@ -1574,16 +1607,17 @@ class Phase:
                 "ts-sweep %s remainder block: %d steps", sweep_label, remaining
             )
             lmp.command(
-                "run %d start 0 stop %d" % (remaining, n_sweep)
+                'fix f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+                'screen no append %s' % (lambda_var, output_file_pattern)
             )
+            lmp.command("run %d start 0 stop %d" % (remaining, n_sweep))
+            lmp.command("unfix f3")
             if td.enabled:
-                fpath = os.path.join(self.simfolder, output_file_pattern)
                 self._check_ts_file_incrementally(
                     fpath, sweep_label, t_ref, tf, already_warned,
                     sweep_mode=sweep_mode,
                 )
 
-        lmp.command("unfix             f3")
         self.logger.info("ts-sweep %s: sweep complete (%d steps)", sweep_label, n_sweep)
 
     def _reversible_scaling_forward(self, iteration: int = 1) -> None:

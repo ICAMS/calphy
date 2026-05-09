@@ -307,7 +307,7 @@ def detect_ts_transitions(
     natoms: int,
     window_smooth: int = 500,
     window_fluct: int = 1000,
-    peak_threshold: float = 5.0,
+    peak_threshold: float = 8.0,
     baseline_frac: float = 0.2,
     min_signal_agreement: int = 2,
     sweep_label: str = "forward",
@@ -327,8 +327,14 @@ def detect_ts_transitions(
     natoms    : number of atoms
     window_smooth        : rows to smooth before computing fluctuations
     window_fluct         : rolling window for variance / covariance
-    peak_threshold       : flag when peak > peak_threshold x baseline median
-    baseline_frac        : fraction of valid data to use as baseline
+    peak_threshold       : flag when modified Z-score of the peak exceeds this
+                           value, where mod_z = (peak - median) / (1.4826 * MAD)
+                           computed over all valid data accumulated so far.
+                           Default 8.0 cleanly separates real transitions
+                           (mod_z > 25) from natural Cp growth in a single
+                           solid window (mod_z ~ 2-7).
+    baseline_frac        : (kept for backward compatibility; unused with the
+                           robust median+MAD criterion)
     min_signal_agreement : signals (Cp, kappa_T, alpha_P) that must peak simultaneously
     sweep_label          : label for warning messages
     sweep_mode           : ``'ts'`` (reversible scaling, fixed thermostat at
@@ -389,37 +395,49 @@ def detect_ts_transitions(
         kappa = _rolling_var(sm_V, window_fluct) / (kBT * mean_V)
         alpha = np.abs(_rolling_cov(sm_V, Hl, window_fluct) / (kBT2 * mean_V))
 
-    # Baseline: median over first baseline_frac of valid data.
-    # Hl has NaN for the first window_smooth-1 positions (from the sm_lam
-    # rolling mean), so rolling_var(Hl) is only valid from position
-    # window_smooth + window_fluct - 2 onwards.
+    # Baseline statistics: median + MAD over ALL valid data accumulated so far.
+    # Using a global robust statistic (rather than the cold-start "first 20%")
+    # is essential for incremental block-by-block detection: response functions
+    # of a solid grow ~8x naturally over a 200 K temperature window
+    # (equilibrium physics), so a "first 20% baseline" makes everything later
+    # look like an outlier. Median + MAD is robust against the peak itself
+    # influencing the baseline.
     valid_start = window_smooth + window_fluct - 2
     n = len(Cp)
     if valid_start >= n:
         return []
 
-    n_base = max(1, int(baseline_frac * (n - valid_start)))
-
-    def _base_median(sig):
-        chunk = sig[valid_start: valid_start + n_base]
+    def _robust_stats(sig):
+        chunk = sig[valid_start:]
         finite = chunk[np.isfinite(chunk)]
-        return float(np.median(finite)) if len(finite) > 0 else 0.0
+        if len(finite) < 10:
+            return 0.0, 0.0
+        med = float(np.median(finite))
+        mad = float(np.median(np.abs(finite - med)))
+        # 1.4826 * MAD = consistent estimate of std for normal data
+        return med, 1.4826 * mad
 
-    base_Cp    = _base_median(Cp)
-    base_kappa = _base_median(kappa)
-    base_alpha = _base_median(alpha)
+    base_Cp_med,    base_Cp_scale    = _robust_stats(Cp)
+    base_kappa_med, base_kappa_scale = _robust_stats(kappa)
+    base_alpha_med, base_alpha_scale = _robust_stats(alpha)
 
     signals = {
-        "Cp":      (Cp,    base_Cp),
-        "kappa_T": (kappa, base_kappa),
-        "alpha_P": (alpha, base_alpha),
+        "Cp":      (Cp,    base_Cp_med,    base_Cp_scale),
+        "kappa_T": (kappa, base_kappa_med, base_kappa_scale),
+        "alpha_P": (alpha, base_alpha_med, base_alpha_scale),
     }
 
-    # Find peak of each signal; flag if it exceeds threshold x baseline
+    # Modified Z-score outlier test: flag when (peak - median) / scale > peak_threshold.
+    # This robust criterion correctly distinguishes:
+    #   - smooth monotonic growth of Cp through a solid window (mod_z ~ 2)
+    #   - sharp transition spike (mod_z > 25)
+    # while being insensitive to the magnitude of the peak (no near-zero median
+    # divisors, no first-20% baseline that becomes obsolete as data accumulates).
     detected = {}
-    for sig_name, (sig, base) in signals.items():
-        if base <= 1e-30:
+    for sig_name, (sig, base_med, base_scale) in signals.items():
+        if base_scale < 1e-40:
             continue
+        threshold_val = base_med + peak_threshold * base_scale
         region = sig[valid_start:]
         T_region = T[valid_start:]
         finite_mask = np.isfinite(region)
@@ -427,10 +445,11 @@ def detect_ts_transitions(
             continue
         masked = np.where(finite_mask, region, -np.inf)
         peak_val = float(np.max(masked))
-        if peak_val > peak_threshold * base:
+        if peak_val > threshold_val:
             peak_idx_rel = int(np.argmax(masked))
             T_trans = float(T_region[peak_idx_rel])
-            detected[sig_name] = (valid_start + peak_idx_rel, T_trans, peak_val / base)
+            mod_z = (peak_val - base_med) / base_scale
+            detected[sig_name] = (valid_start + peak_idx_rel, T_trans, mod_z)
 
     if len(detected) < min_signal_agreement:
         return []
@@ -438,7 +457,7 @@ def detect_ts_transitions(
     T_trans  = float(np.mean([v[1] for v in detected.values()]))
     peak_idx = int(np.mean([v[0] for v in detected.values()]))
     sig_names = list(detected.keys())
-    ratio_str = ", ".join(f"{k}={v[2]:.1f}x" for k, v in detected.items())
+    ratio_str = ", ".join(f"{k}=modZ {v[2]:.1f}" for k, v in detected.items())
 
     event = TransitionEvent(
         sample_index=peak_idx,
