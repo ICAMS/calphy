@@ -287,6 +287,20 @@ class TransitionDetector(BaseModel, title="Settings for fluctuation-based phase 
             ),
         ),
     ]
+    recover_on_detection: Annotated[
+        bool,
+        Field(
+            default=True,
+            description=(
+                "If True (default), automatically truncate the reversible-"
+                "scaling sweep at the last clean block boundary T_k when a "
+                "transition is detected, and continue with a backward sweep "
+                "over the reduced range [T_0, T_k] using the per-block "
+                "checkpoint at T_k as the starting configuration.  If False, "
+                "fall back to abort_on_detection."
+            ),
+        ),
+    ]
 
 class MeltingTemperature(BaseModel, title="Input options for melting temperature mode"):
     guess: Annotated[Union[float, None], Field(default=None, gt=0)]

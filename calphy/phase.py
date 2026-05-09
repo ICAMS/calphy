@@ -621,16 +621,22 @@ class Phase:
                     event.confidence * 100,
                 )
 
-        # Hard-abort the calculation if requested and at least one event fired.
-        if events and getattr(td, "abort_on_detection", True):
+        # Abort the calculation if requested and at least one event fired.
+        # The recovery path (recover_on_detection=True) is preferred and runs
+        # in reversible_scaling(); it catches PhaseTransitionError, truncates
+        # the sweep at the safe block boundary, and continues with a backward
+        # sweep over the reduced range.  We always raise here so the upstream
+        # handler can do its work; if neither recover_on_detection nor
+        # abort_on_detection is True the user gets a warning and we DO NOT
+        # raise.
+        recover = getattr(td, "recover_on_detection", True)
+        abort   = getattr(td, "abort_on_detection", True)
+        if events and (recover or abort):
             from calphy.errors import PhaseTransitionError
             ev = events[0]
             msg = (
                 "Phase transition detected in %s at T ~ %.1f K "
-                "(signals: %s).  Aborting calculation. "
-                "Set transition_detector.abort_on_detection=false to continue "
-                "past detections, or narrow the temperature range to stay in "
-                "the desired phase."
+                "(signals: %s)."
             ) % (sweep_label, ev.temperature, ", ".join(ev.triggered_signals))
             self.logger.error(msg)
             # Generate diagnostic plots with data collected so far before
@@ -1561,6 +1567,8 @@ class Phase:
         fpath = os.path.join(self.simfolder, output_file_pattern)
         already_warned: set = set()
         t_ref = self.calc._temperature
+        # Strip ".dat" so we can build a per-block checkpoint name.
+        out_stem = output_file_pattern[:-4] if output_file_pattern.endswith(".dat") else output_file_pattern
         current_step = 0
         for k in range(n_blocks):
             block_steps = blocks[k + 1]["step"] - blocks[k]["step"]
@@ -1577,6 +1585,16 @@ class Phase:
                 blocks[k]["lambda"], blocks[k + 1]["lambda"],
                 current_step, current_step + block_steps,
             )
+
+            # Snapshot the state at the START of this block.  This corresponds
+            # to T = blocks[k]["temp"] (lambda = blocks[k]["lambda"]) and is
+            # guaranteed to be in the same phase as t0, since the detector has
+            # not yet fired for any prior block.  If the detector fires AFTER
+            # this block runs, this checkpoint is the safe restart point for
+            # the recovery path in reversible_scaling().
+            chk_name = "conf.%s_blk%d.data" % (out_stem, k)
+            chk_path = os.path.join(self.simfolder, chk_name)
+            lmp.command("write_data %s nocoeff" % chk_path)
 
             if k == 0:
                 lmp.command(
@@ -1595,10 +1613,27 @@ class Phase:
 
             # File closed/flushed by unfix. Run detector on the growing file.
             if td.enabled:
-                self._check_ts_file_incrementally(
-                    fpath, sweep_label, t_ref, tf, already_warned,
-                    sweep_mode=sweep_mode,
-                )
+                try:
+                    self._check_ts_file_incrementally(
+                        fpath, sweep_label, t_ref, tf, already_warned,
+                        sweep_mode=sweep_mode,
+                    )
+                except Exception as exc:
+                    # Decorate with safe-block context so the top-level
+                    # recovery handler can truncate the file and restart from
+                    # the checkpoint written at the START of THIS block.
+                    from calphy.errors import PhaseTransitionError
+                    if isinstance(exc, PhaseTransitionError):
+                        exc.safe_block_index = k
+                        exc.safe_temperature = blocks[k]["temp"]
+                        exc.safe_lambda = blocks[k]["lambda"]
+                        exc.safe_step = blocks[k]["step"]
+                        exc.checkpoint_file = chk_path
+                        exc.output_file = fpath
+                        exc.sweep_label = sweep_label
+                        exc.iteration = iteration
+                        exc.sweep_mode = sweep_mode
+                    raise
 
         # Handle any remaining steps (numerical rounding)
         remaining = n_sweep - current_step
@@ -1613,10 +1648,32 @@ class Phase:
             lmp.command("run %d start 0 stop %d" % (remaining, n_sweep))
             lmp.command("unfix f3")
             if td.enabled:
-                self._check_ts_file_incrementally(
-                    fpath, sweep_label, t_ref, tf, already_warned,
-                    sweep_mode=sweep_mode,
-                )
+                try:
+                    self._check_ts_file_incrementally(
+                        fpath, sweep_label, t_ref, tf, already_warned,
+                        sweep_mode=sweep_mode,
+                    )
+                except Exception as exc:
+                    from calphy.errors import PhaseTransitionError
+                    if isinstance(exc, PhaseTransitionError):
+                        # Remainder block runs after the last full block; the
+                        # safe checkpoint is the one at the start of the LAST
+                        # full block (n_blocks - 1) — but we already wrote
+                        # checkpoint blk{n_blocks-1} above.  Use blk(n_blocks-1)
+                        # as the safe restart and the corresponding step.
+                        last_k = n_blocks - 1
+                        chk_name = "conf.%s_blk%d.data" % (out_stem, last_k)
+                        chk_path = os.path.join(self.simfolder, chk_name)
+                        exc.safe_block_index = last_k
+                        exc.safe_temperature = blocks[last_k]["temp"]
+                        exc.safe_lambda = blocks[last_k]["lambda"]
+                        exc.safe_step = blocks[last_k]["step"]
+                        exc.checkpoint_file = chk_path
+                        exc.output_file = fpath
+                        exc.sweep_label = sweep_label
+                        exc.iteration = iteration
+                        exc.sweep_mode = sweep_mode
+                    raise
 
         self.logger.info("ts-sweep %s: sweep complete (%d steps)", sweep_label, n_sweep)
 
@@ -1805,15 +1862,41 @@ class Phase:
 
         # ── Forward sweep ───────────────────────────────────────────────────
         self.logger.info("forward sweep (iteration %d): sweep start", iteration)
-        self._run_split_sweep(
-            lmp=lmp,
-            lambda_var="flambda",
-            output_file_pattern="ts.forward_%d.dat" % iteration,
-            sweep_label="forward (iteration %d)" % iteration,
-            t0=t0,
-            tf=tf,
-            iteration=iteration,
-        )
+        try:
+            self._run_split_sweep(
+                lmp=lmp,
+                lambda_var="flambda",
+                output_file_pattern="ts.forward_%d.dat" % iteration,
+                sweep_label="forward (iteration %d)" % iteration,
+                t0=t0,
+                tf=tf,
+                iteration=iteration,
+            )
+        except Exception:
+            # Make sure the LAMMPS instance (especially in interactive
+            # pylammpsmpi mode where it is reused for the backward sweep) is
+            # cleared and the log file is renamed before the exception
+            # propagates.  This is the only way the recovery path in
+            # reversible_scaling() can safely create a fresh lmp for the
+            # backward sweep.
+            try:
+                self.lammps_close(lmp=lmp)
+            except Exception as _close_exc:
+                self.logger.debug(
+                    "forward sweep cleanup: lammps_close failed: %s", _close_exc
+                )
+            logfile = os.path.join(self.simfolder, "log.lammps")
+            if os.path.exists(logfile):
+                try:
+                    os.rename(
+                        logfile,
+                        os.path.join(
+                            self.simfolder, "reversible_scaling_forward.log.lammps"
+                        ),
+                    )
+                except Exception:
+                    pass
+            raise
         self.logger.info("forward sweep (iteration %d): sweep done", iteration)
 
         # ── Cleanup swaps / dump ────────────────────────────────────────────
@@ -2029,6 +2112,135 @@ class Phase:
                 ),
             )
 
+    def _truncate_ts_file(self, fpath: str, n_data_rows: int) -> int:
+        """
+        Keep only the first ``n_data_rows`` data rows of ``fpath`` (rewriting
+        the file in place).  Comment lines starting with '#' are preserved.
+
+        Returns the number of data rows actually retained (clamped to the
+        rows currently present in the file).
+        """
+        if not os.path.exists(fpath):
+            return 0
+        with open(fpath, "r") as fh:
+            lines = fh.readlines()
+        kept: list = []
+        kept_data = 0
+        for line in lines:
+            if line.startswith("#") or line.strip() == "":
+                kept.append(line)
+                continue
+            if kept_data < n_data_rows:
+                kept.append(line)
+                kept_data += 1
+            else:
+                break
+        with open(fpath, "w") as fh:
+            fh.writelines(kept)
+        return kept_data
+
+    def _recover_from_phase_transition(self, exc, iteration: int) -> bool:
+        """
+        Handle a PhaseTransitionError raised by the forward reversible-scaling
+        sweep.  The error carries the safe-block context attached in
+        ``_run_split_sweep`` (``safe_block_index``, ``safe_temperature``,
+        ``safe_step``, ``checkpoint_file`` …).
+
+        Recovery steps:
+
+        1. Truncate the forward ts file to ``safe_step`` data rows so the
+           remaining sweep stays inside one phase.
+        2. Copy the per-block checkpoint at the safe boundary to the standard
+           ``conf.ts.forward_<iter>.data`` filename expected by the backward
+           sweep.
+        3. Reduce ``calc._temperature_stop`` to the safe temperature and
+           ``calc._n_sweep_steps`` to ``safe_step`` so that:
+              * the backward sweep covers the same lambda range as the
+                truncated forward sweep, and
+              * the backward sweep produces exactly the same number of rows
+                as the truncated forward file (required by integrate_rs,
+                which pairs forward[i] with backward[N-1-i]).
+
+        Returns True if the recovery setup succeeded and the caller should
+        proceed with the backward sweep, False otherwise (e.g. transition
+        in block 0 — there is no clean range to recover into).
+        """
+        safe_k = getattr(exc, "safe_block_index", None)
+        safe_T = getattr(exc, "safe_temperature", None)
+        safe_step = getattr(exc, "safe_step", None)
+        chk = getattr(exc, "checkpoint_file", None)
+        out = getattr(exc, "output_file", None)
+
+        if safe_k is None or safe_step is None or chk is None or out is None:
+            self.logger.error(
+                "recovery: PhaseTransitionError missing safe-block context — "
+                "cannot recover"
+            )
+            return False
+
+        if safe_k <= 0 or safe_step <= 0:
+            self.logger.error(
+                "recovery: transition detected in the very first block "
+                "(no safe sub-range remains).  Lower temperature_stop and "
+                "re-run."
+            )
+            return False
+
+        if not os.path.exists(chk):
+            self.logger.error(
+                "recovery: checkpoint file %s missing — cannot recover", chk
+            )
+            return False
+
+        # 1. Truncate the forward ts file to safe_step rows.
+        kept = self._truncate_ts_file(out, safe_step)
+        self.logger.warning(
+            "recovery: truncated %s to %d data rows (safe boundary T=%.1f K, "
+            "block %d)",
+            os.path.basename(out), kept, safe_T, safe_k,
+        )
+
+        # 2. Promote the checkpoint to the canonical forward-end configuration.
+        target_conf = os.path.join(
+            self.simfolder, "conf.ts.forward_%d.data" % iteration
+        )
+        try:
+            shutil.copy(chk, target_conf)
+            self.logger.warning(
+                "recovery: copied %s -> %s", os.path.basename(chk),
+                os.path.basename(target_conf),
+            )
+        except Exception as cp_exc:
+            self.logger.error(
+                "recovery: failed to copy checkpoint to %s: %s",
+                target_conf, cp_exc,
+            )
+            return False
+
+        # 3. Reduce the calc target so the backward sweep lambda range matches.
+        old_tf = self.calc._temperature_stop
+        old_n  = self.calc._n_sweep_steps
+        self.calc._temperature_stop = float(safe_T)
+        self.calc._n_sweep_steps    = int(safe_step)
+        self.logger.warning(
+            "recovery: reduced T_stop %.1f K -> %.1f K and n_sweep_steps "
+            "%d -> %d for the backward sweep",
+            old_tf, safe_T, old_n, safe_step,
+        )
+
+        # Disable abort/recover for the backward sweep so a (very unlikely)
+        # second detection inside the now-safe range does not loop.  The
+        # detector itself will still emit warnings.
+        td = self.calc.transition_detector
+        td.abort_on_detection = False
+        td.recover_on_detection = False
+        self.logger.warning(
+            "recovery: disabled abort/recover for the subsequent backward "
+            "sweep (warnings will still be logged)"
+        )
+
+        return True
+
     def reversible_scaling(self, iteration=1):
         """
         Perform reversible scaling calculation in NPT.
@@ -2049,7 +2261,24 @@ class Phase:
         expected_phase = "solid" if solid else "liquid"
         self._create_monitor(expected_phase)
 
-        self._reversible_scaling_forward(iteration=iteration)
+        from calphy.errors import PhaseTransitionError
+
+        td = self.calc.transition_detector
+        try:
+            self._reversible_scaling_forward(iteration=iteration)
+        except PhaseTransitionError as exc:
+            if getattr(td, "recover_on_detection", True):
+                self.logger.warning(
+                    "Forward sweep flagged a phase transition — attempting "
+                    "automatic recovery (truncate to last safe block "
+                    "boundary and continue with backward sweep)."
+                )
+                if not self._recover_from_phase_transition(exc, iteration):
+                    raise
+            else:
+                # No recovery requested; propagate.
+                raise
+
         self._reversible_scaling_backward(iteration=iteration)
 
         self.logger.info("Finished temperature sweep cycle: %d", iteration)
