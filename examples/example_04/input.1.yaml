@@ -15,3 +15,5 @@ calculations:
     - conda activate calphy
     cores: 4
     scheduler: local
+  phase_transition_detection:
+    mode: recover

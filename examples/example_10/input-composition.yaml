@@ -24,3 +24,5 @@ calculations:
     scheduler: local
   reference_phase: solid
   temperature: 800.0
+  phase_transition_detection:
+    mode: recover
