@@ -108,7 +108,7 @@ class MeltingTemp:
         calc = data["calculations"][int(self.calc.kernel)]
 
         calc["mode"] = "ts"
-        calc["temperature"] = [int(self.tmin), int(self.tmax)]
+        calc["temperature"] = [int(self.tmax), int(self.tmin)]
         calc["reference_phase"] = "liquid"
         # Preserve n_iterations from the original melting_temperature calculation
         if "n_iterations" in data["calculations"][int(self.calc.kernel)]:
@@ -184,7 +184,7 @@ class MeltingTemp:
 
         try:
             self.soljob = routine_fe(self.soljob)
-        except MeltedError:
+        except (MeltedError, PhaseTransitionError):
             self.logger.info("Solid phase melted")
             return 2
 
@@ -192,7 +192,7 @@ class MeltingTemp:
         for i in range(self.soljob.calc.n_iterations):
             try:
                 self.soljob.reversible_scaling(iteration=(i + 1))
-            except MeltedError:
+            except (MeltedError, PhaseTransitionError):
                 self.logger.info("Solid system melted during reversible scaling run")
                 return 2
 
@@ -203,7 +203,7 @@ class MeltingTemp:
         self.logger.info("Starting liquid fe calculation")
         try:
             self.lqdjob = routine_fe(self.lqdjob)
-        except SolidifiedError:
+        except (SolidifiedError, PhaseTransitionError):
             self.logger.info("Liquid froze")
             return 3
 
@@ -211,7 +211,7 @@ class MeltingTemp:
         for i in range(self.lqdjob.calc.n_iterations):
             try:
                 self.lqdjob.reversible_scaling(iteration=(i + 1))
-            except SolidifiedError:
+            except (SolidifiedError, PhaseTransitionError):
                 self.logger.info("Liquid froze during reversible scaling calculation")
                 return 3
 
@@ -285,6 +285,36 @@ class MeltingTemp:
         self.logger.info("STATE: Predicted Tm from extrapolation: %f K" % tpred)
         return tpred
 
+    def _align_fe_curves(self):
+        """
+        Return (t_common, sol_f, sol_err, lqd_f, lqd_err) interpolated onto a
+        shared temperature grid.  Handles the case where phase-transition recovery
+        truncated one sweep, leaving solres and lqdres with different lengths.
+        """
+        sol_t, sol_f, sol_err = self.solres
+        lqd_t, lqd_f, lqd_err = self.lqdres
+
+        if len(sol_t) == len(lqd_t) and np.allclose(sol_t, lqd_t):
+            return sol_t, sol_f, sol_err, lqd_f, lqd_err
+
+        # Sort each curve by temperature for np.interp
+        ss = np.argsort(sol_t)
+        ls = np.argsort(lqd_t)
+        sol_t_s, sol_f_s, sol_err_s = sol_t[ss], sol_f[ss], sol_err[ss]
+        lqd_t_s, lqd_f_s, lqd_err_s = lqd_t[ls], lqd_f[ls], lqd_err[ls]
+
+        # Common overlapping temperature range at 1 K resolution
+        t_lo = max(sol_t_s[0], lqd_t_s[0])
+        t_hi = min(sol_t_s[-1], lqd_t_s[-1])
+        t_common = np.arange(t_lo, t_hi + 1.0, 1.0)
+
+        sol_f_c   = np.interp(t_common, sol_t_s, sol_f_s)
+        sol_err_c = np.interp(t_common, sol_t_s, sol_err_s)
+        lqd_f_c   = np.interp(t_common, lqd_t_s, lqd_f_s)
+        lqd_err_c = np.interp(t_common, lqd_t_s, lqd_err_s)
+
+        return t_common, sol_f_c, sol_err_c, lqd_f_c, lqd_err_c
+
     def find_tm(self):
         """
         Find melting temperature
@@ -298,15 +328,17 @@ class MeltingTemp:
         None
         """
         for i in range(100):
-            arg = np.argsort(np.abs(self.solres[1] - self.lqdres[1]))[0]
+            t_common, sol_f, sol_err, lqd_f, lqd_err = self._align_fe_curves()
+
+            arg = np.argsort(np.abs(sol_f - lqd_f))[0]
             self.arg = arg
 
-            if (arg == 0) or (arg == len(self.solres[1]) - 1):
+            if (arg == 0) or (arg == len(sol_f) - 1):
                 self.logger.info(
                     "From calculation, melting temperature is not within the selected range."
                 )
                 self.logger.info("STATE: From calculation, Tm is not within range.")
-                if arg == len(self.solres[1]) - 1:
+                if arg == len(sol_f) - 1:
                     arg = 999
                 # the above is just a trick to extrapolate
                 # now here we need to find a guess value;
@@ -324,17 +356,21 @@ class MeltingTemp:
                 self.start_calculation()
 
             else:
-                self.calc_tm = self.solres[0][arg]
+                self.calc_tm = t_common[arg]
                 # get errors
-                suberr = np.sqrt(self.solres[2][arg] ** 2 + self.lqdres[2][arg] ** 2)
-                sol_slope = (self.solres[1][arg + 50] - self.solres[1][arg - 50]) / (
-                    self.solres[0][arg + 50] - self.solres[0][arg - 50]
-                )
-                lqd_slope = (self.lqdres[1][arg + 50] - self.lqdres[1][arg - 50]) / (
-                    self.lqdres[0][arg + 50] - self.lqdres[0][arg - 50]
-                )
-                slope_diff = sol_slope - lqd_slope
-                tmerr = suberr / slope_diff
+                suberr = np.sqrt(sol_err[arg] ** 2 + lqd_err[arg] ** 2)
+                stride = min(50, arg, len(sol_f) - 1 - arg)
+                if stride > 0:
+                    sol_slope = (sol_f[arg + stride] - sol_f[arg - stride]) / (
+                        t_common[arg + stride] - t_common[arg - stride]
+                    )
+                    lqd_slope = (lqd_f[arg + stride] - lqd_f[arg - stride]) / (
+                        t_common[arg + stride] - t_common[arg - stride]
+                    )
+                    slope_diff = sol_slope - lqd_slope
+                    tmerr = suberr / slope_diff if slope_diff != 0 else 0.0
+                else:
+                    tmerr = 0.0
                 self.tmerr = tmerr
                 return self.calc_tm, self.tmerr
 
