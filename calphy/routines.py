@@ -97,6 +97,7 @@ class MeltingTemp:
         calc["temperature"] = [int(self.tmin), int(self.tmax)]
         calc["reference_phase"] = "solid"
         calc["phase_transition_detection"] = {"mode": "recover"}
+        calc["folder_prefix"] = "mt%d" % self.attempts
         # Preserve n_iterations from the original melting_temperature calculation
         if "n_iterations" in data["calculations"][int(self.calc.kernel)]:
             calc["n_iterations"] = data["calculations"][int(self.calc.kernel)][
@@ -112,6 +113,7 @@ class MeltingTemp:
         calc["temperature"] = [int(self.tmax), int(self.tmin)]
         calc["reference_phase"] = "liquid"
         calc["phase_transition_detection"] = {"mode": "recover"}
+        calc["folder_prefix"] = "mt%d" % self.attempts
         # Preserve n_iterations from the original melting_temperature calculation
         if "n_iterations" in data["calculations"][int(self.calc.kernel)]:
             calc["n_iterations"] = data["calculations"][int(self.calc.kernel)][
