@@ -278,31 +278,28 @@ class MeltingTemp:
 
         raise ValueError("Failed to converge to overlapping temperature range in 100 iterations")
 
-    def _predict_crossing(self, deg=2):
+    def _predict_crossing(self):
         """
-        Fit degree-`deg` polynomials to both FE curves and return the
-        temperature at which they cross (or reach minimum separation) on a
-        1 K grid spanning all available data from both phases.
+        Estimate Tm from the bracketing endpoints of the two FE curves.
+
+        Physical reasoning:
+          - max(sol_t): solid was stable up to this temperature → lower bound on Tm
+          - min(lqd_t): liquid was stable down to this temperature → upper bound on Tm
+
+        The midpoint is always a valid, physically motivated estimate regardless
+        of how long or short the individual curves are.
         """
         sol_t, sol_f, _ = self.solres
         lqd_t, lqd_f, _ = self.lqdres
 
-        solfit = np.polyfit(sol_t, sol_f, deg)
-        lqdfit = np.polyfit(lqd_t, lqd_f, deg)
-
-        t_lo = min(sol_t.min(), lqd_t.min())
-        t_hi = max(sol_t.max(), lqd_t.max())
-        t_grid = np.arange(t_lo, t_hi + 1.0, 1.0)
-
-        diff = np.polyval(solfit, t_grid) - np.polyval(lqdfit, t_grid)
-        crossings = np.where(np.diff(np.sign(diff)))[0]
-        if len(crossings) > 0:
-            tpred = 0.5 * (t_grid[crossings[0]] + t_grid[crossings[0] + 1])
-        else:
-            tpred = t_grid[np.argmin(np.abs(diff))]
+        sol_max = np.sort(sol_t)[-1]
+        lqd_min = np.sort(lqd_t)[0]
+        tpred = 0.5 * (sol_max + lqd_min)
 
         self.logger.info(
-            "Predicted Tm from degree-%d polynomial fit: %.1f K", deg, tpred
+            "Predicted Tm from bracketing midpoint: %.1f K  "
+            "(sol_max=%.1f K, lqd_min=%.1f K)",
+            tpred, sol_max, lqd_min,
         )
         self.logger.info("STATE: Predicted Tm from extrapolation: %.1f K", tpred)
         return tpred

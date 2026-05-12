@@ -1,6 +1,10 @@
 calculations:
 - element: Cu
   mass: 63.546
+  repeat:
+  - 7
+  - 7
+  - 7
   md:
     timestep: 0.001
   mode: melting_temperature

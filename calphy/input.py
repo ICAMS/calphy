@@ -237,7 +237,7 @@ class Tolerance(BaseModel, title="Tolerance settings for convergence"):
 
 class PhaseTransitionDetection(BaseModel, title="Settings for fluctuation-based phase transition detection"):
     mode: Annotated[
-        Literal["none", "recover", "stop"],
+        Literal["none", "warn", "recover", "stop"],
         Field(
             default="none",
             description=(
@@ -245,6 +245,11 @@ class PhaseTransitionDetection(BaseModel, title="Settings for fluctuation-based 
                 "during a reversible-scaling sweep.\n"
                 "  'none'    — detection is disabled; sweep always completes "
                 "(default).\n"
+                "  'warn'    — detection runs and a warning is logged with the "
+                "estimated transition temperature and triggering signals; "
+                "response-function plots are generated; the sweep continues "
+                "to completion uninterrupted.  Use this to observe detection "
+                "without changing the calculation outcome.\n"
                 "  'recover' — truncate the forward sweep at the last clean "
                 "block boundary, save a checkpoint, and continue with a "
                 "backward sweep over the reduced range [T0, T_k].  A valid "
@@ -258,7 +263,7 @@ class PhaseTransitionDetection(BaseModel, title="Settings for fluctuation-based 
     peak_threshold: Annotated[
         float,
         Field(
-            default=8.0,
+            default=12.0,
             gt=0,
             description=(
                 "Flag a transition when the modified Z-score of any response "

@@ -620,10 +620,9 @@ class Phase:
                     event.confidence * 100,
                 )
 
-        # Raise if mode is 'recover' or 'stop'.  The recovery path
-        # in reversible_scaling() catches PhaseTransitionError and handles
-        # truncation when mode=='recover'.  If mode=='none' we only warn.
-        if events and td.mode != "none":
+        # Raise if mode is 'recover' or 'stop'.  For 'warn', log and plot
+        # but let the sweep continue.  If mode=='none', skip entirely.
+        if events and td.mode not in ("none", "warn"):
             from calphy.errors import PhaseTransitionError
             ev = events[0]
             msg = (
@@ -640,6 +639,12 @@ class Phase:
                     "ts response plot failed before abort: %s", _plot_exc
                 )
             raise PhaseTransitionError(msg)
+        elif events and td.mode == "warn":
+            # Plots only — sweep continues.
+            try:
+                self._plot_ts_response_functions()
+            except Exception as _plot_exc:
+                self.logger.debug("ts response plot failed: %s", _plot_exc)
 
     def _plot_ts_response_functions(self):
         """
@@ -701,10 +706,10 @@ class Phase:
                     )
                     continue
 
-                T     = arrs["T"][vs:]
-                Cp    = arrs["Cp"][vs:]
-                kappa = arrs["kappa_T"][vs:]
-                alpha = arrs["alpha_P"][vs:]
+                T      = arrs["T"][vs:]
+                Cp     = arrs["Cp"][vs:]
+                kappa  = arrs["kappa_T"][vs:]
+                alpha  = arrs["alpha_P"][vs:]
 
                 # Detect transitions to mark on the plot
                 with _warnings.catch_warnings():
@@ -731,15 +736,46 @@ class Phase:
                     fontsize=11,
                 )
 
+                def _modz_series(sig):
+                    """Robust mod-Z relative to the global median/MAD."""
+                    finite = sig[np.isfinite(sig)]
+                    if len(finite) < 10:
+                        return np.full_like(sig, np.nan)
+                    med = float(np.median(finite))
+                    mad = float(np.median(np.abs(finite - med))) * 1.4826
+                    if mad < 1e-40:
+                        return np.full_like(sig, np.nan)
+                    return (sig - med) / mad
+
+                def _add_modz_twin(ax, T_arr, sig, color, threshold):
+                    """Overlay mod-Z on a twin y-axis (right side, grey/dashed)."""
+                    mz = _modz_series(sig)
+                    ax2 = ax.twinx()
+                    ax2.plot(T_arr, mz, lw=0.6, color=color, alpha=0.35, ls="--")
+                    ax2.axhline(threshold, color="grey", lw=0.8, ls=":", alpha=0.7)
+                    ax2.set_ylabel("mod-Z", fontsize=7, color="grey")
+                    ax2.tick_params(axis="y", labelsize=6, labelcolor="grey")
+                    # Keep the primary axis scale from being dominated by outliers
+                    mz_finite = mz[np.isfinite(mz)]
+                    if len(mz_finite):
+                        ax2.set_ylim(bottom=0,
+                                     top=max(threshold * 2, float(np.nanpercentile(mz_finite, 99)) * 1.1))
+                    return ax2
+
+                threshold = td.peak_threshold
+
                 axes[0].plot(T, Cp, lw=0.8, color="C0")
                 axes[0].set_ylabel("$C_P$ (eV K$^{-1}$ atom$^{-1}$)")
+                _add_modz_twin(axes[0], T, Cp, "C0", threshold)
 
                 axes[1].plot(T, kappa, lw=0.8, color="C1")
                 axes[1].set_ylabel(r"$\kappa_T$ (eV$^{-1}$)")
+                _add_modz_twin(axes[1], T, kappa, "C1", threshold)
 
                 axes[2].plot(T, alpha, lw=0.8, color="C2")
                 axes[2].set_ylabel(r"$\alpha_P$ (K$^{-1}$)")
                 axes[2].set_xlabel("Temperature (K)")
+                _add_modz_twin(axes[2], T, alpha, "C2", threshold)
 
                 for event in events:
                     for ax in axes:
