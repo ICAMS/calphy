@@ -96,6 +96,7 @@ class MeltingTemp:
         calc["mode"] = "ts"
         calc["temperature"] = [int(self.tmin), int(self.tmax)]
         calc["reference_phase"] = "solid"
+        calc["phase_transition_detection"] = {"mode": "recover"}
         # Preserve n_iterations from the original melting_temperature calculation
         if "n_iterations" in data["calculations"][int(self.calc.kernel)]:
             calc["n_iterations"] = data["calculations"][int(self.calc.kernel)][
@@ -110,6 +111,7 @@ class MeltingTemp:
         calc["mode"] = "ts"
         calc["temperature"] = [int(self.tmax), int(self.tmin)]
         calc["reference_phase"] = "liquid"
+        calc["phase_transition_detection"] = {"mode": "recover"}
         # Preserve n_iterations from the original melting_temperature calculation
         if "n_iterations" in data["calculations"][int(self.calc.kernel)]:
             calc["n_iterations"] = data["calculations"][int(self.calc.kernel)][
@@ -236,53 +238,81 @@ class MeltingTemp:
             returncode = self.run_jobs()
 
             if returncode == 3:
-                self.tmin = self.tmin + self.dtemp
-                self.tmax = self.tmax + self.dtemp
+                # Liquid froze: window is too cold, shift up
+                self.tmin += self.dtemp
+                self.tmax += self.dtemp
 
             elif returncode == 2:
-                self.tmin = self.tmin - self.dtemp
-                if self.tmin < 0:
-                    self.tmin = 0
-                self.tmax = self.tmax - self.dtemp
+                # Solid melted: window is too hot, shift down
+                self.tmin = max(10, self.tmin - self.dtemp)
+                self.tmax -= self.dtemp
 
             else:
-                return True
+                # Both sweeps completed (possibly truncated by recovery).
+                # Check whether the two FE curves share a temperature range.
+                sol_t = np.sort(self.solres[0])
+                lqd_t = np.sort(self.lqdres[0])
+                t_lo = max(sol_t[0], lqd_t[0])
+                t_hi = min(sol_t[-1], lqd_t[-1])
+
+                if t_hi > t_lo:
+                    # Overlap exists — ready for find_tm
+                    return True
+
+                # No overlap: use polynomial extrapolation to predict Tm
+                # and re-center the window.
+                self.logger.info(
+                    "Solid FE: [%.1f, %.1f] K  Liquid FE: [%.1f, %.1f] K — "
+                    "no overlap. Extrapolating crossing.",
+                    sol_t[0], sol_t[-1], lqd_t[0], lqd_t[-1],
+                )
+                tpred = self._predict_crossing()
+                self.tmin = max(10, tpred - self.dtemp)
+                self.tmax = tpred + self.dtemp
 
             self.attempts += 1
             if self.attempts > self.maxattempts:
                 raise ValueError("Maximum number of tries reached")
 
+        raise ValueError("Failed to converge to overlapping temperature range in 100 iterations")
+
+    def _predict_crossing(self, deg=2):
+        """
+        Fit degree-`deg` polynomials to both FE curves and return the
+        temperature at which they cross (or reach minimum separation) on a
+        1 K grid spanning all available data from both phases.
+        """
+        sol_t, sol_f, _ = self.solres
+        lqd_t, lqd_f, _ = self.lqdres
+
+        solfit = np.polyfit(sol_t, sol_f, deg)
+        lqdfit = np.polyfit(lqd_t, lqd_f, deg)
+
+        t_lo = min(sol_t.min(), lqd_t.min())
+        t_hi = max(sol_t.max(), lqd_t.max())
+        t_grid = np.arange(t_lo, t_hi + 1.0, 1.0)
+
+        diff = np.polyval(solfit, t_grid) - np.polyval(lqdfit, t_grid)
+        crossings = np.where(np.diff(np.sign(diff)))[0]
+        if len(crossings) > 0:
+            tpred = 0.5 * (t_grid[crossings[0]] + t_grid[crossings[0] + 1])
+        else:
+            tpred = t_grid[np.argmin(np.abs(diff))]
+
+        self.logger.info(
+            "Predicted Tm from degree-%d polynomial fit: %.1f K", deg, tpred
+        )
+        self.logger.info("STATE: Predicted Tm from extrapolation: %.1f K", tpred)
+        return tpred
+
     def extrapolate_tm(self, arg):
         """
-        Extrapolate Tm
+        Extrapolate Tm when the crossing lies outside the current aligned grid.
+        `arg` is kept for API compatibility (0 = below range, 999 = above range)
+        but the actual prediction uses polynomial fitting on all available data.
         """
-        solfit = np.polyfit(self.solres[0], self.solres[1], 1)
-        lqdfit = np.polyfit(self.lqdres[0], self.lqdres[1], 1)
-
-        found = False
-
-        for i in range(100):
-            if arg == 0:
-                self.tmin = self.tmin - self.dtemp
-                if self.tmin < 0:
-                    self.tmin = 0
-                new_t = np.linspace(self.tmin, self.tmax, 1000)
-            elif arg == 999:
-                self.tmax = self.tmax + self.dtemp
-                new_t = np.linspace(self.tmin, self.tmax, 1000)
-            else:
-                break
-            # evaluate in new range
-            new_solfe = np.polyval(solfit, new_t)
-            new_lqdfe = np.polyval(lqdfit, new_t)
-
-            arg = np.argsort(np.abs(new_solfe - new_lqdfe))[0]
-            tpred = new_t[arg]
-        else:
-            raise ValueError("failed to extrapolate melting temperature")
-
+        tpred = self._predict_crossing()
         self.logger.info("Predicted melting temperature from extrapolation: %f" % tpred)
-        self.logger.info("STATE: Predicted Tm from extrapolation: %f K" % tpred)
         return tpred
 
     def _align_fe_curves(self):
