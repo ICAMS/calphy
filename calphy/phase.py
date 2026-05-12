@@ -32,7 +32,6 @@ import os
 import shutil
 import itertools
 
-import pyscal3.traj_process as ptp
 from calphy.integrators import *
 import calphy.helpers as ph
 from calphy.errors import *
@@ -286,8 +285,8 @@ class Phase:
         ----------
         expected_phase : 'solid' or 'liquid'
         """
-        td = self.calc.transition_detector
-        if not td.enabled:
+        td = self.calc.phase_transition_detection
+        if td.mode == "none":
             self._monitor = None
             self._monitor_fed_rows = 0
             self.logger.info("Phase transition detector: disabled")
@@ -463,7 +462,7 @@ class Phase:
         """
         from calphy.transition_detector import detect_ts_transitions as _dts
 
-        td      = self.calc.transition_detector
+        td      = self.calc.phase_transition_detection
         t_start = float(self.calc._temperature)
         t_stop  = float(self.calc._temperature_stop)
 
@@ -582,7 +581,7 @@ class Phase:
         vol_total = data[:, 2]
         lam       = data[:, 3]
 
-        td = self.calc.transition_detector
+        td = self.calc.phase_transition_detection
         self.logger.debug(
             "ts-sweep incremental check: %s — %d rows read", sweep_label, len(dU)
         )
@@ -621,17 +620,10 @@ class Phase:
                     event.confidence * 100,
                 )
 
-        # Abort the calculation if requested and at least one event fired.
-        # The recovery path (recover_on_detection=True) is preferred and runs
-        # in reversible_scaling(); it catches PhaseTransitionError, truncates
-        # the sweep at the safe block boundary, and continues with a backward
-        # sweep over the reduced range.  We always raise here so the upstream
-        # handler can do its work; if neither recover_on_detection nor
-        # abort_on_detection is True the user gets a warning and we DO NOT
-        # raise.
-        recover = getattr(td, "recover_on_detection", True)
-        abort   = getattr(td, "abort_on_detection", True)
-        if events and (recover or abort):
+        # Raise if mode is 'recover' or 'stop'.  The recovery path
+        # in reversible_scaling() catches PhaseTransitionError and handles
+        # truncation when mode=='recover'.  If mode=='none' we only warn.
+        if events and td.mode != "none":
             from calphy.errors import PhaseTransitionError
             ev = events[0]
             msg = (
@@ -675,7 +667,7 @@ class Phase:
             detect_ts_transitions as _dts,
         )
 
-        td      = self.calc.transition_detector
+        td      = self.calc.phase_transition_detection
         t_start = float(self.calc._temperature)
         t_stop  = float(self.calc._temperature_stop)
 
@@ -1521,9 +1513,9 @@ class Phase:
         """
         from calphy.transition_detector import plan_temperature_blocks as _plan
 
-        td = self.calc.transition_detector
+        td = self.calc.phase_transition_detection
         n_sweep = self.calc._n_sweep_steps
-        t_win = td.temperature_window if (td.enabled and td.temperature_window > 0) else 0.0
+        t_win = td.temperature_window if (td.mode != "none" and td.temperature_window > 0) else 0.0
 
         if t_win <= 0:
             # ── Single-run path (no block splitting) ──────────────────────
@@ -1612,7 +1604,7 @@ class Phase:
             lmp.command("unfix f3")
 
             # File closed/flushed by unfix. Run detector on the growing file.
-            if td.enabled:
+            if td.mode != "none":
                 try:
                     self._check_ts_file_incrementally(
                         fpath, sweep_label, t_ref, tf, already_warned,
@@ -1647,7 +1639,7 @@ class Phase:
             )
             lmp.command("run %d start 0 stop %d" % (remaining, n_sweep))
             lmp.command("unfix f3")
-            if td.enabled:
+            if td.mode != "none":
                 try:
                     self._check_ts_file_incrementally(
                         fpath, sweep_label, t_ref, tf, already_warned,
@@ -2228,15 +2220,14 @@ class Phase:
             old_tf, safe_T, old_n, safe_step,
         )
 
-        # Disable abort/recover for the backward sweep so a (very unlikely)
-        # second detection inside the now-safe range does not loop.  The
-        # detector itself will still emit warnings.
-        td = self.calc.transition_detector
-        td.abort_on_detection = False
-        td.recover_on_detection = False
+        # Switch to 'none' so the backward sweep over the now-safe range
+        # does not fire again and loop.  The response-function plots and
+        # post-hoc analysis still run because they do not depend on mode.
+        td = self.calc.phase_transition_detection
+        td.mode = "none"
         self.logger.warning(
-            "recovery: disabled abort/recover for the subsequent backward "
-            "sweep (warnings will still be logged)"
+            "recovery: detection disabled (mode='none') for the subsequent "
+            "backward sweep (response plots still produced)"
         )
 
         return True
@@ -2263,11 +2254,11 @@ class Phase:
 
         from calphy.errors import PhaseTransitionError
 
-        td = self.calc.transition_detector
+        td = self.calc.phase_transition_detection
         try:
             self._reversible_scaling_forward(iteration=iteration)
         except PhaseTransitionError as exc:
-            if getattr(td, "recover_on_detection", True):
+            if td.mode == "recover":
                 self.logger.warning(
                     "Forward sweep flagged a phase transition — attempting "
                     "automatic recovery (truncate to last safe block "
@@ -2309,8 +2300,8 @@ class Phase:
         # (which contains the full sweep).  Run post-hoc anyway to ensure the
         # correct full-sweep baseline is used and to update the response-function
         # plots with accurate transition markers.
-        td = self.calc.transition_detector
-        if td.enabled:
+        td = self.calc.phase_transition_detection
+        if td.mode != "none":
             self._detect_ts_transitions()
 
         # Always plot the response functions so the user can inspect them.
@@ -2355,6 +2346,9 @@ class Phase:
         if self.calc.reference_phase == "solid":
             solid = True
 
+        expected_phase = "solid" if solid else "liquid"
+        self._create_monitor(expected_phase)
+
         t0 = self.calc._temperature
         tf = self.calc._temperature_stop
         li = 1
@@ -2391,7 +2385,25 @@ class Phase:
         # remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
+        # Variables for the phase-transition monitor (feed from initial equil)
+        lmp.command("variable         ts_mlx equal lx")
+        lmp.command("variable         ts_mly equal ly")
+        lmp.command("variable         ts_mlz equal lz")
+        lmp.command("variable         ts_mpress equal press")
+        lmp.command("variable         ts_mpe equal pe/atoms")
+        lmp.command("variable         ts_metotal equal etotal/atoms")
+        lmp.command("variable         ts_mtemp equal temp")
+
         # equilibrate first
+        _ts_ave_every  = int(self.calc.md.n_every_steps)
+        _ts_ave_repeat = int(self.calc.md.n_repeat_steps)
+        _ts_ave_freq   = _ts_ave_every * _ts_ave_repeat
+        lmp.command(
+            "fix               ts_ave all ave/time %d %d %d "
+            "v_ts_mlx v_ts_mly v_ts_mlz v_ts_mpress v_ts_mpe v_ts_metotal v_ts_mtemp "
+            "file tscale_equil_avg.dat"
+            % (_ts_ave_every, _ts_ave_repeat, _ts_ave_freq)
+        )
         lmp.command(
             "fix               1 all npt temp %f %f %f %s %f %f %f"
             % (
@@ -2406,6 +2418,14 @@ class Phase:
         )
         lmp.command("run               %d" % self.calc.n_equilibration_steps)
         lmp.command("unfix             1")
+        lmp.command("unfix             ts_ave")
+
+        # Feed the initial-equilibration data into the monitor so check_if_melted
+        # / check_if_solidfied have enough samples at the mid-point check.
+        self._monitor_fed_rows = 0
+        self._feed_monitor_from_avg_dat(
+            os.path.join(self.simfolder, "tscale_equil_avg.dat")
+        )
 
         # now scale system to final temp, thereby recording enerfy at every step
         lmp.command("variable          step    equal step")

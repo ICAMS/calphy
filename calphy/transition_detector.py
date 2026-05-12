@@ -688,8 +688,8 @@ class PhaseTransitionMonitor:
                 f"(confidence {event.confidence:.0%}). "
                 "System likely melted -- consider reducing temperature or "
                 "increasing system size.\n"
-                "Detection can be tuned via the transition_detector input "
-                "block or disabled with transition_detector.enabled: false."
+                "Detection can be tuned via the phase_transition_detection input "
+                "block or disabled with phase_transition_detection.mode: none."
             )
         else:
             raise self._SolidifiedError(
@@ -698,6 +698,6 @@ class PhaseTransitionMonitor:
                 f"Triggered signals: {signals_str} "
                 f"(confidence {event.confidence:.0%}). "
                 "System likely solidified -- consider increasing temperature.\n"
-                "Detection can be tuned via the transition_detector input "
-                "block or disabled with transition_detector.enabled: false."
+                "Detection can be tuned via the phase_transition_detection input "
+                "block or disabled with phase_transition_detection.mode: none."
             )

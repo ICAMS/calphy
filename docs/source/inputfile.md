@@ -1055,9 +1055,11 @@ This block helps to tune the internal convergence parameters that `calphy` uses.
 tolerance:
    lattice_constant: 0.0002
    spring_constant: 0.1
-   solid_fraction: 0.7
-   liquid_fraction: 0.05
    pressure: 10.0
+```
+
+```{note}
+`solid_fraction` and `liquid_fraction` are deprecated as of v1.8 and are no longer used.  Phase-stability checks during equilibration are now performed by the fluctuation-based detector — see the [`phase_transition_detection`](phase_transition_detection) block.  The parameters are still accepted in existing input files but have no effect.
 ```
 
 ---
@@ -1091,30 +1093,26 @@ tolerance for the convergence of spring constant calculation.
 ---
 
 (tol_solid_fraction)=
-#### `solid_fraction`
+#### `solid_fraction` _(deprecated)_
 
 _type_: float \
-_default_: 0.7 \
-_example_:
-```
-solid_fraction: 0.7
-```
+_default_: 0.0 \
 
-The minimum amount of solid particles that should be there in solid.
+```{deprecated}
+This parameter is deprecated and has no effect. Phase-stability checks are now performed by the fluctuation-based `phase_transition_detection` detector. The field is kept for backward compatibility but is ignored at runtime.
+```
 
 ---
 
 (tol_liquid_fraction)=
-#### `liquid_fraction`
+#### `liquid_fraction` _(deprecated)_
 
 _type_: float \
-_default_: 0.05 \
-_example_:
-```
-liquid_fraction: 0.05
-```
+_default_: 0.0 \
 
-Maximum fraction of solid atoms allowed in liquid after melting.
+```{deprecated}
+This parameter is deprecated and has no effect. Phase-stability checks are now performed by the fluctuation-based `phase_transition_detection` detector. The field is kept for backward compatibility but is ignored at runtime.
+```
 
 ---
 

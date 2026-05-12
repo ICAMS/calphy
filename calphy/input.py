@@ -22,7 +22,7 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 """
 
 from typing_extensions import Annotated
-from typing import Any, Callable, Dict, List, ClassVar, Optional, Union
+from typing import Any, Callable, Dict, List, ClassVar, Literal, Optional, Union
 from pydantic import (
     BaseModel,
     Field,
@@ -235,8 +235,26 @@ class Tolerance(BaseModel, title="Tolerance settings for convergence"):
     pressure: Annotated[float, Field(default=10.0, ge=0)]
 
 
-class TransitionDetector(BaseModel, title="Settings for fluctuation-based phase transition detection"):
-    enabled: Annotated[bool, Field(default=True)]
+class PhaseTransitionDetection(BaseModel, title="Settings for fluctuation-based phase transition detection"):
+    mode: Annotated[
+        Literal["none", "recover", "stop"],
+        Field(
+            default="none",
+            description=(
+                "Controls what happens when a phase transition is detected "
+                "during a reversible-scaling sweep.\n"
+                "  'none'    — detection is disabled; sweep always completes "
+                "(default).\n"
+                "  'recover' — truncate the forward sweep at the last clean "
+                "block boundary, save a checkpoint, and continue with a "
+                "backward sweep over the reduced range [T0, T_k].  A valid "
+                "free-energy curve is produced for the single-phase region.\n"
+                "  'stop'    — raise PhaseTransitionError and abort.  Use "
+                "when you want to inspect the raw data before deciding how "
+                "to proceed."
+            ),
+        ),
+    ]
     peak_threshold: Annotated[
         float,
         Field(
@@ -273,31 +291,6 @@ class TransitionDetector(BaseModel, title="Settings for fluctuation-based phase 
                 "Split each TS sweep into blocks of this width (in Kelvin). "
                 "The transition detector is called at each block boundary. "
                 "Set to 0 to run a single sweep with post-hoc detection only."
-            ),
-        ),
-    ]
-    abort_on_detection: Annotated[
-        bool,
-        Field(
-            default=True,
-            description=(
-                "If True, raise PhaseTransitionError to terminate the "
-                "calculation as soon as the per-block detector flags a "
-                "transition.  If False, only emit a warning and continue."
-            ),
-        ),
-    ]
-    recover_on_detection: Annotated[
-        bool,
-        Field(
-            default=True,
-            description=(
-                "If True (default), automatically truncate the reversible-"
-                "scaling sweep at the last clean block boundary T_k when a "
-                "transition is detected, and continue with a backward sweep "
-                "over the reduced range [T_0, T_k] using the per-block "
-                "checkpoint at T_k as the starting configuration.  If False, "
-                "fall back to abort_on_detection."
             ),
         ),
     ]
@@ -340,7 +333,7 @@ class Calculation(BaseModel, title="Main input class"):
     berendsen: Optional[Berendsen] = Berendsen()
     queue: Optional[Queue] = Queue()
     tolerance: Optional[Tolerance] = Tolerance()
-    transition_detector: Optional[TransitionDetector] = TransitionDetector()
+    phase_transition_detection: Optional[PhaseTransitionDetection] = PhaseTransitionDetection()
     uhlenbeck_ford_model: Optional[UFMP] = UFMP()
     melting_temperature: Optional[MeltingTemperature] = MeltingTemperature()
     materials_project: Optional[MaterialsProject] = MaterialsProject()
@@ -369,7 +362,6 @@ class Calculation(BaseModel, title="Main input class"):
         Field(default=0),
     ]
 
-    _pressure_stop: float = PrivateAttr(default=None)
     _pressure: float = PrivateAttr(default=None)
     _pressure_stop: float = PrivateAttr(default=None)
     _pressure_input: Any = PrivateAttr(default=None)
