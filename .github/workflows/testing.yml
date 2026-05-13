@@ -28,7 +28,9 @@ jobs:
 
       - name: Install calphy
         shell: bash -l {0}
-        run: pip install -e ".[test]"
+        run: |
+          pip install -e ".[test]"
+          pip install --upgrade pylammpsmpi
 
       - name: Run tests
         shell: bash -l {0}

@@ -12,7 +12,6 @@ dependencies:
   - numpy
   - mpi4py
   - pylammpsmpi
-  - executorlib <0.1
   - matplotlib
   - tqdm
   - pydantic >=2.3.0
