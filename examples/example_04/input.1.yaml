@@ -2,16 +2,16 @@ calculations:
 - element: Cu
   mass: 63.546
   repeat:
-  - 7
-  - 7
-  - 7
+  - 10
+  - 10
+  - 10
   md:
     timestep: 0.001
   mode: melting_temperature
   n_equilibration_steps: 10000
   n_iterations: 1
   n_print_steps: 100
-  n_switching_steps: 15000
+  n_switching_steps: 25000
   pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
   pair_style: eam/alloy
   equilibration_control: berendsen
@@ -22,3 +22,4 @@ calculations:
     scheduler: local
   phase_transition_detection:
     mode: recover
+    peak_threshold: 6.0
