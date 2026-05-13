@@ -45,6 +45,8 @@ calculations:
 ```
 ```{grid-item} [](n_iterations)
 ```
+```{grid-item} [](lambda_schedule)
+```
 ```{grid-item} [](n_switching_steps)
 ```
 ```{grid-item} [](n_equilibration_steps)
@@ -448,6 +450,23 @@ n_iterations: 3
 ```
 
 The number of backward and forward integrations to be carried out in all modes. If more than one integration cycle is used, the errors can also be evaluated.
+
+---
+
+(lambda_schedule)=
+#### `lambda_schedule`
+
+_type_: str \
+_default_: `linear` \
+_example_:
+```
+lambda_schedule: uniform_temperature
+```
+
+Controls how the scaling parameter λ is swept during reversible-scaling (`ts` mode) calculations. Two options are available:
+
+- **`linear`** (default): λ ramps linearly between the start and end values using LAMMPS `ramp()`. This is the original behaviour.
+- **`uniform_temperature`**: λ is chosen so that the equivalent reference temperature T₀/λ advances **linearly in MD steps**, giving a uniform number of samples per Kelvin across the sweep. This prevents the high-temperature end of the sweep from being under-sampled when the temperature range is large.
 
 ---
 
