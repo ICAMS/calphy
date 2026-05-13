@@ -1841,6 +1841,27 @@ class Phase:
 
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
+        # ── Re-install scaled potential at constant λ = lf BEFORE the
+        # middle equilibration.  The forward sweep ended with the scaled
+        # pair style active at λ = lf, so the snapshot stored in
+        # ``conf.ts.forward_<iter>.data`` is in equilibrium with that
+        # Hamiltonian (effective temperature Tf, expanded box).  If we
+        # equilibrated here under the *unscaled* potential at T0, the
+        # thermostat/barostat would re-thermalise to a much colder/denser
+        # state, and the first samples of the backward sweep would show a
+        # large transient bump in dU as the system re-expanded under the
+        # scaled potential.  Using a constant scaling variable (rather
+        # than the ramp) keeps λ frozen at lf during this run.
+        lmp.command("variable          one equal 1.0")
+        lmp.command("variable          bscale_eq equal %f" % (lf - 1.0))
+        lmp.command(
+            ph.scaled_pair_style_command(self.calc, ["v_one", "v_bscale_eq"])
+        )
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
+            lmp.command(cmd)
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=1, total_repeats=2):
+            lmp.command(cmd)
+
         lmp.command("variable         xcm equal xcm(all,x)")
         lmp.command("variable         ycm equal xcm(all,y)")
         lmp.command("variable         zcm equal xcm(all,z)")
@@ -1866,7 +1887,7 @@ class Phase:
         lmp.command("thermo_style      custom step pe c_tcm press vol")
         lmp.command("thermo            10000")
 
-        # ── Middle equilibration at Tf ──────────────────────────────────────
+        # ── Middle equilibration at effective Tf (scaled potential, λ=lf) ──
         self.logger.info(
             "backward sweep (iteration %d): middle equilibration start", iteration
         )
@@ -1883,14 +1904,14 @@ class Phase:
             else:
                 self.check_if_solidfied(lmp, "traj.temp.dat")
 
-        # ── Switch to scaling potential ─────────────────────────────────────
-        lmp = ph.set_potential(lmp, self.calc)
-
+        # ── Switch from constant-λ scaled potential to ramping scaled
+        # potential for the backward sweep.  Hamiltonian is identical at
+        # the start of the ramp (bscale = lf - 1.0 == bscale_eq), so this
+        # is continuous and produces no startup transient in dU.
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
         lmp.command("variable         fscale equal v_flambda-1.0")
         lmp.command("variable         bscale equal v_blambda-1.0")
-        lmp.command("variable         one equal 1.0")
         lmp.command(
             "variable        ftemp equal v_blambda*%f" % self.calc._temperature_stop
         )
