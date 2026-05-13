@@ -1569,7 +1569,7 @@ class Phase:
             timestep=self.calc.md.timestep,
             cmdargs=self.calc.md.cmdargs,
             init_commands=self.calc.md.init_commands,
-            script_mode=False,
+            script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
 
@@ -1667,18 +1667,51 @@ class Phase:
             "forward sweep (iteration %d): COM-constrained equilibration done", iteration
         )
 
-        # ── Define scaling variables ────────────────────────────────────────
-        lmp.command("variable         flambda equal ramp(${li},${lf})")
-        lmp.command("variable         blambda equal ramp(${lf},${li})")
+        # ----------------------------------------------------------------
+        # Non-linear lambda schedule (forward sweep).
+        #
+        # The reversible-scaling Hamiltonian is U_eff = lambda * U with
+        # the thermostat fixed at T0; the equivalent free-energy
+        # reference temperature is T_eq = T0 / lambda.  A linear ramp
+        # lambda(s) = li + (lf - li) * s / N gives
+        #     dT_eq/ds = -T0/lambda^2 * dlambda/ds  ~  1/T_eq^2
+        # i.e. high temperatures are sampled with vanishingly few MD
+        # steps (e.g. for T0=100, Tf=3000, N=75000 the last 50 K bin
+        # gets ~44 steps vs ~25k for the first 50 K bin).  This makes
+        # both the integrator and the post-hoc transition detector
+        # blind to anything happening at high T.
+        #
+        # The fix is to choose lambda(s) so that T_eq is linear in step:
+        #     T_eq(s) = T0 + (Tf - T0) * s / N
+        #     lambda(s) = T0 / T_eq(s)
+        # which gives the same end-points (li=1, lf=T0/Tf) but a
+        # uniform number of MD samples per Kelvin across the sweep.
+        # The path integral is unaffected -- integrate_path /
+        # integrate_rs use the recorded flambda column directly.
+        # ----------------------------------------------------------------
+        lmp.command("variable         Nsweep equal %d" % self.calc._n_sweep_steps)
+        lmp.command("variable         T0_rs equal %f" % t0)
+        lmp.command("variable         Tf_rs equal %f" % tf)
+        # Capture the step at the START of the sweep so the formula is
+        # independent of any prior MD steps (no reset_timestep needed).
+        lmp.command("variable         step0 equal $(step)")
+        lmp.command(
+            "variable         flambda equal "
+            "v_T0_rs/(v_T0_rs+(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
+        )
+        lmp.command(
+            "variable         blambda equal "
+            "v_T0_rs/(v_Tf_rs-(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
+        )
         lmp.command("variable         fscale equal v_flambda-1.0")
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
-        lmp.command(
-            "variable        ftemp equal v_blambda*%f" % self.calc._temperature_stop
-        )
-        lmp.command(
-            "variable        btemp equal v_flambda*%f" % self.calc._temperature_stop
-        )
+        # Swap-fix temperatures: equivalent reference T = T0/lambda.
+        # With the non-linear schedule this is exactly linear in step
+        # (T0 -> Tf during the forward sweep, Tf -> T0 during the
+        # backward sweep).
+        lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
+        lmp.command("variable         btemp equal v_T0_rs/v_blambda")
 
         lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_fscale"]))
         for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
@@ -1906,18 +1939,26 @@ class Phase:
 
         # ── Switch from constant-λ scaled potential to ramping scaled
         # potential for the backward sweep.  Hamiltonian is identical at
-        # the start of the ramp (bscale = lf - 1.0 == bscale_eq), so this
+        # the start of the ramp (bscale = lf-1.0 == bscale_eq), so this
         # is continuous and produces no startup transient in dU.
-        lmp.command("variable         flambda equal ramp(${li},${lf})")
-        lmp.command("variable         blambda equal ramp(${lf},${li})")
+        # Non-linear lambda: re-declare Nsweep/T0_rs/Tf_rs (new lmp instance)
+        # and re-capture step0 so the formula starts from 0.
+        lmp.command("variable         Nsweep equal %d" % self.calc._n_sweep_steps)
+        lmp.command("variable         T0_rs equal %f" % t0)
+        lmp.command("variable         Tf_rs equal %f" % tf)
+        lmp.command("variable         step0 equal $(step)")
+        lmp.command(
+            "variable         flambda equal "
+            "v_T0_rs/(v_T0_rs+(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
+        )
+        lmp.command(
+            "variable         blambda equal "
+            "v_T0_rs/(v_Tf_rs-(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
+        )
         lmp.command("variable         fscale equal v_flambda-1.0")
         lmp.command("variable         bscale equal v_blambda-1.0")
-        lmp.command(
-            "variable        ftemp equal v_blambda*%f" % self.calc._temperature_stop
-        )
-        lmp.command(
-            "variable        btemp equal v_flambda*%f" % self.calc._temperature_stop
-        )
+        lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
+        lmp.command("variable         btemp equal v_T0_rs/v_blambda")
 
         lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_bscale"]))
         for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
@@ -1977,6 +2018,16 @@ class Phase:
 
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
+
+        if self.calc.script_mode:
+            file = os.path.join(
+                self.simfolder, "reversible_scaling_%d.lmp" % iteration
+            )
+            lmp.write(file)
+            self.logger.info("Please cite the following publications:")
+            self.logger.info("- 10.1103/PhysRevLett.83.3973")
+            self.publications.append("10.1103/PhysRevLett.83.3973")
+            return
 
         self.lammps_close(lmp=lmp)
 
@@ -2371,7 +2422,7 @@ class Phase:
             timestep=self.calc.md.timestep,
             cmdargs=self.calc.md.cmdargs,
             init_commands=self.calc.md.init_commands,
-            script_mode=False,
+            script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
 
@@ -2534,6 +2585,13 @@ class Phase:
 
         lmp.command("unfix             f2")
 
+        if self.calc.script_mode:
+            file = os.path.join(
+                self.simfolder, "temperature_scaling_%d.lmp" % iteration
+            )
+            lmp.write(file)
+            return
+
         self.lammps_close(lmp=lmp)
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
@@ -2568,7 +2626,7 @@ class Phase:
             timestep=self.calc.md.timestep,
             cmdargs=self.calc.md.cmdargs,
             init_commands=self.calc.md.init_commands,
-            script_mode=False,
+            script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
 

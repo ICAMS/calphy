@@ -37,6 +37,17 @@ from pyscal3.trajectory import Trajectory
 
 
 class LammpsScript:
+    """Collect LAMMPS commands instead of executing them.
+
+    Mirrors a small subset of the ``pylammpsmpi.LammpsLibrary`` interface so the
+    same calphy code paths can either run LAMMPS in-process or emit a script
+    that is executed by an external ``lmp`` binary. Any unknown attribute is
+    treated as a LAMMPS command name and lowered to ``command(...)``.
+    """
+
+    # Methods that must NOT be auto-lowered to LAMMPS commands.
+    _RESERVED_NAMES = frozenset({"script", "command", "write", "close", "clear"})
+
     def __init__(self):
         self.script = []
 
@@ -47,6 +58,21 @@ class LammpsScript:
         with open(infile, "w") as fout:
             for line in self.script:
                 fout.write(f"{line}\n")
+
+    def close(self):
+        pass
+
+    def clear(self):
+        self.script = []
+
+    def __getattr__(self, name):
+        if name.startswith("_") or name in LammpsScript._RESERVED_NAMES:
+            raise AttributeError(name)
+
+        def _emit(*args):
+            self.command(" ".join([name, *(str(a) for a in args)]))
+
+        return _emit
 
 
 def create_object(

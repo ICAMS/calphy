@@ -83,10 +83,11 @@ class Alchemy(cph.Phase):
         """
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
 
@@ -127,12 +128,19 @@ class Alchemy(cph.Phase):
             # routine in which lattice constant will not varied, but is set to a given fixed value
             self.run_constrained_pressure_convergence(lmp)
 
-        # check for melting
-        self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
-        self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
+        if not self.calc.script_mode:
+            # check for melting
+            self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
+            self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
 
         # close object and process traj
         lmp = ph.write_data(lmp, "conf.equilibration.data")
+
+        if self.calc.script_mode:
+            file = os.path.join(self.simfolder, "averaging.lmp")
+            lmp.write(file)
+            return
+
         self.lammps_close(lmp=lmp)
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
@@ -164,10 +172,11 @@ class Alchemy(cph.Phase):
         # create lammps object
         lmp = ph.create_object(
             cores=self.cores,
-            directory=self.simfolder, 
-            timestep=self.calc.md.timestep, 
-            cmdargs=self.calc.md.cmdargs, 
-            init_commands=self.calc.md.init_commands, 
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
 
@@ -509,6 +518,12 @@ class Alchemy(cph.Phase):
             for idx in range(len(swap_combos)):
                 lmp.command(f"unfix swap{idx}")
             # lmp.command("unfix swap_print")
+
+        if self.calc.script_mode:
+            file = os.path.join(self.simfolder, "integration.lmp")
+            lmp.write(file)
+            return
+
         self.lammps_close(lmp=lmp)
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
