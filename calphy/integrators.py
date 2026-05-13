@@ -289,9 +289,10 @@ def integrate_rs(
 
     f = f0 / flambda + 1.5 * kb * temp * np.log(flambda) + wmean
 
+    outfile = os.path.join(simfolder, "temperature_sweep.dat")
+    np.savetxt(outfile, np.column_stack((temp, f, werr)))
+
     if not return_values:
-        outfile = os.path.join(simfolder, "temperature_sweep.dat")
-        np.savetxt(outfile, np.column_stack((temp, f, werr)))
         return None, e_diss
     else:
         return (temp, f, werr), e_diss

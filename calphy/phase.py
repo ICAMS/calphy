@@ -2072,11 +2072,12 @@ class Phase:
             return
 
         ev = events[0]
-        T_trans = float(ev.temperature)
+        T_peak  = float(ev.temperature)
+        T_onset = float(ev.onset_temperature)
         self.logger.warning(
-            "post-forward recovery: phase transition detected at T ~ %.1f K "
-            "(signals: %s, confidence %.0f%%)",
-            T_trans, ", ".join(ev.triggered_signals), ev.confidence * 100,
+            "post-forward recovery: phase transition detected — "
+            "onset T ~ %.1f K, peak T ~ %.1f K (signals: %s, confidence %.0f%%)",
+            T_onset, T_peak, ", ".join(ev.triggered_signals), ev.confidence * 100,
         )
 
         if td.mode == "stop":
@@ -2089,8 +2090,9 @@ class Phase:
                     _plot_exc,
                 )
             raise PhaseTransitionError(
-                "Phase transition detected in forward sweep at T ~ %.1f K "
-                "(signals: %s)." % (T_trans, ", ".join(ev.triggered_signals))
+                "Phase transition detected in forward sweep — onset T ~ %.1f K, "
+                "peak T ~ %.1f K (signals: %s)."
+                % (T_onset, T_peak, ", ".join(ev.triggered_signals))
             )
 
         if td.mode == "warn":
@@ -2121,39 +2123,41 @@ class Phase:
         blocks = _plan(t_start, t_stop, n_sweep, t_win)
         n_blocks = len(blocks) - 1
 
-        # Find the latest block whose end-temperature is safely before the
-        # detected transition (in the sweep direction).  We use the start
-        # of block k as the restart point — i.e. blocks[k]["temp"] strictly
-        # before T_trans (heating: <, cooling: >).  Add a one-block safety
-        # buffer so we restart at least one full window away from the peak.
+        # Use the ONSET temperature (not the peak) to select the safe block.
+        # The peak of Cp / kappa_T / alpha_P can lag the actual structural
+        # change by hundreds of kelvin equivalent: the solid melts near the
+        # onset, but the rolling-window peak only appears once enough
+        # post-transition plateau data has accumulated.  Recovering to a
+        # block just before the *onset* ensures the checkpoint structure is
+        # still solid.
         heating = t_stop > t_start
         if heating:
             safe_candidates = [
                 k for k in range(n_blocks + 1)
-                if blocks[k]["temp"] < T_trans
+                if blocks[k]["temp"] < T_onset
             ]
         else:
             safe_candidates = [
                 k for k in range(n_blocks + 1)
-                if blocks[k]["temp"] > T_trans
+                if blocks[k]["temp"] > T_onset
             ]
         if not safe_candidates:
             self.logger.error(
                 "post-forward recovery: no checkpoint lies before the "
-                "detected transition (T_trans=%.1f K) — cannot recover.  "
+                "transition onset (T_onset=%.1f K) — cannot recover.  "
                 "Lower the starting temperature and re-run.",
-                T_trans,
+                T_onset,
             )
             return
 
-        # One-block buffer: drop the last candidate (closest to T_trans).
+        # Take the last candidate (closest to T_onset but still before it).
+        # No additional buffer needed because we're already using the onset,
+        # which is conservatively early.
         safe_k = safe_candidates[-1]
-        if len(safe_candidates) >= 2:
-            safe_k = safe_candidates[-2]
 
         if safe_k <= 0:
             self.logger.error(
-                "post-forward recovery: transition too close to t_start — "
+                "post-forward recovery: transition onset too close to t_start — "
                 "no safe sub-range remains.  Lower t_start and re-run."
             )
             return

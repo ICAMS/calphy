@@ -62,8 +62,15 @@ class TransitionEvent:
 
     sample_index: int
     triggered_signals: List[str]
-    confidence: float         # fraction of active signals that triggered
-    temperature: float = 0.0  # estimated transition temperature (K)
+    confidence: float              # fraction of active signals that triggered
+    temperature: float = 0.0      # peak temperature of the response function (K)
+    onset_temperature: float = 0.0  # first-rise onset of the transition (K)
+                                    # Always <= temperature for heating sweeps.
+                                    # This is the safe recovery point — it
+                                    # corresponds to where the signal first
+                                    # exceeded a low 1-sigma threshold above
+                                    # the baseline, i.e. the actual start of
+                                    # the transition, not the peak top.
 
 
 # ---------------------------------------------------------------------------
@@ -455,19 +462,20 @@ def detect_ts_transitions(
     #
     # Three additional shape guards are required to suppress false positives in
     # incremental block-by-block detection:
-    #   (a) head-margin: the peak must not sit in the first `tail_margin_frac`
-    #       of valid samples — rolling-window artifacts at the very start of a
-    #       new sweep (transient start-up fluctuations) would otherwise fire.
-    #       Symmetric to (b) below.
-    #   (b) tail-margin: the peak must not sit in the last `tail_margin_frac`
-    #       of valid samples — otherwise we have only seen a rise, with no
-    #       evidence of a peak. A solid window with strongly accelerating Cp
-    #       near T_m would otherwise look like a transition at every block
-    #       boundary.
-    #   (c) descent-fraction: after the peak the signal must have dropped by
+    #   (a) tail-margin: the peak must not sit in the last `tail_margin_frac`
+    #       of valid samples — this fires only when T_stop is very close to the
+    #       transition (sweep barely crosses the peak, no post-peak data for
+    #       the descent estimate).  The descent-fraction guard handles the
+    #       general case; tail-margin is a hard cutoff for that edge case.
+    #   (b) descent-fraction: after the peak the signal must have dropped by
     #       at least `min_descent_frac` of the excursion (peak - baseline).
-    #       Smooth monotonic growth fails this; a real first-order transition
-    #       (Cp rises sharply, then settles to a higher liquid plateau) passes.
+    #       This is the primary discriminator: smooth monotonic Cp growth in a
+    #       solid (which never turns over) fails; a real first-order transition
+    #       (Cp rises sharply then settles to a higher liquid plateau) passes.
+    #   Note: a head-margin guard (symmetric to tail-margin) is NOT applied.
+    #   In post-hoc detection the rolling-window warmup (valid_start rows) has
+    #   already excluded startup transients; an additional head cutoff is
+    #   redundant and would suppress real early transitions.
     detected = {}
     for sig_name, (sig, base_med, base_scale) in signals.items():
         if base_scale < 1e-40:
@@ -487,15 +495,16 @@ def detect_ts_transitions(
         n_region = len(region)
         margin = max(int(tail_margin_frac * n_region), 1)
 
-        # (a) Head-margin guard: peak at the very start → startup transient
-        if peak_idx_rel < margin:
-            continue
-
-        # (b) Tail-margin guard: peak at the very end → only rising seen
+        # Tail-margin guard: peak in the last tail_margin_frac of the data.
+        # In post-hoc detection on the full sweep, this fires only when T_stop
+        # is very close to the transition — the sweep barely crosses the peak
+        # and there is insufficient post-peak data for a reliable descent
+        # estimate.  The descent-fraction check below handles the general case;
+        # this guard is a hard cutoff for that edge case.
         if peak_idx_rel >= n_region - margin:
             continue
 
-        # (b) Descent-fraction guard: the curve must have actually come back
+        # Descent-fraction guard: the curve must have actually come back
         #     down by the end of the data, not just dipped briefly due to
         #     noise.  Compare the peak to the *median* of the trailing
         #     samples after the peak (a robust estimate of the post-peak
@@ -512,15 +521,33 @@ def detect_ts_transitions(
         if excursion > 0 and descent < min_descent_frac * excursion:
             continue
 
+        # Find the onset: scan backward from the peak to the first index
+        # where the signal dropped back below 1-sigma above the baseline.
+        # This marks where the transition *started* rising, which corresponds
+        # far more closely to the actual Tm than the peak top does.
+        onset_threshold = base_med + 1.0 * base_scale
+        onset_idx_rel = peak_idx_rel
+        for j in range(peak_idx_rel - 1, -1, -1):
+            v = region[j]
+            if not np.isfinite(v):
+                continue
+            if v <= onset_threshold:
+                break
+            onset_idx_rel = j
+        T_onset = float(T_region[onset_idx_rel])
+
         T_trans = float(T_region[peak_idx_rel])
         mod_z = (peak_val - base_med) / base_scale
-        detected[sig_name] = (valid_start + peak_idx_rel, T_trans, mod_z)
+        detected[sig_name] = (valid_start + peak_idx_rel, T_trans, mod_z,
+                               valid_start + onset_idx_rel, T_onset)
 
     if len(detected) < min_signal_agreement:
         return []
 
-    T_trans  = float(np.mean([v[1] for v in detected.values()]))
-    peak_idx = int(np.mean([v[0] for v in detected.values()]))
+    T_trans   = float(np.mean([v[1] for v in detected.values()]))
+    peak_idx  = int(np.mean([v[0] for v in detected.values()]))
+    T_onset   = float(np.mean([v[4] for v in detected.values()]))
+    onset_idx = int(np.mean([v[3] for v in detected.values()]))
     sig_names = list(detected.keys())
     ratio_str = ", ".join(f"{k}=modZ {v[2]:.1f}" for k, v in detected.items())
 
@@ -529,6 +556,7 @@ def detect_ts_transitions(
         triggered_signals=sig_names,
         confidence=len(detected) / len(signals),
         temperature=T_trans,
+        onset_temperature=T_onset,
     )
 
     warnings.warn(
