@@ -26,6 +26,10 @@ jobs:
           channels: conda-forge
           environment-file: environment.yml
 
+      - name: Upgrade pylammpsmpi
+        shell: bash -l {0}
+        run: pip install --upgrade pylammpsmpi
+
       - name: Install calphy
         shell: bash -l {0}
         run: pip install -e ".[test]"
