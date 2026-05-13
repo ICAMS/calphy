@@ -11,7 +11,7 @@ calculations:
   mode: ts
   n_equilibration_steps: 10000
   n_iterations: 1
-  n_switching_steps: 75000
+  n_switching_steps: 25000
   pair_coeff: '* * ../potentials/Fe.eam'
   pair_style: eam
   pressure: 0.0
@@ -22,9 +22,9 @@ calculations:
     scheduler: local
   reference_phase: solid
   repeat:
-  - 10
-  - 10
-  - 10
+  - 8
+  - 8
+  - 8
   temperature:
   - 100.0
   - 3000.0

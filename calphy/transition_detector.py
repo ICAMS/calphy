@@ -228,9 +228,10 @@ def plan_temperature_blocks(
     Each block covers ``window_K`` Kelvin of the sweep.  The sweep direction
     (heating vs. cooling) is inferred from ``t0`` and ``tf``.
 
-    The mapping from temperature to step number uses the relationship
-    ``λ = T0 / T`` and the linear ramp ``λ(step) = li + (lf - li) * step / total_steps``,
-    where ``li = 1`` and ``lf = T0 / Tf``.
+    The mapping from temperature to step number uses the non-linear λ schedule
+    in which temperature varies **linearly** with step:
+    ``T(s) = t0 + (tf - t0) * s / total_steps``, so
+    ``s(T) = (T - t0) / (tf - t0) * total_steps``.
 
     Parameters
     ----------
@@ -257,16 +258,13 @@ def plan_temperature_blocks(
     --------
     >>> plan_temperature_blocks(1200, 2000, 100000, 400)
     [{'temp': 1200, 'lambda': 1.0, 'step': 0},
-     {'temp': 1600, 'lambda': 0.75, 'step': 33333},
+     {'temp': 1600, 'lambda': 0.75, 'step': 40000},
      {'temp': 2000, 'lambda': 0.6,  'step': 100000}]
     """
     if window_K <= 0:
         raise ValueError("window_K must be > 0")
     if total_steps <= 0:
         raise ValueError("total_steps must be > 0")
-
-    li = 1.0
-    lf = t0 / tf
 
     # Generate temperature checkpoints
     checkpoints: List[float] = []
@@ -290,8 +288,9 @@ def plan_temperature_blocks(
     result = []
     for temp in checkpoints:
         lam = t0 / temp
-        # λ(step) = li + (lf - li) * step / total_steps  →  solve for step
-        step = int((lam - li) * total_steps / (lf - li))
+        # Non-linear λ schedule: T is linear in step →
+        #   T(s) = t0 + (tf - t0) * s / total_steps  →  s(T) = (T - t0) / (tf - t0) * total_steps
+        step = int((temp - t0) / (tf - t0) * total_steps)
         step = max(0, min(step, total_steps))
         result.append({"temp": temp, "lambda": lam, "step": step})
 
