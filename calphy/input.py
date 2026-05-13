@@ -230,8 +230,8 @@ class Queue(BaseModel, title="Options for configuring queue"):
 class Tolerance(BaseModel, title="Tolerance settings for convergence"):
     lattice_constant: Annotated[float, Field(default=0.0002, ge=0)]
     spring_constant: Annotated[float, Field(default=0.1, gt=0)]
-    solid_fraction: Annotated[float, Field(default=0.0, ge=0)]
-    liquid_fraction: Annotated[float, Field(default=0.0, ge=0)]
+    solid_fraction: Annotated[float, Field(default=0.7, ge=0)]
+    liquid_fraction: Annotated[float, Field(default=0.05, ge=0)]
     pressure: Annotated[float, Field(default=10.0, ge=0)]
 
 
@@ -392,7 +392,7 @@ class Calculation(BaseModel, title="Main input class"):
     _temperature_stop: float = PrivateAttr(default=None)
     _temperature_input: float = PrivateAttr(default=None)
 
-    melting_cycle: Annotated[bool, Field(default=False)]
+    melting_cycle: Annotated[bool, Field(default=True)]
 
     pair_style: Annotated[
         Union[List[str], None], BeforeValidator(to_list), Field(default=None)

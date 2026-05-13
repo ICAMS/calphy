@@ -472,6 +472,75 @@ class TestDetectTsTransitions:
         for ev in events:
             assert 1100.0 <= ev.temperature <= 2600.0
 
+    def test_detects_peak_with_descent(self):
+        """
+        A real first-order-style transition (sharp rise + descent back to a
+        higher liquid plateau) must still be detected after the shape guards.
+        """
+        rng = np.random.default_rng(11)
+        n = 6000
+        natoms = 500
+        T_start, T_stop = 1200.0, 2500.0
+        lf = T_start / T_stop
+        lam = np.linspace(1.0, lf, n)
+
+        # Baseline solid fluctuations
+        pe = -4.0 + 0.005 * rng.standard_normal(n)
+        vol_atom = 12.0 + 0.005 * rng.standard_normal(n)
+
+        # Localised spike at index ~ 0.5 (well inside the data) that decays
+        # back to a slightly higher plateau (liquid).
+        idx_peak = int(0.5 * n)
+        spike_w = 250
+        lo, hi = idx_peak - spike_w // 2, idx_peak + spike_w // 2
+        pe[lo:hi]       += 0.4 * rng.standard_normal(hi - lo)
+        vol_atom[lo:hi] += 0.4 * rng.standard_normal(hi - lo)
+
+        press = np.zeros(n)
+        vol_total = vol_atom * natoms
+        events = detect_ts_transitions(
+            dU=pe, press=press, vol_total=vol_total, lam=lam,
+            t_start=T_start, t_stop=T_stop, natoms=natoms,
+            window_smooth=100, window_fluct=200,
+            peak_threshold=5.0,
+            min_signal_agreement=1,
+            sweep_label="real-transition",
+        )
+        assert len(events) >= 1
+
+    def test_no_detection_when_peak_at_end(self):
+        """
+        Even if the modified-Z criterion is satisfied, a peak that sits in
+        the trailing tail of the data (no observed descent) must be
+        suppressed by the tail-margin guard.
+        """
+        rng = np.random.default_rng(3)
+        n = 6000
+        natoms = 500
+        T_start, T_stop = 1200.0, 2500.0
+        lf = T_start / T_stop
+        lam = np.linspace(1.0, lf, n)
+
+        pe = -4.0 + 0.003 * rng.standard_normal(n)
+        vol_atom = 12.0 + 0.003 * rng.standard_normal(n)
+
+        # Inject a spike right at the end of the array — no data after it.
+        spike_w = 400
+        pe[-spike_w:]       += 0.4 * rng.standard_normal(spike_w)
+        vol_atom[-spike_w:] += 0.4 * rng.standard_normal(spike_w)
+
+        press = np.zeros(n)
+        vol_total = vol_atom * natoms
+        events = detect_ts_transitions(
+            dU=pe, press=press, vol_total=vol_total, lam=lam,
+            t_start=T_start, t_stop=T_stop, natoms=natoms,
+            window_smooth=100, window_fluct=200,
+            peak_threshold=5.0,
+            min_signal_agreement=1,
+            sweep_label="tail-spike",
+        )
+        assert events == []
+
 
 # ---------------------------------------------------------------------------
 # plan_temperature_blocks

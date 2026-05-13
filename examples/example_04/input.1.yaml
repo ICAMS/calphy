@@ -10,6 +10,7 @@ calculations:
   mode: melting_temperature
   n_equilibration_steps: 10000
   n_iterations: 1
+  n_print_steps: 100
   n_switching_steps: 15000
   pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
   pair_style: eam/alloy

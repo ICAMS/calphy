@@ -223,202 +223,251 @@ class MeltingTemp:
             scale_energy=True, return_values=True
         )
 
-    def start_calculation(self):
-        """
-        Start calculation
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-        """
-
-        for i in range(100):
-            returncode = self.run_jobs()
-
-            if returncode == 3:
-                # Liquid froze: window is too cold, shift up
-                self.tmin += self.dtemp
-                self.tmax += self.dtemp
-
-            elif returncode == 2:
-                # Solid melted: window is too hot, shift down
-                self.tmin = max(10, self.tmin - self.dtemp)
-                self.tmax -= self.dtemp
-
-            else:
-                # Both sweeps completed (possibly truncated by recovery).
-                # Check whether the two FE curves share a temperature range.
-                sol_t = np.sort(self.solres[0])
-                lqd_t = np.sort(self.lqdres[0])
-                t_lo = max(sol_t[0], lqd_t[0])
-                t_hi = min(sol_t[-1], lqd_t[-1])
-
-                if t_hi > t_lo:
-                    # Overlap exists — ready for find_tm
-                    return True
-
-                # No overlap: use polynomial extrapolation to predict Tm
-                # and re-center the window.
-                self.logger.info(
-                    "Solid FE: [%.1f, %.1f] K  Liquid FE: [%.1f, %.1f] K — "
-                    "no overlap. Extrapolating crossing.",
-                    sol_t[0], sol_t[-1], lqd_t[0], lqd_t[-1],
-                )
-                tpred = self._predict_crossing()
-                self.tmin = max(10, tpred - self.dtemp)
-                self.tmax = tpred + self.dtemp
-
-            self.attempts += 1
-            if self.attempts > self.maxattempts:
-                raise ValueError("Maximum number of tries reached")
-
-        raise ValueError("Failed to converge to overlapping temperature range in 100 iterations")
-
-    def _predict_crossing(self):
-        """
-        Estimate Tm from the bracketing endpoints of the two FE curves.
-
-        Physical reasoning:
-          - max(sol_t): solid was stable up to this temperature → lower bound on Tm
-          - min(lqd_t): liquid was stable down to this temperature → upper bound on Tm
-
-        The midpoint is always a valid, physically motivated estimate regardless
-        of how long or short the individual curves are.
-        """
-        sol_t, sol_f, _ = self.solres
-        lqd_t, lqd_f, _ = self.lqdres
-
-        sol_max = np.sort(sol_t)[-1]
-        lqd_min = np.sort(lqd_t)[0]
-        tpred = 0.5 * (sol_max + lqd_min)
-
-        self.logger.info(
-            "Predicted Tm from bracketing midpoint: %.1f K  "
-            "(sol_max=%.1f K, lqd_min=%.1f K)",
-            tpred, sol_max, lqd_min,
-        )
-        self.logger.info("STATE: Predicted Tm from extrapolation: %.1f K", tpred)
-        return tpred
-
-    def extrapolate_tm(self, arg):
-        """
-        Extrapolate Tm when the crossing lies outside the current aligned grid.
-        `arg` is kept for API compatibility (0 = below range, 999 = above range)
-        but the actual prediction uses polynomial fitting on all available data.
-        """
-        tpred = self._predict_crossing()
-        self.logger.info("Predicted melting temperature from extrapolation: %f" % tpred)
-        return tpred
+    # Half-width (K) of the temperature window centred on a predicted Tm
+    # used when re-running after extrapolation.
+    WINDOW_HALF_WIDTH = 200.0
 
     def _align_fe_curves(self):
         """
         Return (t_common, sol_f, sol_err, lqd_f, lqd_err) interpolated onto a
-        shared temperature grid.  Handles the case where phase-transition recovery
-        truncated one sweep, leaving solres and lqdres with different lengths.
+        shared temperature grid covering the overlap of the two FE curves.
+
+        Returns None if the two curves have no overlapping temperature range
+        (e.g. one was truncated by phase-transition recovery far from the other).
         """
         sol_t, sol_f, sol_err = self.solres
         lqd_t, lqd_f, lqd_err = self.lqdres
 
-        if len(sol_t) == len(lqd_t) and np.allclose(sol_t, lqd_t):
-            return sol_t, sol_f, sol_err, lqd_f, lqd_err
-
-        # Sort each curve by temperature for np.interp
         ss = np.argsort(sol_t)
         ls = np.argsort(lqd_t)
         sol_t_s, sol_f_s, sol_err_s = sol_t[ss], sol_f[ss], sol_err[ss]
         lqd_t_s, lqd_f_s, lqd_err_s = lqd_t[ls], lqd_f[ls], lqd_err[ls]
 
-        # Common overlapping temperature range at 1 K resolution
         t_lo = max(sol_t_s[0], lqd_t_s[0])
         t_hi = min(sol_t_s[-1], lqd_t_s[-1])
-        t_common = np.arange(t_lo, t_hi + 1.0, 1.0)
+        if t_hi <= t_lo:
+            return None
 
+        t_common = np.arange(t_lo, t_hi + 1.0, 1.0)
         sol_f_c   = np.interp(t_common, sol_t_s, sol_f_s)
         sol_err_c = np.interp(t_common, sol_t_s, sol_err_s)
         lqd_f_c   = np.interp(t_common, lqd_t_s, lqd_f_s)
         lqd_err_c = np.interp(t_common, lqd_t_s, lqd_err_s)
-
         return t_common, sol_f_c, sol_err_c, lqd_f_c, lqd_err_c
 
-    def find_tm(self):
+    def _find_intersection_in_overlap(self):
         """
-        Find melting temperature
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
+        Look for a sign change of (sol_f - lqd_f) within the overlap of the two
+        FE curves.  Returns (tm, tmerr) on success, or None if the curves do
+        not cross within their overlap (or have no overlap at all).
         """
-        for i in range(100):
-            t_common, sol_f, sol_err, lqd_f, lqd_err = self._align_fe_curves()
+        aligned = self._align_fe_curves()
+        if aligned is None:
+            return None
+        t_common, sol_f, sol_err, lqd_f, lqd_err = aligned
+        diff = sol_f - lqd_f
 
-            arg = np.argsort(np.abs(sol_f - lqd_f))[0]
-            self.arg = arg
+        # Look for a sign change.
+        sign = np.sign(diff)
+        # Treat exact zeros as crossings.
+        idx = np.where(sign[:-1] * sign[1:] <= 0)[0]
+        if len(idx) == 0:
+            return None
 
-            if (arg == 0) or (arg == len(sol_f) - 1):
-                self.logger.info(
-                    "From calculation, melting temperature is not within the selected range."
-                )
-                self.logger.info("STATE: From calculation, Tm is not within range.")
-                if arg == len(sol_f) - 1:
-                    arg = 999
-                # the above is just a trick to extrapolate
-                # now here we need to find a guess value;
-                tpred = self.extrapolate_tm(arg)
-                # now we have to run calcs again
-                self.tmin = tpred - self.dtemp
-                if self.tmin < 0:
-                    self.tmin = 0
-                self.tmax = tpred + self.dtemp
-                self.logger.info(
-                    "Restarting calculation with predicted melting temperature +/- %f"
-                    % self.dtemp
-                )
-                # self.logger.info('STATE: Restarting calculation with predicted melting temperature +/- %f'%self.dtemp)
-                self.start_calculation()
+        # Use the first sign change.
+        i = int(idx[0])
+        # Linear interpolation between t_common[i] and t_common[i+1].
+        d0, d1 = diff[i], diff[i + 1]
+        if d1 == d0:
+            tm = t_common[i]
+            arg = i
+        else:
+            frac = d0 / (d0 - d1)
+            tm = t_common[i] + frac * (t_common[i + 1] - t_common[i])
+            arg = i if frac < 0.5 else i + 1
 
+        # Error estimate: same formula as before, evaluated at the nearest grid point.
+        suberr = float(np.sqrt(sol_err[arg] ** 2 + lqd_err[arg] ** 2))
+        stride = min(50, arg, len(sol_f) - 1 - arg)
+        if stride > 0:
+            dt = t_common[arg + stride] - t_common[arg - stride]
+            sol_slope = (sol_f[arg + stride] - sol_f[arg - stride]) / dt
+            lqd_slope = (lqd_f[arg + stride] - lqd_f[arg - stride]) / dt
+            slope_diff = sol_slope - lqd_slope
+            tmerr = abs(suberr / slope_diff) if slope_diff != 0 else 0.0
+        else:
+            tmerr = 0.0
+        self.arg = arg
+        return float(tm), float(tmerr)
+
+    def _extrapolate_intersection(self):
+        """
+        Fit a 4th-order polynomial to each of the solid and liquid FE curves
+        (or a lower order if not enough points are available) and solve
+        poly_sol(T) = poly_lqd(T) for the crossing temperature.
+
+        Returns the predicted Tm (float).  Raises ValueError if no real
+        crossing can be identified.
+        """
+        sol_t, sol_f, _ = self.solres
+        lqd_t, lqd_f, _ = self.lqdres
+        sol_t = np.asarray(sol_t)
+        sol_f = np.asarray(sol_f)
+        lqd_t = np.asarray(lqd_t)
+        lqd_f = np.asarray(lqd_f)
+
+        if len(sol_t) < 2 or len(lqd_t) < 2:
+            raise ValueError(
+                "Not enough FE points to fit polynomials for extrapolation "
+                "(solid: %d, liquid: %d)" % (len(sol_t), len(lqd_t))
+            )
+
+        # Use up to 4th order, but never higher than (n_points - 1).
+        sol_order = min(4, len(sol_t) - 1)
+        lqd_order = min(4, len(lqd_t) - 1)
+
+        sol_poly = np.polyfit(sol_t, sol_f, sol_order)
+        lqd_poly = np.polyfit(lqd_t, lqd_f, lqd_order)
+
+        # Pad both to the same length so we can subtract.
+        n = max(len(sol_poly), len(lqd_poly))
+        sp = np.concatenate([np.zeros(n - len(sol_poly)), sol_poly])
+        lp = np.concatenate([np.zeros(n - len(lqd_poly)), lqd_poly])
+        diff_poly = sp - lp
+
+        roots = np.roots(diff_poly)
+        # Keep real roots above 0 K.
+        real_roots = []
+        for r in roots:
+            if abs(r.imag) < 1e-6 and r.real > 0:
+                real_roots.append(r.real)
+
+        if not real_roots:
+            raise ValueError(
+                "Polynomial extrapolation produced no positive real "
+                "intersection of solid and liquid FE curves"
+            )
+
+        # Pick the root closest to the midpoint between the two data ranges
+        # (most physically plausible Tm).
+        anchor = 0.5 * (sol_t.max() + lqd_t.min())
+        if not np.isfinite(anchor):
+            anchor = 0.5 * (sol_t.mean() + lqd_t.mean())
+        tpred = float(min(real_roots, key=lambda r: abs(r - anchor)))
+
+        self.logger.info(
+            "Polynomial extrapolation (orders sol=%d, lqd=%d) predicts Tm = %.1f K "
+            "(real roots: %s)",
+            sol_order, lqd_order, tpred,
+            ", ".join("%.1f" % r for r in sorted(real_roots)),
+        )
+        self.logger.info("STATE: Predicted Tm from extrapolation: %.1f K", tpred)
+        return tpred
+
+    def _shift_window(self, returncode):
+        """
+        Shift the temperature window when one of the phases failed to even
+        produce FE data (averaging crashed because the phase was unstable
+        in the chosen window).
+        """
+        shift = self.WINDOW_HALF_WIDTH
+        if returncode == 3:
+            # Liquid froze before any FE data was collected: window too cold.
+            self.tmin = self.tmin + shift
+            self.tmax = self.tmax + shift
+            self.logger.info(
+                "STATE: Liquid froze, shifting window up by %.0f K -> [%.1f, %.1f]",
+                shift, self.tmin, self.tmax,
+            )
+        elif returncode == 2:
+            # Solid melted: window too hot.
+            self.tmin = max(10.0, self.tmin - shift)
+            self.tmax = max(self.tmin + 1.0, self.tmax - shift)
+            self.logger.info(
+                "STATE: Solid melted, shifting window down by %.0f K -> [%.1f, %.1f]",
+                shift, self.tmin, self.tmax,
+            )
+
+    def calculate_tm(self):
+        """
+        Drive the iterative melting-temperature search.
+
+        Algorithm
+        ---------
+        1. Run a solid + liquid reversible-scaling pass over the current
+           [tmin, tmax] window.  Truncation by phase-transition recovery is
+           tolerated — whatever FE curve was produced is used as-is.
+        2. If both FE curves exist and their solid/liquid free energies
+           cross within their overlapping temperature range, that crossing
+           is the melting temperature → done.
+        3. Otherwise, fit a 4th-order polynomial to each FE curve and solve
+           for the intersection (extrapolation).  Re-centre the window on
+           that prediction with a half-width of WINDOW_HALF_WIDTH (200 K)
+           and repeat.
+        4. If a phase failed to even produce an FE curve (averaging melted
+           or froze), shift the window in the appropriate direction by
+           WINDOW_HALF_WIDTH and repeat.
+        """
+        for _ in range(self.maxattempts + 1):
+            returncode = self.run_jobs()
+
+            if returncode in (2, 3):
+                # No usable FE curve from one of the phases.
+                self._shift_window(returncode)
             else:
-                self.calc_tm = t_common[arg]
-                # get errors
-                suberr = np.sqrt(sol_err[arg] ** 2 + lqd_err[arg] ** 2)
-                stride = min(50, arg, len(sol_f) - 1 - arg)
-                if stride > 0:
-                    sol_slope = (sol_f[arg + stride] - sol_f[arg - stride]) / (
-                        t_common[arg + stride] - t_common[arg - stride]
+                # Both FE curves available (possibly truncated).
+                hit = self._find_intersection_in_overlap()
+                if hit is not None:
+                    tm, tmerr = hit
+                    self.calc_tm = tm
+                    self.tmerr = tmerr
+                    self.logger.info(
+                        "Found melting temperature = %.2f +/- %.2f K "
+                        % (tm, tmerr)
                     )
-                    lqd_slope = (lqd_f[arg + stride] - lqd_f[arg - stride]) / (
-                        t_common[arg + stride] - t_common[arg - stride]
+                    if self.calc._melting_temperature is not None:
+                        self.logger.info(
+                            "Experimental melting temperature = %.2f K "
+                            % (self.calc._melting_temperature)
+                        )
+                    self.logger.info(
+                        "STATE: Tm = %.2f K +/- %.2f K" % (tm, tmerr)
                     )
-                    slope_diff = sol_slope - lqd_slope
-                    tmerr = suberr / slope_diff if slope_diff != 0 else 0.0
-                else:
-                    tmerr = 0.0
-                self.tmerr = tmerr
-                return self.calc_tm, self.tmerr
+                    return tm, tmerr
+
+                # No real crossing in overlap → extrapolate, recentre, retry.
+                try:
+                    tpred = self._extrapolate_intersection()
+                except ValueError as exc:
+                    self.logger.info(
+                        "Extrapolation failed (%s); falling back to window "
+                        "midpoint between sol_max and lqd_min.",
+                        exc,
+                    )
+                    sol_t = np.asarray(self.solres[0])
+                    lqd_t = np.asarray(self.lqdres[0])
+                    tpred = 0.5 * (sol_t.max() + lqd_t.min())
+
+                self.tmin = max(10.0, tpred - self.WINDOW_HALF_WIDTH)
+                self.tmax = tpred + self.WINDOW_HALF_WIDTH
+                self.logger.info(
+                    "Restarting with extrapolated Tm = %.1f K, window "
+                    "[%.1f, %.1f] K (+/- %.0f K)",
+                    tpred, self.tmin, self.tmax, self.WINDOW_HALF_WIDTH,
+                )
 
             self.attempts += 1
             self.logger.info("Attempt incremented to %d" % self.attempts)
             if self.attempts > self.maxattempts:
-                raise ValueError("Maximum number of tries reached")
+                raise ValueError(
+                    "Maximum number of melting-temperature attempts (%d) reached"
+                    % self.maxattempts
+                )
 
-    def calculate_tm(self):
-        # do a first round of calculation
-        self.start_calculation()
-        tm, tmerr = self.find_tm()
-        self.logger.info("Found melting temperature = %.2f +/- %.2f K " % (tm, tmerr))
-        if self.calc._melting_temperature is not None:
-            self.logger.info(
-                "Experimental melting temperature = %.2f K "
-                % (self.calc._melting_temperature)
-            )
-        self.logger.info("STATE: Tm = %.2f K +/- %.2f K" % (tm, tmerr))
+        raise ValueError(
+            "Melting-temperature search did not converge within %d attempts"
+            % self.maxattempts
+        )
 
 
 def routine_fe(job):

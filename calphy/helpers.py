@@ -32,6 +32,7 @@ from pylammpsmpi import LammpsLibrary
 from lammps import lammps
 from ase.io import read, write
 
+import pyscal3.core as pc
 from pyscal3.trajectory import Trajectory
 
 
@@ -339,6 +340,21 @@ def compute_msd(lmp, options):
     return lmp
 
 
+"""
+PYSCAL helper routines
+---------------------------------------------------------------------
+"""
+
+
+def find_solid_fraction(file):
+    sys = pc.System(file)
+    try:
+        sys.find.neighbors(method="cutoff", cutoff=0)
+    except RuntimeError:
+        sys.find.neighbors(method="cutoff", cutoff=5.0)
+    sys.find.solids(cluster=False)
+    solids = np.sum(sys.atoms.solid)
+    return solids
 
 
 def write_data(lmp, file):

@@ -310,6 +310,8 @@ def detect_ts_transitions(
     peak_threshold: float = 8.0,
     baseline_frac: float = 0.2,
     min_signal_agreement: int = 2,
+    min_descent_frac: float = 0.3,
+    tail_margin_frac: float = 0.05,
     sweep_label: str = "forward",
     sweep_mode: str = "ts",
 ) -> List[TransitionEvent]:
@@ -336,6 +338,23 @@ def detect_ts_transitions(
     baseline_frac        : (kept for backward compatibility; unused with the
                            robust median+MAD criterion)
     min_signal_agreement : signals (Cp, kappa_T, alpha_P) that must peak simultaneously
+    min_descent_frac     : after the peak, the signal must descend by at least
+                           this fraction of the excursion (peak - baseline median)
+                           for the peak to count.  Suppresses false positives in
+                           which the response function rises monotonically toward
+                           the end of the analysed window without ever turning
+                           over (typical of a solid heated toward, but not into,
+                           its melting transition).
+    tail_margin_frac     : the peak must sit at least ``tail_margin_frac`` of
+                           the valid samples away from *both* the beginning and
+                           end of the data.  Prevents two classes of false
+                           positive:
+                           - "max is the last sample" (tail): only a rise is
+                             observed, no descent evidence yet (solid near Tm).
+                           - "max is the first sample" (head): rolling-window
+                             startup transient at the very beginning of a sweep
+                             (e.g. liquid backward sweep starting from a cold
+                             equilibration) inflates variance temporarily.
     sweep_label          : label for warning messages
     sweep_mode           : ``'ts'`` (reversible scaling, fixed thermostat at
                            t_start, equivalent T = t_start / lambda) or
@@ -433,6 +452,22 @@ def detect_ts_transitions(
     #   - sharp transition spike (mod_z > 25)
     # while being insensitive to the magnitude of the peak (no near-zero median
     # divisors, no first-20% baseline that becomes obsolete as data accumulates).
+    #
+    # Three additional shape guards are required to suppress false positives in
+    # incremental block-by-block detection:
+    #   (a) head-margin: the peak must not sit in the first `tail_margin_frac`
+    #       of valid samples — rolling-window artifacts at the very start of a
+    #       new sweep (transient start-up fluctuations) would otherwise fire.
+    #       Symmetric to (b) below.
+    #   (b) tail-margin: the peak must not sit in the last `tail_margin_frac`
+    #       of valid samples — otherwise we have only seen a rise, with no
+    #       evidence of a peak. A solid window with strongly accelerating Cp
+    #       near T_m would otherwise look like a transition at every block
+    #       boundary.
+    #   (c) descent-fraction: after the peak the signal must have dropped by
+    #       at least `min_descent_frac` of the excursion (peak - baseline).
+    #       Smooth monotonic growth fails this; a real first-order transition
+    #       (Cp rises sharply, then settles to a higher liquid plateau) passes.
     detected = {}
     for sig_name, (sig, base_med, base_scale) in signals.items():
         if base_scale < 1e-40:
@@ -445,11 +480,41 @@ def detect_ts_transitions(
             continue
         masked = np.where(finite_mask, region, -np.inf)
         peak_val = float(np.max(masked))
-        if peak_val > threshold_val:
-            peak_idx_rel = int(np.argmax(masked))
-            T_trans = float(T_region[peak_idx_rel])
-            mod_z = (peak_val - base_med) / base_scale
-            detected[sig_name] = (valid_start + peak_idx_rel, T_trans, mod_z)
+        if peak_val <= threshold_val:
+            continue
+
+        peak_idx_rel = int(np.argmax(masked))
+        n_region = len(region)
+        margin = max(int(tail_margin_frac * n_region), 1)
+
+        # (a) Head-margin guard: peak at the very start → startup transient
+        if peak_idx_rel < margin:
+            continue
+
+        # (b) Tail-margin guard: peak at the very end → only rising seen
+        if peak_idx_rel >= n_region - margin:
+            continue
+
+        # (b) Descent-fraction guard: the curve must have actually come back
+        #     down by the end of the data, not just dipped briefly due to
+        #     noise.  Compare the peak to the *median* of the trailing
+        #     samples after the peak (a robust estimate of the post-peak
+        #     plateau) rather than the noisy minimum.
+        post = region[peak_idx_rel + 1:]
+        post = post[np.isfinite(post)]
+        if post.size < max(3, window_fluct // 5):
+            continue
+        tail_n = max(window_fluct // 2, post.size // 2)
+        tail_n = min(tail_n, post.size)
+        trailing_level = float(np.median(post[-tail_n:]))
+        excursion = peak_val - base_med
+        descent = peak_val - trailing_level
+        if excursion > 0 and descent < min_descent_frac * excursion:
+            continue
+
+        T_trans = float(T_region[peak_idx_rel])
+        mod_z = (peak_val - base_med) / base_scale
+        detected[sig_name] = (valid_start + peak_idx_rel, T_trans, mod_z)
 
     if len(detected) < min_signal_agreement:
         return []

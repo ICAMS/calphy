@@ -125,9 +125,12 @@ class Liquid(cph.Phase):
 
             self.dump_current_snapshot(lmp, "traj.melt")
 
-            # NPT run at thigh*factor completed without error — structure is melted
-            melted = True
-            break
+            # we have to check if the structure melted
+            solids = ph.find_solid_fraction(os.path.join(self.simfolder, "traj.melt"))
+            self.logger.info("fraction of solids found: %f", solids / self.natoms)
+            if solids / self.natoms < self.calc.tolerance.liquid_fraction:
+                melted = True
+                break
 
         # if melting cycle is over and still not melted, raise error
         if not melted:
