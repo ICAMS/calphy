@@ -1116,49 +1116,36 @@ class Phase:
         self.logger.info(f"Finished equilibration with constrained com: {iteration}")
 
         # ----------------------------------------------------------------
-        # Non-linear lambda schedule (forward sweep).
+        # Lambda schedule for the forward sweep.
         #
-        # The reversible-scaling Hamiltonian is U_eff = lambda * U with
-        # the thermostat fixed at T0; the equivalent free-energy
-        # reference temperature is T_eq = T0 / lambda.  A linear ramp
-        # lambda(s) = li + (lf - li) * s / N gives
-        #     dT_eq/ds = -T0/lambda^2 * dlambda/ds  ~  1/T_eq^2
-        # i.e. high temperatures are sampled with vanishingly few MD
-        # steps (e.g. for T0=100, Tf=3000, N=75000 the last 50 K bin
-        # gets ~44 steps vs ~25k for the first 50 K bin).  This makes
-        # both the integrator and the post-hoc transition detector
-        # blind to anything happening at high T.
+        # "linear" (default): lambda = ramp(li, lf) — simple linear
+        #   interpolation; LAMMPS ramp() resets automatically each run.
         #
-        # The fix is to choose lambda(s) so that T_eq is linear in step:
-        #     T_eq(s) = T0 + (Tf - T0) * s / N
-        #     lambda(s) = T0 / T_eq(s)
-        # which gives the same end-points (li=1, lf=T0/Tf) but a
-        # uniform number of MD samples per Kelvin across the sweep.
-        # The path integral is unaffected -- integrate_path /
-        # integrate_rs use the recorded flambda column directly.
+        # "uniform_temperature": T_eq(s) = T0/lambda is linear in step
+        #   so every Kelvin bin gets the same number of MD samples.
+        #   Requires explicit step0 capture before each sweep.
         # ----------------------------------------------------------------
-        lmp.command("variable         Nsweep equal %d" % self.calc._n_sweep_steps)
         lmp.command("variable         T0_rs equal %f" % t0)
-        lmp.command("variable         Tf_rs equal %f" % tf)
-        # Capture the step at the START of the sweep so the formula is
-        # independent of any prior MD steps (no reset_timestep needed).
-        lmp.command("variable         step0 equal $(step)")
-        lmp.command(
-            "variable         flambda equal "
-            "v_T0_rs/(v_T0_rs+(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
-        )
-        lmp.command(
-            "variable         blambda equal "
-            "v_T0_rs/(v_Tf_rs-(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
-        )
+        if self.calc.lambda_schedule == "uniform_temperature":
+            lmp.command("variable         Nsweep equal %d" % self.calc._n_sweep_steps)
+            lmp.command("variable         Tf_rs equal %f" % tf)
+            # Capture the step at the START of the sweep so the formula is
+            # independent of any prior MD steps (no reset_timestep needed).
+            lmp.command("variable         step0 equal $(step)")
+            lmp.command(
+                "variable         flambda equal "
+                "v_T0_rs/(v_T0_rs+(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
+            )
+            lmp.command(
+                "variable         blambda equal "
+                "v_T0_rs/(v_Tf_rs-(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
+            )
+        else:  # "linear" (default)
+            lmp.command("variable         flambda equal ramp(${li},${lf})")
+            lmp.command("variable         blambda equal ramp(${lf},${li})")
         lmp.command("variable         fscale equal v_flambda-1.0")
         lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         one equal 1.0")
-        # Swap-fix temperatures: equivalent reference T = T0/lambda.
-        # With the non-linear schedule this is exactly linear in step
-        # (T0 -> Tf during the forward sweep, Tf -> T0 during the
-        # backward sweep), matching the swap-acceptance schedule of the
-        # original linear-ramp implementation.
         lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
         lmp.command("variable         btemp equal v_T0_rs/v_blambda")
 
@@ -1249,24 +1236,27 @@ class Phase:
         lmp = ph.set_potential(lmp, self.calc)
 
         # ----------------------------------------------------------------
-        # Non-linear lambda schedule (backward sweep).  Same formulas as
-        # the forward sweep; step0 is re-captured so the step argument
-        # of the formula starts at 0 again.
+        # Re-define lambda schedule for backward sweep.
+        # For "uniform_temperature", step0 must be re-captured so the
+        # formula resets to step=0 at the start of the backward run.
+        # For "linear", ramp() resets automatically each run so no
+        # redefinition is needed.
         # ----------------------------------------------------------------
-        lmp.command("variable         step0 equal $(step)")
-        lmp.command(
-            "variable         flambda equal "
-            "v_T0_rs/(v_T0_rs+(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
-        )
-        lmp.command(
-            "variable         blambda equal "
-            "v_T0_rs/(v_Tf_rs-(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
-        )
-        lmp.command("variable         fscale equal v_flambda-1.0")
-        lmp.command("variable         bscale equal v_blambda-1.0")
-        lmp.command("variable         one equal 1.0")
-        lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
-        lmp.command("variable         btemp equal v_T0_rs/v_blambda")
+        if self.calc.lambda_schedule == "uniform_temperature":
+            lmp.command("variable         step0 equal $(step)")
+            lmp.command(
+                "variable         flambda equal "
+                "v_T0_rs/(v_T0_rs+(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
+            )
+            lmp.command(
+                "variable         blambda equal "
+                "v_T0_rs/(v_Tf_rs-(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
+            )
+            lmp.command("variable         fscale equal v_flambda-1.0")
+            lmp.command("variable         bscale equal v_blambda-1.0")
+            lmp.command("variable         one equal 1.0")
+            lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
+            lmp.command("variable         btemp equal v_T0_rs/v_blambda")
 
         lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_bscale"]))
         for command in ph.hybrid_pair_coeff_commands(

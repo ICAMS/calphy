@@ -45,6 +45,8 @@ calculations:
 ```
 ```{grid-item} [](n_iterations)
 ```
+```{grid-item} [](lambda_schedule)
+```
 ```{grid-item} [](n_switching_steps)
 ```
 ```{grid-item} [](n_equilibration_steps)

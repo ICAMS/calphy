@@ -360,6 +360,7 @@ class Calculation(BaseModel, title="Main input class"):
     _n_sweep_steps: int = PrivateAttr(default=50000)
     n_print_steps: Annotated[int, Field(default=0)]
     n_iterations: Annotated[int, Field(default=1)]
+    lambda_schedule: Annotated[str, Field(default="linear")]
     equilibration_control: Annotated[Union[str, None], Field(default=None)]
     folder_prefix: Annotated[Union[str, None], Field(default=None)]
 
@@ -395,6 +396,12 @@ class Calculation(BaseModel, title="Main input class"):
             self.pair_mode = self.pair_mode.lower()
             if self.pair_mode not in ["overlay"]:
                 raise ValueError("pair_mode should be one of: overlay")
+
+        self.lambda_schedule = self.lambda_schedule.lower()
+        if self.lambda_schedule not in ["linear", "uniform_temperature"]:
+            raise ValueError(
+                "lambda_schedule must be one of: 'linear', 'uniform_temperature'"
+            )
 
         if self.pair_mode == "overlay":
             if self.pair_style is None or self.pair_coeff is None:
