@@ -1024,7 +1024,7 @@ class Phase:
             timestep=self.calc.md.timestep,
             cmdargs=self.calc.md.cmdargs,
             init_commands=self.calc.md.init_commands,
-            script_mode=False,
+            script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
 
@@ -1298,6 +1298,16 @@ class Phase:
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
 
+        if self.calc.script_mode:
+            file = os.path.join(
+                self.simfolder, "reversible_scaling_%d.lmp" % iteration
+            )
+            lmp.write(file)
+            self.logger.info("Please cite the following publications:")
+            self.logger.info("- 10.1103/PhysRevLett.83.3973")
+            self.publications.append("10.1103/PhysRevLett.83.3973")
+            return
+
         # close the object
         self.lammps_close(lmp=lmp)
         # Preserve log file
@@ -1381,7 +1391,7 @@ class Phase:
             timestep=self.calc.md.timestep,
             cmdargs=self.calc.md.cmdargs,
             init_commands=self.calc.md.init_commands,
-            script_mode=False,
+            script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
 
@@ -1495,6 +1505,13 @@ class Phase:
         )
         lmp.command("run               %d" % self.calc._n_sweep_steps)
 
+        if self.calc.script_mode:
+            file = os.path.join(
+                self.simfolder, "temperature_scaling_%d.lmp" % iteration
+            )
+            lmp.write(file)
+            return
+
         self.lammps_close(lmp=lmp)
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
@@ -1529,7 +1546,7 @@ class Phase:
             timestep=self.calc.md.timestep,
             cmdargs=self.calc.md.cmdargs,
             init_commands=self.calc.md.init_commands,
-            script_mode=False,
+            script_mode=self.calc.script_mode,
             lmp=self._lmp,
         )
 
