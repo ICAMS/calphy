@@ -239,6 +239,31 @@ def integrate_rs(
             os.path.join(simfolder, "ts.backward_%d.dat" % i), unpack=True, comments="#"
         )
 
+        # Both sweeps start at lambda=1 (T0 end).  Row-count mismatches can
+        # arise from integer rounding in the block planner or from a truncated
+        # forward sweep during phase-transition recovery.  Trim from the
+        # lambda=lf end (the *second* temperature, T_stop) of the longer
+        # array so the two grids remain anchored at lambda=1 (T0).
+        # For a heating sweep (T0<Tf) this is the high-T tail; for a cooling
+        # sweep (T0>Tf) this is the low-T tail.  Either way:
+        #   forward  rows: lambda[0]=1  … lambda[-1]=lf  → trim [:n]
+        #   backward rows: lambda[0]=lf … lambda[-1]=1   → trim [-n:]
+        nf = len(flambda)
+        nb = len(blambda)
+        if nf != nb:
+            n = min(nf, nb)
+            if nf > nb:
+                # forward is longer — drop its tail (lf / T_stop end)
+                fdx     = fdx[:n]
+                fvol    = fvol[:n]   # slice before /natoms below
+                flambda = flambda[:n]
+            else:
+                # backward is longer — drop its first rows (lf / T_stop end,
+                # which is at the START of the backward file)
+                bdx     = bdx[-n:]
+                bvol    = bvol[-n:]
+                blambda = blambda[-n:]
+
         if scale_energy:
             fdx /= flambda
             bdx /= blambda
@@ -264,9 +289,10 @@ def integrate_rs(
 
     f = f0 / flambda + 1.5 * kb * temp * np.log(flambda) + wmean
 
+    outfile = os.path.join(simfolder, "temperature_sweep.dat")
+    np.savetxt(outfile, np.column_stack((temp, f, werr)))
+
     if not return_values:
-        outfile = os.path.join(simfolder, "temperature_sweep.dat")
-        np.savetxt(outfile, np.column_stack((temp, f, werr)))
         return None, e_diss
     else:
         return (temp, f, werr), e_diss

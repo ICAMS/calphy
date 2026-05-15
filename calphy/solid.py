@@ -268,6 +268,9 @@ class Solid(cph.Phase):
         lmp.command("variable         mly equal ly")
         lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press")
+        lmp.command("variable         mpe equal pe/atoms")
+        lmp.command("variable         metotal equal etotal/atoms")
+        lmp.command("variable         mtemp equal temp")
 
         # Run if a constrained lattice is not needed
         if not self.calc._fix_lattice:
@@ -275,6 +278,9 @@ class Solid(cph.Phase):
                 self.run_zero_pressure_equilibration(lmp)
             else:
                 self.run_finite_pressure_equilibration(lmp)
+
+            # create the fluctuation monitor before the pressure-convergence cycle loop
+            self._create_monitor("solid")
 
             # this is when the averaging routine starts
             self.run_pressure_convergence(lmp)
@@ -353,6 +359,9 @@ class Solid(cph.Phase):
         lmp.command("variable         mly equal ly")
         lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press")
+        lmp.command("variable         mpe equal pe/atoms")
+        lmp.command("variable         metotal equal etotal/atoms")
+        lmp.command("variable         mtemp equal temp")
 
         # Run if a constrained lattice is not needed
         if not self.calc._fix_lattice:

@@ -1,12 +1,22 @@
 calculations:
 - element: Cu
   mass: 63.546
+  repeat:
+  # 10x10x10 = 4000 atoms.  At this size the variance-based detection
+  # signals (Cp, kappa_T, alpha_P) cleanly exceed the default
+  # peak_threshold of 12 at a real melting transition, so detection is
+  # robust without any threshold override.  Smaller cells (e.g. 7x7x7 =
+  # 1372 atoms) work only if peak_threshold is lowered to ~6.
+  - 10
+  - 10
+  - 10
   md:
     timestep: 0.001
   mode: melting_temperature
   n_equilibration_steps: 10000
   n_iterations: 1
-  n_switching_steps: 15000
+  n_print_steps: 100
+  n_switching_steps: 25000
   pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
   pair_style: eam/alloy
   equilibration_control: berendsen
@@ -15,3 +25,11 @@ calculations:
     - conda activate calphy
     cores: 4
     scheduler: local
+  phase_transition_detection:
+    mode: recover
+  melting_temperature:
+    # A larger half-width gives the supercooling / superheating bands
+    # enough room on each side of Tm for both phases to sample cleanly
+    # without bumping against the window edges.  At 1000 atoms the
+    # hysteresis on this potential is ~100-200 K, so ±400 K is comfortable.
+    step: 400

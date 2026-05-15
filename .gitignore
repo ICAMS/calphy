@@ -22,3 +22,12 @@ alchemy-*
 *.dump
 melting_temperature-*
 composition_scaling-*
+
+# transition-detection + melting-temperature artefacts
+conf.*_blocks.zip
+mt[0-9]*-ts-*/
+*.report.yaml
+
+# OS / editor cruft
+.DS_Store
+.vscode/

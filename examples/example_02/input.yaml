@@ -22,12 +22,15 @@ calculations:
     scheduler: local
   reference_phase: solid
   repeat:
-  - 5
-  - 5
-  - 5
+  - 8
+  - 8
+  - 8
   temperature:
-  - 100.0
-  - 1400.0
+  - 500.0
+  - 1500.0
+  phase_transition_detection:
+    mode: recover
+    peak_threshold: 6.0
 - element: Fe
   lattice: FCC
   lattice_constant: 6.0
@@ -40,7 +43,7 @@ calculations:
   mode: ts
   n_equilibration_steps: 10000
   n_iterations: 1
-  n_switching_steps: 25000
+  n_switching_steps: 50000
   pair_coeff: '* * ../potentials/Fe.eam'
   pair_style: eam
   pressure: 0.0
@@ -56,4 +59,6 @@ calculations:
   - 5
   temperature:
   - 100.0
-  - 1400.0
+  - 2000.0
+  phase_transition_detection:
+    mode: recover

@@ -106,6 +106,9 @@ class Alchemy(cph.Phase):
         lmp.command("variable         mly equal ly")
         lmp.command("variable         mlz equal lz")
         lmp.command("variable         mpress equal press")
+        lmp.command("variable         mpe equal pe/atoms")
+        lmp.command("variable         metotal equal etotal/atoms")
+        lmp.command("variable         mtemp equal temp")
 
         # add some computes
         if not self.calc._fix_lattice:
@@ -113,6 +116,9 @@ class Alchemy(cph.Phase):
                 self.run_zero_pressure_equilibration(lmp)
             else:
                 self.run_finite_pressure_equilibration(lmp)
+
+            # create the fluctuation monitor before the pressure-convergence cycle loop
+            self._create_monitor("solid")
 
             # this is when the averaging routine starts
             self.run_pressure_convergence(lmp)

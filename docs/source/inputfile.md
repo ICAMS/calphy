@@ -231,6 +231,22 @@ calculations:
 ```
 ````
 
+### `phase_transition_detection`
+
+````{grid} 1 2 3 4
+:outline:
+```{grid-item} [](ptd_mode)
+```
+```{grid-item} [](ptd_temperature_window)
+```
+```{grid-item} [](ptd_peak_threshold)
+```
+```{grid-item} [](ptd_min_agreement)
+```
+```{grid-item} [](ptd_onset_sigma)
+```
+````
+
 ---
 ---
 
@@ -1074,9 +1090,11 @@ This block helps to tune the internal convergence parameters that `calphy` uses.
 tolerance:
    lattice_constant: 0.0002
    spring_constant: 0.1
-   solid_fraction: 0.7
-   liquid_fraction: 0.05
    pressure: 10.0
+```
+
+```{note}
+`solid_fraction` and `liquid_fraction` are deprecated as of v1.8 and are no longer used.  Phase-stability checks during equilibration are now performed by the fluctuation-based detector — see the [`phase_transition_detection`](phase_transition_detection) block.  The parameters are still accepted in existing input files but have no effect.
 ```
 
 ---
@@ -1110,30 +1128,26 @@ tolerance for the convergence of spring constant calculation.
 ---
 
 (tol_solid_fraction)=
-#### `solid_fraction`
+#### `solid_fraction` _(deprecated)_
 
 _type_: float \
-_default_: 0.7 \
-_example_:
-```
-solid_fraction: 0.7
-```
+_default_: 0.0 \
 
-The minimum amount of solid particles that should be there in solid.
+```{deprecated}
+This parameter is deprecated and has no effect. Phase-stability checks are now performed by the fluctuation-based `phase_transition_detection` detector. The field is kept for backward compatibility but is ignored at runtime.
+```
 
 ---
 
 (tol_liquid_fraction)=
-#### `liquid_fraction`
+#### `liquid_fraction` _(deprecated)_
 
 _type_: float \
-_default_: 0.05 \
-_example_:
-```
-liquid_fraction: 0.05
-```
+_default_: 0.0 \
 
-Maximum fraction of solid atoms allowed in liquid after melting.
+```{deprecated}
+This parameter is deprecated and has no effect. Phase-stability checks are now performed by the fluctuation-based `phase_transition_detection` detector. The field is kept for backward compatibility but is ignored at runtime.
+```
 
 ---
 
@@ -1148,6 +1162,192 @@ pressure: 10.0
 ```
 
 Tolerance (in bars) for the convergence of the average pressure during the equilibration / volume-averaging stage.
+
+---
+---
+
+(phase_transition_detection)=
+## `phase_transition_detection` block
+
+Fluctuation-based detector that scans a reversible-scaling (`mode: ts`) sweep
+for first-order phase transitions and either warns, stops, or automatically
+truncates the sweep to a safe single-phase sub-range.  The detector evaluates
+five signals derived from the on-disk `ts.*.dat` columns:
+
+* **Variance-based** (second moment): heat capacity $C_p$, isothermal
+  compressibility $\kappa_T$, isobaric thermal-expansion coefficient
+  $\alpha_P$.  These diverge in the two-phase region; they lag the
+  structural change because their rolling-window peak only appears once
+  enough mixed-phase samples have accumulated.
+* **Slope-break** (first moment): $H_{\text{break}}$, $V_{\text{break}}$.
+  These fit a low-order single-phase equation of state to the early part
+  of the sweep and flag a sustained deviation of $\langle H\rangle(T)$ or
+  $\langle V\rangle(T)$ from that baseline.  They fire near the actual
+  onset of the transition and are phase-agnostic (work for
+  solid$\to$solid as well as solid$\to$liquid).
+
+A transition is declared when at least [`min_agreement`](ptd_min_agreement)
+signals fire simultaneously.  The recovery point is the **earliest onset**
+across all triggered signals, walked back from each peak/trigger using a
+common [`onset_sigma`](ptd_onset_sigma) noise-width threshold.
+
+For the full mathematical treatment — fit definitions, leverage-aware
+residual normalization, persistence and sign-coherence tests, the
+modified-Z score, and the recovery procedure — see the
+[transition-detection notes](transition_detection.md).
+
+```
+phase_transition_detection:
+   mode: recover
+   temperature_window: 50.0
+   peak_threshold: 12.0
+   min_agreement: 2
+   onset_sigma: 4.0
+```
+
+---
+
+(ptd_mode)=
+#### `mode`
+
+_type_: string (`none` | `warn` | `recover` | `stop`) \
+_default_: `none` \
+_example_:
+```
+mode: recover
+```
+
+Controls what happens when a transition is detected:
+
+* `none` — detection disabled entirely; sweep always completes (default).
+* `warn` — log a warning with the estimated transition temperature and
+  triggered signals, write response-function plots, continue the sweep
+  to completion.  Use this to observe detection without changing the
+  calculation outcome.
+* `recover` — truncate the forward sweep at the last clean block
+  boundary, save a checkpoint, continue with a backward sweep over the
+  reduced range $[T_0, T_k]$.  A valid free-energy curve is produced for
+  the single-phase region.  Requires
+  [`temperature_window`](ptd_temperature_window) > 0 so per-block
+  checkpoints are written.
+* `stop` — raise `PhaseTransitionError` and abort.  Use when you want to
+  inspect the raw data before deciding how to proceed.
+
+---
+
+(ptd_temperature_window)=
+#### `temperature_window`
+
+_type_: float (K) \
+_default_: 50.0 \
+_example_:
+```
+temperature_window: 50.0
+```
+
+Block width $\Delta T$ in Kelvin.  The ts sweep is split into
+$\lceil (T_{\text{stop}} - T_{\text{start}})/\Delta T \rceil$ contiguous
+blocks, and a configuration checkpoint is written at every block
+boundary.  These checkpoints are the candidate restart points for
+recovery in `mode: recover`.  Set to 0 to disable per-block checkpoints
+(post-hoc detection still runs but recovery is not possible).
+
+---
+
+(ptd_peak_threshold)=
+#### `peak_threshold`
+
+_type_: float \
+_default_: 12.0 \
+_example_:
+```
+peak_threshold: 12.0
+```
+
+Modified-Z trigger threshold $\tau$ for the variance-based signals
+($C_p$, $\kappa_T$, $\alpha_P$).  A variance signal fires when its peak
+modified-Z score
+$\mathrm{modZ} = (X_{\text{peak}} - \mathrm{med})/(1.4826\,\mathrm{MAD})$
+exceeds $\tau$.  The default 12.0 cleanly separates real transitions
+($\mathrm{modZ} > 25$ on Cu EAM melting) from natural single-phase
+growth ($\mathrm{modZ} \le 7$ over a 200 K solid window).
+
+**System-size sensitivity.**  Variance signals scale with the inverse
+square root of the number of atoms — at smaller cell sizes the peak
+modified-Z score of a real transition can drop below 12 and the
+detector will silently miss the transition (the run completes but the
+forward / backward energy dissipation is anomalously large).
+Recommended values:
+
+| System size | `peak_threshold` |
+|---|---|
+| ≥ 1500 atoms (e.g. `repeat: [10,10,10]` fcc) | `12` (default) |
+| 500 – 1500 atoms | `8` |
+| < 500 atoms | `6` |
+
+If you're not sure, leave it at the default — the
+``melting_temperature`` driver now monitors the per-sweep energy
+dissipation and explicitly aborts on contamination from missed
+transitions, so an under-tuned threshold surfaces as a clear error
+rather than a quietly wrong $T_m$.
+
+This parameter does **not** affect the slope-break signals
+($H_{\text{break}}$, $V_{\text{break}}$): they use a separate sigma
+threshold (`slope_break_sigma`, default 5) which is fixed in code.
+
+---
+
+(ptd_min_agreement)=
+#### `min_agreement`
+
+_type_: int \
+_default_: 2 \
+_example_:
+```
+min_agreement: 2
+```
+
+Minimum number of signals that must trigger simultaneously for a
+transition to be declared.  Five signals are evaluated:
+$C_p$, $\kappa_T$, $\alpha_P$ (variance-based) and
+$H_{\text{break}}$, $V_{\text{break}}$ (slope-break).  The default 2
+gives strong discrimination against single-signal artefacts (one
+glitched volume sample, a pressure spike, etc.) while still catching
+transitions that are weak in one family but strong in the other.
+
+---
+
+(ptd_onset_sigma)=
+#### `onset_sigma`
+
+_type_: float \
+_default_: 4.0 \
+_example_:
+```
+onset_sigma: 4.0
+```
+
+Walk-back threshold used to locate the **onset temperature** from a
+detected peak or trigger.  Applied uniformly to all five signals:
+
+* Variance signals walk back from the peak to where
+  $X \le \mathrm{med} + \mathrm{onset\_sigma} \cdot 1.4826\,\mathrm{MAD}$.
+* Slope-break signals walk back from the trigger to where
+  $|z| \le \mathrm{onset\_sigma}$.
+
+The recovery checkpoint is then the last block boundary strictly
+**before** the earliest onset temperature across all triggered signals.
+
+* **Lower values** (e.g. 2.0) → earlier, more conservative onset →
+  recovery cut further from the transition (more margin, but less
+  usable single-phase range).
+* **Higher values** (e.g. 5.0) → onset placed closer to where the signal
+  is unambiguous → recovery cut closer to the transition (more
+  single-phase range, less margin).
+
+Default 4.0 is a compromise that keeps the cut well clear of the
+transition on Cu EAM melting (~270 K margin) without throwing away
+hundreds of K of usable solid sweep.
 
 ---
 ---

@@ -106,9 +106,14 @@ def create_object(
         lmp = LammpsScript()
     elif lmp is None:
         if cmdargs == "":
-            cmdargs = None
+            cmdargs = []
         elif isinstance(cmdargs, str):
             cmdargs = cmdargs.split()
+        else:
+            cmdargs = list(cmdargs)
+        # Suppress LAMMPS stdout; Python logging handles screen output
+        if "-screen" not in cmdargs:
+            cmdargs.extend(["-screen", "none"])
         lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
 
     commands = [
@@ -372,9 +377,7 @@ def find_solid_fraction(file):
     try:
         sys.find.neighbors(method="cutoff", cutoff=0)
     except RuntimeError:
-        sys.find.neighbors(
-            method="cutoff", cutoff=5.0
-        )  # Maybe add value as convergence param?
+        sys.find.neighbors(method="cutoff", cutoff=5.0)
     sys.find.solids(cluster=False)
     solids = np.sum(sys.atoms.solid)
     return solids

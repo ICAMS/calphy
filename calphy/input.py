@@ -22,7 +22,7 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 """
 
 from typing_extensions import Annotated
-from typing import Any, Callable, Dict, List, ClassVar, Optional, Union
+from typing import Any, Callable, Dict, List, ClassVar, Literal, Optional, Union
 from pydantic import (
     BaseModel,
     Field,
@@ -49,7 +49,7 @@ from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
-__version__ = "1.7.5"
+__version__ = "1.8.0"
 
 
 def _check_equal(val):
@@ -235,6 +235,92 @@ class Tolerance(BaseModel, title="Tolerance settings for convergence"):
     pressure: Annotated[float, Field(default=10.0, ge=0)]
 
 
+class PhaseTransitionDetection(BaseModel, title="Settings for fluctuation-based phase transition detection"):
+    mode: Annotated[
+        Literal["none", "warn", "recover", "stop"],
+        Field(
+            default="none",
+            description=(
+                "Controls what happens when a phase transition is detected "
+                "during a reversible-scaling sweep.\n"
+                "  'none'    — detection is disabled; sweep always completes "
+                "(default).\n"
+                "  'warn'    — detection runs and a warning is logged with the "
+                "estimated transition temperature and triggering signals; "
+                "response-function plots are generated; the sweep continues "
+                "to completion uninterrupted.  Use this to observe detection "
+                "without changing the calculation outcome.\n"
+                "  'recover' — truncate the forward sweep at the last clean "
+                "block boundary, save a checkpoint, and continue with a "
+                "backward sweep over the reduced range [T0, T_k].  A valid "
+                "free-energy curve is produced for the single-phase region.\n"
+                "  'stop'    — raise PhaseTransitionError and abort.  Use "
+                "when you want to inspect the raw data before deciding how "
+                "to proceed."
+            ),
+        ),
+    ]
+    peak_threshold: Annotated[
+        float,
+        Field(
+            default=12.0,
+            gt=0,
+            description=(
+                "Flag a transition when the modified Z-score of any variance-based "
+                "response function peak (Cp, kappa_T, alpha_P) exceeds this value, "
+                "where mod_z = (peak - median) / (1.4826 * MAD).  The slope-break "
+                "signals (H_break, V_break) use a separate sigma threshold "
+                "(slope_break_sigma, default 5.0) and are not affected by this "
+                "setting."
+            ),
+        ),
+    ]
+    min_agreement: Annotated[
+        int,
+        Field(
+            default=2,
+            ge=1,
+            description=(
+                "Minimum number of signals that must trigger simultaneously for a "
+                "transition to be declared.  Five signals are evaluated: Cp, "
+                "kappa_T, alpha_P (variance-based) and H_break, V_break "
+                "(slope-break, first-moment).  Default 2."
+            ),
+        ),
+    ]
+    onset_sigma: Annotated[
+        float,
+        Field(
+            default=4.0,
+            gt=0,
+            description=(
+                "Walk-back threshold used to locate the onset temperature from a "
+                "detected peak.  Applied to all signals: variance-based signals "
+                "(Cp, kappa_T, alpha_P) walk back to where the signal falls below "
+                "baseline_median + onset_sigma * MAD; slope-break signals "
+                "(H_break, V_break) walk back to where |z| falls below onset_sigma. "
+                "Lower values give earlier (more conservative) onsets and therefore "
+                "earlier recovery cuts; higher values place the onset closer to the "
+                "unambiguous part of the peak.  Default 4.0."
+            ),
+        ),
+    ]
+    baseline_window: Annotated[int, Field(default=50, ge=5)]
+    recent_window: Annotated[int, Field(default=50, ge=5)]
+    min_samples_before_check: Annotated[int, Field(default=100, ge=10)]
+    temperature_window: Annotated[
+        float,
+        Field(
+            default=50.0,
+            ge=0,
+            description=(
+                "Split each TS sweep into blocks of this width (in Kelvin). "
+                "The transition detector is called at each block boundary. "
+                "Set to 0 to run a single sweep with post-hoc detection only."
+            ),
+        ),
+    ]
+
 class MeltingTemperature(BaseModel, title="Input options for melting temperature mode"):
     guess: Annotated[Union[float, None], Field(default=None, gt=0)]
     step: Annotated[int, Field(default=200, ge=20)]
@@ -273,6 +359,7 @@ class Calculation(BaseModel, title="Main input class"):
     berendsen: Optional[Berendsen] = Berendsen()
     queue: Optional[Queue] = Queue()
     tolerance: Optional[Tolerance] = Tolerance()
+    phase_transition_detection: Optional[PhaseTransitionDetection] = PhaseTransitionDetection()
     uhlenbeck_ford_model: Optional[UFMP] = UFMP()
     melting_temperature: Optional[MeltingTemperature] = MeltingTemperature()
     materials_project: Optional[MaterialsProject] = MaterialsProject()
@@ -301,7 +388,6 @@ class Calculation(BaseModel, title="Main input class"):
         Field(default=0),
     ]
 
-    _pressure_stop: float = PrivateAttr(default=None)
     _pressure: float = PrivateAttr(default=None)
     _pressure_stop: float = PrivateAttr(default=None)
     _pressure_input: Any = PrivateAttr(default=None)
@@ -327,7 +413,7 @@ class Calculation(BaseModel, title="Main input class"):
     _temperature_stop: float = PrivateAttr(default=None)
     _temperature_input: float = PrivateAttr(default=None)
 
-    melting_cycle: Annotated[bool, Field(default=False)]
+    melting_cycle: Annotated[bool, Field(default=True)]
 
     pair_style: Annotated[
         Union[List[str], None], BeforeValidator(to_list), Field(default=None)

@@ -28,15 +28,21 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 import numpy as np
 import yaml
 import copy
+import glob
 import os
 import shutil
 import itertools
+import tempfile
+import zipfile
 
-import pyscal3.traj_process as ptp
 from calphy.integrators import *
 import calphy.helpers as ph
 from calphy.errors import *
 from calphy.input import generate_metadata
+from calphy.transition_detector import (
+    PhaseTransitionMonitor,
+    ThermoRecord,
+)
 
 
 class Phase:
@@ -65,6 +71,10 @@ class Phase:
         self.simfolder = simfolder
         self.log_to_screen = log_to_screen
         self.publications = []
+        # Events detected by _post_forward_recovery (keyed by iteration).
+        # Stored so _plot_ts_response_functions can mark them even after the
+        # forward ts file has been truncated to the safe sub-range.
+        self._recovery_forward_events = {}
 
         logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile, screen=log_to_screen)
@@ -207,6 +217,10 @@ class Phase:
         self.ly = None
         self.lz = None
 
+        # phase transition monitor (created in _create_monitor)
+        self._monitor = None
+        self._monitor_fed_rows = 0
+
         # now manually tune pair styles
         if self.calc.pair_style is not None:
             self.logger.info("pair_style: %s" % self.calc._pair_style_with_options[0])
@@ -270,12 +284,133 @@ class Phase:
 
         return structures
 
+    def _create_monitor(self, expected_phase):
+        """
+        Instantiate a PhaseTransitionMonitor for the current calculation.
+
+        Parameters
+        ----------
+        expected_phase : 'solid' or 'liquid'
+        """
+        td = self.calc.phase_transition_detection
+        if td.mode == "none":
+            self._monitor = None
+            self._monitor_fed_rows = 0
+            self.logger.info("Phase transition detector: disabled")
+            return
+
+        self.logger.info(
+            "Phase transition detector: enabled for %s phase "
+            "(T=%.1f K, P=%.3f bar, peak_threshold=%.1f, min_agreement=%d)",
+            expected_phase,
+            float(self.calc._temperature),
+            float(self.calc._pressure) if self.calc._pressure is not None else 0.0,
+            td.peak_threshold,
+            td.min_agreement,
+        )
+        self._monitor = PhaseTransitionMonitor(
+            expected_phase=expected_phase,
+            target_pressure=float(self.calc._pressure) if self.calc._pressure is not None else 0.0,
+            temperature=float(self.calc._temperature),
+            baseline_window=td.baseline_window,
+            recent_window=td.recent_window,
+            min_samples_before_check=td.min_samples_before_check,
+            peak_threshold=td.peak_threshold,
+            min_signal_agreement=td.min_agreement,
+        )
+        self._monitor_fed_rows = 0
+
+    def _feed_monitor_from_avg_dat(self, avg_file):
+        """
+        Read any new rows from avg.dat (columns: step, lx, ly, lz, press,
+        pe/atom, etotal/atom, temp) and append them to the monitor buffer.
+
+        avg.dat column layout (1-indexed in LAMMPS output, 0-indexed here):
+          0: TimeStep
+          1: v_mlx,  2: v_mly,  3: v_mlz
+          4: v_mpress
+          5: v_mpe      (pe/atoms)
+          6: v_metotal  (etotal/atoms)
+          7: v_mtemp    (temp)
+
+        Returns the updated number of fed rows so the caller can track
+        how many rows have already been processed.
+        """
+        if self._monitor is None:
+            return
+
+        if not os.path.exists(avg_file):
+            return
+
+        try:
+            data = np.loadtxt(avg_file, usecols=(0, 1, 2, 3, 4, 5, 6, 7), unpack=False)
+        except (ValueError, IndexError):
+            # File may not yet have enough columns (e.g. first run of older code path)
+            return
+
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+
+        n_rows = data.shape[0]
+        new_rows = data[self._monitor_fed_rows:]
+        self._monitor_fed_rows = n_rows
+
+        if len(new_rows) > 0:
+            self.logger.info(
+                "Phase transition detector: fed %d new rows from %s "
+                "(total buffer size: %d)",
+                len(new_rows),
+                os.path.basename(avg_file),
+                n_rows,
+            )
+
+        for row in new_rows:
+            step, lx, ly, lz, press, pe, etotal, temp = row
+            vol_per_atom = (lx * ly * lz) / self.natoms
+            record = ThermoRecord(
+                step=step,
+                temp=temp,
+                pe=pe,
+                etotal=etotal,
+                vol=vol_per_atom,
+                press=press,
+            )
+            # update() returns a TransitionEvent but we don't raise here;
+            # we let evaluate_final() do that at the checkpoint call sites
+            self._monitor.update(record, raise_on_transition=False)
+
     def check_if_melted(self, lmp, filename):
-        """ """
-        solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
-        if solids / lmp.natoms < self.calc.tolerance.solid_fraction:
+        """
+        Check whether the solid has melted, using fluctuation-based detection.
+
+        The monitor buffer is evaluated using the data accumulated during the
+        preceding pressure-convergence cycles.  If the buffer is too small for
+        reliable detection (fewer than min_samples_before_check samples), the
+        check is silently skipped — consistent with the previous behaviour of
+        setting tolerance.solid_fraction: 0.
+        """
+        if self._monitor is None:
+            return
+
+        buf_size = len(self._monitor.buffer)
+        self.logger.info(
+            "Phase transition detector: checking solid — buffer has %d samples",
+            buf_size,
+        )
+        event = self._monitor.evaluate_final(raise_on_transition=False)
+        if event is None:
+            self.logger.info(
+                "Phase transition detector: solid phase stable (%d samples analysed)",
+                buf_size,
+            )
+        else:
+            self.logger.warning(
+                "Phase transition detector: MELTING detected! "
+                "triggered_signals=%s confidence=%.0f%%",
+                event.triggered_signals,
+                event.confidence * 100,
+            )
             self.lammps_close(lmp=lmp)
-            # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
             try:
                 os.rename(
@@ -283,16 +418,36 @@ class Phase:
                 )
             except OSError as e:
                 self.logger.warning(f"Failed to rename log file: {e}")
-            raise MeltedError(
-                "System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting:\n tolerance.solid_fraction: 0"
-            )
+            self._monitor._raise_for_event(event)
 
     def check_if_solidfied(self, lmp, filename):
-        """ """
-        solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
-        if solids / lmp.natoms > self.calc.tolerance.liquid_fraction:
+        """
+        Check whether the liquid has solidified, using fluctuation-based detection.
+
+        See check_if_melted for details on behaviour when the buffer is small.
+        """
+        if self._monitor is None:
+            return
+
+        buf_size = len(self._monitor.buffer)
+        self.logger.info(
+            "Phase transition detector: checking liquid — buffer has %d samples",
+            buf_size,
+        )
+        event = self._monitor.evaluate_final(raise_on_transition=False)
+        if event is None:
+            self.logger.info(
+                "Phase transition detector: liquid phase stable (%d samples analysed)",
+                buf_size,
+            )
+        else:
+            self.logger.warning(
+                "Phase transition detector: SOLIDIFICATION detected! "
+                "triggered_signals=%s confidence=%.0f%%",
+                event.triggered_signals,
+                event.confidence * 100,
+            )
             self.lammps_close(lmp=lmp)
-            # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
             try:
                 os.rename(
@@ -300,7 +455,390 @@ class Phase:
                 )
             except OSError as e:
                 self.logger.warning(f"Failed to rename log file: {e}")
-            raise SolidifiedError("System solidified, increase temperature")
+            self._monitor._raise_for_event(event)
+
+    def _detect_ts_transitions(self):
+        """
+        Analyse ts.forward / ts.backward files for phase transitions via
+        rolling response-function peaks (Cp, kappa_T, alpha_P).
+
+        Called from integrate_reversible_scaling after the MD run completes.
+        Emits a Python UserWarning and logs at WARNING level when a transition
+        is detected.  The calculation is not interrupted; the warning is
+        informational so the user can inspect output files.
+        """
+        from calphy.transition_detector import detect_ts_transitions as _dts
+
+        td      = self.calc.phase_transition_detection
+        t_start = float(self.calc._temperature)
+        t_stop  = float(self.calc._temperature_stop)
+
+        self.logger.info(
+            "ts-sweep transition detector: scanning %d iteration(s) "
+            "(T %.1f K -> %.1f K, peak_threshold=%.1f, min_agreement=%d)",
+            self.calc.n_iterations,
+            t_start, t_stop,
+            td.peak_threshold,
+            td.min_agreement,
+        )
+
+        for i in range(1, self.calc.n_iterations + 1):
+            for sweep_label, fname in [
+                ("forward",  f"ts.forward_{i}.dat"),
+                ("backward", f"ts.backward_{i}.dat"),
+            ]:
+                fpath = os.path.join(self.simfolder, fname)
+                if not os.path.exists(fpath):
+                    self.logger.debug(
+                        "ts-sweep detector: %s not found, skipping", fname
+                    )
+                    continue
+                try:
+                    dU, press, vol_total, lam = np.loadtxt(
+                        fpath, unpack=True, comments="#"
+                    )
+                except Exception as exc:
+                    self.logger.debug(
+                        "ts-sweep detector: could not read %s (%s)", fname, exc
+                    )
+                    continue
+
+                label = f"{sweep_label} (iteration {i})"
+                self.logger.info(
+                    "ts-sweep transition detector: analysing %s (%d rows)",
+                    label, len(dU),
+                )
+                events = _dts(
+                    dU=dU,
+                    press=press,
+                    vol_total=vol_total,
+                    lam=lam,
+                    t_start=t_start,
+                    t_stop=t_stop,
+                    natoms=self.natoms,
+                    peak_threshold=td.peak_threshold,
+                    min_signal_agreement=td.min_agreement,
+                    onset_sigma=td.onset_sigma,
+                    sweep_label=label,
+                    sweep_mode="ts",
+                )
+
+                if not events:
+                    self.logger.info(
+                        "ts-sweep transition detector: no transition detected in %s",
+                        label,
+                    )
+                for event in events:
+                    self.logger.warning(
+                        "ts-sweep transition detector: transition in %s at "
+                        "T ~ %.1f K. Signals: %s (confidence %.0f%%). "
+                        "Verify output files for structural changes.",
+                        label,
+                        event.temperature,
+                        ", ".join(event.triggered_signals),
+                        event.confidence * 100,
+                    )
+
+    def _plot_ts_response_functions(self):
+        """
+        Plot Cp, kappa_T, alpha_P vs temperature for every ts sweep file and
+        save the figures to the simulation folder.
+
+        Called from integrate_reversible_scaling after the MD run completes.
+        A PNG file named ``ts_response_<sweep>_<iteration>.png`` is written for
+        each forward/backward sweep.  Detected transition temperatures are
+        marked with vertical dashed lines.
+        """
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+        except ImportError:
+            self.logger.warning(
+                "matplotlib not available; skipping response function plots"
+            )
+            return
+
+        import warnings as _warnings
+        from calphy.transition_detector import (
+            compute_ts_response_arrays as _compute,
+            detect_ts_transitions as _dts,
+            plan_temperature_blocks as _plan_blocks,
+        )
+
+        td      = self.calc.phase_transition_detection
+        t_start = float(self.calc._temperature)
+        t_stop  = float(self.calc._temperature_stop)
+
+        def _q12_from_checkpoints(out_stem: str) -> tuple:
+            """
+            Read all per-block checkpoint files ``conf.<out_stem>_blk{k}.data``
+            and compute the mean averaged Steinhardt q12 for each structure.
+
+            Returns (T_values, q12_values) as Python lists aligned by block index,
+            or ([], []) when pyscal3 is unavailable or no checkpoints are found.
+
+            Temperature for checkpoint blk{k} is taken from
+            plan_temperature_blocks evaluated at the block start — matching the
+            temperature axis of the response function plot.
+
+            pyscal3 adaptive neighbor finding (cutoff=0) is used so no
+            explicit cutoff needs to be derived.
+            """
+            try:
+                import pyscal3 as psc
+            except ImportError:
+                self.logger.debug(
+                    "q12 checkpoints: pyscal3 not available, skipping"
+                )
+                return [], []
+
+            t_win = td.temperature_window if td.temperature_window > 0 else 0.0
+            if t_win <= 0:
+                return [], []
+
+            n_sweep = self.calc._n_sweep_steps
+            blocks = _plan_blocks(
+                t_start, t_stop, n_sweep, t_win,
+                lambda_schedule=self.calc.lambda_schedule,
+            )
+
+            import warnings as _wq
+            T_vals, q12_vals = [], []
+            for k, block in enumerate(blocks[:-1]):  # last entry is the tf boundary; no file for it
+                with self._open_block_data(out_stem, k) as chk_path:
+                    if chk_path is None:
+                        continue
+                    try:
+                        with _wq.catch_warnings():
+                            _wq.simplefilter("ignore")
+                            sys_q = psc.System(
+                                chk_path, format="lammps-data", style="atomic"
+                            )
+                            # cutoff=0 lets pyscal3 choose an adaptive cutoff
+                            sys_q.find.neighbors(method="cutoff", cutoff=0)
+                            q_list = sys_q.calculate.steinhardt_parameter(
+                                [12], averaged=True
+                            )
+                        q12_mean = float(np.mean(q_list[0]))
+                        T_vals.append(block["temp"])
+                        q12_vals.append(q12_mean)
+                    except Exception as exc:
+                        self.logger.debug(
+                            "q12 checkpoints: could not process block %d (%s)",
+                            k, exc,
+                        )
+            return T_vals, q12_vals
+
+        for i in range(1, self.calc.n_iterations + 1):
+            for sweep_label, fname in [
+                ("forward",  f"ts.forward_{i}.dat"),
+                ("backward", f"ts.backward_{i}.dat"),
+            ]:
+                fpath = os.path.join(self.simfolder, fname)
+                if not os.path.exists(fpath):
+                    continue
+                # For forward sweeps use the full (pre-truncation) copy when
+                # available so the response plot spans the complete T range.
+                if sweep_label == "forward":
+                    full_fpath = fpath.replace(".dat", "_full.dat")
+                    if os.path.exists(full_fpath):
+                        fpath = full_fpath
+                try:
+                    dU, press, vol_total, lam = np.loadtxt(
+                        fpath, unpack=True, comments="#"
+                    )
+                except Exception as exc:
+                    self.logger.debug(
+                        "response plot: could not read %s (%s)", fname, exc
+                    )
+                    continue
+
+                arrs = _compute(
+                    dU, press, vol_total, lam, t_start, t_stop, self.natoms,
+                    sweep_mode="ts",
+                )
+                vs = arrs["valid_start"]
+                if vs >= len(arrs["T"]):
+                    self.logger.debug(
+                        "response plot: %s too short for rolling windows, skipping",
+                        fname,
+                    )
+                    continue
+
+                T      = arrs["T"][vs:]
+                Cp     = arrs["Cp"][vs:]
+                kappa  = arrs["kappa_T"][vs:]
+                alpha  = arrs["alpha_P"][vs:]
+                H_z    = arrs["H_z"][vs:]
+                V_z    = arrs["V_z"][vs:]
+
+                # Detect transitions to mark on the plot
+                with _warnings.catch_warnings():
+                    _warnings.simplefilter("ignore", UserWarning)
+                    events = _dts(
+                        dU=dU,
+                        press=press,
+                        vol_total=vol_total,
+                        lam=lam,
+                        t_start=t_start,
+                        t_stop=t_stop,
+                        natoms=self.natoms,
+                        peak_threshold=td.peak_threshold,
+                        min_signal_agreement=td.min_agreement,
+                        onset_sigma=td.onset_sigma,
+                        sweep_label=sweep_label,
+                        sweep_mode="ts",
+                    )
+                # If the forward file was truncated by _post_forward_recovery
+                # the transition peak is cut off and _dts won't see it.  Fall
+                # back to the stored recovery events so the markers still appear.
+                if not events and sweep_label == "forward":
+                    events = getattr(self, "_recovery_forward_events", {}).get(i, [])
+
+                # Collect Steinhardt q12 from per-block checkpoint files
+                # (forward sweep only; plot-only, not wired into detection).
+                q12_T, q12_vals = [], []
+                if sweep_label == "forward":
+                    # out_stem mirrors the dat file name without ".dat"
+                    out_stem = fname[:-4] if fname.endswith(".dat") else fname
+                    q12_T, q12_vals = _q12_from_checkpoints(out_stem)
+
+                # Panels: Cp, kappa_T, alpha_P, slope-break (H/V), [q12]
+                n_panels = 5 if q12_vals else 4
+                fig, axes = plt.subplots(
+                    n_panels, 1, figsize=(8, 3 * n_panels), sharex=True
+                )
+                fig.suptitle(
+                    f"Thermodynamic response functions\n"
+                    f"{sweep_label} sweep, iteration {i}  "
+                    f"(T: {t_start:.0f} K \u2192 {t_stop:.0f} K)",
+                    fontsize=11,
+                )
+
+                def _modz_series(sig):
+                    """Robust mod-Z relative to the global median/MAD."""
+                    finite = sig[np.isfinite(sig)]
+                    if len(finite) < 10:
+                        return np.full_like(sig, np.nan)
+                    med = float(np.median(finite))
+                    mad = float(np.median(np.abs(finite - med))) * 1.4826
+                    if mad < 1e-40:
+                        return np.full_like(sig, np.nan)
+                    return (sig - med) / mad
+
+                def _add_modz_twin(ax, T_arr, sig, color, threshold):
+                    """Overlay mod-Z / threshold on a twin y-axis.
+
+                    Normalising by threshold keeps the threshold line pinned at
+                    y = 1.0 regardless of the signal magnitude, so it is always
+                    obvious whether the curve crosses (transition) or not.
+                    """
+                    mz = _modz_series(sig)
+                    ax2 = ax.twinx()
+                    mz_norm = mz / threshold if threshold > 0 else mz
+                    ax2.plot(T_arr, mz_norm, lw=0.6, color=color, alpha=0.35, ls="--")
+                    ax2.axhline(1.0, color="grey", lw=0.8, ls=":", alpha=0.7)
+                    ax2.set_ylabel("mod-Z / threshold", fontsize=7, color="grey")
+                    ax2.tick_params(axis="y", labelsize=6, labelcolor="grey")
+                    mz_norm_finite = mz_norm[np.isfinite(mz_norm)]
+                    if len(mz_norm_finite):
+                        # Always show the threshold line at y=1 with headroom;
+                        # expand upward if a real spike is present.
+                        top = max(1.5, float(np.nanpercentile(mz_norm_finite, 99)) * 1.1)
+                        ax2.set_ylim(bottom=0, top=top)
+                    return ax2
+
+                threshold = td.peak_threshold
+
+                axes[0].plot(T, Cp, lw=0.8, color="C0")
+                axes[0].set_ylabel("$C_P$ (eV K$^{-1}$ atom$^{-1}$)")
+                _add_modz_twin(axes[0], T, Cp, "C0", threshold)
+
+                axes[1].plot(T, kappa, lw=0.8, color="C1")
+                axes[1].set_ylabel(r"$\kappa_T$ (eV$^{-1}$)")
+                _add_modz_twin(axes[1], T, kappa, "C1", threshold)
+
+                axes[2].plot(T, alpha, lw=0.8, color="C2")
+                axes[2].set_ylabel(r"$\alpha_P$ (K$^{-1}$)")
+                _add_modz_twin(axes[2], T, alpha, "C2", threshold)
+
+                # Slope-break panel: normalized residuals of H/lambda(lam) and
+                # V(lam) from a baseline single-phase EOS fit.  |z| crossing
+                # the dashed line indicates a deviation from the single-phase
+                # equation of state — a first-moment phase-transition
+                # signature that fires earlier than the variance peaks above
+                # and applies uniformly to solid->solid and solid->liquid
+                # transitions.
+                sb_trigger = 5.0
+                axes[3].plot(T, np.abs(H_z), lw=0.8, color="C4",
+                              label=r"$|z|$ on $H/\lambda$")
+                axes[3].plot(T, np.abs(V_z), lw=0.8, color="C5",
+                              label=r"$|z|$ on $V$")
+                axes[3].axhline(sb_trigger, color="grey", lw=0.8, ls="--",
+                                 alpha=0.7, label=f"trigger {sb_trigger:.0f}σ")
+                axes[3].set_ylabel("slope-break |z|")
+                axes[3].legend(fontsize=7, loc="upper left")
+                # cap the y-axis so a huge post-transition residual does not
+                # squash the early-rise region we want to inspect
+                finite_z = np.concatenate(
+                    [np.abs(H_z[np.isfinite(H_z)]),
+                     np.abs(V_z[np.isfinite(V_z)])]
+                )
+                if finite_z.size:
+                    top = max(sb_trigger * 1.5,
+                              float(np.nanpercentile(finite_z, 99)) * 1.1)
+                    axes[3].set_ylim(bottom=0, top=top)
+
+                if q12_vals:
+                    axes[4].plot(q12_T, q12_vals, lw=0.8, color="C3",
+                                 marker="o", ms=4, label=r"$\langle q_{12} \rangle$")
+                    axes[4].set_ylabel(r"$\langle q_{12} \rangle$")
+                    axes[4].legend(fontsize=8, loc="upper right")
+                    axes[4].set_xlabel("Temperature (K)")
+                else:
+                    axes[3].set_xlabel("Temperature (K)")
+
+                for event in events:
+                    data_T_max = float(T[-1]) if len(T) else t_stop
+                    onset_T = float(getattr(event, "onset_temperature", event.temperature))
+                    peak_T  = float(event.temperature)
+
+                    if onset_T > data_T_max:
+                        # Forward data was truncated before the transition.
+                        # Extend x-axis to expose onset and peak, then mark
+                        # the recovery/truncation boundary as a reference.
+                        x_min = float(T[0]) if len(T) else t_start
+                        x_max = peak_T + 0.04 * (peak_T - x_min)
+                        for ax in axes:
+                            ax.set_xlim(x_min, x_max)
+                        for ax in axes:
+                            ax.axvline(data_T_max, color="tab:orange", lw=1.2,
+                                       ls="-", alpha=0.75,
+                                       label=f"recovery cut {data_T_max:.0f} K")
+
+                    for ax in axes:
+                        ax.axvline(onset_T, color="red", lw=1.2, ls="--",
+                                   alpha=0.8, label=f"onset ~{onset_T:.0f} K")
+                    for ax in axes:
+                        ax.axvline(peak_T, color="darkred", lw=1.0, ls=":",
+                                   alpha=0.7, label=f"peak ~{peak_T:.0f} K")
+                    axes[0].legend(fontsize=8, loc="upper left")
+
+                plt.tight_layout()
+                outname = f"ts_response_{sweep_label}_{i}.png"
+                outpath = os.path.join(self.simfolder, outname)
+                try:
+                    fig.savefig(outpath, dpi=150)
+                    self.logger.info(
+                        "Response function plot saved: %s", outpath
+                    )
+                except Exception as exc:
+                    self.logger.warning(
+                        "Could not save response plot %s: %s", outpath, exc
+                    )
+                finally:
+                    plt.close(fig)
 
     def fix_nose_hoover(
         self,
@@ -565,7 +1103,7 @@ class Phase:
         ave_freq = ave_every * ave_repeat
 
         lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"
+            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat"
             % (ave_every, ave_repeat, ave_freq)
         )
 
@@ -580,6 +1118,10 @@ class Phase:
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
 
             file = os.path.join(self.simfolder, "avg.dat")
+
+            # feed any new avg.dat rows into the phase-transition monitor
+            self._feed_monitor_from_avg_dat(file)
+
             lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
             # Average over all data after dropping the first cycle
             skip_samples = n_skip * ncount
@@ -734,7 +1276,7 @@ class Phase:
             self.fix_berendsen(lmp)
 
         lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"
+            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat"
             % (
                 int(self.calc.md.n_every_steps),
                 int(self.calc.md.n_repeat_steps),
@@ -778,7 +1320,7 @@ class Phase:
 
         # this is when the averaging routine starts
         lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"
+            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat"
             % (
                 int(self.calc.md.n_every_steps),
                 int(self.calc.md.n_repeat_steps),
@@ -903,7 +1445,7 @@ class Phase:
 
         # this is when the averaging routine starts
         lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress file avg.dat"
+            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat"
             % (
                 int(self.calc.md.n_every_steps),
                 int(self.calc.md.n_repeat_steps),
@@ -992,32 +1534,199 @@ class Phase:
                 self.publications.append("10.1016/j.commatsci.2018.12.029")
                 self.publications.append("10.1063/1.4967775")
 
-    def reversible_scaling(self, iteration=1):
+    # ------------------------------------------------------------------
+    # Internal helpers for temperature-window block sweeps
+    # ------------------------------------------------------------------
+
+    def _run_split_sweep(
+        self,
+        lmp,
+        lambda_var: str,
+        output_file_pattern: str,
+        sweep_label: str,
+        t0: float,
+        tf: float,
+        iteration: int,
+        sweep_mode: str = "ts",
+    ) -> None:
         """
-        Perform reversible scaling calculation in NPT
+        Run a forward or backward reversible-scaling sweep split into
+        temperature-based blocks.
+
+        Uses a **single** ``fix print ... flush yes`` output file that grows
+        continuously across all blocks; no per-cycle files are written and no
+        post-run merging is needed.  Between consecutive ``run`` commands,
+        LAMMPS is idle and the file is fully written to disk (guaranteed by
+        ``flush yes``), allowing the incremental transition detector to read the
+        accumulated data with the correct full-sweep baseline.
 
         Parameters
         ----------
-        iteration : int, optional
-            iteration of the calculation. Default 1
-
-        Returns
-        -------
-        None
+        lmp : lammps object
+            Active LAMMPS instance.  The pair style and the lambda ramp
+            variables must already be defined *before* this method is called.
+            The ramp *will* be reset (``reset_timestep 0``) here so that
+            ``run N start 0 stop total_steps`` works correctly.
+        lambda_var : str
+            Name of the LAMMPS variable to record, e.g. ``"flambda"`` or
+            ``"blambda"``.
+        output_file_pattern : str
+            Name for the output data file, e.g. ``"ts.forward_1.dat"``.
+        sweep_label : str
+            Human-readable label used in log messages.
+        t0, tf : float
+            Temperature endpoints of the sweep (K) used for the block planner.
+        iteration : int
+            Current reversible-scaling iteration number.
+        sweep_mode : str
+            ``'ts'`` (reversible scaling, fixed thermostat) or ``'tscale'``
+            (temperature scaling, ramping thermostat).  Used for the correct
+            temperature formula in the transition detector.
         """
-        self.logger.info(f"Starting temperature sweep cycle: {iteration}")
-        solid = False
-        if self.calc.reference_phase == "solid":
-            solid = True
+        from calphy.transition_detector import plan_temperature_blocks as _plan
 
+        td = self.calc.phase_transition_detection
+        n_sweep = self.calc._n_sweep_steps
+        t_win = td.temperature_window if (td.mode != "none" and td.temperature_window > 0) else 0.0
+
+        if t_win <= 0:
+            # ── Single-run path (no block splitting) ──────────────────────
+            lmp.command(
+                'fix               f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+                'screen no file %s' % (lambda_var, output_file_pattern)
+            )
+            self.logger.info("ts-sweep %s: single run, %d steps", sweep_label, n_sweep)
+            lmp.command("run               %d" % n_sweep)
+            lmp.command("unfix             f3")
+            return
+
+        # ── Block-splitting path ──────────────────────────────────────────
+        blocks = _plan(t0, tf, n_sweep, t_win,
+                       lambda_schedule=self.calc.lambda_schedule)
+        n_blocks = len(blocks) - 1
+        self.logger.info(
+            "ts-sweep %s: %d steps split into %d blocks of ~%.0f K "
+            "(T %.1f → %.1f K, λ %.4f → %.4f)",
+            sweep_label, n_sweep, n_blocks, t_win,
+            t0, tf, blocks[0]["lambda"], blocks[-1]["lambda"],
+        )
+        for k, cp in enumerate(blocks):
+            self.logger.info(
+                "  checkpoint %d: T=%.2f K  λ=%.6f  step=%d",
+                k, cp["temp"], cp["lambda"], cp["step"],
+            )
+
+        # Reset timestep so ramp(li,lf) + "run N start 0 stop total" is
+        # consistent across all block commands.
+        lmp.command("reset_timestep 0")
+
+        # Strategy: run the full sweep to completion, writing a per-block
+        # checkpoint at every block boundary so post-hoc recovery (in
+        # _post_forward_recovery) can restart the backward sweep from any
+        # safe boundary if a transition is detected.  No incremental
+        # detection / no aborts inside this method — that decision is made
+        # once, post-hoc, on the complete forward dataset.
+        fpath = os.path.join(self.simfolder, output_file_pattern)
+        # Strip ".dat" so we can build a per-block checkpoint name.
+        out_stem = output_file_pattern[:-4] if output_file_pattern.endswith(".dat") else output_file_pattern
+        # Clear any stale block-checkpoint archive left over from a prior
+        # run of this sweep so we don't append to it across re-runs.
+        stale_arc = self._blocks_archive_path(out_stem)
+        if os.path.exists(stale_arc):
+            try:
+                os.remove(stale_arc)
+            except OSError:
+                pass
+        current_step = 0
+        for k in range(n_blocks):
+            block_steps = blocks[k + 1]["step"] - blocks[k]["step"]
+            if block_steps <= 0:
+                self.logger.debug(
+                    "ts-sweep %s block %d has 0 steps — skipping", sweep_label, k
+                )
+                continue
+
+            self.logger.info(
+                "ts-sweep %s block %d/%d: T %.1f→%.1f K  λ %.4f→%.4f  steps %d–%d",
+                sweep_label, k, n_blocks - 1,
+                blocks[k]["temp"], blocks[k + 1]["temp"],
+                blocks[k]["lambda"], blocks[k + 1]["lambda"],
+                current_step, current_step + block_steps,
+            )
+
+            # Snapshot the state at the START of this block.  Used by
+            # _post_forward_recovery as a candidate restart point if a
+            # transition is detected later in the sweep.
+            # _post_forward_recovery as a candidate restart point if a
+            # transition is detected later in the sweep.
+            chk_name = "conf.%s_blk%d.data" % (out_stem, k)
+            chk_path = os.path.join(self.simfolder, chk_name)
+            lmp.command("write_data %s nocoeff" % chk_path)
+            # Fold the just-written block file into the per-sweep archive
+            # and delete the standalone copy so the per-sweep file count
+            # stays at O(1) regardless of block count (HPC inode quotas).
+            self._archive_block_data(out_stem, k, chk_path)
+
+            if k == 0:
+                lmp.command(
+                    'fix f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+                    'screen no file %s' % (lambda_var, output_file_pattern)
+                )
+            else:
+                lmp.command(
+                    'fix f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+                    'screen no append %s' % (lambda_var, output_file_pattern)
+                )
+
+            lmp.command("run %d start 0 stop %d" % (block_steps, n_sweep))
+            current_step += block_steps
+            lmp.command("unfix f3")
+
+        # Handle any remaining steps (numerical rounding)
+        remaining = n_sweep - current_step
+        if remaining > 0:
+            self.logger.info(
+                "ts-sweep %s remainder block: %d steps", sweep_label, remaining
+            )
+            lmp.command(
+                'fix f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+                'screen no append %s' % (lambda_var, output_file_pattern)
+            )
+            lmp.command("run %d start 0 stop %d" % (remaining, n_sweep))
+            lmp.command("unfix f3")
+
+        self.logger.info("ts-sweep %s: sweep complete (%d steps)", sweep_label, n_sweep)
+
+    def _reversible_scaling_forward(self, iteration: int = 1) -> None:
+        """
+        Perform the forward sweep of a reversible-scaling calculation.
+
+        1. Initial NPT equilibration at T0 (records thermodynamics for the
+           online phase-transition monitor).
+        2. COM-constrained equilibration at T0.
+        3. Forward sweep: λ 1 → T0/Tf (optionally split into temperature
+           windows).
+        4. Write ``conf.ts.forward_{iteration}.data`` for the backward sweep.
+
+        Parameters
+        ----------
+        iteration : int
+            Reversible-scaling iteration index.
+        """
+        solid = self.calc.reference_phase == "solid"
         t0 = self.calc._temperature
         tf = self.calc._temperature_stop
-        li = 1
+        li = 1.0
         lf = t0 / tf
         pi = self.calc._pressure
         pf = lf * pi
 
-        # create lammps object
+        self.logger.info(
+            "forward sweep (iteration %d): T %.1f → %.1f K, "
+            "λ %.4f → %.4f, P %.4f → %.4f bar",
+            iteration, t0, tf, li, lf, pi, pf,
+        )
+
         lmp = ph.create_object(
             cores=self.cores,
             directory=self.simfolder,
@@ -1034,31 +1743,29 @@ class Phase:
 
         lmp = ph.set_pair_style(lmp, self.calc)
 
-        # read in conf file
-        # conf = os.path.join(self.simfolder, "conf.equilibration.dump")
         conf = os.path.join(self.simfolder, "conf.equilibration.data")
         lmp = ph.read_data(lmp, conf)
 
-        # set up potential
         lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
-        # remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
-        # set thermostat and run equilibrium
+        # ── Phase-transition monitor variables ────────────────────────────
+        lmp.command("variable         rs_mlx equal lx")
+        lmp.command("variable         rs_mly equal ly")
+        lmp.command("variable         rs_mlz equal lz")
+        lmp.command("variable         rs_mpress equal press")
+        lmp.command("variable         rs_mpe equal pe/atoms")
+        lmp.command("variable         rs_metotal equal etotal/atoms")
+        lmp.command("variable         rs_mtemp equal temp")
+
+        # ── Initial equilibration ──────────────────────────────────────────
         if self.calc.npt:
             lmp.command(
                 "fix               f1 all npt temp %f %f %f %s %f %f %f"
-                % (
-                    t0,
-                    t0,
-                    self.calc.md.thermostat_damping[1],
-                    self.iso,
-                    pi,
-                    pi,
-                    self.calc.md.barostat_damping[1],
-                )
+                % (t0, t0, self.calc.md.thermostat_damping[1],
+                   self.iso, pi, pi, self.calc.md.barostat_damping[1])
             )
         else:
             lmp.command(
@@ -1066,54 +1773,63 @@ class Phase:
                 % (t0, t0, self.calc.md.thermostat_damping[1])
             )
 
-        self.logger.info(f"Starting equilibration: {iteration}")
+        self.logger.info("forward sweep (iteration %d): initial equilibration start", iteration)
+        _rs_ave_every  = int(self.calc.md.n_every_steps)
+        _rs_ave_repeat = int(self.calc.md.n_repeat_steps)
+        _rs_ave_freq   = _rs_ave_every * _rs_ave_repeat
+        lmp.command(
+            "fix               rs_ave all ave/time %d %d %d "
+            "v_rs_mlx v_rs_mly v_rs_mlz v_rs_mpress v_rs_mpe v_rs_metotal v_rs_mtemp "
+            "file rs_equil_avg.dat"
+            % (_rs_ave_every, _rs_ave_repeat, _rs_ave_freq)
+        )
         lmp.command("run               %d" % self.calc.n_equilibration_steps)
-        self.logger.info(f"Finished equilibration: {iteration}")
+        lmp.command("unfix             rs_ave")
+        self.logger.info("forward sweep (iteration %d): initial equilibration done", iteration)
+
+        rs_avg_file = os.path.join(self.simfolder, "rs_equil_avg.dat")
+        self._monitor_fed_rows = 0
+        self._feed_monitor_from_avg_dat(rs_avg_file)
 
         lmp.command("unfix             f1")
 
-        # now fix com
+        # ── COM-constrained equilibration ──────────────────────────────────
         lmp.command("variable         xcm equal xcm(all,x)")
         lmp.command("variable         ycm equal xcm(all,y)")
         lmp.command("variable         zcm equal xcm(all,z)")
 
         if self.calc.npt:
             lmp.command(
-                "fix               f1 all npt temp %f %f %f %s %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"
-                % (
-                    t0,
-                    t0,
-                    self.calc.md.thermostat_damping[1],
-                    self.iso,
-                    pi,
-                    pi,
-                    self.calc.md.barostat_damping[1],
-                )
+                "fix               f1 all npt temp %f %f %f %s %f %f %f "
+                "fixedpoint ${xcm} ${ycm} ${zcm}"
+                % (t0, t0, self.calc.md.thermostat_damping[1],
+                   self.iso, pi, pi, self.calc.md.barostat_damping[1])
             )
         else:
             lmp.command(
-                "fix               f1 all nvt temp %f %f %f fixedpoint ${xcm} ${ycm} ${zcm}"
+                "fix               f1 all nvt temp %f %f %f "
+                "fixedpoint ${xcm} ${ycm} ${zcm}"
                 % (t0, t0, self.calc.md.thermostat_damping[1])
             )
 
-        # compute com and modify fix
         lmp.command("compute           tcm all temp/com")
         lmp.command("fix_modify        f1 temp tcm")
-
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU      equal c_thermo_pe/atoms")
         lmp.command("thermo_style      custom step pe c_tcm press vol")
         lmp.command("thermo            10000")
 
-        # create velocity and equilibriate
         lmp.command(
             "velocity          all create %f %d mom yes rot yes dist gaussian"
             % (t0, np.random.randint(1, 10000))
         )
-
-        self.logger.info(f"Starting equilibration with constrained com: {iteration}")
+        self.logger.info(
+            "forward sweep (iteration %d): COM-constrained equilibration start", iteration
+        )
         lmp.command("run               %d" % self.calc.n_equilibration_steps)
-        self.logger.info(f"Finished equilibration with constrained com: {iteration}")
+        self.logger.info(
+            "forward sweep (iteration %d): COM-constrained equilibration done", iteration
+        )
 
         # ----------------------------------------------------------------
         # Lambda schedule for the forward sweep.
@@ -1150,82 +1866,222 @@ class Phase:
         lmp.command("variable         btemp equal v_T0_rs/v_blambda")
 
         lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_fscale"]))
-        for command in ph.hybrid_pair_coeff_commands(
-            self.calc, repeat_index=0, total_repeats=2
-        ):
-            lmp.command(command)
-        for command in ph.hybrid_pair_coeff_commands(
-            self.calc, repeat_index=1, total_repeats=2
-        ):
-            lmp.command(command)
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
+            lmp.command(cmd)
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=1, total_repeats=2):
+            lmp.command(cmd)
 
-        lmp.command(
-            'fix               f3 all print 1 "${dU} $(press) $(vol) ${flambda}" screen no file ts.forward_%d.dat'
-            % iteration
-        )
-
-        # add swaps if n_swap is > 0 - forward sweep
+        # ── Optional MC swaps ───────────────────────────────────────────────
         if (
             self.calc.monte_carlo.n_swaps > 0
             and len(self.calc.monte_carlo.forward_swap_types) >= 2
         ):
-            swap_types = self.calc.monte_carlo.forward_swap_types
+            swap_types  = self.calc.monte_carlo.forward_swap_types
             swap_combos = list(itertools.combinations(swap_types, 2))
             self.logger.info(
-                f"Forward sweep: {self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
+                "forward sweep (iteration %d): %d swap moves/combo, "
+                "%d combinations every %d steps",
+                iteration, self.calc.monte_carlo.n_swaps,
+                len(swap_combos), self.calc.monte_carlo.n_steps,
             )
             for combo in swap_combos:
-                self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
-
+                self.logger.info("  swapping types %s ↔ %s", combo[0], combo[1])
             for idx, (type1, type2) in enumerate(swap_combos):
-                swap_str = f"{type1} {type2}"
                 lmp.command(
-                    "fix  swap%d all atom/swap %d %d %d ${ftemp} ke yes types %s"
-                    % (
-                        idx,
-                        self.calc.monte_carlo.n_steps,
-                        self.calc.monte_carlo.n_swaps,
-                        np.random.randint(1, 10000),
-                        swap_str,
-                    )
+                    "fix  swap%d all atom/swap %d %d %d ${ftemp} ke yes types %s %s"
+                    % (idx, self.calc.monte_carlo.n_steps,
+                       self.calc.monte_carlo.n_swaps,
+                       np.random.randint(1, 10000), type1, type2)
                 )
-
-            # Use the first swap fix for output tracking
-            # lmp.command("variable a equal f_swap0[1]")
-            # lmp.command("variable b equal f_swap0[2]")
-            # lmp.command(
-            #    'fix             swap_print all print 1 "${a} ${b} ${ftemp}" screen no file swap.rs.forward_%d.dat'
-            #    % iteration
-            # )
 
         if self.calc.n_print_steps > 0:
             lmp.command(
-                "dump              d1 all custom %d traj.ts.forward_%d.dat id type mass x y z vx vy vz"
+                "dump              d1 all custom %d traj.ts.forward_%d.dat "
+                "id type mass x y z vx vy vz"
                 % (self.calc.n_print_steps, iteration)
             )
 
-        self.logger.info(f"Started forward sweep: {iteration}")
-        lmp.command("run               %d" % self.calc._n_sweep_steps)
-        self.logger.info(f"Finished forward sweep: {iteration}")
+        # ── Forward sweep ───────────────────────────────────────────────────
+        self.logger.info("forward sweep (iteration %d): sweep start", iteration)
+        try:
+            self._run_split_sweep(
+                lmp=lmp,
+                lambda_var="flambda",
+                output_file_pattern="ts.forward_%d.dat" % iteration,
+                sweep_label="forward (iteration %d)" % iteration,
+                t0=t0,
+                tf=tf,
+                iteration=iteration,
+            )
+        except Exception:
+            # Make sure the LAMMPS instance (especially in interactive
+            # pylammpsmpi mode where it is reused for the backward sweep) is
+            # cleared and the log file is renamed before the exception
+            # propagates.  This is the only way the recovery path in
+            # reversible_scaling() can safely create a fresh lmp for the
+            # backward sweep.
+            try:
+                self.lammps_close(lmp=lmp)
+            except Exception as _close_exc:
+                self.logger.debug(
+                    "forward sweep cleanup: lammps_close failed: %s", _close_exc
+                )
+            logfile = os.path.join(self.simfolder, "log.lammps")
+            if os.path.exists(logfile):
+                try:
+                    os.rename(
+                        logfile,
+                        os.path.join(
+                            self.simfolder, "reversible_scaling_forward.log.lammps"
+                        ),
+                    )
+                except Exception:
+                    pass
+            raise
+        self.logger.info("forward sweep (iteration %d): sweep done", iteration)
 
+        # ── Cleanup swaps / dump ────────────────────────────────────────────
         if self.calc.monte_carlo.n_swaps > 0:
-            swap_types = self.calc.monte_carlo.forward_swap_types
+            swap_types  = self.calc.monte_carlo.forward_swap_types
             swap_combos = list(itertools.combinations(swap_types, 2))
             for idx in range(len(swap_combos)):
-                lmp.command(f"unfix swap{idx}")
-            # lmp.command("unfix swap_print")
-
-        # unfix
-        lmp.command("unfix             f3")
-        # lmp.command("unfix             f1")
+                lmp.command("unfix swap%d" % idx)
 
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
 
-        # switch potential
-        lmp.command("run               %d" % self.calc.n_equilibration_steps)
+        # ── Save forward-sweep end configuration ────────────────────────────
+        conf_forward = os.path.join(
+            self.simfolder, "conf.ts.forward_%d.data" % iteration
+        )
+        lmp.command("write_data        %s" % conf_forward)
+        self.logger.info(
+            "forward sweep (iteration %d): configuration saved to %s",
+            iteration, os.path.basename(conf_forward),
+        )
 
-        # check melting or freezing
+        self.lammps_close(lmp=lmp)
+
+        logfile = os.path.join(self.simfolder, "log.lammps")
+        if os.path.exists(logfile):
+            os.rename(
+                logfile,
+                os.path.join(
+                    self.simfolder, "reversible_scaling_forward.log.lammps"
+                ),
+            )
+
+    def _reversible_scaling_backward(self, iteration: int = 1) -> None:
+        """
+        Perform the backward sweep of a reversible-scaling calculation.
+
+        1. Load ``conf.ts.forward_{iteration}.data`` written by the forward
+           sweep.
+        2. Middle equilibration at Tf (phase-stability check).
+        3. Backward sweep: λ T0/Tf → 1 (optionally split into temperature
+           windows).
+
+        Parameters
+        ----------
+        iteration : int
+            Reversible-scaling iteration index.
+        """
+        solid = self.calc.reference_phase == "solid"
+        t0 = self.calc._temperature
+        tf = self.calc._temperature_stop
+        li = 1.0
+        lf = t0 / tf
+        pi = self.calc._pressure
+        pf = lf * pi
+
+        self.logger.info(
+            "backward sweep (iteration %d): T %.1f → %.1f K, "
+            "λ %.4f → %.4f, P %.4f → %.4f bar",
+            iteration, tf, t0, lf, li, pf, pi,
+        )
+
+        lmp = ph.create_object(
+            cores=self.cores,
+            directory=self.simfolder,
+            timestep=self.calc.md.timestep,
+            cmdargs=self.calc.md.cmdargs,
+            init_commands=self.calc.md.init_commands,
+            script_mode=False,
+            lmp=self._lmp,
+        )
+
+        lmp.command("echo              log")
+        lmp.command("variable          li equal %f" % li)
+        lmp.command("variable          lf equal %f" % lf)
+
+        lmp = ph.set_pair_style(lmp, self.calc)
+
+        conf = os.path.join(
+            self.simfolder, "conf.ts.forward_%d.data" % iteration
+        )
+        lmp = ph.read_data(lmp, conf)
+
+        lmp = ph.set_pair_coeff(lmp, self.calc)
+        lmp = ph.set_mass(lmp, self.calc)
+
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+
+        # ── Re-install scaled potential at constant λ = lf BEFORE the
+        # middle equilibration.  The forward sweep ended with the scaled
+        # pair style active at λ = lf, so the snapshot stored in
+        # ``conf.ts.forward_<iter>.data`` is in equilibrium with that
+        # Hamiltonian (effective temperature Tf, expanded box).  If we
+        # equilibrated here under the *unscaled* potential at T0, the
+        # thermostat/barostat would re-thermalise to a much colder/denser
+        # state, and the first samples of the backward sweep would show a
+        # large transient bump in dU as the system re-expanded under the
+        # scaled potential.  Using a constant scaling variable (rather
+        # than the ramp) keeps λ frozen at lf during this run.
+        lmp.command("variable          one equal 1.0")
+        lmp.command("variable          bscale_eq equal %f" % (lf - 1.0))
+        lmp.command(
+            ph.scaled_pair_style_command(self.calc, ["v_one", "v_bscale_eq"])
+        )
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
+            lmp.command(cmd)
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=1, total_repeats=2):
+            lmp.command(cmd)
+
+        lmp.command("variable         xcm equal xcm(all,x)")
+        lmp.command("variable         ycm equal xcm(all,y)")
+        lmp.command("variable         zcm equal xcm(all,z)")
+
+        if self.calc.npt:
+            lmp.command(
+                "fix               f1 all npt temp %f %f %f %s %f %f %f "
+                "fixedpoint ${xcm} ${ycm} ${zcm}"
+                % (t0, t0, self.calc.md.thermostat_damping[1],
+                   self.iso, pi, pi, self.calc.md.barostat_damping[1])
+            )
+        else:
+            lmp.command(
+                "fix               f1 all nvt temp %f %f %f "
+                "fixedpoint ${xcm} ${ycm} ${zcm}"
+                % (t0, t0, self.calc.md.thermostat_damping[1])
+            )
+
+        lmp.command("compute           tcm all temp/com")
+        lmp.command("fix_modify        f1 temp tcm")
+        lmp.command("variable          step    equal step")
+        lmp.command("variable          dU      equal c_thermo_pe/atoms")
+        lmp.command("thermo_style      custom step pe c_tcm press vol")
+        lmp.command("thermo            10000")
+
+        # ── Middle equilibration at effective Tf (scaled potential, λ=lf) ──
+        self.logger.info(
+            "backward sweep (iteration %d): middle equilibration start", iteration
+        )
+        lmp.command("run               %d" % self.calc.n_equilibration_steps)
+        self.logger.info(
+            "backward sweep (iteration %d): middle equilibration done", iteration
+        )
+
+        # Phase-stability check at Tf
         if not self.calc.script_mode:
             self.dump_current_snapshot(lmp, "traj.temp.dat")
             if solid:
@@ -1233,16 +2089,16 @@ class Phase:
             else:
                 self.check_if_solidfied(lmp, "traj.temp.dat")
 
-        lmp = ph.set_potential(lmp, self.calc)
-
-        # ----------------------------------------------------------------
-        # Re-define lambda schedule for backward sweep.
-        # For "uniform_temperature", step0 must be re-captured so the
-        # formula resets to step=0 at the start of the backward run.
-        # For "linear", ramp() resets automatically each run so no
-        # redefinition is needed.
-        # ----------------------------------------------------------------
+        # ── Switch from constant-λ scaled potential to ramping scaled
+        # potential for the backward sweep.  The scaled potential is
+        # already active (set during the constant-lambda middle equil),
+        # so no set_potential() call is needed.  We just re-define the
+        # lambda variables for the sweep.
+        # T0_rs is needed by both schedules for ftemp/btemp.
+        lmp.command("variable         T0_rs equal %f" % t0)
         if self.calc.lambda_schedule == "uniform_temperature":
+            lmp.command("variable         Nsweep equal %d" % self.calc._n_sweep_steps)
+            lmp.command("variable         Tf_rs equal %f" % tf)
             lmp.command("variable         step0 equal $(step)")
             lmp.command(
                 "variable         flambda equal "
@@ -1252,80 +2108,69 @@ class Phase:
                 "variable         blambda equal "
                 "v_T0_rs/(v_Tf_rs-(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
             )
-            lmp.command("variable         fscale equal v_flambda-1.0")
-            lmp.command("variable         bscale equal v_blambda-1.0")
-            lmp.command("variable         one equal 1.0")
-            lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
-            lmp.command("variable         btemp equal v_T0_rs/v_blambda")
+        else:  # "linear"
+            lmp.command("variable         flambda equal ramp(${li},${lf})")
+            lmp.command("variable         blambda equal ramp(${lf},${li})")
+        lmp.command("variable         fscale equal v_flambda-1.0")
+        lmp.command("variable         bscale equal v_blambda-1.0")
+        lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
+        lmp.command("variable         btemp equal v_T0_rs/v_blambda")
 
         lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_bscale"]))
-        for command in ph.hybrid_pair_coeff_commands(
-            self.calc, repeat_index=0, total_repeats=2
-        ):
-            lmp.command(command)
-        for command in ph.hybrid_pair_coeff_commands(
-            self.calc, repeat_index=1, total_repeats=2
-        ):
-            lmp.command(command)
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
+            lmp.command(cmd)
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=1, total_repeats=2):
+            lmp.command(cmd)
 
-        # apply fix and perform switching
-        lmp.command(
-            'fix               f3 all print 1 "${dU} $(press) $(vol) ${blambda}" screen no file ts.backward_%d.dat'
-            % iteration
-        )
-
-        if self.calc.n_print_steps > 0:
-            lmp.command(
-                "dump              d1 all custom %d traj.ts.backward_%d.dat id type mass x y z vx vy vz"
-                % (self.calc.n_print_steps, iteration)
-            )
-
-        # add swaps if n_swap is > 0 - backward sweep
+        # ── Optional MC swaps ───────────────────────────────────────────────
         if (
             self.calc.monte_carlo.n_swaps > 0
             and len(self.calc.monte_carlo.reverse_swap_types) >= 2
         ):
-            swap_types = self.calc.monte_carlo.reverse_swap_types
+            swap_types  = self.calc.monte_carlo.reverse_swap_types
             swap_combos = list(itertools.combinations(swap_types, 2))
             self.logger.info(
-                f"Backward sweep: {self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
+                "backward sweep (iteration %d): %d swap moves/combo, "
+                "%d combinations every %d steps",
+                iteration, self.calc.monte_carlo.n_swaps,
+                len(swap_combos), self.calc.monte_carlo.n_steps,
             )
             for combo in swap_combos:
-                self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
-
+                self.logger.info("  swapping types %s ↔ %s", combo[0], combo[1])
             for idx, (type1, type2) in enumerate(swap_combos):
-                swap_str = f"{type1} {type2}"
                 lmp.command(
-                    "fix  swap%d all atom/swap %d %d %d ${btemp} ke yes types %s"
-                    % (
-                        idx,
-                        self.calc.monte_carlo.n_steps,
-                        self.calc.monte_carlo.n_swaps,
-                        np.random.randint(1, 10000),
-                        swap_str,
-                    )
+                    "fix  swap%d all atom/swap %d %d %d ${btemp} ke yes types %s %s"
+                    % (idx, self.calc.monte_carlo.n_steps,
+                       self.calc.monte_carlo.n_swaps,
+                       np.random.randint(1, 10000), type1, type2)
                 )
 
-            # Use the first swap fix for output tracking
-            # lmp.command("variable a equal f_swap0[1]")
-            # lmp.command("variable b equal f_swap0[2]")
-            # lmp.command(
-            #    'fix             swap_print all print 1 "${a} ${b} ${btemp}" screen no file swap.rs.backward_%d.dat'
-            #    % iteration
-            # )
+        if self.calc.n_print_steps > 0:
+            lmp.command(
+                "dump              d1 all custom %d traj.ts.backward_%d.dat "
+                "id type mass x y z vx vy vz"
+                % (self.calc.n_print_steps, iteration)
+            )
 
-        self.logger.info(f"Started backward sweep: {iteration}")
-        lmp.command("run               %d" % self.calc._n_sweep_steps)
-        self.logger.info(f"Finished backward sweep: {iteration}")
+        # ── Backward sweep ──────────────────────────────────────────────────
+        self.logger.info("backward sweep (iteration %d): sweep start", iteration)
+        self._run_split_sweep(
+            lmp=lmp,
+            lambda_var="blambda",
+            output_file_pattern="ts.backward_%d.dat" % iteration,
+            sweep_label="backward (iteration %d)" % iteration,
+            t0=tf,
+            tf=t0,
+            iteration=iteration,
+        )
+        self.logger.info("backward sweep (iteration %d): sweep done", iteration)
 
+        # ── Cleanup swaps / dump ────────────────────────────────────────────
         if self.calc.monte_carlo.n_swaps > 0:
-            swap_types = self.calc.monte_carlo.reverse_swap_types
+            swap_types  = self.calc.monte_carlo.reverse_swap_types
             swap_combos = list(itertools.combinations(swap_types, 2))
             for idx in range(len(swap_combos)):
-                lmp.command(f"unfix swap{idx}")
-            # lmp.command("unfix swap_print")
-
-        lmp.command("unfix             f3")
+                lmp.command("unfix swap%d" % idx)
 
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
@@ -1340,15 +2185,488 @@ class Phase:
             self.publications.append("10.1103/PhysRevLett.83.3973")
             return
 
-        # close the object
         self.lammps_close(lmp=lmp)
-        # Preserve log file
+
         logfile = os.path.join(self.simfolder, "log.lammps")
         if os.path.exists(logfile):
             os.rename(
-                logfile, os.path.join(self.simfolder, "reversible_scaling.log.lammps")
+                logfile,
+                os.path.join(
+                    self.simfolder, "reversible_scaling_backward.log.lammps"
+                ),
             )
 
+    # ------------------------------------------------------------------
+    # Per-block checkpoint archive
+    #
+    # During a split sweep, _run_split_sweep writes one LAMMPS data file
+    # per temperature block as a candidate restart point for post-hoc
+    # recovery and as input to the q12 sanity-check plot.  Writing each
+    # one as a standalone file would produce O(50) files per sweep and
+    # quickly exhaust inode quotas on shared HPC filesystems.  Instead we
+    # immediately add each block file to a STORED (uncompressed; data is
+    # already small text) zip archive ``conf.<stem>_blocks.zip`` and
+    # delete the standalone copy, leaving exactly one archive file per
+    # sweep regardless of block count.
+    #
+    # The archive contains entries named ``conf.<stem>_blk<k>.data`` so
+    # that the legacy code paths continue to work unchanged once the
+    # archive is opened.  Recovery and q12 both have a small read helper
+    # that falls back to a standalone on-disk file when the archive is
+    # missing — preserving compatibility with older runs.
+    # ------------------------------------------------------------------
+
+    def _blocks_archive_path(self, out_stem: str) -> str:
+        """Return the path of the per-sweep block-checkpoint zip archive."""
+        return os.path.join(self.simfolder, "conf.%s_blocks.zip" % out_stem)
+
+    def _archive_block_data(
+        self, out_stem: str, block_k: int, src_path: str,
+    ) -> None:
+        """
+        Add ``src_path`` to the block archive as ``conf.<stem>_blk<k>.data``
+        and delete the standalone source.  Silently no-ops if the source is
+        missing; logs at debug-level if the zip operation fails (the
+        standalone file is then left in place so recovery still works).
+        """
+        if not os.path.exists(src_path):
+            return
+        arc_path = self._blocks_archive_path(out_stem)
+        arc_name = "conf.%s_blk%d.data" % (out_stem, block_k)
+        try:
+            with zipfile.ZipFile(
+                arc_path, "a",
+                compression=zipfile.ZIP_STORED,
+                allowZip64=True,
+            ) as zf:
+                zf.write(src_path, arcname=arc_name)
+        except (OSError, zipfile.BadZipFile) as exc:
+            self.logger.debug(
+                "block archive: could not add %s to %s (%s) — "
+                "leaving standalone file in place",
+                os.path.basename(src_path), os.path.basename(arc_path), exc,
+            )
+            return
+        try:
+            os.remove(src_path)
+        except OSError:
+            pass
+
+    def _extract_block_data(
+        self, out_stem: str, block_k: int, dest_path: str,
+    ) -> bool:
+        """
+        Materialize block ``k`` of sweep ``out_stem`` as a standalone data
+        file at ``dest_path``.  Looks first for a standalone on-disk file
+        (legacy / fallback if the archive write failed), then for the entry
+        inside the archive.  Returns True on success.
+        """
+        legacy = os.path.join(
+            self.simfolder, "conf.%s_blk%d.data" % (out_stem, block_k),
+        )
+        if os.path.exists(legacy):
+            if legacy != dest_path:
+                shutil.copy(legacy, dest_path)
+            return True
+        arc_path = self._blocks_archive_path(out_stem)
+        arc_name = "conf.%s_blk%d.data" % (out_stem, block_k)
+        if not os.path.exists(arc_path):
+            return False
+        try:
+            with zipfile.ZipFile(arc_path, "r") as zf:
+                with zf.open(arc_name) as src, open(dest_path, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+            return True
+        except (KeyError, zipfile.BadZipFile, OSError) as exc:
+            self.logger.debug(
+                "block archive: could not extract %s from %s (%s)",
+                arc_name, os.path.basename(arc_path), exc,
+            )
+            return False
+
+    def _open_block_data(self, out_stem: str, block_k: int):
+        """
+        Context-manager helper that yields a filesystem path to block ``k``'s
+        data file, materializing it into a temp file when only the archive
+        copy is available.  The temp file is removed on exit.  Yields None
+        if neither legacy nor archive copy exists.
+        """
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _ctx():
+            legacy = os.path.join(
+                self.simfolder, "conf.%s_blk%d.data" % (out_stem, block_k),
+            )
+            if os.path.exists(legacy):
+                yield legacy
+                return
+            arc_path = self._blocks_archive_path(out_stem)
+            if not os.path.exists(arc_path):
+                yield None
+                return
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                prefix="blk_", suffix=".data", dir=self.simfolder,
+            )
+            os.close(tmp_fd)
+            ok = self._extract_block_data(out_stem, block_k, tmp_path)
+            try:
+                yield tmp_path if ok else None
+            finally:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+        return _ctx()
+
+    def _cleanup_intermediate_files(self) -> None:
+        """
+        Delete diagnostic-only intermediate files that are no longer needed
+        once all sweeps have completed and the response-function plots are
+        on disk.  The free-energy integration only reads ``ts.*.dat`` and
+        the canonical ``conf.ts.<sweep>_<iter>.data`` files; everything
+        removed here is a byproduct of transition detection / recovery
+        whose final consumer (the PNG plot) has already run.
+
+        Currently removed:
+
+        * ``ts.*_full.dat`` — full pre-truncation forward data preserved
+          by ``_post_forward_recovery`` so the plot can span the complete
+          temperature range.  Once the PNG is written, this file is no
+          longer used.
+        * ``conf.ts.*_blocks.zip`` — per-sweep block-checkpoint archives.
+          Their two consumers (post-hoc recovery during the run, and the
+          q12 panel of the response plot) have both completed by the time
+          this method is called.
+
+        All deletions are best-effort; any failure is logged at debug-level
+        and ignored — leftover diagnostic files never affect correctness.
+        """
+        patterns = (
+            "ts.*_full.dat",
+            "conf.ts.*_blocks.zip",
+        )
+        removed = []
+        for pat in patterns:
+            for fpath in glob.glob(os.path.join(self.simfolder, pat)):
+                try:
+                    os.remove(fpath)
+                    removed.append(os.path.basename(fpath))
+                except OSError as exc:
+                    self.logger.debug(
+                        "cleanup: could not remove %s (%s)",
+                        os.path.basename(fpath), exc,
+                    )
+        if removed:
+            self.logger.info(
+                "cleanup: removed %d intermediate file(s) (%s)",
+                len(removed), ", ".join(removed),
+            )
+
+    def _truncate_ts_file(self, fpath: str, n_data_rows: int) -> int:
+        """
+        Keep only the first ``n_data_rows`` data rows of ``fpath`` (rewriting
+        the file in place).  Comment lines starting with '#' are preserved.
+
+        Returns the number of data rows actually retained (clamped to the
+        rows currently present in the file).
+        """
+        if not os.path.exists(fpath):
+            return 0
+        with open(fpath, "r") as fh:
+            lines = fh.readlines()
+        kept: list = []
+        kept_data = 0
+        for line in lines:
+            if line.startswith("#") or line.strip() == "":
+                kept.append(line)
+                continue
+            if kept_data < n_data_rows:
+                kept.append(line)
+                kept_data += 1
+            else:
+                break
+        with open(fpath, "w") as fh:
+            fh.writelines(kept)
+        return kept_data
+
+    def _post_forward_recovery(self, iteration: int) -> None:
+        """
+        Post-hoc transition handling after a successful forward sweep.
+
+        Reads the full forward ts file, runs the transition detector on the
+        complete dataset, and — if a transition is detected — picks the last
+        per-block checkpoint that lies safely *before* the detected
+        transition (in the sweep direction), truncates the forward ts file
+        to that step, copies the checkpoint to the canonical
+        ``conf.ts.forward_<iter>.data`` filename used by the backward sweep,
+        and reduces ``calc._temperature_stop`` and ``calc._n_sweep_steps``
+        so the subsequent backward sweep covers exactly the same lambda
+        range.
+
+        Why post-hoc instead of incremental?  Detecting a transition
+        reliably requires the full peak shape (rise + peak + descent +
+        post-transition plateau).  Per-block detection produces false
+        positives at almost every block boundary because:
+          - the rolling window is at the head of the data (startup transient)
+          - or the rolling window is at the tail (only the rise of a real
+            transition is visible, no descent yet)
+          - or smooth physical Cp(T) growth across a single block looks
+            like a step jump.
+        Running the detector once on the complete dataset removes all of
+        these failure modes and makes the implementation drastically
+        simpler.
+
+        No-op when ``td.mode == 'none'`` or no transition is found.
+
+        Returns nothing; backward sweep is run unconditionally afterwards.
+        """
+        from calphy.transition_detector import (
+            plan_temperature_blocks as _plan,
+            detect_ts_transitions as _dts,
+        )
+
+        td = self.calc.phase_transition_detection
+        if td.mode == "none":
+            return
+
+        out = os.path.join(self.simfolder, "ts.forward_%d.dat" % iteration)
+        if not os.path.exists(out):
+            self.logger.debug(
+                "post-forward recovery: %s missing — skipping", out
+            )
+            return
+
+        try:
+            data = np.loadtxt(out, comments="#")
+        except Exception as exc:
+            self.logger.debug(
+                "post-forward recovery: could not read %s (%s)", out, exc
+            )
+            return
+        if data.ndim < 2 or data.shape[0] < 100:
+            return
+
+        dU, press, vol_total, lam = data.T
+        t_start = float(self.calc._temperature)
+        t_stop  = float(self.calc._temperature_stop)
+
+        events = _dts(
+            dU=dU, press=press, vol_total=vol_total, lam=lam,
+            t_start=t_start, t_stop=t_stop, natoms=self.natoms,
+            peak_threshold=td.peak_threshold,
+            min_signal_agreement=td.min_agreement,
+            onset_sigma=td.onset_sigma,
+            sweep_label="forward (iteration %d) post-hoc" % iteration,
+            sweep_mode="ts",
+        )
+        if not events:
+            self.logger.info(
+                "post-forward recovery: no phase transition detected in "
+                "forward sweep (iteration %d)", iteration,
+            )
+            return
+
+        ev = events[0]
+        T_peak  = float(ev.temperature)
+        T_onset = float(ev.onset_temperature)
+        self.logger.warning(
+            "post-forward recovery: phase transition detected — "
+            "onset T ~ %.1f K, peak T ~ %.1f K (signals: %s, confidence %.0f%%)",
+            T_onset, T_peak, ", ".join(ev.triggered_signals), ev.confidence * 100,
+        )
+
+        if td.mode == "stop":
+            from calphy.errors import PhaseTransitionError
+            try:
+                self._plot_ts_response_functions()
+            except Exception as _plot_exc:
+                self.logger.debug(
+                    "post-forward recovery: plot failed before abort: %s",
+                    _plot_exc,
+                )
+            raise PhaseTransitionError(
+                "Phase transition detected in forward sweep — onset T ~ %.1f K, "
+                "peak T ~ %.1f K (signals: %s)."
+                % (T_onset, T_peak, ", ".join(ev.triggered_signals))
+            )
+
+        if td.mode == "warn":
+            # Warn-only: keep the full sweep, just log + plot.
+            try:
+                self._plot_ts_response_functions()
+            except Exception as _plot_exc:
+                self.logger.debug(
+                    "post-forward recovery: plot failed: %s", _plot_exc
+                )
+            return
+
+        # ── td.mode == 'recover' ──────────────────────────────────────────
+        # Re-plan the same block structure used by _run_split_sweep so we
+        # know which checkpoint files exist and what their step / T values
+        # are.  The block planner is deterministic given (t0, tf, n_sweep,
+        # window_K).
+        n_sweep = self.calc._n_sweep_steps
+        t_win = td.temperature_window if td.temperature_window > 0 else 0.0
+        if t_win <= 0:
+            self.logger.error(
+                "post-forward recovery: cannot recover — temperature_window "
+                "is 0 (no per-block checkpoints were written).  Re-run "
+                "with a non-zero temperature_window."
+            )
+            return
+
+        blocks = _plan(t_start, t_stop, n_sweep, t_win,
+                       lambda_schedule=self.calc.lambda_schedule)
+        n_blocks = len(blocks) - 1
+
+        # Use the ONSET temperature (not the peak) to select the safe block.
+        # The peak of Cp / kappa_T / alpha_P can lag the actual structural
+        # change by hundreds of kelvin equivalent: the solid melts near the
+        # onset, but the rolling-window peak only appears once enough
+        # post-transition plateau data has accumulated.  Recovering to a
+        # block just before the *onset* ensures the checkpoint structure is
+        # still solid.
+        heating = t_stop > t_start
+        if heating:
+            safe_candidates = [
+                k for k in range(n_blocks + 1)
+                if blocks[k]["temp"] < T_onset
+            ]
+        else:
+            safe_candidates = [
+                k for k in range(n_blocks + 1)
+                if blocks[k]["temp"] > T_onset
+            ]
+        if not safe_candidates:
+            self.logger.error(
+                "post-forward recovery: no checkpoint lies before the "
+                "transition onset (T_onset=%.1f K) — cannot recover.  "
+                "Lower the starting temperature and re-run.",
+                T_onset,
+            )
+            return
+
+        # Take the last candidate (closest to T_onset but still before it).
+        # No additional buffer needed because we're already using the onset,
+        # which is conservatively early.
+        safe_k = safe_candidates[-1]
+
+        if safe_k <= 0:
+            self.logger.error(
+                "post-forward recovery: transition onset too close to t_start — "
+                "no safe sub-range remains.  Lower t_start and re-run."
+            )
+            return
+
+        safe_T    = blocks[safe_k]["temp"]
+        safe_step = blocks[safe_k]["step"]
+        out_stem  = "ts.forward_%d" % iteration
+
+        # 1. Preserve a full copy for the response-function plot before
+        #    truncating so the plot can show the complete temperature range.
+        full_out = out.replace(".dat", "_full.dat")
+        try:
+            shutil.copy(out, full_out)
+        except Exception as cp_exc:
+            self.logger.debug(
+                "post-forward recovery: could not save full copy %s: %s",
+                os.path.basename(full_out), cp_exc,
+            )
+
+        # 2. Truncate the forward ts file to safe_step rows.
+        kept = self._truncate_ts_file(out, safe_step)
+        self.logger.warning(
+            "post-forward recovery: truncated %s to %d data rows "
+            "(safe boundary T=%.1f K, block %d/%d)",
+            os.path.basename(out), kept, safe_T, safe_k, n_blocks,
+        )
+
+        # 3. Promote the safe-block checkpoint to the canonical forward-end
+        #    configuration so the backward sweep loads the safe-boundary
+        #    state instead of the (post-transition) end state of the full
+        #    forward sweep.  The checkpoint is read from the per-sweep block
+        #    archive (or a legacy standalone .data file, for backward
+        #    compatibility); see _archive_block_data / _extract_block_data.
+        target_conf = os.path.join(
+            self.simfolder, "conf.ts.forward_%d.data" % iteration
+        )
+        if not self._extract_block_data(out_stem, safe_k, target_conf):
+            self.logger.error(
+                "post-forward recovery: expected checkpoint blk%d for "
+                "sweep %s not found in archive or on disk — cannot recover",
+                safe_k, out_stem,
+            )
+            return
+        self.logger.warning(
+            "post-forward recovery: extracted block %d -> %s",
+            safe_k, os.path.basename(target_conf),
+        )
+
+        # 4. Reduce the calc target so the backward sweep covers the same
+        #    (now reduced) lambda range and produces the same number of
+        #    rows as the truncated forward file.
+        old_tf = self.calc._temperature_stop
+        old_n  = self.calc._n_sweep_steps
+        self.calc._temperature_stop = float(safe_T)
+        self.calc._n_sweep_steps    = int(safe_step)
+        self.logger.warning(
+            "post-forward recovery: reduced T_stop %.1f K -> %.1f K and "
+            "n_sweep_steps %d -> %d for the backward sweep",
+            old_tf, safe_T, old_n, safe_step,
+        )
+
+        # Store the detected events so the response-function plot can add
+        # transition markers even after the forward ts file is truncated.
+        self._recovery_forward_events[iteration] = events
+
+        # Disable detection for the backward sweep over the now-safe range
+        # so we don't re-trigger and loop.  Plots still produced.
+        td.mode = "none"
+        self.logger.warning(
+            "post-forward recovery: detection disabled (mode='none') for "
+            "the subsequent backward sweep"
+        )
+
+    def reversible_scaling(self, iteration=1):
+        """
+        Perform reversible scaling calculation in NPT.
+
+        Calls :meth:`_reversible_scaling_forward` (initial equilibration +
+        forward sweep, saves ``conf.ts.forward_{iteration}.data``) followed by
+        :meth:`_reversible_scaling_backward` (middle equilibration at Tf +
+        backward sweep).
+
+        Parameters
+        ----------
+        iteration : int, optional
+            Iteration of the calculation.  Default 1.
+        """
+        self.logger.info("Starting temperature sweep cycle: %d", iteration)
+
+        solid = self.calc.reference_phase == "solid"
+        expected_phase = "solid" if solid else "liquid"
+        self._create_monitor(expected_phase)
+
+        # Always run the forward sweep to completion (no incremental aborts).
+        # Per-block checkpoints are written by _run_split_sweep so that
+        # _post_forward_recovery can restart the backward sweep from a safe
+        # boundary if a transition is detected post-hoc.
+        self._reversible_scaling_forward(iteration=iteration)
+
+        # Post-hoc transition handling on the complete forward dataset.
+        # If td.mode == 'recover' and a transition is found, this method
+        # truncates the forward ts file, promotes a per-block checkpoint to
+        # the canonical conf.ts.forward_N.data, and reduces _temperature_stop
+        # and _n_sweep_steps so the backward sweep covers the safe sub-range.
+        # If td.mode == 'stop' it raises PhaseTransitionError instead.
+        # If td.mode == 'warn' it logs and plots but does not modify anything.
+        self._post_forward_recovery(iteration=iteration)
+
+        self._reversible_scaling_backward(iteration=iteration)
+
+        self.logger.info("Finished temperature sweep cycle: %d", iteration)
         self.logger.info("Please cite the following publications:")
         self.logger.info("- 10.1103/PhysRevLett.83.3973")
         self.publications.append("10.1103/PhysRevLett.83.3973")
@@ -1370,6 +2688,26 @@ class Phase:
         res : list of lists of shape 1x3
             Only returned if `return_values` is True.
         """
+        # Post-hoc transition detection on the final merged ts files.
+        # When temperature_window > 0, the incremental detector already checked
+        # the growing output file after every block, including the last block
+        # (which contains the full sweep).  Run post-hoc anyway to ensure the
+        # correct full-sweep baseline is used and to update the response-function
+        # plots with accurate transition markers.
+        td = self.calc.phase_transition_detection
+        if td.mode != "none":
+            self._detect_ts_transitions()
+
+        # Always plot the response functions so the user can inspect them.
+        self._plot_ts_response_functions()
+
+        # The block-checkpoint archives and the _full forward copies are
+        # diagnostic byproducts of the transition detector.  Their last
+        # consumers (recovery during the run + the response-function PNG
+        # just written above) have both completed, so delete them now to
+        # keep the simulation folder tidy and avoid HPC quota pressure.
+        self._cleanup_intermediate_files()
+
         res, ediss = integrate_rs(
             self.simfolder,
             self.fe,
@@ -1380,6 +2718,15 @@ class Phase:
             scale_energy=scale_energy,
             return_values=return_values,
         )
+
+        # Cache the max forward/backward energy dissipation on the Phase
+        # instance.  Downstream code (e.g. MeltingTemp) reads this as a
+        # quality flag: clean reversible sweeps give ediss ~ 1e-4 eV/atom,
+        # whereas a hidden phase transition during the sweep produces
+        # ediss orders of magnitude larger (the forward and backward
+        # integrals can no longer match) and the resulting FE curve is
+        # contaminated.
+        self.ediss = float(ediss)
 
         self.logger.info(
             f"Maximum energy dissipation along the temperature scaling part: {ediss} eV/atom"
@@ -1408,6 +2755,9 @@ class Phase:
         solid = False
         if self.calc.reference_phase == "solid":
             solid = True
+
+        expected_phase = "solid" if solid else "liquid"
+        self._create_monitor(expected_phase)
 
         t0 = self.calc._temperature
         tf = self.calc._temperature_stop
@@ -1445,7 +2795,25 @@ class Phase:
         # remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
 
+        # Variables for the phase-transition monitor (feed from initial equil)
+        lmp.command("variable         ts_mlx equal lx")
+        lmp.command("variable         ts_mly equal ly")
+        lmp.command("variable         ts_mlz equal lz")
+        lmp.command("variable         ts_mpress equal press")
+        lmp.command("variable         ts_mpe equal pe/atoms")
+        lmp.command("variable         ts_metotal equal etotal/atoms")
+        lmp.command("variable         ts_mtemp equal temp")
+
         # equilibrate first
+        _ts_ave_every  = int(self.calc.md.n_every_steps)
+        _ts_ave_repeat = int(self.calc.md.n_repeat_steps)
+        _ts_ave_freq   = _ts_ave_every * _ts_ave_repeat
+        lmp.command(
+            "fix               ts_ave all ave/time %d %d %d "
+            "v_ts_mlx v_ts_mly v_ts_mlz v_ts_mpress v_ts_mpe v_ts_metotal v_ts_mtemp "
+            "file tscale_equil_avg.dat"
+            % (_ts_ave_every, _ts_ave_repeat, _ts_ave_freq)
+        )
         lmp.command(
             "fix               1 all npt temp %f %f %f %s %f %f %f"
             % (
@@ -1460,6 +2828,14 @@ class Phase:
         )
         lmp.command("run               %d" % self.calc.n_equilibration_steps)
         lmp.command("unfix             1")
+        lmp.command("unfix             ts_ave")
+
+        # Feed the initial-equilibration data into the monitor so check_if_melted
+        # / check_if_solidfied have enough samples at the mid-point check.
+        self._monitor_fed_rows = 0
+        self._feed_monitor_from_avg_dat(
+            os.path.join(self.simfolder, "tscale_equil_avg.dat")
+        )
 
         # now scale system to final temp, thereby recording enerfy at every step
         lmp.command("variable          step    equal step")
@@ -1478,14 +2854,24 @@ class Phase:
                 self.calc.md.barostat_damping[1],
             )
         )
-        lmp.command(
-            'fix               f3 all print 1 "${dU} $(press) $(vol) ${lambda}" screen no file ts.forward_%d.dat'
-            % iteration
+
+        self.logger.info(
+            "ts-sweep tscale forward (iteration %d): T %.1f → %.1f K, "
+            "%d steps",
+            iteration, t0, tf, self.calc._n_sweep_steps,
         )
-        lmp.command("run               %d" % self.calc._n_sweep_steps)
+        self._run_split_sweep(
+            lmp=lmp,
+            lambda_var="lambda",
+            output_file_pattern="ts.forward_%d.dat" % iteration,
+            sweep_label="tscale forward (iteration %d)" % iteration,
+            t0=t0,
+            tf=tf,
+            iteration=iteration,
+            sweep_mode="tscale",
+        )
 
         lmp.command("unfix             f2")
-        lmp.command("unfix             f3")
 
         lmp.command(
             "fix               1 all npt temp %f %f %f %s %f %f %f"
@@ -1531,11 +2917,24 @@ class Phase:
                 self.calc.md.barostat_damping[1],
             )
         )
-        lmp.command(
-            'fix               f3 all print 1 "${dU} $(press) $(vol) ${lambda}" screen no file ts.backward_%d.dat'
-            % iteration
+
+        self.logger.info(
+            "ts-sweep tscale backward (iteration %d): T %.1f → %.1f K, "
+            "%d steps",
+            iteration, tf, t0, self.calc._n_sweep_steps,
         )
-        lmp.command("run               %d" % self.calc._n_sweep_steps)
+        self._run_split_sweep(
+            lmp=lmp,
+            lambda_var="lambda",
+            output_file_pattern="ts.backward_%d.dat" % iteration,
+            sweep_label="tscale backward (iteration %d)" % iteration,
+            t0=tf,
+            tf=t0,
+            iteration=iteration,
+            sweep_mode="tscale",
+        )
+
+        lmp.command("unfix             f2")
 
         if self.calc.script_mode:
             file = os.path.join(

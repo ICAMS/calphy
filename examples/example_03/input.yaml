@@ -21,14 +21,16 @@ calculations:
     scheduler: local
   reference_phase: solid
   repeat:
-  - 5
-  - 5
-  - 5
+  - 7
+  - 7
+  - 7
   temperature:
   - 1200.0
-  - 2000.0
+  - 1400.0
   tolerance:
     solid_fraction: 0
+  phase_transition_detection:
+    mode: recover
 - element: Cu
   lattice: fcc
   lattice_constant: 3.61
@@ -57,3 +59,5 @@ calculations:
   temperature:
   - 1200.0
   - 1400.0
+  phase_transition_detection:
+    mode: recover
