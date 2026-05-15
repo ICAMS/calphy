@@ -62,4 +62,3 @@ calculations:
   - 2000.0
   phase_transition_detection:
     mode: recover
-    peak_threshold: 6.0

@@ -2719,6 +2719,15 @@ class Phase:
             return_values=return_values,
         )
 
+        # Cache the max forward/backward energy dissipation on the Phase
+        # instance.  Downstream code (e.g. MeltingTemp) reads this as a
+        # quality flag: clean reversible sweeps give ediss ~ 1e-4 eV/atom,
+        # whereas a hidden phase transition during the sweep produces
+        # ediss orders of magnitude larger (the forward and backward
+        # integrals can no longer match) and the resulting FE curve is
+        # contaminated.
+        self.ediss = float(ediss)
+
         self.logger.info(
             f"Maximum energy dissipation along the temperature scaling part: {ediss} eV/atom"
         )

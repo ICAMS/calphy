@@ -1272,6 +1272,25 @@ exceeds $\tau$.  The default 12.0 cleanly separates real transitions
 ($\mathrm{modZ} > 25$ on Cu EAM melting) from natural single-phase
 growth ($\mathrm{modZ} \le 7$ over a 200 K solid window).
 
+**System-size sensitivity.**  Variance signals scale with the inverse
+square root of the number of atoms — at smaller cell sizes the peak
+modified-Z score of a real transition can drop below 12 and the
+detector will silently miss the transition (the run completes but the
+forward / backward energy dissipation is anomalously large).
+Recommended values:
+
+| System size | `peak_threshold` |
+|---|---|
+| ≥ 1500 atoms (e.g. `repeat: [10,10,10]` fcc) | `12` (default) |
+| 500 – 1500 atoms | `8` |
+| < 500 atoms | `6` |
+
+If you're not sure, leave it at the default — the
+``melting_temperature`` driver now monitors the per-sweep energy
+dissipation and explicitly aborts on contamination from missed
+transitions, so an under-tuned threshold surfaces as a clear error
+rather than a quietly wrong $T_m$.
+
 This parameter does **not** affect the slope-break signals
 ($H_{\text{break}}$, $V_{\text{break}}$): they use a separate sigma
 threshold (`slope_break_sigma`, default 5) which is fixed in code.

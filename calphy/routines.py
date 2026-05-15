@@ -41,126 +41,222 @@ from calphy.composition_transformation import CompositionTransformation
 
 class MeltingTemp:
     """
-    Class for automated melting temperature calculation.
+    Automated melting-temperature search via bracket narrowing on two
+    reversible-scaling sweeps.
+
+    Algorithm (one attempt)
+    -----------------------
+    Two reversible-scaling sweeps are run over the current window
+    ``[tmin, tmax]``:
+
+    * **Solid sweep**, ``tmin → tmax``: produces ``G_solid(T)`` on
+      ``[tmin, T_sol_max]``.  ``T_sol_max`` equals ``tmax`` if the sweep ran to
+      completion, or the safe block-boundary temperature if
+      ``phase_transition_detection`` truncated it because the solid lost
+      stability.  In either case ``T_sol_max`` is an upper bound on Tm
+      (with some superheating margin).
+    * **Liquid sweep**, ``tmax → tmin``: produces ``G_liquid(T)`` on
+      ``[T_liq_min, tmax]``.  ``T_liq_min`` is similarly a lower bound on
+      Tm (with some supercooling margin).
+
+    Three outcomes are then possible:
+
+    1. **Overlap with crossing**: the two FE curves overlap on
+       ``[T_liq_min, T_sol_max]`` and ``G_solid - G_liquid`` changes sign
+       inside the overlap.  The crossing is the melting temperature →
+       done.
+
+    2. **Overlap, no crossing**: one phase is uniformly lower in FE across
+       the overlap.  Fit each curve with the standard 6-term CALPHAD
+       Gibbs-energy polynomial ``G(T) = a + b·T + c·T·lnT + d·T² + e·T³ +
+       f·T⁻¹``, solve ``G_sol(T) = G_liq(T)``, recentre the window on the
+       prediction with a half-width of ``melting_temperature.step``, and
+       retry.
+
+    3. **No overlap (gap)**: ``T_sol_max < T_liq_min``.  Tm is bracketed
+       inside the gap.  Pick the gap midpoint as the next centre with a
+       half-width sized to comfortably bracket the gap, and retry.
+
+    A fourth outcome — failure of the *averaging* stage at the window
+    endpoints, i.e. the streaming-monitor flipped the phase before the ts
+    sweep even started — raises a clear error advising the user to adjust
+    ``melting_temperature.guess``.  Window shifting on averaging failure is
+    no longer attempted because the bracket-narrowing search above already
+    handles every case in which the ts sweeps produce data, including
+    badly off-centre initial guesses (which manifest as case 2 or 3 with a
+    far extrapolation).
 
     Parameters
     ----------
-    options : dict
-        dict of input options
-
-    kernel : int
-        the index of the calculation that should be run from
-        the list of calculations in the input file
-
-    simfolder : string
-        base folder for running calculations
+    calculation : Calculation
+        Parsed ``melting_temperature`` calculation object.
+    simfolder : str
+        Base folder for running calculations.
+    log_to_screen : bool, optional
+        Mirror the rotating log file to stdout.
     """
 
     def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
         self.calc = calculation
         self.simfolder = simfolder
         self.log_to_screen = log_to_screen
-        self.dtemp = self.calc.melting_temperature.step
+        # Half-width (in K) of every search window.  Used for the initial
+        # window around `guess`, for case-2 recentring after extrapolation,
+        # and as a floor for case-3 gap-bracketing.
+        self.dtemp = float(self.calc.melting_temperature.step)
         self.maxattempts = self.calc.melting_temperature.attempts
         self.attempts = 0
         self.calculations = []
+        self.attempt_history = []
+        # Running list of case-2 CALPHAD-extrapolated Tm predictions.  When
+        # the last two agree within :attr:`CASE2_CONVERGENCE_TOLERANCE` K
+        # the search is declared converged on extrapolation stability —
+        # useful when MD hysteresis is wide enough that no case-1 overlap
+        # crossing will ever fire (small systems, sluggish potentials).
+        self._case2_tpred_history = []
+        # Last CLEAN case-2 prediction (used as the recentring anchor when
+        # a subsequent attempt comes back contaminated and its own tpred
+        # cannot be trusted).
+        self._last_clean_tpred = None
+        # Running count of consecutive contaminated attempts.  Reset on a
+        # clean attempt; if it reaches MAX_CONSECUTIVE_CONTAMINATED the
+        # search aborts because no amount of recentring will fix an
+        # under-tuned detector.
+        self._consecutive_contaminated = 0
+        self.arg = None
 
         self.get_trange()
-        self.arg = None
 
         logfile = os.path.join(os.getcwd(), f"{self.calc.create_identifier()}.log")
         self.logger = ph.prepare_log(logfile, screen=log_to_screen)
 
+    # ------------------------------------------------------------------
+    # Setup helpers
+    # ------------------------------------------------------------------
+
+    def get_trange(self):
+        """Set the initial ``[tmin, tmax]`` window centred on the user's guess."""
+        tmin = self.calc._temperature - self.dtemp
+        if tmin < 0:
+            tmin = 10.0
+        self.tmin = float(tmin)
+        self.tmax = float(self.calc._temperature + self.dtemp)
+
+    def _user_ptd_settings(self):
+        """
+        Return the user's ``phase_transition_detection`` block from the
+        original YAML if any, so it can be propagated into the synthesised
+        ts sub-calculations (only ``mode`` is forced to ``recover``).
+        """
+        with open(self.calc.inputfile, "r") as fin:
+            data = yaml.safe_load(fin)
+        ci = data["calculations"][int(self.calc.kernel)]
+        ptd = {}
+        if isinstance(ci.get("phase_transition_detection"), dict):
+            ptd.update(ci["phase_transition_detection"])
+        if isinstance(data.get("phase_transition_detection"), dict):
+            for k, v in data["phase_transition_detection"].items():
+                ptd.setdefault(k, v)
+        ptd["mode"] = "recover"
+        return ptd
+
     def prepare_calcs(self):
         """
-        Prepare calculations list from given object
+        Build a fresh pair of ts sub-calculations (solid heating sweep,
+        liquid cooling sweep) for the current attempt and read them back
+        through the input parser so they go through the same validation as
+        a user-written input.
 
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
+        The user's ``phase_transition_detection`` settings are preserved;
+        only the ``mode`` is forced to ``recover`` so the sub-sweeps
+        truncate at the safe boundary instead of either aborting (``stop``)
+        or continuing into a mixed-phase region (``warn``/``none``).
         """
-
-        # here, we need to prepare a new calculation
-        # protocol, read in, modify, write a output
-        # read input again
-        calculations = {"calculations": []}
-
         with open(self.calc.inputfile, "r") as fin:
             data = yaml.safe_load(fin)
-        calc = data["calculations"][int(self.calc.kernel)]
+        base = data["calculations"][int(self.calc.kernel)]
+        ptd  = self._user_ptd_settings()
 
-        calc["mode"] = "ts"
-        calc["temperature"] = [int(self.tmin), int(self.tmax)]
-        calc["reference_phase"] = "solid"
-        calc["phase_transition_detection"] = {"mode": "recover"}
-        calc["folder_prefix"] = "mt%d" % self.attempts
-        # Preserve n_iterations from the original melting_temperature calculation
-        if "n_iterations" in data["calculations"][int(self.calc.kernel)]:
-            calc["n_iterations"] = data["calculations"][int(self.calc.kernel)][
-                "n_iterations"
-            ]
-        calculations["calculations"].append(calc)
+        def _build(reference_phase, t_start, t_stop):
+            calc = copy.deepcopy(base)
+            calc["mode"] = "ts"
+            calc["temperature"] = [int(round(t_start)), int(round(t_stop))]
+            calc["reference_phase"] = reference_phase
+            calc["phase_transition_detection"] = copy.deepcopy(ptd)
+            calc["folder_prefix"] = "mt%d" % self.attempts
+            if "n_iterations" in base:
+                calc["n_iterations"] = base["n_iterations"]
+            return calc
 
-        with open(self.calc.inputfile, "r") as fin:
-            data = yaml.safe_load(fin)
-        calc = data["calculations"][int(self.calc.kernel)]
-
-        calc["mode"] = "ts"
-        calc["temperature"] = [int(self.tmax), int(self.tmin)]
-        calc["reference_phase"] = "liquid"
-        calc["phase_transition_detection"] = {"mode": "recover"}
-        calc["folder_prefix"] = "mt%d" % self.attempts
-        # Preserve n_iterations from the original melting_temperature calculation
-        if "n_iterations" in data["calculations"][int(self.calc.kernel)]:
-            calc["n_iterations"] = data["calculations"][int(self.calc.kernel)][
-                "n_iterations"
-            ]
-        calculations["calculations"].append(calc)
-
+        calculations = {"calculations": [
+            _build("solid",  self.tmin, self.tmax),
+            _build("liquid", self.tmax, self.tmin),
+        ]}
         outfile = f"{self.calc.create_identifier()}.{self.attempts}.yaml"
         with open(outfile, "w") as fout:
             yaml.safe_dump(calculations, fout)
-
-        # now read in again, which would allow for checking and so on
-        # one could do this smartly, and simply create from here.
         self.calculations = read_inputfile(outfile)
 
-    def get_trange(self):
-        """
-        Get temperature range for calculations
+    # ------------------------------------------------------------------
+    # Per-attempt execution
+    # ------------------------------------------------------------------
 
-        Parameters
-        ----------
-        None
+    # Outcome codes returned by run_jobs.  Truncation by the ts-sweep
+    # phase-transition detector is NOT a failure — it produces a usable
+    # (truncated) FE curve which the bracket logic then consumes.
+    OUTCOME_OK              = "ok"
+    OUTCOME_SOLID_AVG_FAIL  = "solid_averaging_failed"
+    OUTCOME_LIQUID_AVG_FAIL = "liquid_averaging_failed"
 
-        Returns
-        -------
-        None
-        """
-        tmin = self.calc._temperature - self.dtemp
-        if tmin < 0:
-            tmin = 10
-        tmax = self.calc._temperature + self.dtemp
-        self.tmax = tmax
-        self.tmin = tmin
+    # Tolerance (K) for declaring two consecutive case-2 CALPHAD
+    # extrapolations "converged".  A run that produces predictions
+    # 1278.7 and 1305.2 K (|Δ|=26.5 K) does NOT converge at 25 K but
+    # WOULD converge at 30 K; tighter than ~15 K is unrealistic given the
+    # noise of CALPHAD fits over a narrow overlap.  25 K is a balance:
+    # catches genuine convergence while still distinguishing two
+    # extrapolations that disagree due to changing window placement.
+    CASE2_CONVERGENCE_TOLERANCE = 25.0
+
+    # Maximum forward/backward energy-dissipation (eV/atom) of either ts
+    # sweep above which we treat the attempt as CONTAMINATED — i.e. the
+    # phase-transition detector silently missed a transition during the
+    # sweep and the resulting FE curve is a mix of two phases rather than
+    # a clean single-phase G(T).  Clean reversible sweeps come in at
+    # ~1e-4 eV/atom; a missed transition is typically 0.01–0.1 eV/atom
+    # (two to three orders of magnitude bigger).  1e-3 sits comfortably
+    # between those regimes.
+    EDISS_CONTAMINATION_THRESHOLD = 1e-3
+
+    # How many consecutive contaminated attempts to tolerate before
+    # raising — at the limit, no amount of recentring will fix the
+    # underlying problem (detector too insensitive for the system size).
+    MAX_CONSECUTIVE_CONTAMINATED = 2
 
     def run_jobs(self):
         """
-        Run calculations
-
-        Parameters
-        ----------
-        None
+        Build and run one solid + liquid ts pair for the current window.
 
         Returns
         -------
-        None
-        """
+        outcome : str
+            One of ``OUTCOME_OK``, ``OUTCOME_SOLID_AVG_FAIL``,
+            ``OUTCOME_LIQUID_AVG_FAIL``.  On ``OUTCOME_OK`` both
+            ``self.solres`` and ``self.lqdres`` are set to the
+            ``(T, F, F_err)`` arrays returned by
+            :meth:`Phase.integrate_reversible_scaling`.  These curves may
+            be truncated by phase-transition recovery — that's expected
+            and is handled by :meth:`calculate_tm`.
 
+        Notes
+        -----
+        With ``phase_transition_detection.mode = recover`` (forced by
+        :meth:`prepare_calcs`) the ts sweeps themselves cannot raise
+        :class:`PhaseTransitionError` — they truncate silently.  Only the
+        streaming phase-stability monitor used during *averaging* can
+        still raise :class:`MeltedError` / :class:`SolidifiedError`, and
+        that is the only path through which this method reports failure
+        rather than success.
+        """
         self.prepare_calcs()
 
         self.soljob = Solid(
@@ -172,74 +268,67 @@ class MeltingTemp:
             simfolder=self.calculations[1].create_folders(),
         )
 
-        # Propagate MeltingTemp file handlers to sub-job loggers so that
-        # all sub-job output also appears in melting_temperature.log
+        # Mirror sub-job log output into melting_temperature.log
         for handler in self.logger.handlers:
             self.soljob.logger.addHandler(handler)
             self.lqdjob.logger.addHandler(handler)
 
         self.logger.info(
-            "Free energy of %s and %s phases will be calculated"
-            % (self.soljob.calc.lattice, self.lqdjob.calc.lattice)
+            "Attempt %d: solid (%s) + liquid (%s), window [%.1f, %.1f] K",
+            self.attempts,
+            self.soljob.calc.lattice, self.lqdjob.calc.lattice,
+            self.tmin, self.tmax,
         )
-        self.logger.info("Temperature range of %f-%f" % (self.tmin, self.tmax))
-        self.logger.info("STATE: Temperature range of %f-%f K" % (self.tmin, self.tmax))
-        self.logger.info("Starting solid fe calculation")
+        self.logger.info("STATE: Temperature range of %f-%f K", self.tmin, self.tmax)
 
         try:
             self.soljob = routine_fe(self.soljob)
-        except (MeltedError, PhaseTransitionError):
-            self.logger.info("Solid phase melted")
-            return 2
+        except MeltedError as exc:
+            self.logger.warning(
+                "Solid averaging failed at T=%.1f K: %s", self.tmin, exc
+            )
+            return self.OUTCOME_SOLID_AVG_FAIL
 
-        self.logger.info("Starting solid reversible scaling run")
         for i in range(self.soljob.calc.n_iterations):
-            try:
-                self.soljob.reversible_scaling(iteration=(i + 1))
-            except (MeltedError, PhaseTransitionError):
-                self.logger.info("Solid system melted during reversible scaling run")
-                return 2
-
+            self.soljob.reversible_scaling(iteration=(i + 1))
         self.solres = self.soljob.integrate_reversible_scaling(
             scale_energy=True, return_values=True
         )
+        # Capture the maximum forward/backward energy dissipation as the
+        # data-quality flag for this phase's FE curve (see
+        # EDISS_CONTAMINATION_THRESHOLD).
+        self.sol_ediss = float(getattr(self.soljob, "ediss", float("nan")))
 
-        self.logger.info("Starting liquid fe calculation")
         try:
             self.lqdjob = routine_fe(self.lqdjob)
-        except (SolidifiedError, PhaseTransitionError):
-            self.logger.info("Liquid froze")
-            return 3
+        except SolidifiedError as exc:
+            self.logger.warning(
+                "Liquid averaging failed at T=%.1f K: %s", self.tmax, exc
+            )
+            return self.OUTCOME_LIQUID_AVG_FAIL
 
-        self.logger.info("Starting liquid reversible scaling calculation")
         for i in range(self.lqdjob.calc.n_iterations):
-            try:
-                self.lqdjob.reversible_scaling(iteration=(i + 1))
-            except (SolidifiedError, PhaseTransitionError):
-                self.logger.info("Liquid froze during reversible scaling calculation")
-                return 3
-
+            self.lqdjob.reversible_scaling(iteration=(i + 1))
         self.lqdres = self.lqdjob.integrate_reversible_scaling(
             scale_energy=True, return_values=True
         )
+        self.lqd_ediss = float(getattr(self.lqdjob, "ediss", float("nan")))
+        return self.OUTCOME_OK
 
-    # Half-width (K) of the temperature window centred on a predicted Tm
-    # used when re-running after extrapolation.
-    WINDOW_HALF_WIDTH = 200.0
+    # ------------------------------------------------------------------
+    # FE-curve analysis helpers
+    # ------------------------------------------------------------------
 
     def _align_fe_curves(self):
         """
-        Return (t_common, sol_f, sol_err, lqd_f, lqd_err) interpolated onto a
-        shared temperature grid covering the overlap of the two FE curves.
-
-        Returns None if the two curves have no overlapping temperature range
-        (e.g. one was truncated by phase-transition recovery far from the other).
+        Interpolate the solid and liquid FE curves onto a 1 K grid covering
+        their overlap.  Returns
+        ``(t_common, sol_f, sol_err, lqd_f, lqd_err)`` or ``None`` when
+        the curves do not overlap.
         """
         sol_t, sol_f, sol_err = self.solres
         lqd_t, lqd_f, lqd_err = self.lqdres
-
-        ss = np.argsort(sol_t)
-        ls = np.argsort(lqd_t)
+        ss = np.argsort(sol_t); ls = np.argsort(lqd_t)
         sol_t_s, sol_f_s, sol_err_s = sol_t[ss], sol_f[ss], sol_err[ss]
         lqd_t_s, lqd_f_s, lqd_err_s = lqd_t[ls], lqd_f[ls], lqd_err[ls]
 
@@ -249,44 +338,50 @@ class MeltingTemp:
             return None
 
         t_common = np.arange(t_lo, t_hi + 1.0, 1.0)
-        sol_f_c   = np.interp(t_common, sol_t_s, sol_f_s)
-        sol_err_c = np.interp(t_common, sol_t_s, sol_err_s)
-        lqd_f_c   = np.interp(t_common, lqd_t_s, lqd_f_s)
-        lqd_err_c = np.interp(t_common, lqd_t_s, lqd_err_s)
-        return t_common, sol_f_c, sol_err_c, lqd_f_c, lqd_err_c
+        return (
+            t_common,
+            np.interp(t_common, sol_t_s, sol_f_s),
+            np.interp(t_common, sol_t_s, sol_err_s),
+            np.interp(t_common, lqd_t_s, lqd_f_s),
+            np.interp(t_common, lqd_t_s, lqd_err_s),
+        )
 
     def _find_intersection_in_overlap(self):
         """
-        Look for a sign change of (sol_f - lqd_f) within the overlap of the two
-        FE curves.  Returns (tm, tmerr) on success, or None if the curves do
-        not cross within their overlap (or have no overlap at all).
+        Locate a sign change of ``G_sol(T) − G_liq(T)`` inside the overlap.
+        Returns ``(tm, tmerr)`` on success, ``None`` if no crossing.
+
+        When two or more crossings are present (rare; usually means noise
+        near a near-tangent intersection) the lowest-T crossing is used
+        and the situation is logged.
         """
         aligned = self._align_fe_curves()
         if aligned is None:
             return None
         t_common, sol_f, sol_err, lqd_f, lqd_err = aligned
         diff = sol_f - lqd_f
-
-        # Look for a sign change.
         sign = np.sign(diff)
-        # Treat exact zeros as crossings.
         idx = np.where(sign[:-1] * sign[1:] <= 0)[0]
         if len(idx) == 0:
             return None
+        if len(idx) > 1:
+            self.logger.warning(
+                "Multiple sign changes (%d) of (G_sol - G_liq) inside the "
+                "overlap; using the lowest-T crossing at T ~ %.1f K. "
+                "Crossings at: %s",
+                len(idx), float(t_common[int(idx[0])]),
+                ", ".join("%.1f" % float(t_common[int(j)]) for j in idx),
+            )
 
-        # Use the first sign change.
         i = int(idx[0])
-        # Linear interpolation between t_common[i] and t_common[i+1].
         d0, d1 = diff[i], diff[i + 1]
         if d1 == d0:
-            tm = t_common[i]
-            arg = i
+            tm, arg = float(t_common[i]), i
         else:
             frac = d0 / (d0 - d1)
-            tm = t_common[i] + frac * (t_common[i + 1] - t_common[i])
+            tm = float(t_common[i] + frac * (t_common[i + 1] - t_common[i]))
             arg = i if frac < 0.5 else i + 1
 
-        # Error estimate: same formula as before, evaluated at the nearest grid point.
         suberr = float(np.sqrt(sol_err[arg] ** 2 + lqd_err[arg] ** 2))
         stride = min(50, arg, len(sol_f) - 1 - arg)
         if stride > 0:
@@ -298,174 +393,420 @@ class MeltingTemp:
         else:
             tmerr = 0.0
         self.arg = arg
-        return float(tm), float(tmerr)
+        return tm, float(tmerr)
 
-    def _extrapolate_intersection(self):
+    def _calphad_extrapolate_tm(self):
         """
-        Fit a 4th-order polynomial to each of the solid and liquid FE curves
-        (or a lower order if not enough points are available) and solve
-        poly_sol(T) = poly_lqd(T) for the crossing temperature.
+        Fit a six-term CALPHAD Gibbs polynomial to each phase and locate
+        the lowest-T crossing of ``G_sol(T) = G_liq(T)``.
 
-        Returns the predicted Tm (float).  Raises ValueError if no real
-        crossing can be identified.
+            G(T) = a + b·T + c·T·ln T + d·T² + e·T³ + f·T⁻¹
+
+        This is the canonical CALPHAD form (SGTE pure-element Gibbs
+        polynomial truncated at the standard six terms) and is therefore a
+        much better extrapolation basis than a naive polynomial: the
+        ``T·ln T`` term encodes the leading entropic contribution
+        correctly, so extrapolating modestly outside the data window does
+        not produce the wild excursions that ``np.polyfit`` gives.
+
+        Returns
+        -------
+        tpred : float
+            Predicted Tm in K.
+
+        Raises
+        ------
+        ValueError
+            If too few points are available to fit, or if no positive
+            crossing of the two fits can be located in a generous search
+            window around the data.
         """
-        sol_t, sol_f, _ = self.solres
-        lqd_t, lqd_f, _ = self.lqdres
-        sol_t = np.asarray(sol_t)
-        sol_f = np.asarray(sol_f)
-        lqd_t = np.asarray(lqd_t)
-        lqd_f = np.asarray(lqd_f)
+        from calphy.phase_diagram import (
+            _fit_calphad_poly6 as _fit,
+            _eval_calphad_poly6 as _eval,
+        )
 
-        if len(sol_t) < 2 or len(lqd_t) < 2:
+        sol_t = np.asarray(self.solres[0], dtype=float)
+        sol_f = np.asarray(self.solres[1], dtype=float)
+        lqd_t = np.asarray(self.lqdres[0], dtype=float)
+        lqd_f = np.asarray(self.lqdres[1], dtype=float)
+
+        # poly6 has 6 free parameters; require at least that many points
+        # per phase, otherwise the fit is degenerate.
+        if len(sol_t) < 6 or len(lqd_t) < 6:
             raise ValueError(
-                "Not enough FE points to fit polynomials for extrapolation "
-                "(solid: %d, liquid: %d)" % (len(sol_t), len(lqd_t))
+                "Not enough FE points for a CALPHAD poly6 fit "
+                "(solid: %d, liquid: %d; need ≥6 each)"
+                % (len(sol_t), len(lqd_t))
+            )
+        if np.any(sol_t <= 0) or np.any(lqd_t <= 0):
+            raise ValueError(
+                "CALPHAD poly6 requires T > 0 everywhere (T·lnT and 1/T)"
             )
 
-        # Use up to 4th order, but never higher than (n_points - 1).
-        sol_order = min(4, len(sol_t) - 1)
-        lqd_order = min(4, len(lqd_t) - 1)
+        sol_coef = _fit(sol_t, sol_f)
+        lqd_coef = _fit(lqd_t, lqd_f)
 
-        sol_poly = np.polyfit(sol_t, sol_f, sol_order)
-        lqd_poly = np.polyfit(lqd_t, lqd_f, lqd_order)
+        # Search for ΔG = G_sol − G_liq sign change on a fine grid spanning
+        # both data ranges with a generous extrapolation margin on each
+        # side.  The 6-term form is non-polynomial in T (T·lnT, 1/T) so we
+        # scan numerically and refine with brentq, rather than trying to
+        # solve symbolically.
+        t_lo_data = float(min(sol_t.min(), lqd_t.min()))
+        t_hi_data = float(max(sol_t.max(), lqd_t.max()))
+        margin = max(0.5 * (t_hi_data - t_lo_data), 200.0)
+        t_lo = max(50.0, t_lo_data - margin)
+        t_hi = t_hi_data + margin
+        T_grid = np.arange(t_lo, t_hi + 1.0, 1.0)
 
-        # Pad both to the same length so we can subtract.
-        n = max(len(sol_poly), len(lqd_poly))
-        sp = np.concatenate([np.zeros(n - len(sol_poly)), sol_poly])
-        lp = np.concatenate([np.zeros(n - len(lqd_poly)), lqd_poly])
-        diff_poly = sp - lp
+        def _dG(T):
+            return _eval(sol_coef, T) - _eval(lqd_coef, T)
 
-        roots = np.roots(diff_poly)
-        # Keep real roots above 0 K.
-        real_roots = []
-        for r in roots:
-            if abs(r.imag) < 1e-6 and r.real > 0:
-                real_roots.append(r.real)
-
-        if not real_roots:
+        dG_grid = _dG(T_grid)
+        sign = np.sign(dG_grid)
+        cross_idx = np.where(sign[:-1] * sign[1:] < 0)[0]
+        if len(cross_idx) == 0:
             raise ValueError(
-                "Polynomial extrapolation produced no positive real "
-                "intersection of solid and liquid FE curves"
+                "CALPHAD extrapolation found no G_sol = G_liq crossing in "
+                "T ∈ [%.0f, %.0f] K" % (t_lo, t_hi)
             )
 
-        # Pick the root closest to the midpoint between the two data ranges
-        # (most physically plausible Tm).
-        anchor = 0.5 * (sol_t.max() + lqd_t.min())
-        if not np.isfinite(anchor):
-            anchor = 0.5 * (sol_t.mean() + lqd_t.mean())
-        tpred = float(min(real_roots, key=lambda r: abs(r - anchor)))
+        # Refine each bracketing crossing with brentq; pick the root closest
+        # to the bracket midpoint of the data (most physically plausible Tm).
+        from scipy.optimize import brentq
+        anchor = 0.5 * (float(sol_t.max()) + float(lqd_t.min()))
+        roots = []
+        for j in cross_idx:
+            try:
+                roots.append(float(brentq(_dG, T_grid[j], T_grid[j + 1])))
+            except ValueError:
+                continue
+        if not roots:
+            raise ValueError("CALPHAD extrapolation: brentq found no root")
+        tpred = float(min(roots, key=lambda r: abs(r - anchor)))
 
         self.logger.info(
-            "Polynomial extrapolation (orders sol=%d, lqd=%d) predicts Tm = %.1f K "
-            "(real roots: %s)",
-            sol_order, lqd_order, tpred,
-            ", ".join("%.1f" % r for r in sorted(real_roots)),
+            "CALPHAD extrapolation: G_sol = G_liq at T = %.1f K "
+            "(candidates: %s)",
+            tpred, ", ".join("%.1f" % r for r in sorted(roots)),
         )
-        self.logger.info("STATE: Predicted Tm from extrapolation: %.1f K", tpred)
         return tpred
 
-    def _shift_window(self, returncode):
+    # ------------------------------------------------------------------
+    # Reporting
+    # ------------------------------------------------------------------
+
+    def _record_attempt(self, **kw):
         """
-        Shift the temperature window when one of the phases failed to even
-        produce FE data (averaging crashed because the phase was unstable
-        in the chosen window).
+        Append one row to :attr:`attempt_history` for the final report.
+
+        Per-phase energy dissipation values (``ediss_solid``,
+        ``ediss_liquid``) are pulled automatically from the corresponding
+        instance attributes set by :meth:`run_jobs`; explicit kwargs of
+        the same name win over the auto-populated values for the
+        contaminated-attempt path which wants to emphasise them.
         """
-        shift = self.WINDOW_HALF_WIDTH
-        if returncode == 3:
-            # Liquid froze before any FE data was collected: window too cold.
-            self.tmin = self.tmin + shift
-            self.tmax = self.tmax + shift
-            self.logger.info(
-                "STATE: Liquid froze, shifting window up by %.0f K -> [%.1f, %.1f]",
-                shift, self.tmin, self.tmax,
-            )
-        elif returncode == 2:
-            # Solid melted: window too hot.
-            self.tmin = max(10.0, self.tmin - shift)
-            self.tmax = max(self.tmin + 1.0, self.tmax - shift)
-            self.logger.info(
-                "STATE: Solid melted, shifting window down by %.0f K -> [%.1f, %.1f]",
-                shift, self.tmin, self.tmax,
-            )
+        row = {"attempt": int(self.attempts),
+               "tmin": float(self.tmin),
+               "tmax": float(self.tmax)}
+        sol_e = getattr(self, "sol_ediss", None)
+        lqd_e = getattr(self, "lqd_ediss", None)
+        if sol_e is not None and np.isfinite(sol_e):
+            row["ediss_solid"] = float(sol_e)
+        if lqd_e is not None and np.isfinite(lqd_e):
+            row["ediss_liquid"] = float(lqd_e)
+        row.update(kw)
+        self.attempt_history.append(row)
+
+    def _write_report(self, tm, tmerr, status="converged"):
+        """
+        Write ``melting_temperature_report.yaml`` with the converged Tm,
+        its uncertainty, the experimental reference (if known), and the
+        full attempt history.  The file lives next to the rotating log so
+        downstream tooling can parse it without grepping the log.
+        """
+        report = {
+            "status": status,
+            "tm": float(tm) if tm is not None else None,
+            "tmerr": float(tmerr) if tmerr is not None else None,
+            "tm_experimental": (
+                float(self.calc._melting_temperature)
+                if self.calc._melting_temperature is not None else None
+            ),
+            "attempts": int(self.attempts + 1),
+            "max_attempts": int(self.maxattempts),
+            "step": float(self.dtemp),
+            "history": self.attempt_history,
+        }
+        out = os.path.join(os.getcwd(),
+                           f"{self.calc.create_identifier()}.report.yaml")
+        with open(out, "w") as fh:
+            yaml.safe_dump(report, fh, sort_keys=False)
+        self.logger.info("Wrote melting-temperature report: %s", out)
+
+    # ------------------------------------------------------------------
+    # Main driver
+    # ------------------------------------------------------------------
+
+    def _raise_averaging_failure(self, outcome):
+        """Case 4: streaming monitor flipped the phase during averaging."""
+        which = "solid" if outcome == self.OUTCOME_SOLID_AVG_FAIL else "liquid"
+        msg = (
+            "melting_temperature: %s-phase averaging failed in window "
+            "[%.1f, %.1f] K — the streaming phase-stability monitor "
+            "detected a phase flip at the window endpoint, so no reversible-"
+            "scaling data could be collected.  The initial window is too "
+            "far from the actual Tm; set "
+            "`melting_temperature.guess` closer to the expected melting "
+            "point and re-run."
+            % (which, self.tmin, self.tmax)
+        )
+        self._record_attempt(outcome=outcome, case="4: averaging failed")
+        self._write_report(tm=None, tmerr=None, status="averaging_failed")
+        raise MeltedError(msg) if which == "solid" else SolidifiedError(msg)
 
     def calculate_tm(self):
         """
-        Drive the iterative melting-temperature search.
-
-        Algorithm
-        ---------
-        1. Run a solid + liquid reversible-scaling pass over the current
-           [tmin, tmax] window.  Truncation by phase-transition recovery is
-           tolerated — whatever FE curve was produced is used as-is.
-        2. If both FE curves exist and their solid/liquid free energies
-           cross within their overlapping temperature range, that crossing
-           is the melting temperature → done.
-        3. Otherwise, fit a 4th-order polynomial to each FE curve and solve
-           for the intersection (extrapolation).  Re-centre the window on
-           that prediction with a half-width of WINDOW_HALF_WIDTH (200 K)
-           and repeat.
-        4. If a phase failed to even produce an FE curve (averaging melted
-           or froze), shift the window in the appropriate direction by
-           WINDOW_HALF_WIDTH and repeat.
+        Drive the bracket-narrowing search.  See class docstring for the
+        full algorithm.  Returns ``(tm, tmerr)`` on convergence; raises
+        :class:`ValueError` if the maximum number of attempts is reached
+        without convergence, or :class:`MeltedError` / :class:`SolidifiedError`
+        if averaging fails at the window endpoints (case 4).
         """
-        for _ in range(self.maxattempts + 1):
-            returncode = self.run_jobs()
+        for attempt in range(self.maxattempts + 1):
+            self.attempts = attempt
+            outcome = self.run_jobs()
+            if outcome != self.OUTCOME_OK:
+                self._raise_averaging_failure(outcome)
 
-            if returncode in (2, 3):
-                # No usable FE curve from one of the phases.
-                self._shift_window(returncode)
+            # Truncation points double as one-sided brackets on Tm.
+            sol_t = np.asarray(self.solres[0], dtype=float)
+            lqd_t = np.asarray(self.lqdres[0], dtype=float)
+            T_sol_max = float(sol_t.max())
+            T_liq_min = float(lqd_t.min())
+            has_overlap = T_liq_min <= T_sol_max
+
+            # --- Contamination guard -------------------------------------
+            # Either ts sweep can silently sample a hidden phase transition
+            # when the detector is under-tuned for the system size.  The
+            # tell-tale signature is forward/backward energy dissipation
+            # orders of magnitude above the clean ~1e-4 eV/atom floor.  If
+            # either phase tripped that flag, treat the attempt as
+            # contaminated: skip case-1/2/3 analysis (the FE curves are
+            # mixed-phase, so any tpred from them is unreliable), recentre
+            # on the last clean prediction (or the overlap midpoint as a
+            # safe fallback) and try again.
+            sol_e = float(getattr(self, "sol_ediss", float("nan")))
+            lqd_e = float(getattr(self, "lqd_ediss", float("nan")))
+            max_e = max(abs(sol_e) if np.isfinite(sol_e) else 0.0,
+                        abs(lqd_e) if np.isfinite(lqd_e) else 0.0)
+            contaminated = max_e > self.EDISS_CONTAMINATION_THRESHOLD
+            if contaminated:
+                self._consecutive_contaminated += 1
+                self.logger.warning(
+                    "Attempt %d CONTAMINATED: max |ediss| = %.4f eV/atom "
+                    "(threshold %.0e). Solid=%.4f, liquid=%.4f. The "
+                    "phase-transition detector missed a transition during "
+                    "one or both sweeps — the resulting FE curve is "
+                    "mixed-phase and will give an unreliable Tm.  Skipping "
+                    "case analysis for this attempt (consecutive "
+                    "contaminated: %d / %d).",
+                    attempt, max_e, self.EDISS_CONTAMINATION_THRESHOLD,
+                    sol_e, lqd_e,
+                    self._consecutive_contaminated,
+                    self.MAX_CONSECUTIVE_CONTAMINATED,
+                )
+                self._record_attempt(
+                    T_sol_max=T_sol_max, T_liq_min=T_liq_min,
+                    ediss_solid=sol_e, ediss_liquid=lqd_e,
+                    contaminated=True,
+                    case="contaminated (skipped)",
+                )
+
+                if self._consecutive_contaminated >= self.MAX_CONSECUTIVE_CONTAMINATED:
+                    self._write_report(
+                        tm=None, tmerr=None, status="contaminated_aborted",
+                    )
+                    raise ValueError(
+                        "melting_temperature: %d consecutive contaminated "
+                        "attempts (max |ediss| > %.0e eV/atom).  The "
+                        "phase-transition detector is too insensitive for "
+                        "this system+potential — every sweep ends with the "
+                        "system having silently changed phase.  Mitigation "
+                        "options:\n"
+                        "  • Lower `phase_transition_detection.peak_threshold` "
+                        "(default 12; try 6 for ~1000-atom EAM systems).\n"
+                        "  • Increase the system size (`repeat: [N,N,N]` "
+                        "with bigger N) so variance signals exceed threshold.\n"
+                        "  • Raise `n_switching_steps` so the sweep is slower "
+                        "and the detector can build statistics."
+                        % (self._consecutive_contaminated,
+                           self.EDISS_CONTAMINATION_THRESHOLD)
+                    )
+
+                # Recentre on the previous clean prediction if any; else
+                # fall back to the overlap (or gap) midpoint of THIS
+                # attempt.  The midpoint is a noisy estimate but at least
+                # has the right order of magnitude even from contaminated
+                # data (it depends on window geometry, not FE values).
+                if self._last_clean_tpred is not None:
+                    tpred = self._last_clean_tpred
+                else:
+                    tpred = 0.5 * (T_sol_max + T_liq_min) if has_overlap \
+                        else 0.5 * (T_sol_max + T_liq_min)
+                self.tmin = max(10.0, tpred - self.dtemp)
+                self.tmax = tpred + self.dtemp
+                self.logger.info(
+                    "Retry after contamination: recentring on %.1f K -> "
+                    "[%.1f, %.1f] K (+/- %.0f K)",
+                    tpred, self.tmin, self.tmax, self.dtemp,
+                )
+                continue
             else:
-                # Both FE curves available (possibly truncated).
+                # Clean attempt resets the contamination counter.
+                self._consecutive_contaminated = 0
+            # -------------------------------------------------------------
+
+            self.logger.info(
+                "Attempt %d brackets: T_sol_max=%.1f K, T_liq_min=%.1f K, %s",
+                attempt, T_sol_max, T_liq_min,
+                "overlap" if has_overlap else "gap (T_sol_max < T_liq_min)",
+            )
+
+            if has_overlap:
                 hit = self._find_intersection_in_overlap()
                 if hit is not None:
+                    # Case 1: FE crossing found inside the overlap.
                     tm, tmerr = hit
                     self.calc_tm = tm
-                    self.tmerr = tmerr
+                    self.tmerr   = tmerr
+                    self._record_attempt(
+                        T_sol_max=T_sol_max, T_liq_min=T_liq_min,
+                        case="1: crossing in overlap",
+                        tm=tm, tmerr=tmerr,
+                    )
                     self.logger.info(
-                        "Found melting temperature = %.2f +/- %.2f K "
-                        % (tm, tmerr)
+                        "Found melting temperature = %.2f +/- %.2f K", tm, tmerr,
                     )
                     if self.calc._melting_temperature is not None:
                         self.logger.info(
-                            "Experimental melting temperature = %.2f K "
-                            % (self.calc._melting_temperature)
+                            "Experimental melting temperature = %.2f K",
+                            self.calc._melting_temperature,
                         )
-                    self.logger.info(
-                        "STATE: Tm = %.2f K +/- %.2f K" % (tm, tmerr)
-                    )
+                    self.logger.info("STATE: Tm = %.2f K +/- %.2f K", tm, tmerr)
+                    self._write_report(tm, tmerr)
                     return tm, tmerr
 
-                # No real crossing in overlap → extrapolate, recentre, retry.
+                # Case 2: overlap present but no crossing → CALPHAD extrapolate.
                 try:
-                    tpred = self._extrapolate_intersection()
+                    tpred = self._calphad_extrapolate_tm()
                 except ValueError as exc:
-                    self.logger.info(
-                        "Extrapolation failed (%s); falling back to window "
-                        "midpoint between sol_max and lqd_min.",
-                        exc,
+                    self.logger.warning(
+                        "CALPHAD extrapolation failed (%s); falling back to "
+                        "overlap midpoint.", exc,
                     )
-                    sol_t = np.asarray(self.solres[0])
-                    lqd_t = np.asarray(self.lqdres[0])
-                    tpred = 0.5 * (sol_t.max() + lqd_t.min())
+                    tpred = 0.5 * (T_liq_min + T_sol_max)
+                # Bound the prediction so a runaway fit cannot send us off
+                # to the moon: clamp to within one window-half-width beyond
+                # the current data range on either side.
+                t_lo_data = float(min(sol_t.min(), lqd_t.min()))
+                t_hi_data = float(max(sol_t.max(), lqd_t.max()))
+                tpred = float(np.clip(tpred,
+                                      t_lo_data - self.dtemp,
+                                      t_hi_data + self.dtemp))
+                self._case2_tpred_history.append(tpred)
 
-                self.tmin = max(10.0, tpred - self.WINDOW_HALF_WIDTH)
-                self.tmax = tpred + self.WINDOW_HALF_WIDTH
+                # Stability-based convergence: when two consecutive case-2
+                # CALPHAD predictions agree within tolerance the search is
+                # done even without a case-1 overlap crossing.  This is the
+                # only convergence path available for small systems with
+                # MD hysteresis wider than the search window (case 1 is
+                # then structurally unreachable because both overlaps sit
+                # entirely on one side of Tm).
+                if len(self._case2_tpred_history) >= 2:
+                    last2 = self._case2_tpred_history[-2:]
+                    delta = abs(last2[1] - last2[0])
+                    if delta <= self.CASE2_CONVERGENCE_TOLERANCE:
+                        tm    = float(np.mean(last2))
+                        tmerr = float(np.std(last2))
+                        self.calc_tm = tm
+                        self.tmerr   = tmerr
+                        self._record_attempt(
+                            T_sol_max=T_sol_max, T_liq_min=T_liq_min,
+                            case="2: CALPHAD extrapolations converged",
+                            tpred=tpred,
+                            tm=tm, tmerr=tmerr,
+                        )
+                        self.logger.info(
+                            "Case-2 CALPHAD extrapolations converged: "
+                            "Tm = %.2f +/- %.2f K (last two predictions: "
+                            "%.1f, %.1f K; |Δ| = %.1f K ≤ %.1f K)",
+                            tm, tmerr, last2[0], last2[1],
+                            delta, self.CASE2_CONVERGENCE_TOLERANCE,
+                        )
+                        if self.calc._melting_temperature is not None:
+                            self.logger.info(
+                                "Experimental melting temperature = %.2f K",
+                                self.calc._melting_temperature,
+                            )
+                        self.logger.info("STATE: Tm = %.2f K +/- %.2f K", tm, tmerr)
+                        self._write_report(
+                            tm, tmerr, status="converged_extrapolation",
+                        )
+                        return tm, tmerr
+
+                self._record_attempt(
+                    T_sol_max=T_sol_max, T_liq_min=T_liq_min,
+                    case="2: overlap, no crossing → CALPHAD extrapolation",
+                    tpred=tpred,
+                )
+                self._last_clean_tpred = float(tpred)
+                self.tmin = max(10.0, tpred - self.dtemp)
+                self.tmax = tpred + self.dtemp
                 self.logger.info(
-                    "Restarting with extrapolated Tm = %.1f K, window "
+                    "Recentring window on extrapolated Tm = %.1f K -> "
                     "[%.1f, %.1f] K (+/- %.0f K)",
-                    tpred, self.tmin, self.tmax, self.WINDOW_HALF_WIDTH,
+                    tpred, self.tmin, self.tmax, self.dtemp,
+                )
+            else:
+                # Case 3: no overlap.  Tm is bracketed in the gap
+                # [T_sol_max, T_liq_min].  Recentre on the midpoint with a
+                # half-width sized to comfortably contain the gap.
+                gap = T_liq_min - T_sol_max
+                tpred = 0.5 * (T_sol_max + T_liq_min)
+                # Half-width: never narrower than the initial window.  In
+                # systems with significant MD hysteresis (typical Cu EAM at
+                # ~1000 atoms shows ~150-200 K of superheating /
+                # supercooling) shrinking the window after a case-3 gap
+                # turned out to trap subsequent attempts inside the
+                # hysteresis band — both phases would then stay metastable
+                # past Tm in the overlap, no FE crossing would be visible,
+                # and the search would drift on extrapolations.  Keeping
+                # the half-width at ``self.dtemp`` (or wider if the gap
+                # itself demands it) preserves enough headroom on each
+                # side of Tm for the deeper phase to sample cleanly.
+                half = max(gap, self.dtemp)
+                self._record_attempt(
+                    T_sol_max=T_sol_max, T_liq_min=T_liq_min,
+                    case="3: gap → midpoint",
+                    gap=[float(T_sol_max), float(T_liq_min)],
+                    tpred=tpred,
+                )
+                self._last_clean_tpred = float(tpred)
+                self.tmin = max(10.0, tpred - half)
+                self.tmax = tpred + half
+                self.logger.info(
+                    "No overlap: Tm in gap [%.1f, %.1f] K (width %.1f K).  "
+                    "Recentring on %.1f K -> [%.1f, %.1f] K (+/- %.1f K)",
+                    T_sol_max, T_liq_min, gap, tpred,
+                    self.tmin, self.tmax, half,
                 )
 
-            self.attempts += 1
-            self.logger.info("Attempt incremented to %d" % self.attempts)
-            if self.attempts > self.maxattempts:
-                raise ValueError(
-                    "Maximum number of melting-temperature attempts (%d) reached"
-                    % self.maxattempts
-                )
-
+        # Exhausted attempts without case-1 convergence.
+        self._write_report(tm=None, tmerr=None, status="max_attempts_reached")
         raise ValueError(
-            "Melting-temperature search did not converge within %d attempts"
+            "Melting-temperature search did not converge within %d attempts. "
+            "See attempt history in the report file."
             % self.maxattempts
         )
 

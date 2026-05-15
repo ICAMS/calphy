@@ -2,6 +2,11 @@ calculations:
 - element: Cu
   mass: 63.546
   repeat:
+  # 10x10x10 = 4000 atoms.  At this size the variance-based detection
+  # signals (Cp, kappa_T, alpha_P) cleanly exceed the default
+  # peak_threshold of 12 at a real melting transition, so detection is
+  # robust without any threshold override.  Smaller cells (e.g. 7x7x7 =
+  # 1372 atoms) work only if peak_threshold is lowered to ~6.
   - 10
   - 10
   - 10
@@ -22,4 +27,9 @@ calculations:
     scheduler: local
   phase_transition_detection:
     mode: recover
-    peak_threshold: 6.0
+  melting_temperature:
+    # A larger half-width gives the supercooling / superheating bands
+    # enough room on each side of Tm for both phases to sample cleanly
+    # without bumping against the window edges.  At 1000 atoms the
+    # hysteresis on this potential is ~100-200 K, so ±400 K is comfortable.
+    step: 400

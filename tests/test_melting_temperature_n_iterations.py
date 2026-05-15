@@ -48,7 +48,7 @@ Atoms
                 {
                     "mode": "melting_temperature",
                     "lattice": structure_file,
-                    "state": "solid",
+                    "reference_phase": "solid",
                     "temperature": 1000,
                     "pressure": 0,
                     "n_iterations": 3,  # This should be preserved
@@ -124,7 +124,7 @@ Atoms
                 {
                     "mode": "melting_temperature",
                     "lattice": structure_file,
-                    "state": "solid",
+                    "reference_phase": "solid",
                     "temperature": 1000,
                     "pressure": 0,
                     # n_iterations not specified - should default to 1
@@ -184,7 +184,7 @@ Atoms
                     {
                         "mode": "melting_temperature",
                         "lattice": structure_file,
-                        "state": "solid",
+                        "reference_phase": "solid",
                         "temperature": 1000,
                         "pressure": 0,
                         "n_iterations": n_iter,
