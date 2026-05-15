@@ -19,12 +19,15 @@ from calphy.transition_detector import (
     PhaseTransitionMonitor,
     detect_ts_transitions,
     plan_temperature_blocks,
+    compute_ts_response_arrays,
     KB_EV,
     BAR_ANG3_TO_EV,
     _window_response_functions,
     _rolling_mean,
     _rolling_var,
     _rolling_cov,
+    _slope_break_signal,
+    _detect_slope_break_event,
 )
 from calphy.errors import MeltedError, SolidifiedError
 
@@ -513,6 +516,19 @@ class TestDetectTsTransitions:
         Even if the modified-Z criterion is satisfied, a peak that sits in
         the trailing tail of the data (no observed descent) must be
         suppressed by the tail-margin guard.
+
+        This test exercises the variance-based tail-margin guard
+        specifically: the injected noise burst has zero mean shift but
+        elevated variance, so a real transition is not present.  The
+        first-moment slope-break detector is disabled (slope_break_sigma
+        set high) because random-walk drift in the smoothed mean of an
+        injected noise burst can produce a one-directional excursion that
+        is genuinely indistinguishable from a small mean shift on the
+        slope-break signal alone — by design, slope-break responds to
+        sustained mean shifts wherever they occur.  The variance-based
+        Cp/kappa_T/alpha_P peak detector with tail-margin remains the
+        correct guard for "is there a real peak in the response function?"
+        which this test asks.
         """
         rng = np.random.default_rng(3)
         n = 6000
@@ -537,9 +553,173 @@ class TestDetectTsTransitions:
             window_smooth=100, window_fluct=200,
             peak_threshold=5.0,
             min_signal_agreement=1,
+            slope_break_sigma=1e6,  # disable first-moment detector for this test
             sweep_label="tail-spike",
         )
         assert events == []
+
+
+# ---------------------------------------------------------------------------
+# Slope-break (first-moment) detector
+# ---------------------------------------------------------------------------
+
+class TestSlopeBreak:
+    """Tests for the leverage-aware H/V slope-break detector."""
+
+    def _build_sweep(self, n=8000, T_start=1000.0, T_stop=2000.0, natoms=500,
+                    noise=0.005, rng_seed=11):
+        rng = np.random.default_rng(rng_seed)
+        lf = T_start / T_stop
+        lam = np.linspace(1.0, lf, n)
+        pe = -4.0 + noise * rng.standard_normal(n)
+        press = np.zeros(n)
+        vol_atom = 12.0 + 0.5 * noise * rng.standard_normal(n)
+        vol_total = vol_atom * natoms
+        return pe, press, vol_total, lam, rng
+
+    def test_clean_baseline_no_detection(self):
+        """Stationary noise gives small leverage-aware z -> no slope break."""
+        pe, press, vol_total, lam, _ = self._build_sweep(noise=0.005)
+        events = detect_ts_transitions(
+            dU=pe, press=press, vol_total=vol_total, lam=lam,
+            t_start=1000.0, t_stop=2000.0, natoms=500,
+            window_smooth=100, window_fluct=200,
+            peak_threshold=1e6,            # disable variance peaks
+            min_signal_agreement=2,
+            sweep_label="clean",
+        )
+        assert events == []
+
+    def test_mean_shift_triggers(self):
+        """A sustained mean shift in H mid-sweep should fire H_break."""
+        n = 8000
+        natoms = 500
+        T_start, T_stop = 1000.0, 2000.0
+        lf = T_start / T_stop
+        lam = np.linspace(1.0, lf, n)
+        rng = np.random.default_rng(7)
+        pe = -4.0 + 0.005 * rng.standard_normal(n)
+        # Step up pe by 0.05 eV/atom (mimicking a latent-heat jump) at
+        # 60% through the sweep — well inside the data window so onset
+        # is far from the tail margin.
+        jump_at = int(0.6 * n)
+        pe[jump_at:] += 0.05
+        press = np.zeros(n)
+        vol_total = (12.0 + 0.0025 * rng.standard_normal(n)) * natoms
+
+        events = detect_ts_transitions(
+            dU=pe, press=press, vol_total=vol_total, lam=lam,
+            t_start=T_start, t_stop=T_stop, natoms=natoms,
+            window_smooth=100, window_fluct=200,
+            peak_threshold=1e6,            # disable variance peaks
+            min_signal_agreement=1,        # only need H_break to fire
+            sweep_label="h-step",
+        )
+        assert len(events) == 1
+        assert "H_break" in events[0].triggered_signals
+
+    def test_zero_mean_noise_burst_rejected(self):
+        """
+        Variance burst with zero mean shift (sign-flipping residuals)
+        must NOT fire slope-break thanks to the sign-agreement guard.
+        """
+        n = 8000
+        natoms = 500
+        T_start, T_stop = 1000.0, 2000.0
+        lf = T_start / T_stop
+        lam = np.linspace(1.0, lf, n)
+        rng = np.random.default_rng(3)
+        pe = -4.0 + 0.003 * rng.standard_normal(n)
+        vol_atom = 12.0 + 0.003 * rng.standard_normal(n)
+        # Inject a *strictly* zero-mean noise burst in the middle (not the
+        # tail).  We subtract the realised sample mean from each injection;
+        # otherwise finite-sample drift of a std=0.3 noise series over
+        # 1600 samples creates a real ~2.5σ_raw sustained shift inside
+        # the burst, which the detector would (correctly) classify as a
+        # phase change.  The test's intent is to verify that *purely
+        # variance-only* bursts — no mean shift at all — are rejected.
+        burst_lo, burst_hi = int(0.5 * n), int(0.7 * n)
+        b = burst_hi - burst_lo
+        pe_burst  = 0.3 * rng.standard_normal(b)
+        pe_burst -= pe_burst.mean()
+        vol_burst = 0.3 * rng.standard_normal(b)
+        vol_burst -= vol_burst.mean()
+        pe[burst_lo:burst_hi]       += pe_burst
+        vol_atom[burst_lo:burst_hi] += vol_burst
+        press = np.zeros(n)
+        vol_total = vol_atom * natoms
+
+        events = detect_ts_transitions(
+            dU=pe, press=press, vol_total=vol_total, lam=lam,
+            t_start=T_start, t_stop=T_stop, natoms=natoms,
+            window_smooth=100, window_fluct=200,
+            peak_threshold=1e6,            # disable variance peaks
+            min_signal_agreement=1,
+            sweep_label="zero-mean-burst",
+        )
+        # No detection from slope-break alone — sign disagreement filters
+        # the burst out even though smoothed residuals briefly cross 5σ.
+        assert events == []
+
+    def test_compute_response_arrays_returns_residuals(self):
+        """compute_ts_response_arrays must surface H_z, V_z for plotting."""
+        pe, press, vol_total, lam, _ = self._build_sweep()
+        arrs = compute_ts_response_arrays(
+            dU=pe, press=press, vol_total=vol_total, lam=lam,
+            t_start=1000.0, t_stop=2000.0, natoms=500,
+            window_smooth=100, window_fluct=200,
+        )
+        for key in ("T", "Cp", "kappa_T", "alpha_P", "valid_start",
+                    "H_z", "V_z"):
+            assert key in arrs, f"missing key {key} in response arrays"
+        assert arrs["H_z"].shape == arrs["T"].shape
+        assert arrs["V_z"].shape == arrs["T"].shape
+
+    def test_leverage_grows_with_extrapolation(self):
+        """
+        Sanity check: pred_std (encoded in z) grows away from baseline so
+        the SAME absolute residual magnitude gives smaller |z| at the far
+        extrapolation end than just outside the baseline window.
+
+        We inject a flat baseline (y=0 + small noise) for the fit, then
+        a constant non-zero residual ``bump`` that the linear fit cannot
+        absorb (it would tilt the line so badly that baseline residuals
+        explode).  At each point outside the baseline the raw residual
+        is the same; leverage-aware normalization shrinks |z| as we move
+        further out.
+        """
+        rng = np.random.default_rng(0)
+        n = 5000
+        T = np.linspace(1000.0, 2000.0, n)
+        valid_start = 100
+        # Flat baseline with thermal-scale noise.  Tiny noise lets the
+        # fit converge tightly to y=0 over the baseline, so the constant
+        # bump applied later is NOT absorbed by intercept drift.
+        noise = 1e-3 * rng.standard_normal(n)
+        y = noise.copy()
+        baseline_frac = 0.25
+        base_end_expected = valid_start + int(baseline_frac * (n - valid_start))
+        # Apply a constant residual ONLY after the baseline window so the
+        # fit (over the baseline) is unaffected.
+        bump = 0.5
+        y[base_end_expected:] += bump
+
+        sb = _slope_break_signal(
+            y, T, valid_start, baseline_frac=baseline_frac, fit_order=1,
+        )
+        assert sb is not None
+        z = sb["z"]
+        base_end = sb["base_end"]
+        # Compare |z| at three points moving away from baseline.
+        z_just_after = float(np.abs(z[base_end + 5]))
+        z_mid        = float(np.abs(z[(base_end + n) // 2]))
+        z_far_end    = float(np.abs(z[-10]))
+        # All three are positive (constant residual = bump),
+        # and they decrease monotonically with extrapolation distance.
+        assert z_just_after > z_mid > z_far_end, (
+            "leverage-aware |z| should shrink as extrapolation distance grows: "
+            f"just-after={z_just_after:.2f}, mid={z_mid:.2f}, far={z_far_end:.2f}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -612,3 +792,38 @@ class TestPlanTemperatureBlocks:
         blocks = plan_temperature_blocks(1500.0, 2500.0, 75_000, 123.7)
         for b in blocks:
             assert 0 <= b["step"] <= 75_000
+
+    def test_linear_schedule_step_matches_lammps(self):
+        """
+        With the default 'linear' lambda schedule, the step number for each
+        checkpoint must correspond to the LAMMPS step at which the linear-ramp
+        lambda equals t0/T.  Verify with example 2 parameters: t0=500 K,
+        tf=1500 K, n=25000, window=50 K.
+        """
+        t0, tf, n = 500.0, 1500.0, 25_000
+        blocks = plan_temperature_blocks(t0, tf, n, 50.0)  # linear (default)
+        lam_start = 1.0
+        lam_end = t0 / tf
+        for b in blocks:
+            # Lambda that LAMMPS produces at this step under ramp(li, lf)
+            lam_lammps = lam_start + (lam_end - lam_start) * b["step"] / n
+            T_from_lammps = t0 / lam_lammps
+            # Must agree with the checkpoint temperature to within 1 K
+            assert abs(T_from_lammps - b["temp"]) < 1.0, (
+                f"At step {b['step']}: planner T={b['temp']} K, "
+                f"LAMMPS T={T_from_lammps:.1f} K (lambda={lam_lammps:.4f})"
+            )
+
+    def test_uniform_temperature_schedule_step_matches_linear_T(self):
+        """
+        With 'uniform_temperature' schedule, the step formula is
+        s(T) = (T - t0) / (tf - t0) * total_steps (T linear in step).
+        """
+        t0, tf, n = 500.0, 1500.0, 25_000
+        blocks = plan_temperature_blocks(t0, tf, n, 50.0,
+                                         lambda_schedule="uniform_temperature")
+        for b in blocks:
+            expected_step = int((b["temp"] - t0) / (tf - t0) * n)
+            assert b["step"] == min(expected_step, n), (
+                f"T={b['temp']}: expected step {expected_step}, got {b['step']}"
+            )

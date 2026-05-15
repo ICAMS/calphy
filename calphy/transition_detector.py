@@ -213,6 +213,280 @@ def _rolling_cov(x: np.ndarray, y: np.ndarray, w: int) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# First-moment slope-break detector (phase-agnostic)
+# ---------------------------------------------------------------------------
+
+def _slope_break_signal(
+    y: np.ndarray,
+    x: np.ndarray,
+    valid_start: int,
+    baseline_frac: float = 0.15,
+    fit_order: int = 1,
+    y_raw: Optional[np.ndarray] = None,
+) -> Optional[dict]:
+    """
+    Fit a low-order polynomial y(x) on the early single-phase portion of the
+    valid region and return normalized residuals z = (y - y_fit) / sigma_resid
+    over the full data.
+
+    The slope-break signal is a *first-moment* phase-transition detector: in a
+    single-phase regime y(x) follows a smooth equation of state captured by
+    a low-order polynomial in x.  Any phase transition (solid->solid,
+    solid->liquid) produces a step or kink in y(x), causing |z| to grow
+    rapidly.
+
+    Unlike fluctuation-based detectors (Cp, kappa_T, alpha_P), this signal
+    does not require a variance peak to accumulate — it fires as soon as the
+    *mean* of y departs from the baseline EOS.  This catches transitions
+    earlier and is phase-agnostic: it relies only on the assumption that
+    y(x) is smooth within a single phase, which is true for solid->solid as
+    well as solid->liquid transitions.
+
+    Parameters
+    ----------
+    y             : signal array (e.g. enthalpy H or volume V), per-sample.
+    x             : independent variable, typically the *equivalent
+                    temperature* T(λ).  Fitting in T rather than λ keeps the
+                    baseline polynomial well-behaved over the extrapolated
+                    range — V(T) and H(T) are nearly linear in T for a
+                    solid, whereas V(λ) and H/λ(λ) are hyperbolic and a
+                    polynomial extrapolation breaks down.
+    valid_start   : index at which the smoothed/rolling-window arrays become
+                    valid (NaN before this).
+    baseline_frac : fraction of valid samples (starting at valid_start) used
+                    to fit the baseline polynomial.  Should be small enough
+                    that the baseline lies entirely in the initial phase
+                    (default 0.15 ≈ 15%).
+    fit_order     : polynomial order for the baseline fit.  Default 1
+                    (linear).  Higher orders increase the false-positive
+                    rate because polynomial extrapolation error grows as
+                    ΔT^order: with a baseline that covers only ~15% of the
+                    sweep range, a quadratic fit can easily produce
+                    multi-σ "deviations" purely from extrapolation runaway.
+                    Real first-order transitions produce slope changes
+                    that linear fits catch cleanly; use order ≥2 only on
+                    very wide sweeps where anharmonic curvature dominates.
+    y_raw         : optional unsmoothed counterpart of ``y``.  When provided,
+                    ``sigma`` (the residual scale used to normalize z) is
+                    computed from raw-data residuals at the baseline.  This
+                    is essential when ``y`` is heavily smoothed: smoothing
+                    reduces the per-sample residual std by a factor of √W,
+                    which would inflate z and cause false positives on
+                    clean data.  Calibrating σ against the *raw* thermal
+                    noise restores the intended "5σ" interpretation.
+
+    Returns
+    -------
+    dict with keys
+      ``z``        — normalized residual array, length len(y); NaN before
+                     valid_start or wherever inputs are non-finite.
+      ``sigma``    — baseline residual standard deviation (used to normalize).
+      ``coef``     — polynomial coefficients (np.polyfit order; highest first).
+      ``base_end`` — exclusive end index of the baseline window.
+    or ``None`` if too few finite samples are available to fit.
+    """
+    n = len(y)
+    valid_n = n - valid_start
+    if valid_n < 50:
+        return None
+    base_n = max(int(baseline_frac * valid_n), 50)
+    base_end = min(valid_start + base_n, n)
+
+    x_b = x[valid_start:base_end]
+    y_b = y[valid_start:base_end]
+    mask  = np.isfinite(x_b) & np.isfinite(y_b)
+    min_pts = max(fit_order + 5, 10)
+    if int(mask.sum()) < min_pts:
+        return None
+
+    # ------------------------------------------------------------------
+    # Leverage-aware normalization.
+    #
+    # A naive z = (y - fit) / sigma_baseline overstates the significance
+    # of points outside the baseline window because polynomial
+    # extrapolation variance grows as ΔT^(2 * fit_order).  Properly,
+    #
+    #     pred_residual_var(x) = sigma² * (1 + h(x))
+    #
+    # where h(x) = v(x)^T (X_b^T X_b)^{-1} v(x) is the design-matrix
+    # leverage at point x and v(x) is the Vandermonde row.  This grows
+    # polynomially with extrapolation distance, so |z|=5 stays
+    # calibrated everywhere on the sweep instead of blowing up on
+    # harmless extrapolated noise.
+    # ------------------------------------------------------------------
+    x_bm = x_b[mask]
+    y_bm = y_b[mask]
+
+    # Center and scale x before building the Vandermonde matrix.  Raw T
+    # values are 10²–10³ K, so T² is 10⁴–10⁶ and X^T X overflows / is
+    # ill-conditioned for fit_order ≥ 2 (numpy emits overflow + invalid
+    # warnings on matmul, and the leverage term loses precision).  Working
+    # in u = (x - μ) / σ gives well-conditioned columns of order unity;
+    # predictions are identical under the change of variables.
+    x_center = float(np.mean(x_bm))
+    x_scale  = float(np.std(x_bm))
+    if not np.isfinite(x_scale) or x_scale < 1e-30:
+        return None
+    u_bm = (x_bm - x_center) / x_scale
+
+    # Build the baseline Vandermonde matrix (highest power first, matching
+    # np.polyfit's coefficient convention) and solve in least-squares.
+    # Some BLAS backends emit spurious overflow/invalid warnings during
+    # well-conditioned matmuls on Apple Silicon; suppress while doing the
+    # provably-finite baseline math.
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        Xb = np.vander(u_bm, fit_order + 1)
+        try:
+            coef, *_ = np.linalg.lstsq(Xb, y_bm, rcond=None)
+            XtX_inv = np.linalg.inv(Xb.T @ Xb)
+        except np.linalg.LinAlgError:
+            return None
+
+        # Smoothed-data residual variance on the baseline.  Biased low by
+        # autocorrelation when ``y`` is heavily smoothed, but the leverage
+        # term compensates: the test statistic (y - y_fit) is itself made
+        # of smoothed (autocorrelated) data, so the smoothed-baseline σ is
+        # the matching scale.  When ``y_raw`` is supplied we override σ²
+        # with the raw thermal noise estimate, which gives the strict-sense
+        # per-sample fluctuation scale.
+        resid_b = y_bm - Xb @ coef
+        sigma_sq = float(np.sum(resid_b ** 2) /
+                         max(len(y_bm) - (fit_order + 1), 1))
+        if not np.isfinite(sigma_sq) or sigma_sq < 1e-60:
+            return None
+        if y_raw is not None:
+            raw_b = y_raw[valid_start:base_end]
+            raw_fit = Xb @ coef
+            raw_resid = raw_b - raw_fit
+            rmask = np.isfinite(raw_resid)
+            if int(rmask.sum()) >= min_pts:
+                sigma_sq_raw = float(np.sum(raw_resid[rmask] ** 2) /
+                                      max(int(rmask.sum()) - (fit_order + 1), 1))
+                if np.isfinite(sigma_sq_raw) and sigma_sq_raw > 1e-60:
+                    sigma_sq = sigma_sq_raw
+
+    sigma = float(np.sqrt(sigma_sq))
+
+    # Predicted values and leverage h(x) at every sample, in the centered/
+    # scaled u-coordinate.  Predictions are identical to the unscaled basis.
+    # Suppress overflow / invalid warnings from NaN rows of ``x`` (positions
+    # before valid_start propagate through np.vander); those positions are
+    # masked to NaN at the end anyway.
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        u_full = (x - x_center) / x_scale
+        X_full = np.vander(u_full, fit_order + 1)
+        y_fit = X_full @ coef
+        h = np.einsum("ij,jk,ik->i", X_full, XtX_inv, X_full)
+        h = np.maximum(h, 0.0)
+        pred_std = np.sqrt(sigma_sq * (1.0 + h))
+        z = (y - y_fit) / pred_std
+    bad = ~(np.isfinite(y) & np.isfinite(x))
+    z[bad] = np.nan
+    if valid_start > 0:
+        z[:valid_start] = np.nan
+
+    return {
+        "z": z,
+        "sigma": sigma,
+        "coef": coef,
+        "base_end": base_end,
+    }
+
+
+def _detect_slope_break_event(
+    z: np.ndarray,
+    T: np.ndarray,
+    base_end: int,
+    trigger_sigma: float,
+    onset_sigma: float,
+    persistence: int,
+) -> Optional[tuple]:
+    """
+    Scan a normalized-residual array for the first sustained slope break.
+
+    Returns (peak_idx, T_peak, peak_dev, onset_idx, T_onset) on success,
+    where peak_idx/onset_idx are absolute indices into the full data array.
+    Returns None when no sustained crossing is found.
+
+    "Sustained" means the trigger threshold is crossed AND, over the next
+    ``persistence`` finite samples:
+      (a) the mean of |z| stays at least 0.6 * trigger_sigma, AND
+      (b) ≥80 % of the signed-z values share the sign of the trigger sample.
+
+    Condition (b) is the key discriminator for zero-mean noise: a real
+    first-order phase transition produces a one-directional shift of <y>(T)
+    (latent heat positive on melting, volume positive on melting, etc.), so
+    the signed residual stays the same sign post-onset.  A noise excursion
+    that briefly crosses the trigger threshold but oscillates around zero
+    afterwards (sample-mean drift in a noisy tail region) has near-50 %
+    sign agreement and is correctly rejected.
+    """
+    n = len(z)
+    if base_end >= n:
+        return None
+
+    abs_z   = np.abs(z)
+    region_abs    = abs_z[base_end:]
+    region_signed = z[base_end:]
+    n_region = len(region_abs)
+
+    candidates = np.where(np.isfinite(region_abs) & (region_abs > trigger_sigma))[0]
+    if len(candidates) == 0:
+        return None
+
+    sustained_rel = None
+    for c in candidates:
+        # Use ALL trailing data from the trigger onward (not a fixed
+        # ``persistence`` window) when checking signed-mean persistence.
+        # A real first-order transition produces a *permanent* shift of
+        # <y>(T): the latent-heat or volume jump persists from onset to
+        # the end of the sweep, so the signed mean over the entire
+        # trailing region remains ~trigger_sigma in magnitude.  A
+        # zero-mean noise burst (localized variance increase, no mean
+        # shift) random-walks across the burst region and then returns
+        # to baseline noise afterwards, so the trailing signed mean
+        # collapses toward zero once the burst ends.  The ``persistence``
+        # argument now functions as the *minimum number of finite
+        # trailing samples* required to accept the trigger — i.e. a
+        # head-of-tail margin that ensures we have enough data to make
+        # the call.
+        chunk_signed = region_signed[c:]
+        finite_mask = np.isfinite(chunk_signed)
+        if int(finite_mask.sum()) < persistence:
+            continue
+        chunk_signed_f = chunk_signed[finite_mask]
+        mean_signed = float(np.mean(chunk_signed_f))
+        if abs(mean_signed) < 0.6 * trigger_sigma:
+            continue
+        sustained_rel = int(c)
+        break
+    if sustained_rel is None:
+        return None
+
+    peak_idx_rel = sustained_rel
+    onset_rel = peak_idx_rel
+    for j in range(peak_idx_rel - 1, -1, -1):
+        v = region_abs[j]
+        if not np.isfinite(v):
+            continue
+        if v <= onset_sigma:
+            break
+        onset_rel = j
+
+    peak_idx  = base_end + peak_idx_rel
+    onset_idx = base_end + onset_rel
+    if not (np.isfinite(T[peak_idx]) and np.isfinite(T[onset_idx])):
+        return None
+    return (
+        peak_idx,
+        float(T[peak_idx]),
+        float(region_abs[peak_idx_rel]),
+        onset_idx,
+        float(T[onset_idx]),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Temperature-block planner
 # ---------------------------------------------------------------------------
 
@@ -221,6 +495,7 @@ def plan_temperature_blocks(
     tf: float,
     total_steps: int,
     window_K: float,
+    lambda_schedule: str = "linear",
 ) -> List[dict]:
     """
     Partition a reversible-scaling sweep into temperature-based blocks.
@@ -228,10 +503,15 @@ def plan_temperature_blocks(
     Each block covers ``window_K`` Kelvin of the sweep.  The sweep direction
     (heating vs. cooling) is inferred from ``t0`` and ``tf``.
 
-    The mapping from temperature to step number uses the non-linear λ schedule
-    in which temperature varies **linearly** with step:
-    ``T(s) = t0 + (tf - t0) * s / total_steps``, so
-    ``s(T) = (T - t0) / (tf - t0) * total_steps``.
+    The step-to-temperature mapping depends on ``lambda_schedule``:
+
+    * ``"linear"`` (default): LAMMPS ramps λ linearly in step,
+      so λ(s) = λ₀ + (λ_f − λ₀) × s / total_steps, and temperature is
+      non-linear in step:
+      ``s(T) = (t0/T − 1) / (t0/tf − 1) × total_steps``
+
+    * ``"uniform_temperature"``: temperature is ramped linearly in step,
+      so ``s(T) = (T − t0) / (tf − t0) × total_steps``
 
     Parameters
     ----------
@@ -244,6 +524,11 @@ def plan_temperature_blocks(
         Total number of MD steps in the sweep (``_n_sweep_steps``).
     window_K : float
         Desired temperature width of each block (K).  Must be > 0.
+    lambda_schedule : str, optional
+        Lambda schedule used by LAMMPS.  ``"linear"`` (default) or
+        ``"uniform_temperature"``.  Must match the schedule passed to the
+        LAMMPS run so checkpoint step numbers are consistent with the actual
+        simulation.
 
     Returns
     -------
@@ -256,7 +541,16 @@ def plan_temperature_blocks(
 
     Examples
     --------
+    Linear lambda schedule (default):
+
     >>> plan_temperature_blocks(1200, 2000, 100000, 400)
+    [{'temp': 1200, 'lambda': 1.0, 'step': 0},
+     {'temp': 1600, 'lambda': 0.75, 'step': 62500},
+     {'temp': 2000, 'lambda': 0.6,  'step': 100000}]
+
+    Uniform-temperature schedule:
+
+    >>> plan_temperature_blocks(1200, 2000, 100000, 400, lambda_schedule='uniform_temperature')
     [{'temp': 1200, 'lambda': 1.0, 'step': 0},
      {'temp': 1600, 'lambda': 0.75, 'step': 40000},
      {'temp': 2000, 'lambda': 0.6,  'step': 100000}]
@@ -285,12 +579,21 @@ def plan_temperature_blocks(
     if not checkpoints or checkpoints[-1] != tf:
         checkpoints.append(tf)
 
+    # Pre-compute lambda endpoints for the linear-lambda formula.
+    lam_start = 1.0          # t0 / t0
+    lam_end   = t0 / tf      # lambda at T = tf
+
     result = []
     for temp in checkpoints:
         lam = t0 / temp
-        # Non-linear λ schedule: T is linear in step →
-        #   T(s) = t0 + (tf - t0) * s / total_steps  →  s(T) = (T - t0) / (tf - t0) * total_steps
-        step = int((temp - t0) / (tf - t0) * total_steps)
+        if lambda_schedule == "uniform_temperature":
+            # T is linear in step: s(T) = (T - t0) / (tf - t0) * total_steps
+            step = int((temp - t0) / (tf - t0) * total_steps)
+        else:
+            # "linear" (default): lambda is linear in step.
+            # lambda(s) = lam_start + (lam_end - lam_start) * s / total_steps
+            # Inverting: s(T) = (lam - lam_start) / (lam_end - lam_start) * total_steps
+            step = int((lam - lam_start) / (lam_end - lam_start) * total_steps)
         step = max(0, min(step, total_steps))
         result.append({"temp": temp, "lambda": lam, "step": step})
 
@@ -318,6 +621,10 @@ def detect_ts_transitions(
     min_signal_agreement: int = 2,
     min_descent_frac: float = 0.3,
     tail_margin_frac: float = 0.05,
+    slope_break_sigma: float = 5.0,
+    onset_sigma: float = 4.0,
+    slope_break_baseline_frac: float = 0.15,
+    slope_break_fit_order: int = 1,
     sweep_label: str = "forward",
     sweep_mode: str = "ts",
 ) -> List[TransitionEvent]:
@@ -361,6 +668,35 @@ def detect_ts_transitions(
                              startup transient at the very beginning of a sweep
                              (e.g. liquid backward sweep starting from a cold
                              equilibration) inflates variance temporarily.
+    slope_break_sigma          : trigger threshold (in baseline-σ) for the
+                                 first-moment slope-break signals on H/lambda
+                                 and V.  A break is declared at the first
+                                 sample whose normalized residual exceeds this
+                                 value (with persistence).  These signals fire
+                                 earlier than the variance-based Cp/κ/α peaks
+                                 because they detect deviation of the *mean*
+                                 from the single-phase equation-of-state rather
+                                 than waiting for a fluctuation peak.  Default
+                                 5.0.
+    onset_sigma                : how far above the single-phase baseline noise
+                                 a signal must be to count as "the transition
+                                 has started."  Applied uniformly as a walk-back
+                                 threshold for ALL signals: variance-based
+                                 (Cp, kappa_T, alpha_P) use onset_sigma × MAD
+                                 above the baseline median; slope-break signals
+                                 (H_break, V_break) use onset_sigma × fit-σ.
+                                 Lower values give earlier (more conservative)
+                                 onsets; higher values place the onset closer to
+                                 where the signal is unambiguous.  Default 4.0.
+    slope_break_baseline_frac  : fraction of valid samples (starting at the
+                                 first valid row) used to fit the single-phase
+                                 EOS polynomial baseline.  Default 0.15.
+    slope_break_fit_order      : polynomial order for the baseline fit in T.
+                                 Default 1 (linear).  Higher orders increase
+                                 the false-positive rate via extrapolation
+                                 runaway from a narrow baseline window;
+                                 first-order transitions are picked up
+                                 cleanly by a linear fit.
     sweep_label          : label for warning messages
     sweep_mode           : ``'ts'`` (reversible scaling, fixed thermostat at
                            t_start, equivalent T = t_start / lambda) or
@@ -524,7 +860,7 @@ def detect_ts_transitions(
         # where the signal dropped back below 1-sigma above the baseline.
         # This marks where the transition *started* rising, which corresponds
         # far more closely to the actual Tm than the peak top does.
-        onset_threshold = base_med + 1.0 * base_scale
+        onset_threshold = base_med + onset_sigma * base_scale
         onset_idx_rel = peak_idx_rel
         for j in range(peak_idx_rel - 1, -1, -1):
             v = region[j]
@@ -540,20 +876,77 @@ def detect_ts_transitions(
         detected[sig_name] = (valid_start + peak_idx_rel, T_trans, mod_z,
                                valid_start + onset_idx_rel, T_onset)
 
+    # ------------------------------------------------------------------
+    # First-moment slope-break detection (phase-agnostic).
+    #
+    # Detects deviation of <H/lambda>(lambda) and <V>(lambda) from the
+    # single-phase equation-of-state fit through the early baseline.  Fires
+    # earlier than the variance peaks and applies to any first-order
+    # transition (solid->solid, solid->liquid) because it relies only on the
+    # smoothness of y(lam) within a single phase.
+    # ------------------------------------------------------------------
+    # Persistence: must exceed the autocorrelation length of the smoothed
+    # signal (~2 * window_smooth) so an autocorrelated noise excursion that
+    # briefly crosses the trigger threshold cannot fake a sustained shift.
+    sb_persistence = max(2 * window_smooth, window_fluct)
+    # First-moment signals: fit y(T) (equivalent temperature) rather than
+    # y(lambda) — single-phase EOS curves H(T), V(T) are nearly linear in T,
+    # while the corresponding y(lambda) functions are hyperbolic in lambda and
+    # cannot be reliably extrapolated by a low-order polynomial.  Use the
+    # raw smoothed enthalpy sm_H (not sm_H/lambda) because the latent-heat
+    # jump at a transition is intrinsic to H itself; dividing by lambda only
+    # adds the trivial Hamiltonian scaling back into the signal.
+    slope_break_signals = [
+        ("H_break", sm_H,  H),
+        ("V_break", sm_V,  vol_atom),
+    ]
+    for sb_name, sb_y, sb_y_raw in slope_break_signals:
+        sb = _slope_break_signal(
+            sb_y, T, valid_start,
+            baseline_frac=slope_break_baseline_frac,
+            fit_order=slope_break_fit_order,
+            y_raw=sb_y_raw,
+        )
+        if sb is None:
+            continue
+        ev = _detect_slope_break_event(
+            sb["z"], T, sb["base_end"],
+            trigger_sigma=slope_break_sigma,
+            onset_sigma=onset_sigma,
+            persistence=sb_persistence,
+        )
+        if ev is None:
+            continue
+        peak_idx, T_peak_sb, peak_dev, onset_idx, T_onset_sb = ev
+        detected[sb_name] = (peak_idx, T_peak_sb, peak_dev, onset_idx, T_onset_sb)
+
     if len(detected) < min_signal_agreement:
         return []
 
+    # Merge across triggered signals.  Use the MINIMUM onset (earliest sign
+    # of trouble) rather than the mean — the user-visible failure mode is
+    # "didn't stop in time", so the conservatively-early recovery point is
+    # preferred when signals disagree.  Peak temperature stays as the mean
+    # for informational purposes.
     T_trans   = float(np.mean([v[1] for v in detected.values()]))
     peak_idx  = int(np.mean([v[0] for v in detected.values()]))
-    T_onset   = float(np.mean([v[4] for v in detected.values()]))
-    onset_idx = int(np.mean([v[3] for v in detected.values()]))
+    earliest  = min(detected.values(), key=lambda v: v[3])
+    onset_idx = int(earliest[3])
+    T_onset   = float(earliest[4])
     sig_names = list(detected.keys())
-    ratio_str = ", ".join(f"{k}=modZ {v[2]:.1f}" for k, v in detected.items())
+    # Cp/kappa_T/alpha_P report modified Z-score of the variance peak;
+    # H_break/V_break report normalized residual sigma of the slope-break.
+    def _fmt_metric(name, val):
+        if name in ("H_break", "V_break"):
+            return f"{name}=|z| {val:.1f}σ"
+        return f"{name}=modZ {val:.1f}"
+    ratio_str = ", ".join(_fmt_metric(k, v[2]) for k, v in detected.items())
 
+    n_signals_total = len(signals) + len(slope_break_signals)
     event = TransitionEvent(
         sample_index=peak_idx,
         triggered_signals=sig_names,
-        confidence=len(detected) / len(signals),
+        confidence=len(detected) / n_signals_total,
         temperature=T_trans,
         onset_temperature=T_onset,
     )
@@ -584,6 +977,8 @@ def compute_ts_response_arrays(
     window_smooth: int = 500,
     window_fluct: int = 1000,
     sweep_mode: str = "ts",
+    slope_break_baseline_frac: float = 0.15,
+    slope_break_fit_order: int = 1,
 ) -> dict:
     """
     Compute rolling response functions from a ts sweep file.
@@ -638,12 +1033,35 @@ def compute_ts_response_arrays(
 
     valid_start = window_smooth + window_fluct - 2
 
+    # First-moment slope-break residuals (normalized by baseline sigma).
+    # Fit y(T) on raw enthalpy and volume — see _slope_break_signal docstring.
+    sb_H = _slope_break_signal(
+        sm_H, T, valid_start,
+        baseline_frac=slope_break_baseline_frac,
+        fit_order=slope_break_fit_order,
+        y_raw=H,
+    )
+    sb_V = _slope_break_signal(
+        sm_V, T, valid_start,
+        baseline_frac=slope_break_baseline_frac,
+        fit_order=slope_break_fit_order,
+        y_raw=vol_atom,
+    )
+    H_z      = sb_H["z"]        if sb_H is not None else np.full_like(Cp, np.nan)
+    V_z      = sb_V["z"]        if sb_V is not None else np.full_like(Cp, np.nan)
+    H_base_end = sb_H["base_end"] if sb_H is not None else valid_start
+    V_base_end = sb_V["base_end"] if sb_V is not None else valid_start
+
     return {
         "T":           T,
         "Cp":          Cp,
         "kappa_T":     kappa,
         "alpha_P":     alpha,
         "valid_start": valid_start,
+        "H_z":         H_z,
+        "V_z":         V_z,
+        "H_base_end":  H_base_end,
+        "V_base_end":  V_base_end,
     }
 
 

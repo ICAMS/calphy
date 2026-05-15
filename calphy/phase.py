@@ -68,6 +68,10 @@ class Phase:
         self.simfolder = simfolder
         self.log_to_screen = log_to_screen
         self.publications = []
+        # Events detected by _post_forward_recovery (keyed by iteration).
+        # Stored so _plot_ts_response_functions can mark them even after the
+        # forward ts file has been truncated to the safe sub-range.
+        self._recovery_forward_events = {}
 
         logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile, screen=log_to_screen)
@@ -511,6 +515,7 @@ class Phase:
                     natoms=self.natoms,
                     peak_threshold=td.peak_threshold,
                     min_signal_agreement=td.min_agreement,
+                    onset_sigma=td.onset_sigma,
                     sweep_label=label,
                     sweep_mode="ts",
                 )
@@ -555,11 +560,74 @@ class Phase:
         from calphy.transition_detector import (
             compute_ts_response_arrays as _compute,
             detect_ts_transitions as _dts,
+            plan_temperature_blocks as _plan_blocks,
         )
 
         td      = self.calc.phase_transition_detection
         t_start = float(self.calc._temperature)
         t_stop  = float(self.calc._temperature_stop)
+
+        def _q12_from_checkpoints(out_stem: str) -> tuple:
+            """
+            Read all per-block checkpoint files ``conf.<out_stem>_blk{k}.data``
+            and compute the mean averaged Steinhardt q12 for each structure.
+
+            Returns (T_values, q12_values) as Python lists aligned by block index,
+            or ([], []) when pyscal3 is unavailable or no checkpoints are found.
+
+            Temperature for checkpoint blk{k} is taken from
+            plan_temperature_blocks evaluated at the block start — matching the
+            temperature axis of the response function plot.
+
+            pyscal3 adaptive neighbor finding (cutoff=0) is used so no
+            explicit cutoff needs to be derived.
+            """
+            try:
+                import pyscal3 as psc
+            except ImportError:
+                self.logger.debug(
+                    "q12 checkpoints: pyscal3 not available, skipping"
+                )
+                return [], []
+
+            t_win = td.temperature_window if td.temperature_window > 0 else 0.0
+            if t_win <= 0:
+                return [], []
+
+            n_sweep = self.calc._n_sweep_steps
+            blocks = _plan_blocks(
+                t_start, t_stop, n_sweep, t_win,
+                lambda_schedule=self.calc.lambda_schedule,
+            )
+
+            import warnings as _wq
+            T_vals, q12_vals = [], []
+            for k, block in enumerate(blocks[:-1]):  # last entry is the tf boundary; no file for it
+                chk_path = os.path.join(
+                    self.simfolder, "conf.%s_blk%d.data" % (out_stem, k)
+                )
+                if not os.path.exists(chk_path):
+                    continue
+                try:
+                    with _wq.catch_warnings():
+                        _wq.simplefilter("ignore")
+                        sys_q = psc.System(
+                            chk_path, format="lammps-data", style="atomic"
+                        )
+                        # cutoff=0 lets pyscal3 choose an adaptive cutoff
+                        sys_q.find.neighbors(method="cutoff", cutoff=0)
+                        q_list = sys_q.calculate.steinhardt_parameter(
+                            [12], averaged=True
+                        )
+                    q12_mean = float(np.mean(q_list[0]))
+                    T_vals.append(block["temp"])
+                    q12_vals.append(q12_mean)
+                except Exception as exc:
+                    self.logger.debug(
+                        "q12 checkpoints: could not process %s (%s)",
+                        os.path.basename(chk_path), exc,
+                    )
+            return T_vals, q12_vals
 
         for i in range(1, self.calc.n_iterations + 1):
             for sweep_label, fname in [
@@ -569,6 +637,12 @@ class Phase:
                 fpath = os.path.join(self.simfolder, fname)
                 if not os.path.exists(fpath):
                     continue
+                # For forward sweeps use the full (pre-truncation) copy when
+                # available so the response plot spans the complete T range.
+                if sweep_label == "forward":
+                    full_fpath = fpath.replace(".dat", "_full.dat")
+                    if os.path.exists(full_fpath):
+                        fpath = full_fpath
                 try:
                     dU, press, vol_total, lam = np.loadtxt(
                         fpath, unpack=True, comments="#"
@@ -595,6 +669,8 @@ class Phase:
                 Cp     = arrs["Cp"][vs:]
                 kappa  = arrs["kappa_T"][vs:]
                 alpha  = arrs["alpha_P"][vs:]
+                H_z    = arrs["H_z"][vs:]
+                V_z    = arrs["V_z"][vs:]
 
                 # Detect transitions to mark on the plot
                 with _warnings.catch_warnings():
@@ -609,11 +685,29 @@ class Phase:
                         natoms=self.natoms,
                         peak_threshold=td.peak_threshold,
                         min_signal_agreement=td.min_agreement,
+                        onset_sigma=td.onset_sigma,
                         sweep_label=sweep_label,
                         sweep_mode="ts",
                     )
+                # If the forward file was truncated by _post_forward_recovery
+                # the transition peak is cut off and _dts won't see it.  Fall
+                # back to the stored recovery events so the markers still appear.
+                if not events and sweep_label == "forward":
+                    events = getattr(self, "_recovery_forward_events", {}).get(i, [])
 
-                fig, axes = plt.subplots(3, 1, figsize=(8, 9), sharex=True)
+                # Collect Steinhardt q12 from per-block checkpoint files
+                # (forward sweep only; plot-only, not wired into detection).
+                q12_T, q12_vals = [], []
+                if sweep_label == "forward":
+                    # out_stem mirrors the dat file name without ".dat"
+                    out_stem = fname[:-4] if fname.endswith(".dat") else fname
+                    q12_T, q12_vals = _q12_from_checkpoints(out_stem)
+
+                # Panels: Cp, kappa_T, alpha_P, slope-break (H/V), [q12]
+                n_panels = 5 if q12_vals else 4
+                fig, axes = plt.subplots(
+                    n_panels, 1, figsize=(8, 3 * n_panels), sharex=True
+                )
                 fig.suptitle(
                     f"Thermodynamic response functions\n"
                     f"{sweep_label} sweep, iteration {i}  "
@@ -633,18 +727,25 @@ class Phase:
                     return (sig - med) / mad
 
                 def _add_modz_twin(ax, T_arr, sig, color, threshold):
-                    """Overlay mod-Z on a twin y-axis (right side, grey/dashed)."""
+                    """Overlay mod-Z / threshold on a twin y-axis.
+
+                    Normalising by threshold keeps the threshold line pinned at
+                    y = 1.0 regardless of the signal magnitude, so it is always
+                    obvious whether the curve crosses (transition) or not.
+                    """
                     mz = _modz_series(sig)
                     ax2 = ax.twinx()
-                    ax2.plot(T_arr, mz, lw=0.6, color=color, alpha=0.35, ls="--")
-                    ax2.axhline(threshold, color="grey", lw=0.8, ls=":", alpha=0.7)
-                    ax2.set_ylabel("mod-Z", fontsize=7, color="grey")
+                    mz_norm = mz / threshold if threshold > 0 else mz
+                    ax2.plot(T_arr, mz_norm, lw=0.6, color=color, alpha=0.35, ls="--")
+                    ax2.axhline(1.0, color="grey", lw=0.8, ls=":", alpha=0.7)
+                    ax2.set_ylabel("mod-Z / threshold", fontsize=7, color="grey")
                     ax2.tick_params(axis="y", labelsize=6, labelcolor="grey")
-                    # Keep the primary axis scale from being dominated by outliers
-                    mz_finite = mz[np.isfinite(mz)]
-                    if len(mz_finite):
-                        ax2.set_ylim(bottom=0,
-                                     top=max(threshold * 2, float(np.nanpercentile(mz_finite, 99)) * 1.1))
+                    mz_norm_finite = mz_norm[np.isfinite(mz_norm)]
+                    if len(mz_norm_finite):
+                        # Always show the threshold line at y=1 with headroom;
+                        # expand upward if a real spike is present.
+                        top = max(1.5, float(np.nanpercentile(mz_norm_finite, 99)) * 1.1)
+                        ax2.set_ylim(bottom=0, top=top)
                     return ax2
 
                 threshold = td.peak_threshold
@@ -659,19 +760,68 @@ class Phase:
 
                 axes[2].plot(T, alpha, lw=0.8, color="C2")
                 axes[2].set_ylabel(r"$\alpha_P$ (K$^{-1}$)")
-                axes[2].set_xlabel("Temperature (K)")
                 _add_modz_twin(axes[2], T, alpha, "C2", threshold)
 
+                # Slope-break panel: normalized residuals of H/lambda(lam) and
+                # V(lam) from a baseline single-phase EOS fit.  |z| crossing
+                # the dashed line indicates a deviation from the single-phase
+                # equation of state — a first-moment phase-transition
+                # signature that fires earlier than the variance peaks above
+                # and applies uniformly to solid->solid and solid->liquid
+                # transitions.
+                sb_trigger = 5.0
+                axes[3].plot(T, np.abs(H_z), lw=0.8, color="C4",
+                              label=r"$|z|$ on $H/\lambda$")
+                axes[3].plot(T, np.abs(V_z), lw=0.8, color="C5",
+                              label=r"$|z|$ on $V$")
+                axes[3].axhline(sb_trigger, color="grey", lw=0.8, ls="--",
+                                 alpha=0.7, label=f"trigger {sb_trigger:.0f}σ")
+                axes[3].set_ylabel("slope-break |z|")
+                axes[3].legend(fontsize=7, loc="upper left")
+                # cap the y-axis so a huge post-transition residual does not
+                # squash the early-rise region we want to inspect
+                finite_z = np.concatenate(
+                    [np.abs(H_z[np.isfinite(H_z)]),
+                     np.abs(V_z[np.isfinite(V_z)])]
+                )
+                if finite_z.size:
+                    top = max(sb_trigger * 1.5,
+                              float(np.nanpercentile(finite_z, 99)) * 1.1)
+                    axes[3].set_ylim(bottom=0, top=top)
+
+                if q12_vals:
+                    axes[4].plot(q12_T, q12_vals, lw=0.8, color="C3",
+                                 marker="o", ms=4, label=r"$\langle q_{12} \rangle$")
+                    axes[4].set_ylabel(r"$\langle q_{12} \rangle$")
+                    axes[4].legend(fontsize=8, loc="upper right")
+                    axes[4].set_xlabel("Temperature (K)")
+                else:
+                    axes[3].set_xlabel("Temperature (K)")
+
                 for event in events:
+                    data_T_max = float(T[-1]) if len(T) else t_stop
+                    onset_T = float(getattr(event, "onset_temperature", event.temperature))
+                    peak_T  = float(event.temperature)
+
+                    if onset_T > data_T_max:
+                        # Forward data was truncated before the transition.
+                        # Extend x-axis to expose onset and peak, then mark
+                        # the recovery/truncation boundary as a reference.
+                        x_min = float(T[0]) if len(T) else t_start
+                        x_max = peak_T + 0.04 * (peak_T - x_min)
+                        for ax in axes:
+                            ax.set_xlim(x_min, x_max)
+                        for ax in axes:
+                            ax.axvline(data_T_max, color="tab:orange", lw=1.2,
+                                       ls="-", alpha=0.75,
+                                       label=f"recovery cut {data_T_max:.0f} K")
+
                     for ax in axes:
-                        ax.axvline(
-                            event.temperature,
-                            color="red",
-                            lw=1.2,
-                            ls="--",
-                            alpha=0.8,
-                            label=f"transition ~{event.temperature:.0f} K",
-                        )
+                        ax.axvline(onset_T, color="red", lw=1.2, ls="--",
+                                   alpha=0.8, label=f"onset ~{onset_T:.0f} K")
+                    for ax in axes:
+                        ax.axvline(peak_T, color="darkred", lw=1.0, ls=":",
+                                   alpha=0.7, label=f"peak ~{peak_T:.0f} K")
                     axes[0].legend(fontsize=8, loc="upper left")
 
                 plt.tight_layout()
@@ -1450,7 +1600,8 @@ class Phase:
             return
 
         # ── Block-splitting path ──────────────────────────────────────────
-        blocks = _plan(t0, tf, n_sweep, t_win)
+        blocks = _plan(t0, tf, n_sweep, t_win,
+                       lambda_schedule=self.calc.lambda_schedule)
         n_blocks = len(blocks) - 1
         self.logger.info(
             "ts-sweep %s: %d steps split into %d blocks of ~%.0f K "
@@ -2125,6 +2276,7 @@ class Phase:
             t_start=t_start, t_stop=t_stop, natoms=self.natoms,
             peak_threshold=td.peak_threshold,
             min_signal_agreement=td.min_agreement,
+            onset_sigma=td.onset_sigma,
             sweep_label="forward (iteration %d) post-hoc" % iteration,
             sweep_mode="ts",
         )
@@ -2184,7 +2336,8 @@ class Phase:
             )
             return
 
-        blocks = _plan(t_start, t_stop, n_sweep, t_win)
+        blocks = _plan(t_start, t_stop, n_sweep, t_win,
+                       lambda_schedule=self.calc.lambda_schedule)
         n_blocks = len(blocks) - 1
 
         # Use the ONSET temperature (not the peak) to select the safe block.
@@ -2238,7 +2391,18 @@ class Phase:
             )
             return
 
-        # 1. Truncate the forward ts file to safe_step rows.
+        # 1. Preserve a full copy for the response-function plot before
+        #    truncating so the plot can show the complete temperature range.
+        full_out = out.replace(".dat", "_full.dat")
+        try:
+            shutil.copy(out, full_out)
+        except Exception as cp_exc:
+            self.logger.debug(
+                "post-forward recovery: could not save full copy %s: %s",
+                os.path.basename(full_out), cp_exc,
+            )
+
+        # 2. Truncate the forward ts file to safe_step rows.
         kept = self._truncate_ts_file(out, safe_step)
         self.logger.warning(
             "post-forward recovery: truncated %s to %d data rows "
@@ -2277,6 +2441,10 @@ class Phase:
             "n_sweep_steps %d -> %d for the backward sweep",
             old_tf, safe_T, old_n, safe_step,
         )
+
+        # Store the detected events so the response-function plot can add
+        # transition markers even after the forward ts file is truncated.
+        self._recovery_forward_events[iteration] = events
 
         # Disable detection for the backward sweep over the now-safe range
         # so we don't re-trigger and loop.  Plots still produced.

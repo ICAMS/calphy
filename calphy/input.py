@@ -266,13 +266,12 @@ class PhaseTransitionDetection(BaseModel, title="Settings for fluctuation-based 
             default=12.0,
             gt=0,
             description=(
-                "Flag a transition when the modified Z-score of any response "
-                "function peak exceeds this value, where "
-                "mod_z = (peak - median) / (1.4826 * MAD) is computed over "
-                "all accumulated data. Default 8.0 cleanly separates real "
-                "transitions (mod_z > 25) from the natural ~8x growth of Cp "
-                "across a 200 K solid window (mod_z ~ 2-7). The three signals "
-                "evaluated are Cp, kappa_T, and alpha_P."
+                "Flag a transition when the modified Z-score of any variance-based "
+                "response function peak (Cp, kappa_T, alpha_P) exceeds this value, "
+                "where mod_z = (peak - median) / (1.4826 * MAD).  The slope-break "
+                "signals (H_break, V_break) use a separate sigma threshold "
+                "(slope_break_sigma, default 5.0) and are not affected by this "
+                "setting."
             ),
         ),
     ]
@@ -281,7 +280,29 @@ class PhaseTransitionDetection(BaseModel, title="Settings for fluctuation-based 
         Field(
             default=2,
             ge=1,
-            description="Number of signals (Cp, kappa_T, alpha_P) that must peak simultaneously",
+            description=(
+                "Minimum number of signals that must trigger simultaneously for a "
+                "transition to be declared.  Five signals are evaluated: Cp, "
+                "kappa_T, alpha_P (variance-based) and H_break, V_break "
+                "(slope-break, first-moment).  Default 2."
+            ),
+        ),
+    ]
+    onset_sigma: Annotated[
+        float,
+        Field(
+            default=4.0,
+            gt=0,
+            description=(
+                "Walk-back threshold used to locate the onset temperature from a "
+                "detected peak.  Applied to all signals: variance-based signals "
+                "(Cp, kappa_T, alpha_P) walk back to where the signal falls below "
+                "baseline_median + onset_sigma * MAD; slope-break signals "
+                "(H_break, V_break) walk back to where |z| falls below onset_sigma. "
+                "Lower values give earlier (more conservative) onsets and therefore "
+                "earlier recovery cuts; higher values place the onset closer to the "
+                "unambiguous part of the peak.  Default 4.0."
+            ),
         ),
     ]
     baseline_window: Annotated[int, Field(default=50, ge=5)]

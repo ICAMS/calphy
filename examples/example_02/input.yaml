@@ -26,8 +26,8 @@ calculations:
   - 8
   - 8
   temperature:
-  - 100.0
-  - 3000.0
+  - 500.0
+  - 1500.0
   phase_transition_detection:
     mode: recover
     peak_threshold: 6.0
