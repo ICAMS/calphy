@@ -28,9 +28,12 @@ sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 import numpy as np
 import yaml
 import copy
+import glob
 import os
 import shutil
 import itertools
+import tempfile
+import zipfile
 
 from calphy.integrators import *
 import calphy.helpers as ph
@@ -603,30 +606,28 @@ class Phase:
             import warnings as _wq
             T_vals, q12_vals = [], []
             for k, block in enumerate(blocks[:-1]):  # last entry is the tf boundary; no file for it
-                chk_path = os.path.join(
-                    self.simfolder, "conf.%s_blk%d.data" % (out_stem, k)
-                )
-                if not os.path.exists(chk_path):
-                    continue
-                try:
-                    with _wq.catch_warnings():
-                        _wq.simplefilter("ignore")
-                        sys_q = psc.System(
-                            chk_path, format="lammps-data", style="atomic"
+                with self._open_block_data(out_stem, k) as chk_path:
+                    if chk_path is None:
+                        continue
+                    try:
+                        with _wq.catch_warnings():
+                            _wq.simplefilter("ignore")
+                            sys_q = psc.System(
+                                chk_path, format="lammps-data", style="atomic"
+                            )
+                            # cutoff=0 lets pyscal3 choose an adaptive cutoff
+                            sys_q.find.neighbors(method="cutoff", cutoff=0)
+                            q_list = sys_q.calculate.steinhardt_parameter(
+                                [12], averaged=True
+                            )
+                        q12_mean = float(np.mean(q_list[0]))
+                        T_vals.append(block["temp"])
+                        q12_vals.append(q12_mean)
+                    except Exception as exc:
+                        self.logger.debug(
+                            "q12 checkpoints: could not process block %d (%s)",
+                            k, exc,
                         )
-                        # cutoff=0 lets pyscal3 choose an adaptive cutoff
-                        sys_q.find.neighbors(method="cutoff", cutoff=0)
-                        q_list = sys_q.calculate.steinhardt_parameter(
-                            [12], averaged=True
-                        )
-                    q12_mean = float(np.mean(q_list[0]))
-                    T_vals.append(block["temp"])
-                    q12_vals.append(q12_mean)
-                except Exception as exc:
-                    self.logger.debug(
-                        "q12 checkpoints: could not process %s (%s)",
-                        os.path.basename(chk_path), exc,
-                    )
             return T_vals, q12_vals
 
         for i in range(1, self.calc.n_iterations + 1):
@@ -1628,6 +1629,14 @@ class Phase:
         fpath = os.path.join(self.simfolder, output_file_pattern)
         # Strip ".dat" so we can build a per-block checkpoint name.
         out_stem = output_file_pattern[:-4] if output_file_pattern.endswith(".dat") else output_file_pattern
+        # Clear any stale block-checkpoint archive left over from a prior
+        # run of this sweep so we don't append to it across re-runs.
+        stale_arc = self._blocks_archive_path(out_stem)
+        if os.path.exists(stale_arc):
+            try:
+                os.remove(stale_arc)
+            except OSError:
+                pass
         current_step = 0
         for k in range(n_blocks):
             block_steps = blocks[k + 1]["step"] - blocks[k]["step"]
@@ -1653,6 +1662,10 @@ class Phase:
             chk_name = "conf.%s_blk%d.data" % (out_stem, k)
             chk_path = os.path.join(self.simfolder, chk_name)
             lmp.command("write_data %s nocoeff" % chk_path)
+            # Fold the just-written block file into the per-sweep archive
+            # and delete the standalone copy so the per-sweep file count
+            # stays at O(1) regardless of block count (HPC inode quotas).
+            self._archive_block_data(out_stem, k, chk_path)
 
             if k == 0:
                 lmp.command(
@@ -2183,6 +2196,174 @@ class Phase:
                 ),
             )
 
+    # ------------------------------------------------------------------
+    # Per-block checkpoint archive
+    #
+    # During a split sweep, _run_split_sweep writes one LAMMPS data file
+    # per temperature block as a candidate restart point for post-hoc
+    # recovery and as input to the q12 sanity-check plot.  Writing each
+    # one as a standalone file would produce O(50) files per sweep and
+    # quickly exhaust inode quotas on shared HPC filesystems.  Instead we
+    # immediately add each block file to a STORED (uncompressed; data is
+    # already small text) zip archive ``conf.<stem>_blocks.zip`` and
+    # delete the standalone copy, leaving exactly one archive file per
+    # sweep regardless of block count.
+    #
+    # The archive contains entries named ``conf.<stem>_blk<k>.data`` so
+    # that the legacy code paths continue to work unchanged once the
+    # archive is opened.  Recovery and q12 both have a small read helper
+    # that falls back to a standalone on-disk file when the archive is
+    # missing — preserving compatibility with older runs.
+    # ------------------------------------------------------------------
+
+    def _blocks_archive_path(self, out_stem: str) -> str:
+        """Return the path of the per-sweep block-checkpoint zip archive."""
+        return os.path.join(self.simfolder, "conf.%s_blocks.zip" % out_stem)
+
+    def _archive_block_data(
+        self, out_stem: str, block_k: int, src_path: str,
+    ) -> None:
+        """
+        Add ``src_path`` to the block archive as ``conf.<stem>_blk<k>.data``
+        and delete the standalone source.  Silently no-ops if the source is
+        missing; logs at debug-level if the zip operation fails (the
+        standalone file is then left in place so recovery still works).
+        """
+        if not os.path.exists(src_path):
+            return
+        arc_path = self._blocks_archive_path(out_stem)
+        arc_name = "conf.%s_blk%d.data" % (out_stem, block_k)
+        try:
+            with zipfile.ZipFile(
+                arc_path, "a",
+                compression=zipfile.ZIP_STORED,
+                allowZip64=True,
+            ) as zf:
+                zf.write(src_path, arcname=arc_name)
+        except (OSError, zipfile.BadZipFile) as exc:
+            self.logger.debug(
+                "block archive: could not add %s to %s (%s) — "
+                "leaving standalone file in place",
+                os.path.basename(src_path), os.path.basename(arc_path), exc,
+            )
+            return
+        try:
+            os.remove(src_path)
+        except OSError:
+            pass
+
+    def _extract_block_data(
+        self, out_stem: str, block_k: int, dest_path: str,
+    ) -> bool:
+        """
+        Materialize block ``k`` of sweep ``out_stem`` as a standalone data
+        file at ``dest_path``.  Looks first for a standalone on-disk file
+        (legacy / fallback if the archive write failed), then for the entry
+        inside the archive.  Returns True on success.
+        """
+        legacy = os.path.join(
+            self.simfolder, "conf.%s_blk%d.data" % (out_stem, block_k),
+        )
+        if os.path.exists(legacy):
+            if legacy != dest_path:
+                shutil.copy(legacy, dest_path)
+            return True
+        arc_path = self._blocks_archive_path(out_stem)
+        arc_name = "conf.%s_blk%d.data" % (out_stem, block_k)
+        if not os.path.exists(arc_path):
+            return False
+        try:
+            with zipfile.ZipFile(arc_path, "r") as zf:
+                with zf.open(arc_name) as src, open(dest_path, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+            return True
+        except (KeyError, zipfile.BadZipFile, OSError) as exc:
+            self.logger.debug(
+                "block archive: could not extract %s from %s (%s)",
+                arc_name, os.path.basename(arc_path), exc,
+            )
+            return False
+
+    def _open_block_data(self, out_stem: str, block_k: int):
+        """
+        Context-manager helper that yields a filesystem path to block ``k``'s
+        data file, materializing it into a temp file when only the archive
+        copy is available.  The temp file is removed on exit.  Yields None
+        if neither legacy nor archive copy exists.
+        """
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _ctx():
+            legacy = os.path.join(
+                self.simfolder, "conf.%s_blk%d.data" % (out_stem, block_k),
+            )
+            if os.path.exists(legacy):
+                yield legacy
+                return
+            arc_path = self._blocks_archive_path(out_stem)
+            if not os.path.exists(arc_path):
+                yield None
+                return
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                prefix="blk_", suffix=".data", dir=self.simfolder,
+            )
+            os.close(tmp_fd)
+            ok = self._extract_block_data(out_stem, block_k, tmp_path)
+            try:
+                yield tmp_path if ok else None
+            finally:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+        return _ctx()
+
+    def _cleanup_intermediate_files(self) -> None:
+        """
+        Delete diagnostic-only intermediate files that are no longer needed
+        once all sweeps have completed and the response-function plots are
+        on disk.  The free-energy integration only reads ``ts.*.dat`` and
+        the canonical ``conf.ts.<sweep>_<iter>.data`` files; everything
+        removed here is a byproduct of transition detection / recovery
+        whose final consumer (the PNG plot) has already run.
+
+        Currently removed:
+
+        * ``ts.*_full.dat`` — full pre-truncation forward data preserved
+          by ``_post_forward_recovery`` so the plot can span the complete
+          temperature range.  Once the PNG is written, this file is no
+          longer used.
+        * ``conf.ts.*_blocks.zip`` — per-sweep block-checkpoint archives.
+          Their two consumers (post-hoc recovery during the run, and the
+          q12 panel of the response plot) have both completed by the time
+          this method is called.
+
+        All deletions are best-effort; any failure is logged at debug-level
+        and ignored — leftover diagnostic files never affect correctness.
+        """
+        patterns = (
+            "ts.*_full.dat",
+            "conf.ts.*_blocks.zip",
+        )
+        removed = []
+        for pat in patterns:
+            for fpath in glob.glob(os.path.join(self.simfolder, pat)):
+                try:
+                    os.remove(fpath)
+                    removed.append(os.path.basename(fpath))
+                except OSError as exc:
+                    self.logger.debug(
+                        "cleanup: could not remove %s (%s)",
+                        os.path.basename(fpath), exc,
+                    )
+        if removed:
+            self.logger.info(
+                "cleanup: removed %d intermediate file(s) (%s)",
+                len(removed), ", ".join(removed),
+            )
+
     def _truncate_ts_file(self, fpath: str, n_data_rows: int) -> int:
         """
         Keep only the first ``n_data_rows`` data rows of ``fpath`` (rewriting
@@ -2381,15 +2562,7 @@ class Phase:
 
         safe_T    = blocks[safe_k]["temp"]
         safe_step = blocks[safe_k]["step"]
-        chk_name  = "conf.ts.forward_%d_blk%d.data" % (iteration, safe_k)
-        chk_path  = os.path.join(self.simfolder, chk_name)
-
-        if not os.path.exists(chk_path):
-            self.logger.error(
-                "post-forward recovery: expected checkpoint %s not found — "
-                "cannot recover", chk_path,
-            )
-            return
+        out_stem  = "ts.forward_%d" % iteration
 
         # 1. Preserve a full copy for the response-function plot before
         #    truncating so the plot can show the complete temperature range.
@@ -2410,26 +2583,28 @@ class Phase:
             os.path.basename(out), kept, safe_T, safe_k, n_blocks,
         )
 
-        # 2. Promote the checkpoint to the canonical forward-end configuration
-        #    so the backward sweep loads the safe-boundary state instead of
-        #    the (post-transition) end state of the full forward sweep.
+        # 3. Promote the safe-block checkpoint to the canonical forward-end
+        #    configuration so the backward sweep loads the safe-boundary
+        #    state instead of the (post-transition) end state of the full
+        #    forward sweep.  The checkpoint is read from the per-sweep block
+        #    archive (or a legacy standalone .data file, for backward
+        #    compatibility); see _archive_block_data / _extract_block_data.
         target_conf = os.path.join(
             self.simfolder, "conf.ts.forward_%d.data" % iteration
         )
-        try:
-            shutil.copy(chk_path, target_conf)
-            self.logger.warning(
-                "post-forward recovery: copied %s -> %s",
-                os.path.basename(chk_path), os.path.basename(target_conf),
-            )
-        except Exception as cp_exc:
+        if not self._extract_block_data(out_stem, safe_k, target_conf):
             self.logger.error(
-                "post-forward recovery: failed to copy checkpoint to %s: %s",
-                target_conf, cp_exc,
+                "post-forward recovery: expected checkpoint blk%d for "
+                "sweep %s not found in archive or on disk — cannot recover",
+                safe_k, out_stem,
             )
             return
+        self.logger.warning(
+            "post-forward recovery: extracted block %d -> %s",
+            safe_k, os.path.basename(target_conf),
+        )
 
-        # 3. Reduce the calc target so the backward sweep covers the same
+        # 4. Reduce the calc target so the backward sweep covers the same
         #    (now reduced) lambda range and produces the same number of
         #    rows as the truncated forward file.
         old_tf = self.calc._temperature_stop
@@ -2525,6 +2700,13 @@ class Phase:
 
         # Always plot the response functions so the user can inspect them.
         self._plot_ts_response_functions()
+
+        # The block-checkpoint archives and the _full forward copies are
+        # diagnostic byproducts of the transition detector.  Their last
+        # consumers (recovery during the run + the response-function PNG
+        # just written above) have both completed, so delete them now to
+        # keep the simulation folder tidy and avoid HPC quota pressure.
+        self._cleanup_intermediate_files()
 
         res, ediss = integrate_rs(
             self.simfolder,
