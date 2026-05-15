@@ -616,7 +616,7 @@ def detect_ts_transitions(
     natoms: int,
     window_smooth: int = 500,
     window_fluct: int = 1000,
-    peak_threshold: float = 8.0,
+    peak_threshold: float = 12.0,
     baseline_frac: float = 0.2,
     min_signal_agreement: int = 2,
     min_descent_frac: float = 0.3,
@@ -645,9 +645,13 @@ def detect_ts_transitions(
     peak_threshold       : flag when modified Z-score of the peak exceeds this
                            value, where mod_z = (peak - median) / (1.4826 * MAD)
                            computed over all valid data accumulated so far.
-                           Default 8.0 cleanly separates real transitions
-                           (mod_z > 25) from natural Cp growth in a single
-                           solid window (mod_z ~ 2-7).
+                           Default 12.0 cleanly separates real transitions
+                           (mod_z > 25 on Cu EAM melting) from natural Cp
+                           growth in a single solid window (mod_z ~ 2-7).
+                           Matches the user-facing default of the
+                           ``phase_transition_detection.peak_threshold``
+                           input field; lower (~6) for small (< 500 atom)
+                           cells where variance signals are noisier.
     baseline_frac        : (kept for backward compatibility; unused with the
                            robust median+MAD criterion)
     min_signal_agreement : signals (Cp, kappa_T, alpha_P) that must peak simultaneously
