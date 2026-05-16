@@ -1716,6 +1716,18 @@ def _eval_calphad_surface_at(surface, x, T):
     return G_lin + G_ideal + G_xs
 
 
+def _phase_is_liquid(phase_name):
+    """Heuristic: does this user-supplied phase name refer to a liquid?
+
+    Used by :meth:`PhaseDiagram.to_tdb` to decide which full-range phases
+    skip the SGTE-conventional ``(M):(VA)`` 2-sublattice form (vacancy
+    interstitial sublattice), which is universal for crystalline solid
+    solutions but never used for liquids.
+    """
+    n = str(phase_name).lower().strip()
+    return n in {"l", "liq", "lqd", "liquid"} or n.startswith("liq")
+
+
 def _tdb_phase_name(name):
     phase_name = re.sub(r"[^0-9A-Za-z_]+", "_", str(name).upper()).strip("_")
     if not phase_name:
@@ -3773,6 +3785,8 @@ class PhaseDiagram:
         T_min=298.15,
         T_max=None,
         full_range_ridge_lambda=100.0,
+        compound_anti_site_penalty=80000.0,
+        compound_pure_sublattice_penalty=80000.0,
     ):
         """
         Write a TDB file representing this phase diagram.
@@ -3922,13 +3936,16 @@ class PhaseDiagram:
                 )
                 records.append({"name": ph, "kind": "solution", "fit": linear_fit})
             else:
-                # 1-sublattice (A,B) RK like fcc/lqd, but with the hard
-                # inequality G_phase(x, T) >= G_host(x, T) enforced at sample
-                # points outside the data window.  This mirrors calphy's
-                # F(x)-on-windows mental model: inside the window the data
-                # drives the fit, outside the phase can never become the
-                # global minimum because we forbid it.  Solved as a
-                # linearly-constrained QP via SLSQP.
+                # 1-sublattice (A,B) RK with hard inequality
+                # G_phase(x, T) >= G_host(x, T) enforced outside the data
+                # composition window (SLSQP-bounded fit).  This gives a
+                # visible solubility dome inside the window while
+                # preventing the phase from being spuriously stable far
+                # from its real composition range.  The 2-sublattice CEF
+                # alternative with anti-site penalties — the SGTE standard
+                # — collapses to a near-line-compound appearance with
+                # default penalties, losing the solubility window that
+                # calphy data captures.
                 points = _phase_data_as_points(self.df, ph)
                 fit = _fit_limited_range_surface_bounded(
                     points,
@@ -4047,12 +4064,54 @@ class PhaseDiagram:
             # lin starts with +/- so concat is fine
             return f"+{ghser_name}#{lin}"
 
+        # Per-phase species suffix used in PARAMETER blocks:
+        #   solid solution     → "EL:VA"  (e.g. AU:VA, A,B:VA for L)
+        #   liquid             → "EL"
+        #   line compound      → "A:B"   (fixed stoichiometry)
+        #   CEF compound       → "A:B" etc., handled per-endmember below
+        def _is_solid_solution(rec):
+            return (
+                rec["kind"] == "solution"
+                and not _phase_is_liquid(rec["name"])
+            )
+
         # Phase declarations
         for rec in records:
             tdb_name = _tdb_phase_name(rec["name"])
-            if rec["kind"] in ("solution", "limited_range"):
-                lines.append(f"PHASE {tdb_name} % 1 1.0 !")
-                lines.append(f"CONSTITUENT {tdb_name} : {el_a},{el_b} : !")
+            if rec["kind"] == "solution":
+                if _is_solid_solution(rec):
+                    # Solid solution: standard (M):(VA) 2-sublattice form
+                    # (the universal SGTE/CALPHAD convention for FCC/BCC/HCP
+                    # solid solutions, even when no interstitial chemistry
+                    # is being modelled — the VA second sublattice is just
+                    # full).
+                    lines.append(f"PHASE {tdb_name} % 2 1.0 1.0 !")
+                    lines.append(
+                        f"CONSTITUENT {tdb_name} : {el_a},{el_b} : VA : !"
+                    )
+                else:
+                    # Liquid: 1-sublattice as in COST507/solders.tdb.
+                    lines.append(f"PHASE {tdb_name} % 1 1.0 !")
+                    lines.append(f"CONSTITUENT {tdb_name} : {el_a},{el_b} : !")
+            elif rec["kind"] == "limited_range":
+                # Limited-range ordered/compound phases are written as
+                # solid-solution-style 1-sublattice (A,B):(VA) — same
+                # convention as the host phase, just with L_k fit only
+                # inside the data window (with the bounded SLSQP fit).
+                lines.append(f"PHASE {tdb_name} % 2 1.0 1.0 !")
+                lines.append(
+                    f"CONSTITUENT {tdb_name} : {el_a},{el_b} : VA : !"
+                )
+            elif rec["kind"] == "compound_2sl":
+                # Legacy code path kept for backwards-compatibility; no
+                # currently-supported `_fit_compound_two_sublattice` flow
+                # produces records of this kind under the default to_tdb
+                # configuration.
+                m, n = compound_stoich[rec["name"]]
+                lines.append(f"PHASE {tdb_name} % 2 {m} {n} !")
+                lines.append(
+                    f"CONSTITUENT {tdb_name} : {el_a},{el_b} : {el_a},{el_b} : !"
+                )
             else:  # line_compound
                 m, n = compound_stoich[rec["name"]]
                 lines.append(f"PHASE {tdb_name} % 2 {m} {n} !")
@@ -4065,28 +4124,36 @@ class PhaseDiagram:
             tdb_name = _tdb_phase_name(rec["name"])
             fit = rec["fit"]
             if rec["kind"] == "solution":
-                # Host phase: pure G == GHSER (no offset), so just
-                # reference it.  Non-host phases keep their independent
-                # 6-term polynomial (the linear-offset approximation lost
-                # too much curvature for the noisy MD data).
+                # Choose the species suffix (with or without `:VA`) based on
+                # whether the phase is a solid solution; the L-parameter
+                # interaction string is similarly suffixed.
+                if _is_solid_solution(rec):
+                    spec_a = f"{el_a}:VA"
+                    spec_b = f"{el_b}:VA"
+                    interaction = f"{el_a},{el_b}:VA"
+                else:
+                    spec_a = el_a
+                    spec_b = el_b
+                    interaction = f"{el_a},{el_b}"
+
                 if rec["name"] == host_phase:
                     lines.append(
-                        f"PARAMETER G({tdb_name},{el_a};0) {T_min:.2f} "
+                        f"PARAMETER G({tdb_name},{spec_a};0) {T_min:.2f} "
                         f"+{ghser_name_a}#; {T_max:.2f} N !"
                     )
                     lines.append(
-                        f"PARAMETER G({tdb_name},{el_b};0) {T_min:.2f} "
+                        f"PARAMETER G({tdb_name},{spec_b};0) {T_min:.2f} "
                         f"+{ghser_name_b}#; {T_max:.2f} N !"
                     )
                 else:
                     cA = np.asarray(fit["coeffs_A"], dtype=float) * EV_TO_J_MOL
                     cB = np.asarray(fit["coeffs_B"], dtype=float) * EV_TO_J_MOL
                     lines.append(
-                        f"PARAMETER G({tdb_name},{el_a};0) {T_min:.2f} "
+                        f"PARAMETER G({tdb_name},{spec_a};0) {T_min:.2f} "
                         f"{_format_tdb_expr_poly6(cA)}; {T_max:.2f} N !"
                     )
                     lines.append(
-                        f"PARAMETER G({tdb_name},{el_b};0) {T_min:.2f} "
+                        f"PARAMETER G({tdb_name},{spec_b};0) {T_min:.2f} "
                         f"{_format_tdb_expr_poly6(cB)}; {T_max:.2f} N !"
                     )
                 L = np.asarray(fit["L_coeffs"], dtype=float)
@@ -4098,18 +4165,19 @@ class PhaseDiagram:
                         a, b = L[k, 0] * EV_TO_J_MOL, L[k, 1] * EV_TO_J_MOL
                         expr = _format_tdb_expr_linear(a, b)
                     lines.append(
-                        f"PARAMETER L({tdb_name},{el_a},{el_b};{k}) "
+                        f"PARAMETER L({tdb_name},{interaction};{k}) "
                         f"{T_min:.2f} {expr}; {T_max:.2f} N !"
                     )
             elif rec["kind"] == "limited_range":
-                # Pure-element G is identical to the host's, so just
-                # reference GHSER with no offset.
+                # 1-sublattice (A,B):VA, sharing GHSER with the host
+                # (the bounded fit set coeffs_A/B equal to the host's).
+                # L_k(T) is linear in T from the SLSQP-bounded fit.
                 lines.append(
-                    f"PARAMETER G({tdb_name},{el_a};0) {T_min:.2f} "
+                    f"PARAMETER G({tdb_name},{el_a}:VA;0) {T_min:.2f} "
                     f"+{ghser_name_a}#; {T_max:.2f} N !"
                 )
                 lines.append(
-                    f"PARAMETER G({tdb_name},{el_b};0) {T_min:.2f} "
+                    f"PARAMETER G({tdb_name},{el_b}:VA;0) {T_min:.2f} "
                     f"+{ghser_name_b}#; {T_max:.2f} N !"
                 )
                 L = np.asarray(fit["L_coeffs"], dtype=float)
@@ -4118,9 +4186,86 @@ class PhaseDiagram:
                     b = L[k, 1] * EV_TO_J_MOL
                     expr = _format_tdb_expr_linear(a, b)
                     lines.append(
-                        f"PARAMETER L({tdb_name},{el_a},{el_b};{k}) "
+                        f"PARAMETER L({tdb_name},{el_a},{el_b}:VA;{k}) "
                         f"{T_min:.2f} {expr}; {T_max:.2f} N !"
                     )
+            elif rec["kind"] == "compound_2sl":
+                # SGTE-style CEF endmembers, written as GHSER-referenced
+                # formation energies.  See solders.tdb DO3 (Cu3Sn) lines
+                # 356-368 for the canonical pattern.
+                #
+                # Stoichiometric A:B endmember (m A's on sublattice 1,
+                # n B's on sublattice 2):
+                #   G(A:B) = m·GHSER_A# + n·GHSER_B# + (a + b·T)
+                # where (a + b·T) is the formation energy per formula
+                # (data fit minus the GHSER reference, refit linearly).
+                #
+                # Anti-site B:A (n A's + m B's per formula, swapped sub-
+                # lattice occupation): same formation energy plus
+                # anti-site penalty, referenced to the swapped pure mix.
+                #
+                # Pure A:A and B:B (host-on-both-sublattices) endmembers
+                # carry (m+n)·GHSER plus a large pure-sublattice penalty
+                # so the CEF can never lower G by disordering away from
+                # the stoichiometric column.
+                m, n = compound_stoich[rec["name"]]
+                N = m + n
+                # Convert the stoichiometric AB data fit (in J/mol-formula)
+                # into a GHSER-referenced linear formation energy: fit
+                # G_data_per_formula(T) - (m·GHSER_A(T) + n·GHSER_B(T))
+                # ≈ a + b·T at a handful of sample temperatures.
+                a_AB_total, b_AB_total = fit["theta_AB"]  # per formula
+                T_samples = np.linspace(T_min, T_max, 64)
+                G_data_per_formula = a_AB_total + b_AB_total * T_samples
+                G_ref_AB = (
+                    m * _eval_calphad_poly6(host_fit["coeffs_A"], T_samples)
+                    + n * _eval_calphad_poly6(host_fit["coeffs_B"], T_samples)
+                ) * EV_TO_J_MOL
+                form_AB = G_data_per_formula - G_ref_AB
+                design = np.column_stack([np.ones_like(T_samples), T_samples])
+                (a_form, b_form), *_ = np.linalg.lstsq(
+                    design, form_AB, rcond=None
+                )
+
+                pure_penalty = float(fit["pure_sublattice_penalty"])
+                antisite_penalty = float(fit["anti_site_penalty"])
+
+                def _coef_ghser(count, ghser_name):
+                    # Returns "+m*GHSER#" / "+GHSER#" depending on count.
+                    if count == 1:
+                        return f"+{ghser_name}#"
+                    return f"+{count}*{ghser_name}#"
+
+                # A:A — pure A on both sublattices.
+                lines.append(
+                    f"PARAMETER G({tdb_name},{el_a}:{el_a};0) {T_min:.2f} "
+                    f"{_coef_ghser(N, ghser_name_a)}"
+                    f"{_format_tdb_expr_linear(pure_penalty, 0.0)}; "
+                    f"{T_max:.2f} N !"
+                )
+                # A:B — stoichiometric column.
+                lines.append(
+                    f"PARAMETER G({tdb_name},{el_a}:{el_b};0) {T_min:.2f} "
+                    f"{_coef_ghser(m, ghser_name_a)}"
+                    f"{_coef_ghser(n, ghser_name_b)}"
+                    f"{_format_tdb_expr_linear(float(a_form), float(b_form))}; "
+                    f"{T_max:.2f} N !"
+                )
+                # B:A — anti-site column.
+                lines.append(
+                    f"PARAMETER G({tdb_name},{el_b}:{el_a};0) {T_min:.2f} "
+                    f"{_coef_ghser(n, ghser_name_a)}"
+                    f"{_coef_ghser(m, ghser_name_b)}"
+                    f"{_format_tdb_expr_linear(float(a_form) + antisite_penalty, float(b_form))}; "
+                    f"{T_max:.2f} N !"
+                )
+                # B:B — pure B on both sublattices.
+                lines.append(
+                    f"PARAMETER G({tdb_name},{el_b}:{el_b};0) {T_min:.2f} "
+                    f"{_coef_ghser(N, ghser_name_b)}"
+                    f"{_format_tdb_expr_linear(pure_penalty, 0.0)}; "
+                    f"{T_max:.2f} N !"
+                )
             else:  # line_compound
                 m, n = compound_stoich[rec["name"]]
                 N = m + n
@@ -4287,11 +4432,14 @@ class PhaseDiagram:
                     compound_2sl_params.setdefault(ph, {})[key] = coeffs
                 continue
 
-            # solution and limited_range both use the same 1-sublattice (A,B)
-            # storage shape — they parse identically.
+            # solution and limited_range both store as 1-sublattice (A,B);
+            # strip the optional ":VA" suffix that solid solutions carry.
             entry = solutions.setdefault(ph, {"L": {}})
+            spec = species_str.strip()
+            if spec.upper().endswith(":VA"):
+                spec = spec[: -len(":VA")]
             if ptype == "G":
-                target = species_str.strip()
+                target = spec.strip()
                 if target.upper() == el_a:
                     entry["A_poly6"] = coeffs
                 elif target.upper() == el_b:
