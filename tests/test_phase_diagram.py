@@ -468,33 +468,152 @@ def test_phase_diagram_repr_after_load(tmp_path):
     assert "not calculated" in repr(loaded_uncalc)
 
 
-def test_phase_diagram_to_tdb_not_implemented(tmp_path):
+# ---------------------------------------------------------------------------
+# Helpers for to_tdb / from_tdb tests
+# ---------------------------------------------------------------------------
+
+def _make_tdb_phase_diagram():
+    """
+    Build a minimal PhaseDiagram with enough synthetic Au-Cu data for
+    :meth:`PhaseDiagram.build_calphad_surface` (and hence
+    :meth:`to_tdb`) to fit without touching real MD output.
+
+    Two full-range phases (fcc and lqd) plus one limited-range ordered
+    phase (aucu in the window x_Cu ∈ [0.45, 0.55]), each populated with
+    multi-T G(x, T) arrays at a handful of compositions including the
+    pure endpoints required by ``build_calphad_surface``.
+    """
+    import numpy as np
+    import pandas as _pd
     from calphy.phase_diagram import PhaseDiagram
 
     obj = object.__new__(PhaseDiagram)
     obj.reference_element = "Cu"
-    obj.phases = ["fcc"]
-    obj.composition_intervals = {"fcc": (0.0, 1.0)}
+    obj.phases = ["fcc", "lqd", "aucu"]
+    obj.composition_intervals = {
+        "fcc": (0.0, 1.0),
+        "lqd": (0.0, 1.0),
+        "aucu": (0.45, 0.55),
+    }
 
-    with pytest.raises(NotImplementedError):
-        obj.to_tdb(tmp_path / "aucu.tdb", elements=("Au", "Cu"))
+    T = np.linspace(400.0, 1400.0, 11)
+    rows = []
+
+    # Full-range phases: pure endpoints + several interior compositions.
+    # G(x, T) chosen to give:
+    #   - fcc more stable at low T
+    #   - lqd more stable at high T (crosses fcc near ~1200 K at endpoints)
+    #   - a mild attractive RK excess so the fit produces non-trivial L_k.
+    for ph, base, slope, l0 in (
+        ("fcc", -4.5, -3.0e-4, -0.05),
+        ("lqd", -4.4, -4.0e-4, -0.20),
+    ):
+        for x in [0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0]:
+            G = base + slope * T + l0 * x * (1.0 - x)
+            rows.append({
+                "phase": ph,
+                "composition": float(x),
+                "temperature": T.copy(),
+                "free_energy": G.copy(),
+                "status": "True",
+                "is_reference": x in (0.0, 1.0),
+            })
+
+    # Limited-range ordered phase: data only inside its composition window.
+    # Slightly more stable than fcc at x ≈ 0.5 to give the bounded fit
+    # something to anchor onto.
+    for x in [0.45, 0.475, 0.5, 0.525, 0.55]:
+        G = -4.5 - 3.0e-4 * T - 0.07 * x * (1.0 - x)
+        rows.append({
+            "phase": "aucu",
+            "composition": float(x),
+            "temperature": T.copy(),
+            "free_energy": G.copy(),
+            "status": "True",
+            "is_reference": False,
+        })
+
+    obj.df = _pd.DataFrame(rows)
+    obj.tangents = None
+    obj.temperatures = None
+    obj.tangent_types = None
+    obj._calc_kwargs = {}
+    obj._calphad_surfaces = {}
+    return obj
 
 
-def test_phase_diagram_to_tdb_not_implemented_no_phases(tmp_path):
+def test_phase_diagram_to_tdb_writes_sgte_structure(tmp_path):
+    """to_tdb emits the expected SGTE header, FUNCTION and PHASE sections."""
     from calphy.phase_diagram import PhaseDiagram
 
-    obj = object.__new__(PhaseDiagram)
-    obj.reference_element = "Cu"
-    obj.phases = ["fcc"]
-    obj.composition_intervals = {"fcc": (0.0, 1.0)}
+    pd_obj = _make_tdb_phase_diagram()
+    out = tmp_path / "synthetic.tdb"
+    pd_obj.to_tdb(str(out), elements=("Au", "Cu"))
 
-    with pytest.raises(NotImplementedError):
-        obj.to_tdb(tmp_path / "missing.tdb", elements=("Au", "Cu"))
+    assert out.exists() and out.stat().st_size > 0
+    text = out.read_text()
+
+    # Header conventions
+    assert "TEMP_LIM" in text
+    assert "DEFINE_SYSTEM_DEFAULT" in text
+    assert "TYPE_DEFINITION % SEQ" in text
+    assert "$ CALPHY_TDB_METADATA" in text
+
+    # GHSER FUNCTION blocks emitted once per element
+    assert "FUNCTION GHSERAU" in text
+    assert "FUNCTION GHSERCU" in text
+
+    # Phase declarations: solid solutions use (M):VA, liquid stays 1-sub
+    assert "PHASE FCC % 2 1.0 1.0" in text
+    assert "PHASE LQD % 1 1.0" in text
+    assert "PHASE AUCU % 2 1.0 1.0" in text
+
+    # Pure-element G of the host phase references GHSER
+    assert "+GHSERAU#" in text
+    assert "+GHSERCU#" in text
 
 
-def test_phase_diagram_from_tdb_not_implemented(tmp_path):
+def test_phase_diagram_from_tdb_roundtrips_metadata(tmp_path):
+    """from_tdb recovers phases, composition intervals and surfaces."""
     from calphy.phase_diagram import PhaseDiagram
 
-    with pytest.raises(NotImplementedError):
-        PhaseDiagram.from_tdb(tmp_path / "simple.tdb")
+    pd_obj = _make_tdb_phase_diagram()
+    out = tmp_path / "synthetic.tdb"
+    pd_obj.to_tdb(str(out), elements=("Au", "Cu"))
+
+    loaded = PhaseDiagram.from_tdb(str(out))
+
+    assert loaded.reference_element == "Cu"
+    assert sorted(loaded.phases) == ["aucu", "fcc", "lqd"]
+    assert loaded.composition_intervals["fcc"] == (0.0, 1.0)
+    assert loaded.composition_intervals["lqd"] == (0.0, 1.0)
+    assert loaded.composition_intervals["aucu"] == (0.45, 0.55)
+    # Surfaces are present for solution + limited-range phases
+    assert "fcc" in loaded._calphad_surfaces
+    assert "lqd" in loaded._calphad_surfaces
+    assert "aucu" in loaded._calphad_surfaces
+    # df is empty by design — raw F(x,T) data is not stored in the TDB
+    assert loaded.df.shape[0] == 0
+
+
+def test_phase_diagram_from_tdb_missing_metadata(tmp_path):
+    """from_tdb rejects a TDB that lacks the $ CALPHY_TDB_METADATA header."""
+    from calphy.phase_diagram import PhaseDiagram
+
+    bare = tmp_path / "bare.tdb"
+    bare.write_text(
+        "TYPE_DEFINITION % SEQ *!\n"
+        "ELEMENT AU FCC_A1 0.0 0.0 0.0 !\n"
+        "PHASE FCC % 1 1.0 !\n"
+    )
+    with pytest.raises(ValueError, match="CALPHY_TDB_METADATA"):
+        PhaseDiagram.from_tdb(str(bare))
+
+
+def test_phase_diagram_from_tdb_missing_file(tmp_path):
+    """from_tdb raises FileNotFoundError for a non-existent path."""
+    from calphy.phase_diagram import PhaseDiagram
+
+    with pytest.raises(FileNotFoundError):
+        PhaseDiagram.from_tdb(str(tmp_path / "does_not_exist.tdb"))
 
