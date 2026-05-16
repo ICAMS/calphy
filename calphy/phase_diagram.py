@@ -3789,31 +3789,39 @@ class PhaseDiagram:
         compound_pure_sublattice_penalty=80000.0,
     ):
         """
-        Write a TDB file representing this phase diagram.
+        Write a TDB file representing this phase diagram in SGTE/CALPHAD
+        convention so pycalphad (or Thermo-Calc / OpenCalphad) can read it.
 
-        Every phase is written as a 1-sublattice ``(A,B)`` substitutional
-        solution with a Redlich-Kister excess (composition and temperature
-        dependent), *except* those listed in ``line_compounds`` which are
-        written as fixed-stoichiometry ``A:B`` 2-sublattice compounds.
+        TDB structure
+        -------------
+        - Header: ``TEMP_LIM``, ``DEFINE_SYSTEM_DEFAULT``,
+          ``DEFAULT_COMMAND DEFINE_SYS_ELEMENT VA``, ``TYPE_DEFINITION``.
+        - ``FUNCTION GHSER<EL>`` blocks for each element, taken from the
+          *host* phase's pure-element 6-term polynomial.
+        - The host phase (full-range solid solution containing both pure
+          endpoints; e.g. ``fcc``) and limited-range phases are written as
+          2-sublattice ``(A,B):VA`` solid solutions referencing GHSER
+          (the universal SGTE convention seen in COST507/solders.tdb).
+        - Non-host full-range phases (e.g. ``lqd``) keep an independent
+          six-term polynomial for their pure-element G — the linear
+          ``GHSER + a + b·T`` offset is too lossy for noisy MD liquid data
+          (drops melting points by hundreds of K).
+        - Phases listed in ``line_compounds`` are 2-sublattice ``A:B``
+          with a single 6-term polynomial G(T) per formula unit.
+        - All Redlich-Kister L parameters are written as ``a + b·T``
+          (standard SGTE convention; see :ref:`LIMITATIONS` below).
 
-        Full-range phases (``composition_intervals[ph] = (0, 1)``) use the
-        calphad surface from :meth:`build_calphad_surface` directly.  Phases
-        with limited solubility share their pure-element ``G_A(T)`` / ``G_B(T)``
-        with a full-range *host* phase (typically ``fcc``) and only refit the
-        Redlich-Kister excess parameters in their composition window
-        (see :func:`_fit_limited_range_surface`).  This keeps the reference
-        state consistent across phases so pycalphad can compare them.
-
-        A JSON metadata comment (``$ CALPHY_TDB_METADATA``) is embedded so
-        :meth:`from_tdb` can round-trip the file losslessly.
+        A JSON metadata comment (``$ CALPHY_TDB_METADATA``) is embedded
+        in the header so :meth:`from_tdb` can recover phase classification
+        and stoichiometry without trying to infer it from the TDB content.
 
         Parameters
         ----------
         filename : str
             Output TDB path.
         elements : tuple of (A, B), optional
-            Binary element pair.  ``B`` should be ``reference_element``.  If
-            omitted, the pair is inferred from phase names.
+            Binary element pair.  ``B`` should be ``reference_element``.
+            If omitted, the pair is inferred from phase names.
         line_compounds : list of str, optional
             Phase names to treat as line compounds (single stoichiometry,
             single G(T) polynomial).  Default: ``[]``.
@@ -3821,7 +3829,63 @@ class PhaseDiagram:
             Number of Redlich-Kister terms (default 3).
         T_min, T_max : float
             Temperature validity range written in PARAMETER blocks.
-            ``T_max`` defaults to the max temperature found in ``self.df``.
+            ``T_max`` defaults to the max temperature found in ``self.df``
+            — pycalphad extrapolates blindly beyond this, so leaving it
+            tight to the actual MD range is the conservative choice.
+        full_range_ridge_lambda : float
+            Tikhonov ridge weight used in refitting full-range solution
+            phases' L_k(T) as ``a + b·T``.  Plain LSQ on noisy liquid data
+            gives unstable huge cancelling magnitudes that produce wavy
+            liquidi and spurious miscibility gaps on extrapolation; the
+            ridge bounds the magnitudes.  Default ``100`` — increase for
+            smoother (and less data-faithful) L; decrease for more
+            data-faithful (and possibly less stable) L.
+        compound_anti_site_penalty, compound_pure_sublattice_penalty : float
+            Reserved for the 2-sublattice CEF (A,B):(A,B) compound code
+            path (``_fit_compound_two_sublattice``).  Not exercised under
+            the current default settings — limited-range phases use the
+            1-sublattice bounded fit instead.
+
+        Limitations and caveats
+        -----------------------
+        The TDB is a *lossy projection* of the calphy MD data:
+
+        1. **L_k refit is regularised.** Full-range solution phases'
+           ``L_k(T)`` from :meth:`build_calphad_surface` is a 6-term
+           polynomial in T.  Before writing, those L_k are refit as
+           ``a + b·T`` with Tikhonov ridge regularisation
+           (``full_range_ridge_lambda``).  This trades data-fit accuracy
+           (inside the calphy T range) for smoother T extrapolation and
+           matches the standard SGTE convention for L parameters.  In
+           practice the per-point ``G(x,T)`` drift is O(1 mJ/mol) for
+           well-sampled phases (FCC) and up to ~40 meV/atom for noisy
+           ones (LQD).  Diagrams plotted within the TDB's T validity
+           range remain qualitatively correct.
+
+        2. **Limited-range phases use a bounded SLSQP fit**, not the
+           original ``build_calphad_surface`` (which has no surface for
+           narrow phases anyway).  The bounded fit shares the host's
+           pure-element G_A/G_B and fits L_k(T) only to data inside the
+           composition window, with the constraint
+           ``G_phase(x,T) ≥ G_host(x,T)`` enforced at sample points
+           *outside* the window to prevent the polynomial from making the
+           phase spuriously stable far from its data.  This usually
+           produces narrower stability windows in the pycalphad diagram
+           than calphy's own per-T polynomial common-tangent gives.
+
+        3. **Plot only inside the data T range.**  ``T_max`` defaults to
+           the MD data's actual maximum; extrapolating beyond — even by
+           100 K — frequently exposes wild 6-term polynomial tails
+           (visible as spurious LQD/FCC lenses).  Set the plot range to
+           ``T_max`` or below.
+
+        4. **The raw F(x,T) data is not stored.**  Use :meth:`to_parquet`
+           if you need a lossless round-trip.
+
+        5. **Pycalphad's TDB parser rejects inline ``REF:`` tags** in
+           PARAMETER and FUNCTION blocks (despite Thermo-Calc accepting
+           them in COST507 etc.), so traceability is emitted as
+           ``$ REF: calphy-MD-<date>`` comment lines instead.
         """
         line_compounds = list(line_compounds or [])
         for ph in line_compounds:
@@ -4285,12 +4349,19 @@ class PhaseDiagram:
         Load a :class:`PhaseDiagram` from a TDB file written by
         :meth:`to_tdb`.
 
-        Round-trips the file using the embedded ``$ CALPHY_TDB_METADATA``
-        JSON header and the PARAMETER expressions.  Solution and
-        limited-range phases are stored in ``_calphad_surfaces``;
-        line compounds are stored in ``_line_compound_fits`` (mirrors the
-        output of :func:`_fit_line_compound_phase`).  Units are converted
-        from J/mol-atoms back to eV/atom.
+        Parses the file using the embedded ``$ CALPHY_TDB_METADATA`` JSON
+        header, the ``FUNCTION`` blocks (GHSER and any other inlined
+        functions), and the ``PARAMETER`` expressions.  Solution and
+        limited-range phases are stored in ``_calphad_surfaces``; line
+        compounds are stored in ``_line_compound_fits`` (mirrors the
+        output of :func:`_fit_line_compound_phase`).  Legacy CEF
+        compounds are stored in ``_compound_2sl_fits`` for backwards
+        compatibility.  Units are converted from J/mol-atoms back to
+        eV/atom.
+
+        The returned object can drive :meth:`calculate` (with
+        ``calphad_surface=True``) and :meth:`plot` because those code
+        paths only need ``_calphad_surfaces``, not raw data.
 
         Parameters
         ----------
@@ -4300,6 +4371,48 @@ class PhaseDiagram:
         Returns
         -------
         PhaseDiagram
+
+        Limitations and caveats
+        -----------------------
+        1. **Requires the ``$ CALPHY_TDB_METADATA`` header.**  Arbitrary
+           TDBs from external sources (COST507, solders.tdb, etc.) are
+           *not* supported — phase classification (solution / line
+           compound / limited range / CEF), stoichiometries and the host
+           phase identity all come from that JSON header.  Raises
+           ``ValueError`` if the header is missing.
+
+        2. **The returned ``df`` is empty.**  The raw F(x,T) MD data is
+           not stored in the TDB and cannot be recovered.  Methods that
+           need the dataframe will fail or produce empty output:
+
+           - :meth:`plot_data_vs_fit`
+           - :meth:`plot_convergence`
+           - :meth:`plot_free_energy` with ``show_data=True``
+           - :meth:`plot_free_energy_mixing` with ``show_data=True``
+           - The legacy non-surface path of :meth:`calculate`
+             (``calphad_surface=False``)
+
+           Use :meth:`from_parquet` if you need the raw data.
+
+        3. **The round-trip is lossy.**  :meth:`to_tdb` applies a
+           Tikhonov-regularised linear-T refit to full-range solution
+           phases' L_k coefficients, so the surfaces recovered here are
+           the *regularised* versions, not the original 6-term fits
+           returned by :meth:`build_calphad_surface`.  Typical per-point
+           ``G(x, T)`` drift inside the data T range is O(1 mJ/mol) for
+           solid solutions and up to ~40 meV/atom for noisy liquids.
+
+        4. **Limited-range phase diagrams differ from the original.**
+           When the source ``PhaseDiagram`` had raw data,
+           :meth:`calculate` for narrow phases fell back to per-T
+           polynomial fits of the data.  Without raw data, the loaded
+           object uses the bounded-fit surface only — producing somewhat
+           narrower / differently-shaped solubility windows in the
+           pycalphad or calphy-rendered diagram than the original.
+
+        5. **Composition intervals are preserved verbatim** from the
+           metadata header, even though the polynomial fit may not
+           perfectly respect them outside the constrained sample points.
         """
         with open(filename) as f:
             text = f.read()
