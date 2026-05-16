@@ -2494,42 +2494,49 @@ def _fit_solution_with_ghser_reference(
 
 def _fit_solution_linear_L_regularized(
     phase_data, host_surface, rk_order=3, lam=1.0,
+    fit_pure_element_offsets=False,
 ):
     """
     Refit L_k(T) = a + b·T for a full-range solution phase, using ridge
     regularisation to prevent the unstable huge-cancelling-magnitudes
     behaviour of an ordinary linear LSQ on noisy liquid data.
 
+    When ``fit_pure_element_offsets=True`` also fits linear offsets
+    ``(a_A, b_A)``, ``(a_B, b_B)`` such that the phase's pure-element G
+    is ``GHSER_A + a_A + b_A·T`` and ``GHSER_B + a_B + b_B·T`` (SGTE
+    convention: non-host phases reference the host's GHSER with a small
+    lattice-stability offset).  GHSER_A/B come from ``host_surface``;
+    offsets are fit simultaneously with L_k from the same data, both
+    subject to the ridge penalty.  This is the form used by COST507,
+    solders.tdb, and standard SGTE databases.
+
     Solves::
 
-        min   ||A·θ - G_xs||²  +  λ · Σ_k (a_k² + (b_k·T_mid)² · scale²)
-
-    where ``A`` is the RK basis matrix (with linear T dependence inside
-    each L_k), ``θ = [a_0, b_0, a_1, b_1, ...]``, and the regulariser
-    penalises large coefficients (in eV/atom units, with the b-term
-    scaled by a representative T so it sees the same penalty).
-
-    Pure-element G_A, G_B come from ``host_surface`` (six-term CALPHAD
-    polynomials per phase — for a full-range phase, pass its own surface
-    from :meth:`build_calphad_surface`).
+        min   ||A·θ - target||²  +  λ · Σ θ_i² · scale_i²
 
     Parameters
     ----------
     phase_data : DataFrame
         Per-(x, T) rows for the phase.
     host_surface : dict
-        Provides ``coeffs_A``, ``coeffs_B``.
+        Provides ``coeffs_A``, ``coeffs_B`` (the GHSER polynomials).
     rk_order : int
         Number of RK terms (default 3).
     lam : float
-        Ridge regularisation strength.  Larger → smoother / smaller L_k.
-        0 reduces to ordinary LSQ.  Default 1.0 (mild).
+        Ridge regularisation strength.  Larger → smaller magnitude L_k
+        (and offsets).  0 reduces to ordinary LSQ.  Default 1.0.
+    fit_pure_element_offsets : bool
+        If True, fit pure-element linear offsets simultaneously.  Used
+        for non-host phases (offsets ≠ 0).  For the host phase, leave
+        False so the pure G is exactly the input host_surface — offsets
+        would be ~0 anyway.
 
     Returns
     -------
-    dict with the usual ``coeffs_A``, ``coeffs_B``, ``L_coeffs`` (shape
-    rk_order × 2), ``rms_j_mol``, ``n_fit_points``, ``rk_order``,
-    ``lambda_used``.
+    dict with keys ``coeffs_A``, ``coeffs_B`` (= host GHSER, unchanged),
+    ``offset_A``, ``offset_B`` (each ndarray(2): (a, b) in eV/atom; zero
+    if not fitted), ``L_coeffs`` (rk_order × 2), ``rms_j_mol``,
+    ``n_fit_points``, ``rk_order``, ``lambda_used``.
     """
     coeffs_A = np.asarray(host_surface["coeffs_A"], dtype=float)
     coeffs_B = np.asarray(host_surface["coeffs_B"], dtype=float)
@@ -2544,9 +2551,10 @@ def _fit_solution_linear_L_regularized(
         for ti, gi in zip(T_row, G_row):
             if np.isfinite(ti) and np.isfinite(gi):
                 rows.append((x, float(ti), float(gi)))
-    if len(rows) < 2 * rk_order:
+    min_pts = (4 if fit_pure_element_offsets else 0) + 2 * rk_order
+    if len(rows) < min_pts:
         raise ValueError(
-            f"Need at least {2 * rk_order} points for the linear-L fit."
+            f"Need at least {min_pts} points for the regularised fit."
         )
     x_all = np.array([r[0] for r in rows], dtype=float)
     T_all = np.array([r[1] for r in rows], dtype=float)
@@ -2560,19 +2568,28 @@ def _fit_solution_linear_L_regularized(
     G_ideal = kb * T_all * (x_all * log_x + (1.0 - x_all) * log_1mx)
     target = G_all - G_lin - G_ideal
 
-    pf = x_all * (1.0 - x_all)
     cols = []
+    scale_list = []
+    T_mid = float(np.mean(T_all))
+    if fit_pure_element_offsets:
+        # (1-x)·a_A, (1-x)·T·b_A, x·a_B, x·T·b_B
+        cols.append(1.0 - x_all)
+        scale_list.append(1.0)
+        cols.append((1.0 - x_all) * T_all)
+        scale_list.append(T_mid)
+        cols.append(x_all)
+        scale_list.append(1.0)
+        cols.append(x_all * T_all)
+        scale_list.append(T_mid)
+    pf = x_all * (1.0 - x_all)
     for k in range(rk_order):
         pk = pf * (1.0 - 2.0 * x_all) ** k
         cols.append(pk)
+        scale_list.append(1.0)
         cols.append(pk * T_all)
+        scale_list.append(T_mid)
     A = np.column_stack(cols)
-
-    # Tikhonov: scale the b-term column by T_mid so its coefficient has
-    # comparable units to a (b·T_mid lives in the same scale as a).
-    T_mid = float(np.mean(T_all))
-    scale = np.ones(2 * rk_order)
-    scale[1::2] = T_mid  # b coefficients
+    scale = np.array(scale_list)
 
     # Solve (A.T A + λ·diag(scale²)) θ = A.T b
     AtA = A.T @ A
@@ -2580,11 +2597,21 @@ def _fit_solution_linear_L_regularized(
     reg = lam * np.diag(scale ** 2)
     theta = np.linalg.solve(AtA + reg, Atb)
 
-    L_coeffs = theta.reshape(rk_order, 2)
+    if fit_pure_element_offsets:
+        offset_A = theta[0:2]
+        offset_B = theta[2:4]
+        L_flat = theta[4:]
+    else:
+        offset_A = np.zeros(2)
+        offset_B = np.zeros(2)
+        L_flat = theta
+    L_coeffs = L_flat.reshape(rk_order, 2)
     rms = float(np.sqrt(np.mean((A @ theta - target) ** 2)) * EV_TO_J_MOL)
     return {
         "coeffs_A": coeffs_A,
         "coeffs_B": coeffs_B,
+        "offset_A": offset_A,
+        "offset_B": offset_B,
         "L_coeffs": L_coeffs,
         "rms_j_mol": rms,
         "n_fit_points": int(len(x_all)),
@@ -3878,19 +3905,20 @@ class PhaseDiagram:
                         f"Phase '{ph}': calphad surface unavailable; skipping."
                     )
                     continue
-                # Refit L_k with linear T (a + b·T) and Tikhonov ridge
-                # regularisation.  The 6-term L_k(T) from
-                # build_calphad_surface absorbs noise in the data and
-                # produces a wavy liquidus.  Plain linear refit (no
-                # regularisation) is unstable for noisy phases and gives
-                # huge cancelling magnitudes; ridge bounds the magnitudes
-                # while keeping the form smooth.  The phase's own
-                # pure-element G_A, G_B (from build_calphad_surface) are
-                # carried over unchanged.
+                # Fit L_k with linear T + ridge against the phase's own
+                # 6-term pure-element G.  Both host and non-host
+                # full-range phases keep independent 6-term G for their
+                # pure endpoints — forcing a non-host phase's pure G to
+                # be GHSER + linear-offset loses too much curvature for
+                # noisy MD data (e.g. pure-Au LQD melting drifted by
+                # >200 K).  GHSER FUNCTION blocks are still emitted and
+                # used by the host phase and by limited-range phases
+                # (which by construction share the host's pure G).
                 phase_data = self.df.loc[self.df["phase"] == ph]
                 linear_fit = _fit_solution_linear_L_regularized(
                     phase_data, s, rk_order=rk_order,
                     lam=full_range_ridge_lambda,
+                    fit_pure_element_offsets=False,
                 )
                 records.append({"name": ph, "kind": "solution", "fit": linear_fit})
             else:
@@ -3955,12 +3983,26 @@ class PhaseDiagram:
             k: v for k, v in compound_stoich.items() if k in line_compounds
         }
 
+        # Reference comment, emitted as a `$` comment line above each
+        # FUNCTION / PARAMETER block.  pycalphad's TDB parser rejects
+        # inline `REF:` tags in PARAMETER definitions (even though Thermo-
+        # Calc / SGTE-style databases such as COST507 carry them), so we
+        # keep traceability via comments instead.
+        ref_date = datetime.now().strftime('%Y%m%d')
+        ref_comment = f"$ REF: calphy-MD-{ref_date}"
+
         lines = []
         lines.append("$")
         lines.append(f"$ TDB generated from calphy PhaseDiagram: {el_a}-{el_b}")
         lines.append(f"$ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
         lines.append(_TDB_METADATA_PREFIX + json.dumps(metadata, sort_keys=True))
         lines.append("$")
+        lines.append("")
+        # SGTE-style header (TEMP_LIM + system defaults + type def).
+        lines.append(f"TEMP_LIM {T_min:.2f} {T_max:.2f} !")
+        lines.append("")
+        lines.append("DEFINE_SYSTEM_DEFAULT ELEMENT 2 !")
+        lines.append("DEFAULT_COMMAND DEFINE_SYS_ELEMENT VA !")
         lines.append("")
         lines.append("TYPE_DEFINITION % SEQ *!")
         lines.append("")
@@ -3971,6 +4013,39 @@ class PhaseDiagram:
         lines.append(f"ELEMENT {el_a:<4} {ser_a:<16} 0.0 0.0 0.0 !")
         lines.append(f"ELEMENT {el_b:<4} {ser_b:<16} 0.0 0.0 0.0 !")
         lines.append("")
+
+        # FUNCTION GHSER<EL> blocks.  Standard SGTE convention: each
+        # pure-element 6-term polynomial lives in one FUNCTION; all phases
+        # reference it via +GHSER<EL>#.  GHSER for each element comes from
+        # the host (SER) phase's fit.
+        host_fit = next(
+            (r["fit"] for r in records if r["name"] == host_phase), None
+        )
+        if host_fit is None:
+            raise RuntimeError("Internal error: host phase has no fit record.")
+        ghser_a = np.asarray(host_fit["coeffs_A"], dtype=float) * EV_TO_J_MOL
+        ghser_b = np.asarray(host_fit["coeffs_B"], dtype=float) * EV_TO_J_MOL
+        ghser_name_a = f"GHSER{el_a}"
+        ghser_name_b = f"GHSER{el_b}"
+        lines.append(ref_comment)
+        lines.append(
+            f"FUNCTION {ghser_name_a} {T_min:.2f} "
+            f"{_format_tdb_expr_poly6(ghser_a)}; {T_max:.2f} N !"
+        )
+        lines.append(
+            f"FUNCTION {ghser_name_b} {T_min:.2f} "
+            f"{_format_tdb_expr_poly6(ghser_b)}; {T_max:.2f} N !"
+        )
+        lines.append("")
+
+        def _format_ghser_plus_linear(ghser_name, a_b):
+            """Format `+GHSER<EL># + a + b·T` with a/b in J/mol-atoms."""
+            a, b = a_b
+            lin = _format_tdb_expr_linear(a, b)
+            if lin == "0":
+                return f"+{ghser_name}#"
+            # lin starts with +/- so concat is fine
+            return f"+{ghser_name}#{lin}"
 
         # Phase declarations
         for rec in records:
@@ -3985,20 +4060,35 @@ class PhaseDiagram:
         lines.append("")
 
         # Parameters
+        lines.append(ref_comment)
         for rec in records:
             tdb_name = _tdb_phase_name(rec["name"])
             fit = rec["fit"]
             if rec["kind"] == "solution":
-                cA = np.asarray(fit["coeffs_A"], dtype=float) * EV_TO_J_MOL
-                cB = np.asarray(fit["coeffs_B"], dtype=float) * EV_TO_J_MOL
-                lines.append(
-                    f"PARAMETER G({tdb_name},{el_a};0) {T_min:.2f} "
-                    f"{_format_tdb_expr_poly6(cA)}; {T_max:.2f} N !"
-                )
-                lines.append(
-                    f"PARAMETER G({tdb_name},{el_b};0) {T_min:.2f} "
-                    f"{_format_tdb_expr_poly6(cB)}; {T_max:.2f} N !"
-                )
+                # Host phase: pure G == GHSER (no offset), so just
+                # reference it.  Non-host phases keep their independent
+                # 6-term polynomial (the linear-offset approximation lost
+                # too much curvature for the noisy MD data).
+                if rec["name"] == host_phase:
+                    lines.append(
+                        f"PARAMETER G({tdb_name},{el_a};0) {T_min:.2f} "
+                        f"+{ghser_name_a}#; {T_max:.2f} N !"
+                    )
+                    lines.append(
+                        f"PARAMETER G({tdb_name},{el_b};0) {T_min:.2f} "
+                        f"+{ghser_name_b}#; {T_max:.2f} N !"
+                    )
+                else:
+                    cA = np.asarray(fit["coeffs_A"], dtype=float) * EV_TO_J_MOL
+                    cB = np.asarray(fit["coeffs_B"], dtype=float) * EV_TO_J_MOL
+                    lines.append(
+                        f"PARAMETER G({tdb_name},{el_a};0) {T_min:.2f} "
+                        f"{_format_tdb_expr_poly6(cA)}; {T_max:.2f} N !"
+                    )
+                    lines.append(
+                        f"PARAMETER G({tdb_name},{el_b};0) {T_min:.2f} "
+                        f"{_format_tdb_expr_poly6(cB)}; {T_max:.2f} N !"
+                    )
                 L = np.asarray(fit["L_coeffs"], dtype=float)
                 for k in range(L.shape[0]):
                     if L.ndim == 2 and L.shape[1] == 6:
@@ -4012,18 +4102,15 @@ class PhaseDiagram:
                         f"{T_min:.2f} {expr}; {T_max:.2f} N !"
                     )
             elif rec["kind"] == "limited_range":
-                # Same 1-sublattice (A,B) form as solution phases, but the
-                # pure-element G is borrowed from the host and the L_k(T)
-                # are fitted only to data inside the phase's window.
-                cA = np.asarray(fit["coeffs_A"], dtype=float) * EV_TO_J_MOL
-                cB = np.asarray(fit["coeffs_B"], dtype=float) * EV_TO_J_MOL
+                # Pure-element G is identical to the host's, so just
+                # reference GHSER with no offset.
                 lines.append(
                     f"PARAMETER G({tdb_name},{el_a};0) {T_min:.2f} "
-                    f"{_format_tdb_expr_poly6(cA)}; {T_max:.2f} N !"
+                    f"+{ghser_name_a}#; {T_max:.2f} N !"
                 )
                 lines.append(
                     f"PARAMETER G({tdb_name},{el_b};0) {T_min:.2f} "
-                    f"{_format_tdb_expr_poly6(cB)}; {T_max:.2f} N !"
+                    f"+{ghser_name_b}#; {T_max:.2f} N !"
                 )
                 L = np.asarray(fit["L_coeffs"], dtype=float)
                 for k in range(L.shape[0]):
@@ -4097,9 +4184,55 @@ class PhaseDiagram:
         phase_to_tdb = {p: _tdb_phase_name(p) for p in phases}
         tdb_to_phase = {v: k for k, v in phase_to_tdb.items()}
 
+        # Parse FUNCTION blocks first so +NAME# references in PARAMETER
+        # expressions can be resolved by inlining the function's polynomial
+        # into the caller's poly6 coefficient sum.  Tail (e.g. `REF: ...`)
+        # is allowed after the `N` terminator.
+        func_re = re.compile(
+            r"FUNCTION\s+(\w+)\s+([\d.+eE\-]+)\s+(.*?);\s*"
+            r"([\d.+eE\-]+)\s+N\b[^!]*!",
+            re.DOTALL | re.IGNORECASE,
+        )
+        functions = {}  # name (upper) -> ndarray(6) poly6 coeffs in J/mol
+        for fm in func_re.finditer(text):
+            name = fm.group(1)
+            expr = fm.group(3)
+            functions[name.upper()] = _parse_tdb_poly6_expr(expr)
+
+        def _resolve_function_refs(expr):
+            """Inline +NAME# references; sum into a single poly6 coeff vector.
+
+            Supports ``+FUNC#`` and ``-FUNC#`` (with optional whitespace).
+            Any literal poly6 terms in the rest of the expression are
+            parsed and added.  Returns ndarray(6) in J/mol.
+            """
+            text_clean = expr.replace(" ", "")
+            total = np.zeros(6, dtype=float)
+            ref_re = re.compile(r"([+-])([A-Za-z_]\w*)#")
+            pos = 0
+            stripped = ""
+            for rm in ref_re.finditer(text_clean):
+                sign = 1.0 if rm.group(1) == "+" else -1.0
+                fname = rm.group(2).upper()
+                if fname in functions:
+                    total += sign * functions[fname]
+                else:
+                    # unknown function — leave literal in expr so
+                    # _parse_tdb_poly6_expr can attempt to handle it
+                    stripped += text_clean[pos:rm.end()]
+                    pos = rm.end()
+                    continue
+                stripped += text_clean[pos:rm.start()]
+                pos = rm.end()
+            stripped += text_clean[pos:]
+            total = total + _parse_tdb_poly6_expr(stripped)
+            return total
+
+        # PARAMETER regex tolerates an arbitrary tail before the final '!'
+        # (e.g. `REF: calphy-MD-20260516`).
         param_re = re.compile(
             r"PARAMETER\s+([GL])\s*\(\s*([^)]+?)\s*\)\s+"
-            r"([\d.+eE\-]+)\s+(.*?);\s*([\d.+eE\-]+)\s+N\s*!",
+            r"([\d.+eE\-]+)\s+(.*?);\s*([\d.+eE\-]+)\s+N\b[^!]*!",
             re.DOTALL | re.IGNORECASE,
         )
 
@@ -4123,7 +4256,7 @@ class PhaseDiagram:
             ph = tdb_to_phase.get(phase_tdb)
             if ph is None:
                 continue
-            coeffs = _parse_tdb_poly6_expr(expr)
+            coeffs = _resolve_function_refs(expr)
             kind = phase_kinds.get(ph)
             if kind is None:
                 kind = (
