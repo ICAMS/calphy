@@ -2781,10 +2781,23 @@ class Phase:
         """
         if self.calc.equilibration_control == "qtb":
             raise NotImplementedError(
-                "QTB is not supported for reversible-scaling sweeps because "
-                "LAMMPS fix qtb cannot ramp temperature. Compute F at "
-                "individual fixed temperatures (mode=fe) and assemble F(T) "
-                "from the discrete points."
+                "QTB cannot be used with reversible-scaling (mode=ts).\n\n"
+                "The Frenkel-Smit reversible-scaling trick keeps the MD "
+                "temperature fixed at T_start and scales the potential by "
+                "lambda. For *classical* Boltzmann sampling this maps onto "
+                "the target system at effective T = T_start / lambda, "
+                "because the partition function factorises into the "
+                "lambda*U weight. Quantum statistics does NOT scale that "
+                "way: when U -> lambda*U, the harmonic frequencies become "
+                "omega*sqrt(lambda), so the QTB spectrum theta(omega, "
+                "T_start) does not match the target system's quantum "
+                "spectrum theta(omega*sqrt(lambda), T_target). The "
+                "Frenkel-Smit identity therefore does not hold under QTB "
+                "sampling, and pairing them would give an unphysical "
+                "trajectory.\n\n"
+                "For F(T) under QTB, compute F at individual fixed "
+                "temperatures (mode=fe) and interpolate the discrete "
+                "points."
             )
         self.logger.info("Starting temperature sweep cycle: %d", iteration)
 
