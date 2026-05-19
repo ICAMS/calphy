@@ -168,6 +168,14 @@ class Alchemy(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
+        if self.calc.equilibration_control == "qtb":
+            raise NotImplementedError(
+                "QTB is not supported for alchemical integration in v1. "
+                "Alchemical transformations between potentials require a "
+                "matched reference free energy on both sides; this has not "
+                "been adapted to QTB sampling. Use the standard classical "
+                "Langevin / Nose-Hoover path."
+            )
 
         # create lammps object
         lmp = ph.create_object(

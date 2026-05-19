@@ -216,6 +216,22 @@ class Berendsen(BaseModel, title="Specific input options for Berendsen thermosta
     barostat_damping: Annotated[float, Field(default=100.0, gt=0)]
 
 
+class QuantumThermalBath(BaseModel, title="Dammak quantum thermal bath (LAMMPS fix qtb)"):
+    """
+    Colored-noise Langevin thermostat that injects quantum statistics into
+    classical MD (Dammak et al., Phys. Rev. Lett. 103, 190601, 2009).
+    Selected via top-level equilibration_control: qtb.
+    """
+    thermostat_damping: Annotated[float, Field(default=0.1, gt=0)]
+    barostat_damping: Annotated[float, Field(default=0.1, gt=0)]
+    f_max: Annotated[float, Field(default=200.0, gt=0,
+        description="Upper cutoff frequency for QTB power spectrum (THz). "
+                    "Must exceed the highest phonon frequency of the system.")]
+    n_f: Annotated[int, Field(default=100, gt=0,
+        description="Number of frequency bins discretising the QTB spectrum.")]
+    seed: Annotated[int, Field(default=880302, gt=0)]
+
+
 class Queue(BaseModel, title="Options for configuring queue"):
     scheduler: Annotated[str, Field(default="local")]
     cores: Annotated[int, Field(default=1, gt=0)]
@@ -357,6 +373,7 @@ class Calculation(BaseModel, title="Main input class"):
     md: Optional[MD] = MD()
     nose_hoover: Optional[NoseHoover] = NoseHoover()
     berendsen: Optional[Berendsen] = Berendsen()
+    quantum_thermal_bath: Optional[QuantumThermalBath] = QuantumThermalBath()
     queue: Optional[Queue] = Queue()
     tolerance: Optional[Tolerance] = Tolerance()
     phase_transition_detection: Optional[PhaseTransitionDetection] = PhaseTransitionDetection()
