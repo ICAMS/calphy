@@ -677,8 +677,16 @@ class Solid(cph.Phase):
         Calculates the final work, energy dissipation and free energy by
         matching with Einstein crystal
         """
+        use_quantum_reference = self.calc.equilibration_control == "qtb"
+        if use_quantum_reference:
+            self.logger.info(
+                "Using quantum harmonic-oscillator Einstein-crystal reference "
+                "(required for self-consistency with QTB sampling)."
+            )
         fe, fcm = get_einstein_crystal_fe(
-            self.calc, self.vol, self.k, return_contributions=True
+            self.calc, self.vol, self.k,
+            return_contributions=True,
+            quantum=use_quantum_reference,
         )
 
         w, q, qerr = find_w(self.simfolder, self.calc, full=True, solid=True)

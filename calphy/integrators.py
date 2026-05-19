@@ -377,7 +377,7 @@ def integrate_mass(ref_mass, target_masses, target_counts, temperature, natoms):
 
 
 def get_einstein_crystal_fe(
-    calc, vol, k, cm_correction=True, return_contributions=False
+    calc, vol, k, cm_correction=True, return_contributions=False, quantum=False
 ):
     """
     Get the free energy of einstein crystal
@@ -399,6 +399,14 @@ def get_einstein_crystal_fe(
     return_contributions: bool, optional, default - True
         If True, return individual contributions to the reference free energy.
 
+    quantum : bool, optional, default - False
+        If True, evaluate the *quantum* harmonic-oscillator free energy of
+        the Einstein crystal. This is the reference required when the
+        switching MD is driven by the Dammak quantum thermal bath, which
+        samples a quantum-statistical distribution rather than the
+        classical Boltzmann one. In the high-temperature limit
+        (k_B T >> hbar omega) this reduces to the classical expression.
+
     Returns
     -------
     F_tot : float
@@ -412,8 +420,17 @@ def get_einstein_crystal_fe(
 
     Notes
     -----
-    The equations for free energy of Einstein crystal and centre of mass correction are from https://doi.org/10.1063/5.0044833.
+    The classical equations for free energy of Einstein crystal and centre
+    of mass correction are from https://doi.org/10.1063/5.0044833.
 
+    Quantum branch: each Cartesian mode i has angular frequency
+    omega_i = sqrt(k_i / m_i), and the quantum harmonic-oscillator free
+    energy per mode is
+        f_i = (1/2) hbar omega_i + k_B T ln(1 - exp(-hbar omega_i / k_B T)).
+    The reported F_e is sum_i f_i / N_atoms (3 modes per atom). The CM
+    correction is retained in its classical form: it is a phase-space
+    integration correction that does not change form under the QTB
+    sampling at leading order.
     """
     # temperature
     temp = calc._temperature
@@ -446,10 +463,20 @@ def get_einstein_crystal_fe(
     # convert k from ev/A2 to J/m2
     k = k * (eV2J / 1e-20)
 
-    # fe of Einstein crystal
-    Z_e = ((beta**2 * k * hJ**2) / (4 * np.pi**2 * mass)) ** 1.5
-    F_e = np.log(Z_e)
-    F_e = kb * temp * np.sum(F_e) / natoms  # *J2eV #convert back to eV
+    if quantum:
+        # quantum harmonic oscillator reference (Dammak/QTB sampling)
+        hbar = hJ / (2 * np.pi)
+        omega = np.sqrt(k / mass)  # rad/s, per atom
+        x = hbar * omega / (kbJ * temp)
+        # per-mode free energy in Joules; 3 modes per atom
+        f_mode = 0.5 * hbar * omega + kbJ * temp * np.log1p(-np.exp(-x))
+        F_e_J = 3.0 * np.sum(f_mode) / natoms  # J per atom
+        F_e = F_e_J / eV2J  # convert J -> eV
+    else:
+        # classical Einstein crystal
+        Z_e = ((beta**2 * k * hJ**2) / (4 * np.pi**2 * mass)) ** 1.5
+        F_e = np.log(Z_e)
+        F_e = kb * temp * np.sum(F_e) / natoms  # *J2eV #convert back to eV
 
     # now get the cm correction
     if cm_correction:
