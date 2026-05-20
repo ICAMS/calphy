@@ -480,10 +480,27 @@ class Calculation(BaseModel, title="Main input class"):
     # just check for nlements in compscale
     _totalelements = PrivateAttr(default=0)
 
+    # internal flag set when mode == "fe-qtb"; threaded through phase.py /
+    # solid.py to switch the thermostat to QTB and the Einstein reference
+    # to the quantum harmonic-oscillator form.
+    _qtb: bool = PrivateAttr(default=False)
+
     @model_validator(mode="after")
     def _validate_all(self) -> "Input":
         if not (len(self.element) == len(self.mass)):
             raise ValueError("mass and elements should have same length")
+
+        # QTB-flavoured fe mode. We resolve it here so all downstream
+        # dispatch sees mode=="fe" and the _qtb flag drives QTB behaviour.
+        if self.mode == "fe-qtb":
+            if self.reference_phase and self.reference_phase.lower() == "liquid":
+                raise ValueError(
+                    "mode=fe-qtb is solids-only. The Uhlenbeck-Ford liquid "
+                    "reference is intrinsically classical and cannot be paired "
+                    "with QTB sampling."
+                )
+            self._qtb = True
+            self.mode = "fe"
 
         self.n_elements = len(self.element)
 

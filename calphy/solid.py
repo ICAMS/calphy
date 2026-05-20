@@ -69,7 +69,7 @@ class Solid(cph.Phase):
 
     def run_iterative_spring_constant_convergence(self, lmp):
         """ """
-        if self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             qtb = self.calc.quantum_thermal_bath
             lmp.command("fix              3 all nve")
             lmp.command(
@@ -123,7 +123,7 @@ class Solid(cph.Phase):
             self.logger.info("Used user input sprint constants")
             self.logger.info(self.k)
 
-        if self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             lmp.command("unfix         3q")
         lmp.command("unfix         3")
 
@@ -180,7 +180,7 @@ class Solid(cph.Phase):
 
     def run_minimal_spring_constant_convergence(self, lmp):
         """ """
-        if self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             qtb = self.calc.quantum_thermal_bath
             lmp.command("fix              3 all nve")
             lmp.command(
@@ -221,7 +221,7 @@ class Solid(cph.Phase):
             # still run a small NVT cycle
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
 
-        if self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             lmp.command("unfix         3q")
         lmp.command("unfix         3")
 
@@ -496,7 +496,7 @@ class Solid(cph.Phase):
             )
 
         # apply temp fix
-        if self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             qtb = self.calc.quantum_thermal_bath
             lmp.command(
                 "fix               f3 all qtb temp %f damp %f seed %d f_max %f N_f %d"
@@ -677,7 +677,7 @@ class Solid(cph.Phase):
         Calculates the final work, energy dissipation and free energy by
         matching with Einstein crystal
         """
-        use_quantum_reference = self.calc.equilibration_control == "qtb"
+        use_quantum_reference = self.calc._qtb
         if use_quantum_reference:
             self.logger.info(
                 "Using quantum harmonic-oscillator Einstein-crystal reference "

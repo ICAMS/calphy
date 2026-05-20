@@ -116,7 +116,35 @@ class Phase:
                 % self.calc.equilibration_control
             )
 
-        if self.calc.equilibration_control == "nose-hoover":
+        if self.calc._qtb:
+            qtb = self.calc.quantum_thermal_bath
+            self.logger.info(
+                "mode=fe-qtb: Dammak quantum thermal bath active for all MD stages"
+            )
+            self.logger.info("QTB thermostat damping is %f" % qtb.thermostat_damping)
+            self.logger.info("QTB barostat damping is %f" % qtb.barostat_damping)
+            self.logger.info("QTB f_max is %f THz, N_f is %d" % (qtb.f_max, qtb.n_f))
+            self.calc.md.thermostat_damping = [
+                qtb.thermostat_damping,
+                qtb.thermostat_damping,
+            ]
+            self.calc.md.barostat_damping = [
+                qtb.barostat_damping,
+                qtb.barostat_damping,
+            ]
+            self.logger.info("These values can be tuned by adding in the input file:")
+            self.logger.info("quantum_thermal_bath:")
+            self.logger.info("   thermostat_damping: <float>  # τ in ps")
+            self.logger.info("   barostat_damping: <float>")
+            self.logger.info("   f_max: <float>               # THz cutoff")
+            self.logger.info("   n_f: <int>                   # spectrum bins")
+            if self.calc.equilibration_control == "berendsen":
+                self.logger.warning(
+                    "mode=fe-qtb overrides equilibration_control=berendsen; "
+                    "QTB sampling is used in the equilibration stage too so the "
+                    "established volume reflects quantum thermal expansion."
+                )
+        elif self.calc.equilibration_control == "nose-hoover":
             self.logger.info(
                 "Nose-Hoover thermostat damping is %f"
                 % self.calc.nose_hoover.thermostat_damping
@@ -141,28 +169,6 @@ class Phase:
                 self.logger.warning("Equil. Nose-Hoover thermostat damping is high!")
             if self.calc.md.barostat_damping[0] > 10.0:
                 self.logger.warning("Equil. Nose-Hoover barostat damping is high!")
-        elif self.calc.equilibration_control == "qtb":
-            qtb = self.calc.quantum_thermal_bath
-            self.logger.info(
-                "Quantum Thermal Bath (Dammak 2009) selected for all MD stages"
-            )
-            self.logger.info("QTB thermostat damping is %f" % qtb.thermostat_damping)
-            self.logger.info("QTB barostat damping is %f" % qtb.barostat_damping)
-            self.logger.info("QTB f_max is %f THz, N_f is %d" % (qtb.f_max, qtb.n_f))
-            self.calc.md.thermostat_damping = [
-                qtb.thermostat_damping,
-                qtb.thermostat_damping,
-            ]
-            self.calc.md.barostat_damping = [
-                qtb.barostat_damping,
-                qtb.barostat_damping,
-            ]
-            self.logger.info("These values can be tuned by adding in the input file:")
-            self.logger.info("quantum_thermal_bath:")
-            self.logger.info("   thermostat_damping: <float>  # τ in ps")
-            self.logger.info("   barostat_damping: <float>")
-            self.logger.info("   f_max: <float>               # THz cutoff")
-            self.logger.info("   n_f: <int>                   # spectrum bins")
         else:
             self.logger.info(
                 "Berendsen thermostat damping is %f"
@@ -1043,10 +1049,10 @@ class Phase:
         )
 
         # apply fixes depending on thermostat/barostat
-        if self.calc.equilibration_control == "nose-hoover":
-            self.fix_nose_hoover(lmp)
-        elif self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             self.fix_qtb(lmp, ensemble="npt")
+        elif self.calc.equilibration_control == "nose-hoover":
+            self.fix_nose_hoover(lmp)
         else:
             self.fix_berendsen(lmp)
         # start thermo logging
@@ -1057,10 +1063,10 @@ class Phase:
         lmp.command("run              %d" % int(self.calc.md.n_small_steps))
 
         # remove fixes
-        if self.calc.equilibration_control == "nose-hoover":
-            self.unfix_nose_hoover(lmp)
-        elif self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             self.unfix_qtb(lmp)
+        elif self.calc.equilibration_control == "nose-hoover":
+            self.unfix_nose_hoover(lmp)
         else:
             self.unfix_berendsen(lmp)
 
@@ -1089,8 +1095,24 @@ class Phase:
             % (0.25 * self.calc._temperature, np.random.randint(1, 10000))
         )
 
-        # for Nose-Hoover thermo/baro combination
-        if self.calc.equilibration_control == "nose-hoover":
+        # for QTB / Nose-Hoover thermo/baro combination
+        if self.calc._qtb:
+            # QTB cannot ramp T; do three cycles at staircase T to mimic the warm-up
+            self.fix_qtb(lmp, temp_start_factor=0.5, temp_end_factor=0.5, ensemble="npt")
+            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo           10")
+            lmp.command("run              %d" % int(self.calc.md.n_small_steps))
+            self.unfix_qtb(lmp)
+
+            self.fix_qtb(lmp, temp_start_factor=1.0, temp_end_factor=1.0, ensemble="npt")
+            lmp.command("run              %d" % int(self.calc.md.n_small_steps))
+            self.unfix_qtb(lmp)
+
+            self.fix_qtb(lmp, ensemble="npt")
+            lmp.command("run              %d" % int(self.calc.md.n_small_steps))
+            self.unfix_qtb(lmp)
+
+        elif self.calc.equilibration_control == "nose-hoover":
             # Cycle 1: 0.25-0.5 temperature, full pressure
             self.fix_nose_hoover(lmp, temp_start_factor=0.25, temp_end_factor=0.5)
             lmp.command("thermo_style     custom step pe press vol etotal temp")
@@ -1107,22 +1129,6 @@ class Phase:
             self.fix_nose_hoover(lmp)
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
             self.unfix_nose_hoover(lmp)
-
-        elif self.calc.equilibration_control == "qtb":
-            # QTB cannot ramp T; do three cycles at staircase T to mimic the warm-up
-            self.fix_qtb(lmp, temp_start_factor=0.5, temp_end_factor=0.5, ensemble="npt")
-            lmp.command("thermo_style     custom step pe press vol etotal temp")
-            lmp.command("thermo           10")
-            lmp.command("run              %d" % int(self.calc.md.n_small_steps))
-            self.unfix_qtb(lmp)
-
-            self.fix_qtb(lmp, temp_start_factor=1.0, temp_end_factor=1.0, ensemble="npt")
-            lmp.command("run              %d" % int(self.calc.md.n_small_steps))
-            self.unfix_qtb(lmp)
-
-            self.fix_qtb(lmp, ensemble="npt")
-            lmp.command("run              %d" % int(self.calc.md.n_small_steps))
-            self.unfix_qtb(lmp)
 
         else:
             # Cycle 1: 0.25-0.5 temperature, full pressure
@@ -1189,10 +1195,10 @@ class Phase:
         """
 
         # apply fixes
-        if self.calc.equilibration_control == "nose-hoover":
-            self.fix_nose_hoover(lmp)
-        elif self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             self.fix_qtb(lmp, ensemble="npt")
+        elif self.calc.equilibration_control == "nose-hoover":
+            self.fix_nose_hoover(lmp)
         else:
             self.fix_berendsen(lmp)
 
@@ -1294,10 +1300,10 @@ class Phase:
             )
 
         # unfix thermostat and barostat
-        if self.calc.equilibration_control == "nose-hoover":
-            self.unfix_nose_hoover(lmp)
-        elif self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             self.unfix_qtb(lmp)
+        elif self.calc.equilibration_control == "nose-hoover":
+            self.unfix_nose_hoover(lmp)
         else:
             self.unfix_berendsen(lmp)
 
@@ -1370,10 +1376,10 @@ class Phase:
         """
 
         # apply fixes
-        if self.calc.equilibration_control == "nose-hoover":
-            self.fix_nose_hoover(lmp)
-        elif self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             self.fix_qtb(lmp, ensemble="npt")
+        elif self.calc.equilibration_control == "nose-hoover":
+            self.fix_nose_hoover(lmp)
         else:
             self.fix_berendsen(lmp)
 
@@ -1390,10 +1396,10 @@ class Phase:
         lmp.command("run              %d" % int(self.calc.n_equilibration_steps))
 
         # unfix thermostat and barostat
-        if self.calc.equilibration_control == "nose-hoover":
-            self.unfix_nose_hoover(lmp)
-        elif self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             self.unfix_qtb(lmp)
+        elif self.calc.equilibration_control == "nose-hoover":
+            self.unfix_nose_hoover(lmp)
         else:
             self.unfix_berendsen(lmp)
 
@@ -1411,7 +1417,7 @@ class Phase:
             "velocity         all create %f %d"
             % (self.calc._temperature, np.random.randint(1, 10000))
         )
-        if self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             qtb = self.calc.quantum_thermal_bath
             lmp.command("fix              1 all nve")
             lmp.command(
@@ -1466,7 +1472,7 @@ class Phase:
 
             lastmean = mean
 
-        if self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             lmp.command("unfix            1q")
         lmp.command("unfix            1")
         lmp.command("unfix            2")
@@ -1552,7 +1558,7 @@ class Phase:
             "velocity         all create %f %d"
             % (self.calc._temperature, np.random.randint(1, 10000))
         )
-        if self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             qtb = self.calc.quantum_thermal_bath
             lmp.command("fix              1 all nve")
             lmp.command(
@@ -1590,7 +1596,7 @@ class Phase:
         lmp.command("run              %d" % int(self.calc.md.n_small_steps))
         lmp.command("run              %d" % int(self.calc.n_equilibration_steps))
 
-        if self.calc.equilibration_control == "qtb":
+        if self.calc._qtb:
             lmp.command("unfix            1q")
         lmp.command("unfix            1")
         lmp.command("unfix            2")
@@ -2779,26 +2785,6 @@ class Phase:
         iteration : int, optional
             Iteration of the calculation.  Default 1.
         """
-        if self.calc.equilibration_control == "qtb":
-            raise NotImplementedError(
-                "QTB cannot be used with reversible-scaling (mode=ts).\n\n"
-                "The Frenkel-Smit reversible-scaling trick keeps the MD "
-                "temperature fixed at T_start and scales the potential by "
-                "lambda. For *classical* Boltzmann sampling this maps onto "
-                "the target system at effective T = T_start / lambda, "
-                "because the partition function factorises into the "
-                "lambda*U weight. Quantum statistics does NOT scale that "
-                "way: when U -> lambda*U, the harmonic frequencies become "
-                "omega*sqrt(lambda), so the QTB spectrum theta(omega, "
-                "T_start) does not match the target system's quantum "
-                "spectrum theta(omega*sqrt(lambda), T_target). The "
-                "Frenkel-Smit identity therefore does not hold under QTB "
-                "sampling, and pairing them would give an unphysical "
-                "trajectory.\n\n"
-                "For F(T) under QTB, compute F at individual fixed "
-                "temperatures (mode=fe) and interpolate the discrete "
-                "points."
-            )
         self.logger.info("Starting temperature sweep cycle: %d", iteration)
 
         solid = self.calc.reference_phase == "solid"
@@ -2908,11 +2894,6 @@ class Phase:
         -------
         None
         """
-        if self.calc.equilibration_control == "qtb":
-            raise NotImplementedError(
-                "QTB is not supported for temperature-scaling sweeps. "
-                "Compute F at individual fixed temperatures (mode=fe) instead."
-            )
         solid = False
         if self.calc.reference_phase == "solid":
             solid = True

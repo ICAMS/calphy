@@ -247,15 +247,6 @@ class Liquid(cph.Phase):
         except OSError as e:
             self.logger.warning(f"Failed to rename log file: {e}")
 
-    def _check_qtb_supported(self):
-        if self.calc.equilibration_control == "qtb":
-            raise NotImplementedError(
-                "QTB is not supported for liquid free-energy integration in v1: "
-                "the Uhlenbeck-Ford reference is intrinsically classical and "
-                "pairing it with QTB sampling gives inconsistent free energies. "
-                "Use the standard classical Langevin path for liquids."
-            )
-
     def run_integration(self, iteration=1):
         """
         Run integration routine
@@ -274,7 +265,6 @@ class Liquid(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
-        self._check_qtb_supported()
         lmp = ph.create_object(
             cores=self.cores,
             directory=self.simfolder,
