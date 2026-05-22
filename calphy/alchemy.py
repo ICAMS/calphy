@@ -168,7 +168,6 @@ class Alchemy(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
-
         # create lammps object
         lmp = ph.create_object(
             cores=self.cores,

@@ -69,14 +69,28 @@ class Solid(cph.Phase):
 
     def run_iterative_spring_constant_convergence(self, lmp):
         """ """
-        lmp.command(
-            "fix              3 all nvt temp %f %f %f"
-            % (
-                self.calc._temperature,
-                self.calc._temperature,
-                self.calc.md.thermostat_damping[1],
+        if self.calc._qtb:
+            qtb = self.calc.quantum_thermal_bath
+            lmp.command("fix              3 all nve")
+            lmp.command(
+                "fix              3q all qtb temp %f damp %f seed %d f_max %f N_f %d"
+                % (
+                    self.calc._temperature,
+                    qtb.thermostat_damping,
+                    np.random.randint(1, 10**8),
+                    qtb.f_max,
+                    qtb.n_f,
+                )
             )
-        )
+        else:
+            lmp.command(
+                "fix              3 all nvt temp %f %f %f"
+                % (
+                    self.calc._temperature,
+                    self.calc._temperature,
+                    self.calc.md.thermostat_damping[1],
+                )
+            )
 
         # apply fix
         lmp = ph.compute_msd(lmp, self.calc)
@@ -109,6 +123,8 @@ class Solid(cph.Phase):
             self.logger.info("Used user input sprint constants")
             self.logger.info(self.k)
 
+        if self.calc._qtb:
+            lmp.command("unfix         3q")
         lmp.command("unfix         3")
 
     def analyse_spring_constants(self):
@@ -164,14 +180,28 @@ class Solid(cph.Phase):
 
     def run_minimal_spring_constant_convergence(self, lmp):
         """ """
-        lmp.command(
-            "fix              3 all nvt temp %f %f %f"
-            % (
-                self.calc._temperature,
-                self.calc._temperature,
-                self.calc.md.thermostat_damping[1],
+        if self.calc._qtb:
+            qtb = self.calc.quantum_thermal_bath
+            lmp.command("fix              3 all nve")
+            lmp.command(
+                "fix              3q all qtb temp %f damp %f seed %d f_max %f N_f %d"
+                % (
+                    self.calc._temperature,
+                    qtb.thermostat_damping,
+                    np.random.randint(1, 10**8),
+                    qtb.f_max,
+                    qtb.n_f,
+                )
             )
-        )
+        else:
+            lmp.command(
+                "fix              3 all nvt temp %f %f %f"
+                % (
+                    self.calc._temperature,
+                    self.calc._temperature,
+                    self.calc.md.thermostat_damping[1],
+                )
+            )
 
         # apply fix
         lmp = ph.compute_msd(lmp, self.calc)
@@ -191,6 +221,8 @@ class Solid(cph.Phase):
             # still run a small NVT cycle
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
 
+        if self.calc._qtb:
+            lmp.command("unfix         3q")
         lmp.command("unfix         3")
 
     def run_averaging(self):
@@ -464,19 +496,35 @@ class Solid(cph.Phase):
             )
 
         # apply temp fix
-        lmp.command(
-            "fix               f3 all langevin %f %f %f %d zero yes"
-            % (
-                self.calc._temperature,
-                self.calc._temperature,
-                self.calc.md.thermostat_damping[1],
-                np.random.randint(1, 10000),
+        if self.calc._qtb:
+            qtb = self.calc.quantum_thermal_bath
+            lmp.command(
+                "fix               f3 all qtb temp %f damp %f seed %d f_max %f N_f %d"
+                % (
+                    self.calc._temperature,
+                    qtb.thermostat_damping,
+                    np.random.randint(1, 10**8),
+                    qtb.f_max,
+                    qtb.n_f,
+                )
             )
-        )
+            # QTB does not consume a base temperature compute, so the temp/com
+            # group/correction trick used by langevin does not apply.
+            lmp.command("compute           Tcm all temp/com")
+        else:
+            lmp.command(
+                "fix               f3 all langevin %f %f %f %d zero yes"
+                % (
+                    self.calc._temperature,
+                    self.calc._temperature,
+                    self.calc.md.thermostat_damping[1],
+                    np.random.randint(1, 10000),
+                )
+            )
 
-        # compute com and apply to fix
-        lmp.command("compute           Tcm all temp/com")
-        lmp.command("fix_modify        f3 temp Tcm")
+            # compute com and apply to fix
+            lmp.command("compute           Tcm all temp/com")
+            lmp.command("fix_modify        f3 temp Tcm")
 
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU1      equal pe/atoms")
@@ -629,8 +677,16 @@ class Solid(cph.Phase):
         Calculates the final work, energy dissipation and free energy by
         matching with Einstein crystal
         """
+        use_quantum_reference = self.calc._qtb
+        if use_quantum_reference:
+            self.logger.info(
+                "Using quantum harmonic-oscillator Einstein-crystal reference "
+                "(required for self-consistency with QTB sampling)."
+            )
         fe, fcm = get_einstein_crystal_fe(
-            self.calc, self.vol, self.k, return_contributions=True
+            self.calc, self.vol, self.k,
+            return_contributions=True,
+            quantum=use_quantum_reference,
         )
 
         w, q, qerr = find_w(self.simfolder, self.calc, full=True, solid=True)

@@ -147,6 +147,7 @@ cd ..
 - `-D PKG_ML-SNAP=ON`for [SNAP potential](https://docs.lammps.org/Packages_details.html#pkg-ml-snap).
 - `-D PKG_MEAM=ON` for [MEAM potential](https://docs.lammps.org/Packages_details.html#meam-package).
 - `-D PKG_KIM=ON` for [KIM support](https://docs.lammps.org/Packages_details.html#pkg-kim).
+- `-D PKG_QTB=ON` for the [Dammak quantum thermal bath](https://docs.lammps.org/fix_qtb.html) (`fix qtb`), required by calphy's `mode: fe-qtb`.
 
 Install the python wrapper:
 

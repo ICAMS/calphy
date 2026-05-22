@@ -116,7 +116,35 @@ class Phase:
                 % self.calc.equilibration_control
             )
 
-        if self.calc.equilibration_control == "nose-hoover":
+        if self.calc._qtb:
+            qtb = self.calc.quantum_thermal_bath
+            self.logger.info(
+                "mode=fe-qtb: Dammak quantum thermal bath active for all MD stages"
+            )
+            self.logger.info("QTB thermostat damping is %f" % qtb.thermostat_damping)
+            self.logger.info("QTB barostat damping is %f" % qtb.barostat_damping)
+            self.logger.info("QTB f_max is %f THz, N_f is %d" % (qtb.f_max, qtb.n_f))
+            self.calc.md.thermostat_damping = [
+                qtb.thermostat_damping,
+                qtb.thermostat_damping,
+            ]
+            self.calc.md.barostat_damping = [
+                qtb.barostat_damping,
+                qtb.barostat_damping,
+            ]
+            self.logger.info("These values can be tuned by adding in the input file:")
+            self.logger.info("quantum_thermal_bath:")
+            self.logger.info("   thermostat_damping: <float>  # τ in ps")
+            self.logger.info("   barostat_damping: <float>")
+            self.logger.info("   f_max: <float>               # THz cutoff")
+            self.logger.info("   n_f: <int>                   # spectrum bins")
+            if self.calc.equilibration_control == "berendsen":
+                self.logger.warning(
+                    "mode=fe-qtb overrides equilibration_control=berendsen; "
+                    "QTB sampling is used in the equilibration stage too so the "
+                    "established volume reflects quantum thermal expansion."
+                )
+        elif self.calc.equilibration_control == "nose-hoover":
             self.logger.info(
                 "Nose-Hoover thermostat damping is %f"
                 % self.calc.nose_hoover.thermostat_damping
@@ -914,6 +942,60 @@ class Phase:
             )
         )
 
+    def fix_qtb(
+        self,
+        lmp,
+        temp_start_factor=1.0,
+        temp_end_factor=1.0,
+        press_start_factor=1.0,
+        press_end_factor=1.0,
+        stage=0,
+        ensemble="npt",
+    ):
+        """
+        Apply the Dammak quantum thermal bath as a thermostat.
+
+        QTB only thermostats — it must be paired with an integrator. We use
+        fix nph for NPT (pressure-controlled) and fix nve for NVT (canonical).
+        Temperature endpoints are read but only the start value is used: LAMMPS
+        fix qtb takes a single temperature, so any ramping must be implemented
+        externally.
+        """
+        qtb = self.calc.quantum_thermal_bath
+        t_qtb = temp_start_factor * self.calc._temperature
+        if abs(temp_end_factor - temp_start_factor) > 1e-12:
+            self.logger.warning(
+                "fix qtb does not support ramped temperature; using start value %f K"
+                % t_qtb
+            )
+        if ensemble == "npt":
+            lmp.command(
+                "fix              nh1 all nph %s %f %f %f"
+                % (
+                    self.iso,
+                    press_start_factor * self.calc._pressure,
+                    press_end_factor * self.calc._pressure,
+                    qtb.barostat_damping,
+                )
+            )
+        else:
+            lmp.command("fix              nh1 all nve")
+        # qtb damping is in time units (ps in metal units)
+        lmp.command(
+            "fix              nh1_qtb all qtb temp %f damp %f seed %d f_max %f N_f %d"
+            % (
+                t_qtb,
+                qtb.thermostat_damping,
+                np.random.randint(1, 10**8),
+                qtb.f_max,
+                qtb.n_f,
+            )
+        )
+
+    def unfix_qtb(self, lmp):
+        lmp.command("unfix            nh1_qtb")
+        lmp.command("unfix            nh1")
+
     def unfix_nose_hoover(self, lmp):
         """
         Fix Nose-Hoover thermostat and barostat
@@ -967,7 +1049,9 @@ class Phase:
         )
 
         # apply fixes depending on thermostat/barostat
-        if self.calc.equilibration_control == "nose-hoover":
+        if self.calc._qtb:
+            self.fix_qtb(lmp, ensemble="npt")
+        elif self.calc.equilibration_control == "nose-hoover":
             self.fix_nose_hoover(lmp)
         else:
             self.fix_berendsen(lmp)
@@ -979,7 +1063,9 @@ class Phase:
         lmp.command("run              %d" % int(self.calc.md.n_small_steps))
 
         # remove fixes
-        if self.calc.equilibration_control == "nose-hoover":
+        if self.calc._qtb:
+            self.unfix_qtb(lmp)
+        elif self.calc.equilibration_control == "nose-hoover":
             self.unfix_nose_hoover(lmp)
         else:
             self.unfix_berendsen(lmp)
@@ -1009,8 +1095,24 @@ class Phase:
             % (0.25 * self.calc._temperature, np.random.randint(1, 10000))
         )
 
-        # for Nose-Hoover thermo/baro combination
-        if self.calc.equilibration_control == "nose-hoover":
+        # for QTB / Nose-Hoover thermo/baro combination
+        if self.calc._qtb:
+            # QTB cannot ramp T; do three cycles at staircase T to mimic the warm-up
+            self.fix_qtb(lmp, temp_start_factor=0.5, temp_end_factor=0.5, ensemble="npt")
+            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo           10")
+            lmp.command("run              %d" % int(self.calc.md.n_small_steps))
+            self.unfix_qtb(lmp)
+
+            self.fix_qtb(lmp, temp_start_factor=1.0, temp_end_factor=1.0, ensemble="npt")
+            lmp.command("run              %d" % int(self.calc.md.n_small_steps))
+            self.unfix_qtb(lmp)
+
+            self.fix_qtb(lmp, ensemble="npt")
+            lmp.command("run              %d" % int(self.calc.md.n_small_steps))
+            self.unfix_qtb(lmp)
+
+        elif self.calc.equilibration_control == "nose-hoover":
             # Cycle 1: 0.25-0.5 temperature, full pressure
             self.fix_nose_hoover(lmp, temp_start_factor=0.25, temp_end_factor=0.5)
             lmp.command("thermo_style     custom step pe press vol etotal temp")
@@ -1093,7 +1195,9 @@ class Phase:
         """
 
         # apply fixes
-        if self.calc.equilibration_control == "nose-hoover":
+        if self.calc._qtb:
+            self.fix_qtb(lmp, ensemble="npt")
+        elif self.calc.equilibration_control == "nose-hoover":
             self.fix_nose_hoover(lmp)
         else:
             self.fix_berendsen(lmp)
@@ -1196,7 +1300,9 @@ class Phase:
             )
 
         # unfix thermostat and barostat
-        if self.calc.equilibration_control == "nose-hoover":
+        if self.calc._qtb:
+            self.unfix_qtb(lmp)
+        elif self.calc.equilibration_control == "nose-hoover":
             self.unfix_nose_hoover(lmp)
         else:
             self.unfix_berendsen(lmp)
@@ -1270,7 +1376,9 @@ class Phase:
         """
 
         # apply fixes
-        if self.calc.equilibration_control == "nose-hoover":
+        if self.calc._qtb:
+            self.fix_qtb(lmp, ensemble="npt")
+        elif self.calc.equilibration_control == "nose-hoover":
             self.fix_nose_hoover(lmp)
         else:
             self.fix_berendsen(lmp)
@@ -1288,7 +1396,9 @@ class Phase:
         lmp.command("run              %d" % int(self.calc.n_equilibration_steps))
 
         # unfix thermostat and barostat
-        if self.calc.equilibration_control == "nose-hoover":
+        if self.calc._qtb:
+            self.unfix_qtb(lmp)
+        elif self.calc.equilibration_control == "nose-hoover":
             self.unfix_nose_hoover(lmp)
         else:
             self.unfix_berendsen(lmp)
@@ -1307,14 +1417,28 @@ class Phase:
             "velocity         all create %f %d"
             % (self.calc._temperature, np.random.randint(1, 10000))
         )
-        lmp.command(
-            "fix              1 all nvt temp %f %f %f"
-            % (
-                self.calc._temperature,
-                self.calc._temperature,
-                self.calc.md.thermostat_damping[1],
+        if self.calc._qtb:
+            qtb = self.calc.quantum_thermal_bath
+            lmp.command("fix              1 all nve")
+            lmp.command(
+                "fix              1q all qtb temp %f damp %f seed %d f_max %f N_f %d"
+                % (
+                    self.calc._temperature,
+                    qtb.thermostat_damping,
+                    np.random.randint(1, 10**8),
+                    qtb.f_max,
+                    qtb.n_f,
+                )
             )
-        )
+        else:
+            lmp.command(
+                "fix              1 all nvt temp %f %f %f"
+                % (
+                    self.calc._temperature,
+                    self.calc._temperature,
+                    self.calc.md.thermostat_damping[1],
+                )
+            )
         lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
         lmp.command("thermo           10")
 
@@ -1348,6 +1472,8 @@ class Phase:
 
             lastmean = mean
 
+        if self.calc._qtb:
+            lmp.command("unfix            1q")
         lmp.command("unfix            1")
         lmp.command("unfix            2")
 
@@ -1432,14 +1558,28 @@ class Phase:
             "velocity         all create %f %d"
             % (self.calc._temperature, np.random.randint(1, 10000))
         )
-        lmp.command(
-            "fix              1 all nvt temp %f %f %f"
-            % (
-                self.calc._temperature,
-                self.calc._temperature,
-                self.calc.md.thermostat_damping[1],
+        if self.calc._qtb:
+            qtb = self.calc.quantum_thermal_bath
+            lmp.command("fix              1 all nve")
+            lmp.command(
+                "fix              1q all qtb temp %f damp %f seed %d f_max %f N_f %d"
+                % (
+                    self.calc._temperature,
+                    qtb.thermostat_damping,
+                    np.random.randint(1, 10**8),
+                    qtb.f_max,
+                    qtb.n_f,
+                )
             )
-        )
+        else:
+            lmp.command(
+                "fix              1 all nvt temp %f %f %f"
+                % (
+                    self.calc._temperature,
+                    self.calc._temperature,
+                    self.calc.md.thermostat_damping[1],
+                )
+            )
         lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
         lmp.command("thermo           10")
 
@@ -1456,6 +1596,8 @@ class Phase:
         lmp.command("run              %d" % int(self.calc.md.n_small_steps))
         lmp.command("run              %d" % int(self.calc.n_equilibration_steps))
 
+        if self.calc._qtb:
+            lmp.command("unfix            1q")
         lmp.command("unfix            1")
         lmp.command("unfix            2")
 
