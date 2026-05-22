@@ -231,6 +231,22 @@ calculations:
 ```
 ````
 
+### `quantum_thermal_bath`
+
+````{grid} 1 2 3 4
+:outline:
+```{grid-item} [](qtb_thermostat_damping)
+```
+```{grid-item} [](qtb_barostat_damping)
+```
+```{grid-item} [](qtb_f_max)
+```
+```{grid-item} [](qtb_n_f)
+```
+```{grid-item} [](qtb_seed)
+```
+````
+
 ### `phase_transition_detection`
 
 ````{grid} 1 2 3 4
@@ -300,16 +316,18 @@ Mass of the element(s) in the simulation. It should follow the same order as tha
 (mode)=
 #### `mode`  
 
-_type_: string, `fe` or `ts` or `alchemy` or `melting_temperature` or `tscale` or `pscale` or `composition_scaling` \
+_type_: string, `fe` or `fe-qtb` or `ts` or `alchemy` or `melting_temperature` or `tscale` or `pscale` or `composition_scaling` \
 _default_: None \
 _example_:
 ```
 mode: fe
+mode: fe-qtb
 mode: ts
 ```
 
 Calculation mode. A small description of the different modes are given below.   
-- `fe` performs a direct free energy calculation
+- `fe` performs a direct free energy calculation (classical Langevin + classical Einstein-crystal reference).
+- `fe-qtb` performs a free energy calculation with the Dammak quantum thermal bath (LAMMPS `fix qtb`) as the sampler and the quantum harmonic-oscillator Einstein-crystal reference. Use this for any solid below approximately half the Debye temperature where nuclear quantum effects (zero-point energy, Bose statistics of phonons, quantum thermal expansion) matter. See the [`quantum_thermal_bath`](quantum_thermal_bath_block) block for tuning. Solids only; the Uhlenbeck-Ford liquid reference is classical and incompatible.
 - `ts` performs a direct free energy calculation followed by reversible scaling to find temperature dependence.
 - `alchemy` is used for switching between two different interatomic potentials, or for integration over concentration. 
 - `melting_temperature` can be used for automated calculation of melting temperature. 
@@ -688,6 +706,8 @@ equilibration_control: nose-hoover
 ```
 
 The barostat and thermostat combination to be used for the equilibration stage. By default, Berendsen will be used for solid reference and Nose-Hoover will be used for liquid. The damping parameters can be tuned using the [nose_hoover](nose_hoover_block) block or the [berendsen](berendsen_block) block. Used only for equilibration stage.
+
+When [`mode`](mode) is `fe-qtb`, the QTB sampler is applied throughout the workflow (equilibration *and* switching) and `equilibration_control` is ignored. Tune via the [`quantum_thermal_bath`](quantum_thermal_bath_block) block instead.
 
 ---
 
@@ -1536,6 +1556,94 @@ barostat_damping: 100.0
 ```
 
 Pressure damping for equilibration MD. 
+
+---
+---
+
+(quantum_thermal_bath_block)=
+## <a name="quantum_thermal_bath"></a>`quantum_thermal_bath` block
+
+This block tunes the Dammak quantum thermal bath (LAMMPS [`fix qtb`](https://docs.lammps.org/fix_qtb.html)). It is active when [`mode`](mode) is `fe-qtb`. The QTB is a coloured-noise Langevin thermostat whose noise spectrum is set by the quantum fluctuation-dissipation theorem, so the trajectory --- while classical at every step --- samples a quantum canonical distribution for any harmonic system. It is paired internally with `fix nph` (NPT) or `fix nve` (NVT) as the integrator. Reference: Dammak et al., *Phys. Rev. Lett.* **103**, 190601 (2009).
+
+```
+mode: fe-qtb
+quantum_thermal_bath:
+   thermostat_damping: 0.1
+   barostat_damping: 0.1
+   f_max: 30.0
+   n_f: 100
+   seed: 880302
+```
+
+---
+
+(qtb_thermostat_damping)=
+#### `thermostat_damping`
+
+_type_: float \
+_default_: 0.1 \
+_example_:
+```
+thermostat_damping: 0.1
+```
+
+QTB thermostat damping time $\tau$ in ps (`damp` argument to LAMMPS `fix qtb`). Default 0.1 ps is appropriate for metals and oxides near equilibrium. Too small leads to slow equilibration; too large broadens the spectral lines and degrades the quantum statistics. Brieuc et al. (*J. Chem. Theory Comput.* **12**, 5688, 2016) discuss the trade-off in detail.
+
+---
+
+(qtb_barostat_damping)=
+#### `barostat_damping`
+
+_type_: float \
+_default_: 0.1 \
+_example_:
+```
+barostat_damping: 0.1
+```
+
+Damping time for the paired `fix nph` barostat used during NPT-style stages. In `time` units (ps in `metal` units).
+
+---
+
+(qtb_f_max)=
+#### `f_max`
+
+_type_: float \
+_default_: 200.0 \
+_example_:
+```
+f_max: 30.0
+```
+
+Upper cutoff frequency of the QTB power spectrum, in THz. **`f_max` must exceed the highest phonon frequency of the system**, otherwise high-frequency modes are not thermalised and the trajectory samples an incorrect quantum distribution. Quick guide: Cu and other simple metals ~8 THz $\to$ `f_max: 30` is comfortable; hydrides with H optical modes at 30-50 THz $\to$ `f_max: 100` or higher; the default 200 THz is a safe upper bound for any material but spreads the spectral bins thinner so narrowing it improves quality.
+
+---
+
+(qtb_n_f)=
+#### `n_f`
+
+_type_: integer \
+_default_: 100 \
+_example_:
+```
+n_f: 100
+```
+
+Number of frequency bins discretising the QTB power spectrum from 0 to `f_max`. Larger values give finer spectral resolution at the cost of higher per-step noise-generation overhead. 100 is usually adequate.
+
+---
+
+(qtb_seed)=
+#### `seed`
+
+_type_: integer \
+_default_: 880302 \
+_example_:
+```
+seed: 42
+```
+
+Random-number seed for the QTB noise generator. Change between iterations or between independent runs to obtain decorrelated noise realisations.
 
 ---
 ---

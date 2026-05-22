@@ -220,7 +220,9 @@ class QuantumThermalBath(BaseModel, title="Dammak quantum thermal bath (LAMMPS f
     """
     Colored-noise Langevin thermostat that injects quantum statistics into
     classical MD (Dammak et al., Phys. Rev. Lett. 103, 190601, 2009).
-    Selected via top-level equilibration_control: qtb.
+    Active when ``mode: fe-qtb`` is set at the top level. The QTB
+    thermostat is paired with ``fix nph`` (NPT) or ``fix nve`` (NVT)
+    inside calphy; do NOT also pair with Nose-Hoover or Langevin.
     """
     thermostat_damping: Annotated[float, Field(default=0.1, gt=0)]
     barostat_damping: Annotated[float, Field(default=0.1, gt=0)]
