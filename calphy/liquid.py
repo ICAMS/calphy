@@ -367,7 +367,17 @@ class Liquid(cph.Phase):
             'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file forward_%d.dat'
             % iteration
         )
+
+        if self.calc.n_print_steps > 0:
+            lmp.command(
+                "dump              d1 all custom %d traj.fe.forward_%d.dat id type mass x y z fx fy fz"
+                % (self.calc.n_print_steps, iteration)
+            )
+
         lmp.command("run               %d" % self.calc._n_switching_steps)
+
+        if self.calc.n_print_steps > 0:
+            lmp.command("undump           d1")
 
         lmp.command("unfix            f1")
         lmp.command("unfix            f2")
@@ -458,7 +468,17 @@ class Liquid(cph.Phase):
             'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file backward_%d.dat'
             % iteration
         )
+
+        if self.calc.n_print_steps > 0:
+            lmp.command(
+                "dump              d1 all custom %d traj.fe.backward_%d.dat id type mass x y z fx fy fz"
+                % (self.calc.n_print_steps, iteration)
+            )
+
         lmp.command("run               %d" % self.calc._n_switching_steps)
+
+        if self.calc.n_print_steps > 0:
+            lmp.command("undump           d1")
 
         lmp.command("unfix            f1")
         lmp.command("unfix            f2")

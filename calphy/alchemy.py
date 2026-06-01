@@ -385,7 +385,17 @@ class Alchemy(cph.Phase):
             'fix             f2 all print 1 "${dU1} ${dU2} ${flambda}" screen no file forward_%d.dat'
             % iteration
         )
+
+        if self.calc.n_print_steps > 0:
+            lmp.command(
+                "dump              d1 all custom %d traj.alchemy.forward_%d.dat id type mass x y z vx vy vz"
+                % (self.calc.n_print_steps, iteration)
+            )
+
         lmp.command("run             %d" % self.calc._n_switching_steps)
+
+        if self.calc.n_print_steps > 0:
+            lmp.command("undump           d1")
 
         # now equilibrate at the second potential
         lmp.command("unfix           f2")
@@ -504,7 +514,17 @@ class Alchemy(cph.Phase):
             'fix             f2 all print 1 "${dU1} ${dU2} ${flambda}" screen no file backward_%d.dat'
             % iteration
         )
+
+        if self.calc.n_print_steps > 0:
+            lmp.command(
+                "dump              d1 all custom %d traj.alchemy.backward_%d.dat id type mass x y z vx vy vz"
+                % (self.calc.n_print_steps, iteration)
+            )
+
         lmp.command("run             %d" % self.calc._n_switching_steps)
+
+        if self.calc.n_print_steps > 0:
+            lmp.command("undump           d1")
 
         # now equilibrate at the second potential
         lmp.command("unfix           f2")

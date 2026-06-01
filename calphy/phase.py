@@ -3002,6 +3002,12 @@ class Phase:
             "%d steps",
             iteration, t0, tf, self.calc._n_sweep_steps,
         )
+        if self.calc.n_print_steps > 0:
+            lmp.command(
+                "dump              d1 all custom %d traj.tscale.forward_%d.dat "
+                "id type mass x y z vx vy vz"
+                % (self.calc.n_print_steps, iteration)
+            )
         self._run_split_sweep(
             lmp=lmp,
             lambda_var="lambda",
@@ -3012,6 +3018,8 @@ class Phase:
             iteration=iteration,
             sweep_mode="tscale",
         )
+        if self.calc.n_print_steps > 0:
+            lmp.command("undump           d1")
 
         lmp.command("unfix             f2")
 
@@ -3065,6 +3073,12 @@ class Phase:
             "%d steps",
             iteration, tf, t0, self.calc._n_sweep_steps,
         )
+        if self.calc.n_print_steps > 0:
+            lmp.command(
+                "dump              d1 all custom %d traj.tscale.backward_%d.dat "
+                "id type mass x y z vx vy vz"
+                % (self.calc.n_print_steps, iteration)
+            )
         self._run_split_sweep(
             lmp=lmp,
             lambda_var="lambda",
@@ -3075,6 +3089,8 @@ class Phase:
             iteration=iteration,
             sweep_mode="tscale",
         )
+        if self.calc.n_print_steps > 0:
+            lmp.command("undump           d1")
 
         lmp.command("unfix             f2")
 
@@ -3181,7 +3197,18 @@ class Phase:
             'fix               f3 all print 1 "${dU} ${pp} $(vol) ${lambda}" screen no file ps.forward_%d.dat'
             % iteration
         )
+
+        if self.calc.n_print_steps > 0:
+            lmp.command(
+                "dump              d1 all custom %d traj.pscale.forward_%d.dat "
+                "id type mass x y z vx vy vz"
+                % (self.calc.n_print_steps, iteration)
+            )
+
         lmp.command("run               %d" % self.calc._n_sweep_steps)
+
+        if self.calc.n_print_steps > 0:
+            lmp.command("undump            d1")
 
         lmp.command("unfix             f2")
         lmp.command("unfix             f3")
@@ -3221,7 +3248,18 @@ class Phase:
             'fix               f3 all print 1 "${dU} ${pp} $(vol) ${lambda}" screen no file ps.backward_%d.dat'
             % iteration
         )
+
+        if self.calc.n_print_steps > 0:
+            lmp.command(
+                "dump              d1 all custom %d traj.pscale.backward_%d.dat "
+                "id type mass x y z vx vy vz"
+                % (self.calc.n_print_steps, iteration)
+            )
+
         lmp.command("run               %d" % self.calc._n_sweep_steps)
+
+        if self.calc.n_print_steps > 0:
+            lmp.command("undump            d1")
 
         # Preserve log file
         logfile = os.path.join(self.simfolder, "log.lammps")
