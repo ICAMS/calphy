@@ -311,9 +311,6 @@ class Solid(cph.Phase):
             else:
                 self.run_finite_pressure_equilibration(lmp)
 
-            # create the fluctuation monitor before the pressure-convergence cycle loop
-            self._create_monitor("solid")
-
             # this is when the averaging routine starts
             self.run_pressure_convergence(lmp)
 

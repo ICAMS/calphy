@@ -219,9 +219,6 @@ class Liquid(cph.Phase):
             # now assign correct temperature and equilibrate
             self.run_zero_pressure_equilibration(lmp)
 
-            # create the fluctuation monitor before the pressure-convergence cycle loop
-            self._create_monitor("liquid")
-
             # converge pressure
             self.run_pressure_convergence(lmp)
         else:

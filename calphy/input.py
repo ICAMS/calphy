@@ -253,28 +253,30 @@ class Tolerance(BaseModel, title="Tolerance settings for convergence"):
     pressure: Annotated[float, Field(default=10.0, ge=0)]
 
 
-class PhaseTransitionDetection(BaseModel, title="Settings for fluctuation-based phase transition detection"):
+class PhaseTransitionDetection(BaseModel, title="Settings for the pre-flight temperature-range scan"):
     mode: Annotated[
-        Literal["none", "warn", "recover", "stop"],
+        Literal["none", "adapt", "warn", "stop"],
         Field(
             default="none",
             description=(
-                "Controls what happens when a phase transition is detected "
-                "during a reversible-scaling sweep.\n"
-                "  'none'    — detection is disabled; sweep always completes "
-                "(default).\n"
-                "  'warn'    — detection runs and a warning is logged with the "
-                "estimated transition temperature and triggering signals; "
-                "response-function plots are generated; the sweep continues "
-                "to completion uninterrupted.  Use this to observe detection "
-                "without changing the calculation outcome.\n"
-                "  'recover' — truncate the forward sweep at the last clean "
-                "block boundary, save a checkpoint, and continue with a "
-                "backward sweep over the reduced range [T0, T_k].  A valid "
-                "free-energy curve is produced for the single-phase region.\n"
-                "  'stop'    — raise PhaseTransitionError and abort.  Use "
-                "when you want to inspect the raw data before deciding how "
-                "to proceed."
+                "Controls the pre-flight temperature-range scan that runs "
+                "before a reversible-scaling (ts) sweep.  The scan performs a "
+                "single fast real-thermostat temperature ramp (T0 -> Tf under "
+                "NPT) and watches the fluctuation response functions for the "
+                "onset of a phase transition.\n"
+                "  'none'  — the scan is disabled; the ts sweep runs over the "
+                "requested [T0, Tf] range as-is (default).\n"
+                "  'adapt' — if the scan detects a transition, reduce the upper "
+                "temperature to the detected clean onset and run the ts sweep "
+                "over [T0, T_clean] (keeping the same number of switching "
+                "steps).  If the scan is clean the range is unchanged.\n"
+                "  'warn'  — run the scan and log the detected clean range, but "
+                "do NOT modify the calculation; the ts sweep runs over the full "
+                "requested range.  Use this to observe detection without "
+                "changing the outcome.\n"
+                "  'stop'  — if a transition is detected, raise "
+                "PhaseTransitionError reporting the clean range so you can "
+                "re-submit with a corrected temperature range."
             ),
         ),
     ]
@@ -318,23 +320,20 @@ class PhaseTransitionDetection(BaseModel, title="Settings for fluctuation-based 
                 "baseline_median + onset_sigma * MAD; slope-break signals "
                 "(H_break, V_break) walk back to where |z| falls below onset_sigma. "
                 "Lower values give earlier (more conservative) onsets and therefore "
-                "earlier recovery cuts; higher values place the onset closer to the "
-                "unambiguous part of the peak.  Default 4.0."
+                "an earlier clean boundary; higher values place the onset closer to "
+                "the unambiguous part of the peak.  Default 4.0."
             ),
         ),
     ]
-    baseline_window: Annotated[int, Field(default=50, ge=5)]
-    recent_window: Annotated[int, Field(default=50, ge=5)]
-    min_samples_before_check: Annotated[int, Field(default=100, ge=10)]
-    temperature_window: Annotated[
-        float,
+    prescan_steps: Annotated[
+        int,
         Field(
-            default=50.0,
-            ge=0,
+            default=25000,
+            ge=1000,
             description=(
-                "Split each TS sweep into blocks of this width (in Kelvin). "
-                "The transition detector is called at each block boundary. "
-                "Set to 0 to run a single sweep with post-hoc detection only."
+                "Number of MD steps for the pre-flight temperature ramp from "
+                "T0 to Tf.  This is a cheap diagnostic run, typically shorter "
+                "than the production switching length.  Default 25000."
             ),
         ),
     ]
