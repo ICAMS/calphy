@@ -286,65 +286,20 @@ class PhaseTransitionDetection(BaseModel, title="Settings for the pre-flight tem
             ),
         ),
     ]
-    peak_threshold: Annotated[
-        float,
-        Field(
-            default=12.0,
-            gt=0,
-            description=(
-                "Flag a transition when the modified Z-score of any variance-based "
-                "response function peak (Cp, kappa_T, alpha_P) exceeds this value, "
-                "where mod_z = (peak - median) / (1.4826 * MAD).  The slope-break "
-                "signals (H_break, V_break) use a separate sigma threshold "
-                "(slope_break_sigma, default 5.0) and are not affected by this "
-                "setting."
-            ),
-        ),
-    ]
-    min_agreement: Annotated[
+    prescan_steps: Annotated[
         int,
         Field(
-            default=2,
-            ge=1,
+            default=20000,
+            ge=1000,
             description=(
-                "Minimum number of signals that must trigger simultaneously for a "
-                "transition to be declared.  Five signals are evaluated: Cp, "
-                "kappa_T, alpha_P (variance-based) and H_break, V_break "
-                "(slope-break, first-moment).  Default 2."
-            ),
-        ),
-    ]
-    onset_sigma: Annotated[
-        float,
-        Field(
-            default=4.0,
-            gt=0,
-            description=(
-                "Walk-back threshold for the variance-based signals (Cp, "
-                "kappa_T, alpha_P), whose rolling-window peak sits AT the "
-                "transition.  Their onset is walked back from the peak to where "
-                "the signal falls below baseline_median + onset_sigma * MAD.  "
-                "The slope-break signals use onset_level instead.  Default 4.0."
-            ),
-        ),
-    ]
-    onset_level: Annotated[
-        float,
-        Field(
-            default=1.5,
-            gt=0,
-            description=(
-                "Low-sigma walk-back level for the slope-break signals (H_break, "
-                "V_break), used to place the clean boundary at the FOOT of the "
-                "transition — where the mean enthalpy/volume first starts leaving "
-                "the single-phase equation of state — rather than at its collapse. "
-                "This matters because a reversible-scaling sweep equilibrates the "
-                "system at the boundary temperature, so the boundary must sit "
-                "where the phase is still cleanly stable, not at the point where a "
-                "fast diagnostic ramp finally lost (super)stability.  It is "
-                "phase-agnostic (melting, solid-solid, freezing).  Lower values "
-                "place the cut earlier (more margin); higher values place it "
-                "closer to the collapse.  Default 1.5."
+                "Number of MD steps for the pre-flight temperature ramp from "
+                "T0 to Tf.  Typically a little shorter than the production "
+                "switching length.  Note that a *faster* ramp superheats (or "
+                "supercools) the metastable phase further and yields noisier "
+                "response-function signals, pushing the detected onset closer "
+                "to the collapse; if the adapted ts sweep melts/freezes during "
+                "its equilibration, increase this (or lower onset_fraction).  "
+                "Default 20000."
             ),
         ),
     ]
@@ -366,28 +321,19 @@ class PhaseTransitionDetection(BaseModel, title="Settings for the pre-flight tem
                 "also noisy.  Backing the boundary off by a fraction of the "
                 "super-heated/cooled span makes the adapted sweep robust to both "
                 "effects.  1.0 disables the margin (cut exactly at the onset); "
-                "lower values give more margin (and less usable range).  "
+                "lower values give more margin (and less usable range).  This is "
+                "the main knob to turn if an adapted ts run still melts/freezes. "
                 "Default 0.85."
             ),
         ),
     ]
-    prescan_steps: Annotated[
-        int,
-        Field(
-            default=20000,
-            ge=1000,
-            description=(
-                "Number of MD steps for the pre-flight temperature ramp from "
-                "T0 to Tf.  Typically a little shorter than the production "
-                "switching length.  Note that a *faster* ramp superheats (or "
-                "supercools) the metastable phase further and yields noisier "
-                "response-function signals, pushing the detected onset closer "
-                "to the collapse; if the adapted ts sweep melts/freezes during "
-                "its equilibration, increase this (or lower onset_level).  "
-                "Default 20000."
-            ),
-        ),
-    ]
+    # Detector-internal calibration (peak_threshold, min_agreement, onset_sigma,
+    # onset_level, the smoothing/fluctuation windows, slope-break parameters …)
+    # are intentionally NOT exposed here.  They are stable defaults living in
+    # calphy.range_scan.RangeScan; onset_sigma in particular had no effect on the
+    # result (the slope-break onset always dominates the final boundary), and
+    # onset_level overlapped with onset_fraction.  Users tune the scan through
+    # mode, prescan_steps and onset_fraction only.
 
 class MeltingTemperature(BaseModel, title="Input options for melting temperature mode"):
     guess: Annotated[Union[float, None], Field(default=None, gt=0)]

@@ -1767,10 +1767,8 @@ class Phase:
         )
         self.logger.info(
             "pre-scan: diagnostic ramp T %.1f -> %.1f K over %d steps "
-            "(peak_threshold=%.1f, min_agreement=%d, onset_sigma=%.1f, "
-            "onset_level=%.1f)",
-            t0, tf, n_scan, td.peak_threshold, td.min_agreement,
-            td.onset_sigma, td.onset_level,
+            "(onset_fraction=%.2f)",
+            t0, tf, n_scan, td.onset_fraction,
         )
 
         # ── Build the LAMMPS object and load the equilibrated configuration ──
@@ -1846,13 +1844,10 @@ class Phase:
             return
 
         dU, press, vol, temp = data.T
-        scanner = RangeScan(
-            target_pressure=p0,
-            peak_threshold=td.peak_threshold,
-            min_agreement=td.min_agreement,
-            onset_sigma=td.onset_sigma,
-            onset_level=td.onset_level,
-        )
+        # Detector calibration (peak_threshold, min_agreement, onset_sigma,
+        # onset_level, windows) uses RangeScan's internal defaults; users tune
+        # the scan only through mode, prescan_steps and onset_fraction.
+        scanner = RangeScan(target_pressure=p0)
         result = scanner.find_clean_range(
             pe=dU, press=press, vol_total=vol, temp=temp,
             natoms=self.natoms, t_start=t0, t_stop=tf,
@@ -1863,7 +1858,7 @@ class Phase:
         if plot_scan(
             pe=dU, press=press, vol_total=vol, temp=temp,
             natoms=self.natoms, target_pressure=p0, outpath=plot_path,
-            result=result, peak_threshold=td.peak_threshold,
+            result=result,
         ):
             self.logger.info("pre-scan: signal plot saved to %s",
                              os.path.basename(plot_path))
