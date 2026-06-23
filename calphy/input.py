@@ -342,15 +342,43 @@ class PhaseTransitionDetection(BaseModel, title="Settings for the pre-flight tem
             ),
         ),
     ]
+    onset_fraction: Annotated[
+        float,
+        Field(
+            default=0.85,
+            gt=0,
+            le=1.0,
+            description=(
+                "Fractional safety margin applied to the detected onset: the "
+                "adapted upper temperature is "
+                "T_clean = T0 + onset_fraction * (T_onset - T0).  The detected "
+                "onset is the foot of the deviation in a *fast* diagnostic ramp, "
+                "but a reversible-scaling sweep then EQUILIBRATES at the boundary "
+                "for many steps and the metastable phase has more time to "
+                "nucleate the transition there — so its practical stability "
+                "limit is somewhat below the ramp onset, and the exact onset is "
+                "also noisy.  Backing the boundary off by a fraction of the "
+                "super-heated/cooled span makes the adapted sweep robust to both "
+                "effects.  1.0 disables the margin (cut exactly at the onset); "
+                "lower values give more margin (and less usable range).  "
+                "Default 0.85."
+            ),
+        ),
+    ]
     prescan_steps: Annotated[
         int,
         Field(
-            default=25000,
+            default=20000,
             ge=1000,
             description=(
                 "Number of MD steps for the pre-flight temperature ramp from "
-                "T0 to Tf.  This is a cheap diagnostic run, typically shorter "
-                "than the production switching length.  Default 25000."
+                "T0 to Tf.  Typically a little shorter than the production "
+                "switching length.  Note that a *faster* ramp superheats (or "
+                "supercools) the metastable phase further and yields noisier "
+                "response-function signals, pushing the detected onset closer "
+                "to the collapse; if the adapted ts sweep melts/freezes during "
+                "its equilibration, increase this (or lower onset_level).  "
+                "Default 20000."
             ),
         ),
     ]

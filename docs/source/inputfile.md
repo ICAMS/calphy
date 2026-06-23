@@ -263,6 +263,8 @@ calculations:
 ```
 ```{grid-item} [](ptd_onset_level)
 ```
+```{grid-item} [](ptd_onset_fraction)
+```
 ````
 
 ---
@@ -1232,10 +1234,11 @@ common [`onset_sigma`](ptd_onset_sigma) noise-width threshold.
 ```
 phase_transition_detection:
    mode: adapt
-   prescan_steps: 25000
+   prescan_steps: 20000
    peak_threshold: 12.0
    min_agreement: 2
-   onset_sigma: 4.0
+   onset_level: 1.5
+   onset_fraction: 0.85
 ```
 
 ---
@@ -1271,16 +1274,24 @@ Controls the pre-flight scan:
 #### `prescan_steps`
 
 _type_: int \
-_default_: 25000 \
+_default_: 20000 \
 _example_:
 ```
-prescan_steps: 25000
+prescan_steps: 20000
 ```
 
 Number of MD steps for the pre-flight temperature ramp from $T_0$ to $T_f$.
-This is a cheap diagnostic run, typically shorter than the production
-switching length (`n_switching_steps`).  Longer ramps give cleaner
-response-function signals at the cost of more compute.
+A diagnostic run, typically a little shorter than the production switching
+length (`n_switching_steps`).
+
+A *faster* ramp (fewer steps) is cheaper but has two side effects: it
+**superheats / supercools the metastable phase further** before it
+collapses, and it produces **noisier** response-function signals.  Both push
+the detected onset closer to the collapse, leaving less margin — so the
+adapted ts sweep can melt/freeze during its boundary equilibration.  If that
+happens, increase `prescan_steps` (or lower [`onset_level`](ptd_onset_level)).
+The default 20000 fires all five signals cleanly on Cu EAM melting while
+staying cheaper than a full switching sweep.
 
 ---
 
@@ -1403,6 +1414,43 @@ perfectly valid — reversible scaling deliberately samples the metastable
 (super-heated / super-cooled) branch.  `onset_level` does not pull the
 boundary below $T_m$; it only keeps it clear of the point where the phase
 actually loses stability under equilibration.  Default 1.5.
+
+---
+
+(ptd_onset_fraction)=
+#### `onset_fraction`
+
+_type_: float \
+_default_: 0.85 \
+_example_:
+```
+onset_fraction: 0.85
+```
+
+Fractional safety margin applied to the detected onset.  The adapted upper
+temperature is
+
+$$T_{\text{clean}} = T_0 + \texttt{onset\_fraction}\,(T_{\text{onset}} - T_0).$$
+
+Why a margin on top of the onset?  The onset is the foot of the deviation in
+a **fast** diagnostic ramp, but the production ts sweep then *equilibrates*
+at the boundary for many steps — and the metastable phase has far more time
+to nucleate the transition during that equilibration than during the quick
+ramp.  Its practical stability limit therefore sits somewhat **below** the
+ramp onset, and the detected onset is itself noisy (it shifts with
+`prescan_steps`).  Backing the boundary off by a fixed fraction of the
+super-heated / super-cooled span ($T_{\text{onset}} - T_0$) makes the
+adapted sweep robust to both effects, and scales automatically with the
+size of the range.
+
+* **`1.0`** → no margin; cut exactly at the detected onset (least
+  conservative).
+* **Lower values** (e.g. 0.8) → more margin below the onset (safer, less
+  usable range).
+
+The formula is direction-agnostic: for a cooling sweep ($T_0 > T_f$) it
+pulls the boundary *up* toward $T_0$ (less super-cooled), exactly mirroring
+the heating case.  Default 0.85.
 
 ---
 ---

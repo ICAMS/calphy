@@ -1880,8 +1880,17 @@ class Phase:
             self.logger.info("=" * 60)
             return
 
-        # A transition was found — report the detected boundaries clearly.
-        trimmed = abs(tf - result.clean_t_stop)
+        # A transition was found.  Apply the fractional safety margin toward T0:
+        # the detected onset is the foot of the deviation in a *fast* ramp, but
+        # the ts backward sweep equilibrates AT the boundary for many steps, so
+        # its practical stability limit is somewhat below the ramp onset (and the
+        # onset itself is noisy).  Back the boundary off by a fraction of the
+        # super-heated/cooled span:  T_clean = T0 + frac * (T_onset - T0).
+        frac = float(td.onset_fraction)
+        t_onset = float(result.onset_temperature)
+        t_clean = t0 + frac * (t_onset - t0)
+        trimmed = abs(tf - t_clean)
+
         self.logger.warning(
             "pre-scan: RESULT — phase transition DETECTED", )
         self.logger.warning(
@@ -1889,16 +1898,20 @@ class Phase:
             ", ".join(result.triggered_signals), result.confidence * 100,
         )
         self.logger.warning(
-            "pre-scan:   onset temperature  : %.1f K  (clean boundary)",
-            result.onset_temperature,
+            "pre-scan:   onset temperature  : %.1f K  (foot of deviation)",
+            t_onset,
         )
         self.logger.warning(
             "pre-scan:   peak / collapse    : %.1f K", result.peak_temperature,
         )
         self.logger.warning(
+            "pre-scan:   safety margin      : onset_fraction=%.2f  -> "
+            "backed off %.1f K below onset", frac, t_onset - t_clean,
+        )
+        self.logger.warning(
             "pre-scan:   clean range        : [%.1f, %.1f] K  "
             "(requested [%.1f, %.1f] K, trimmed %.1f K)",
-            t0, result.clean_t_stop, t0, tf, trimmed,
+            t0, t_clean, t0, tf, trimmed,
         )
 
         if td.mode == "warn":
@@ -1917,22 +1930,22 @@ class Phase:
                 "(onset ~ %.1f K, signals: %s).  The clean range is "
                 "[%.1f, %.1f] K — re-submit with a corrected temperature range "
                 "or set phase_transition_detection.mode: adapt."
-                % (t0, tf, result.onset_temperature,
-                   ", ".join(result.triggered_signals), t0, result.clean_t_stop)
+                % (t0, tf, t_onset,
+                   ", ".join(result.triggered_signals), t0, t_clean)
             )
 
         # td.mode == "adapt": reduce the upper temperature, keep the same
         # number of switching steps.
         old_tf = self.calc._temperature_stop
-        self.calc._temperature_stop = float(result.clean_t_stop)
+        self.calc._temperature_stop = float(t_clean)
         self.logger.warning(
             "pre-scan (mode='adapt'): ADAPTING ts range — T_stop %.1f K -> "
-            "%.1f K", old_tf, result.clean_t_stop,
+            "%.1f K", old_tf, t_clean,
         )
         self.logger.warning(
             "pre-scan (mode='adapt'): ts sweep will run [%.1f, %.1f] K over %d "
             "switching steps (n_sweep_steps unchanged)",
-            t0, result.clean_t_stop, self.calc._n_sweep_steps,
+            t0, t_clean, self.calc._n_sweep_steps,
         )
         self.logger.info("=" * 60)
 
