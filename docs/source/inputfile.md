@@ -1151,7 +1151,7 @@ tolerance for the convergence of spring constant calculation.
 #### `solid_fraction`
 
 _type_: float \
-_default_: 0.7 \
+_default_: 0.0 \
 _example_:
 ```
 solid_fraction: 0.7
@@ -1161,8 +1161,11 @@ Minimum fraction of atoms that must remain identified as solid (by the
 common-neighbour / structure-detection algorithm) during a solid
 equilibration.  If the solid fraction falls below this value the system is
 considered to have melted and a `MeltedError` is raised.  The detection
-algorithm only recognises BCC/FCC/HCP/SC/DIA; set to `0` to disable the
-check.
+algorithm only recognises BCC/FCC/HCP/SC/DIA.
+
+**Disabled by default** (`0.0`): the check `solid_fraction < this` is never
+true at `0`, so no melt detection runs.  Set it to a positive value (e.g.
+`0.7`) to enable melt detection for a solid run.
 
 ---
 
@@ -1170,7 +1173,7 @@ check.
 #### `liquid_fraction`
 
 _type_: float \
-_default_: 0.05 \
+_default_: 1.0 \
 _example_:
 ```
 liquid_fraction: 0.05
@@ -1179,6 +1182,10 @@ liquid_fraction: 0.05
 Maximum fraction of atoms that may be identified as solid during a liquid
 equilibration.  If the solid fraction exceeds this value the liquid is
 considered to have solidified and a `SolidifiedError` is raised.
+
+**Disabled by default** (`1.0`): the check `solid_fraction > this` is never
+true at `1.0`, so no solidification detection runs.  Set it to a value below
+1 (e.g. `0.05`) to enable solidification detection for a liquid run.
 
 ---
 

@@ -248,8 +248,14 @@ class Queue(BaseModel, title="Options for configuring queue"):
 class Tolerance(BaseModel, title="Tolerance settings for convergence"):
     lattice_constant: Annotated[float, Field(default=0.0002, ge=0)]
     spring_constant: Annotated[float, Field(default=0.1, gt=0)]
-    solid_fraction: Annotated[float, Field(default=0.7, ge=0)]
-    liquid_fraction: Annotated[float, Field(default=0.05, ge=0)]
+    # Structural phase-stability checks during equilibration are OFF by
+    # default: solid_fraction=0 means the melt check (solid_fraction < this)
+    # never fires, and liquid_fraction=1.0 means the solidify check
+    # (solid_fraction > this) never fires.  Set solid_fraction > 0 (e.g. 0.7)
+    # to re-enable melt detection for a solid run, or liquid_fraction < 1
+    # (e.g. 0.05) to re-enable solidification detection for a liquid run.
+    solid_fraction: Annotated[float, Field(default=0.0, ge=0)]
+    liquid_fraction: Annotated[float, Field(default=1.0, ge=0)]
     pressure: Annotated[float, Field(default=10.0, ge=0)]
 
 
