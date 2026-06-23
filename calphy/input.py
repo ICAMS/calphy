@@ -314,14 +314,31 @@ class PhaseTransitionDetection(BaseModel, title="Settings for the pre-flight tem
             default=4.0,
             gt=0,
             description=(
-                "Walk-back threshold used to locate the onset temperature from a "
-                "detected peak.  Applied to all signals: variance-based signals "
-                "(Cp, kappa_T, alpha_P) walk back to where the signal falls below "
-                "baseline_median + onset_sigma * MAD; slope-break signals "
-                "(H_break, V_break) walk back to where |z| falls below onset_sigma. "
-                "Lower values give earlier (more conservative) onsets and therefore "
-                "an earlier clean boundary; higher values place the onset closer to "
-                "the unambiguous part of the peak.  Default 4.0."
+                "Walk-back threshold for the variance-based signals (Cp, "
+                "kappa_T, alpha_P), whose rolling-window peak sits AT the "
+                "transition.  Their onset is walked back from the peak to where "
+                "the signal falls below baseline_median + onset_sigma * MAD.  "
+                "The slope-break signals use onset_level instead.  Default 4.0."
+            ),
+        ),
+    ]
+    onset_level: Annotated[
+        float,
+        Field(
+            default=1.5,
+            gt=0,
+            description=(
+                "Low-sigma walk-back level for the slope-break signals (H_break, "
+                "V_break), used to place the clean boundary at the FOOT of the "
+                "transition — where the mean enthalpy/volume first starts leaving "
+                "the single-phase equation of state — rather than at its collapse. "
+                "This matters because a reversible-scaling sweep equilibrates the "
+                "system at the boundary temperature, so the boundary must sit "
+                "where the phase is still cleanly stable, not at the point where a "
+                "fast diagnostic ramp finally lost (super)stability.  It is "
+                "phase-agnostic (melting, solid-solid, freezing).  Lower values "
+                "place the cut earlier (more margin); higher values place it "
+                "closer to the collapse.  Default 1.5."
             ),
         ),
     ]

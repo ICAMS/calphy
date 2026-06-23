@@ -1750,7 +1750,7 @@ class Phase:
         -------
         None
         """
-        from calphy.range_scan import RangeScan
+        from calphy.range_scan import RangeScan, plot_scan
         from calphy.errors import PhaseTransitionError
 
         td = self.calc.phase_transition_detection
@@ -1760,11 +1760,17 @@ class Phase:
         p0 = self.calc._pressure if self.calc._pressure is not None else 0.0
         n_scan = int(td.prescan_steps)
 
+        self.logger.info("=" * 60)
+        self.logger.info("Pre-flight temperature-range scan (mode=%s)", td.mode)
         self.logger.info(
-            "pre-scan: temperature ramp T %.1f -> %.1f K over %d steps "
-            "(mode=%s, peak_threshold=%.1f, min_agreement=%d, onset_sigma=%.1f)",
-            t0, tf, n_scan, td.mode, td.peak_threshold, td.min_agreement,
-            td.onset_sigma,
+            "pre-scan: requested ts range [%.1f, %.1f] K", t0, tf,
+        )
+        self.logger.info(
+            "pre-scan: diagnostic ramp T %.1f -> %.1f K over %d steps "
+            "(peak_threshold=%.1f, min_agreement=%d, onset_sigma=%.1f, "
+            "onset_level=%.1f)",
+            t0, tf, n_scan, td.peak_threshold, td.min_agreement,
+            td.onset_sigma, td.onset_level,
         )
 
         # ── Build the LAMMPS object and load the equilibrated configuration ──
@@ -1845,35 +1851,67 @@ class Phase:
             peak_threshold=td.peak_threshold,
             min_agreement=td.min_agreement,
             onset_sigma=td.onset_sigma,
+            onset_level=td.onset_level,
         )
         result = scanner.find_clean_range(
             pe=dU, press=press, vol_total=vol, temp=temp,
             natoms=self.natoms, t_start=t0, t_stop=tf,
         )
 
+        # Save the diagnostic signal plot (best-effort; never fatal).
+        plot_path = os.path.join(self.simfolder, "prescan_signals.png")
+        if plot_scan(
+            pe=dU, press=press, vol_total=vol, temp=temp,
+            natoms=self.natoms, target_pressure=p0, outpath=plot_path,
+            result=result, peak_threshold=td.peak_threshold,
+        ):
+            self.logger.info("pre-scan: signal plot saved to %s",
+                             os.path.basename(plot_path))
+
         if not result.transition_found:
             self.logger.info(
-                "pre-scan: no phase transition detected over [%.1f, %.1f] K — "
-                "running ts sweep over the full requested range", t0, tf,
+                "pre-scan: RESULT — no phase transition detected over "
+                "[%.1f, %.1f] K", t0, tf,
             )
+            self.logger.info(
+                "pre-scan: clean range = [%.1f, %.1f] K (full requested range); "
+                "running ts sweep unchanged", t0, tf,
+            )
+            self.logger.info("=" * 60)
             return
 
+        # A transition was found — report the detected boundaries clearly.
+        trimmed = abs(tf - result.clean_t_stop)
         self.logger.warning(
-            "pre-scan: phase transition detected — onset T ~ %.1f K, peak T ~ "
-            "%.1f K (signals: %s, confidence %.0f%%)",
-            result.onset_temperature, result.peak_temperature,
+            "pre-scan: RESULT — phase transition DETECTED", )
+        self.logger.warning(
+            "pre-scan:   triggering signals : %s (confidence %.0f%%)",
             ", ".join(result.triggered_signals), result.confidence * 100,
+        )
+        self.logger.warning(
+            "pre-scan:   onset temperature  : %.1f K  (clean boundary)",
+            result.onset_temperature,
+        )
+        self.logger.warning(
+            "pre-scan:   peak / collapse    : %.1f K", result.peak_temperature,
+        )
+        self.logger.warning(
+            "pre-scan:   clean range        : [%.1f, %.1f] K  "
+            "(requested [%.1f, %.1f] K, trimmed %.1f K)",
+            t0, result.clean_t_stop, t0, tf, trimmed,
         )
 
         if td.mode == "warn":
             self.logger.warning(
-                "pre-scan (mode='warn'): clean range is [%.1f, %.1f] K; "
-                "running ts sweep over the full requested range anyway",
-                t0, result.clean_t_stop,
+                "pre-scan (mode='warn'): NOT adapting — ts sweep runs over the "
+                "full requested range [%.1f, %.1f] K despite the detected "
+                "transition", t0, tf,
             )
+            self.logger.info("=" * 60)
             return
 
         if td.mode == "stop":
+            self.logger.info("=" * 60)
             raise PhaseTransitionError(
                 "Pre-scan detected a phase transition over [%.1f, %.1f] K "
                 "(onset ~ %.1f K, signals: %s).  The clean range is "
@@ -1888,10 +1926,15 @@ class Phase:
         old_tf = self.calc._temperature_stop
         self.calc._temperature_stop = float(result.clean_t_stop)
         self.logger.warning(
-            "pre-scan (mode='adapt'): reduced T_stop %.1f K -> %.1f K for the "
-            "ts sweep (n_sweep_steps unchanged at %d)",
-            old_tf, result.clean_t_stop, self.calc._n_sweep_steps,
+            "pre-scan (mode='adapt'): ADAPTING ts range — T_stop %.1f K -> "
+            "%.1f K", old_tf, result.clean_t_stop,
         )
+        self.logger.warning(
+            "pre-scan (mode='adapt'): ts sweep will run [%.1f, %.1f] K over %d "
+            "switching steps (n_sweep_steps unchanged)",
+            t0, result.clean_t_stop, self.calc._n_sweep_steps,
+        )
+        self.logger.info("=" * 60)
 
     def temperature_scaling(self, iteration=1):
         """

@@ -261,6 +261,8 @@ calculations:
 ```
 ```{grid-item} [](ptd_onset_sigma)
 ```
+```{grid-item} [](ptd_onset_level)
+```
 ````
 
 ---
@@ -1352,27 +1354,55 @@ _example_:
 onset_sigma: 4.0
 ```
 
-Walk-back threshold used to locate the **onset temperature** from a
-detected peak or trigger.  Applied uniformly to all five signals:
+Walk-back threshold for the **variance-based** signals ($C_p$, $\kappa_T$,
+$\alpha_P$), whose rolling-window peak sits *at* the transition.  Each
+variance onset is walked back from its peak to where
+$X \le \mathrm{med} + \mathrm{onset\_sigma} \cdot 1.4826\,\mathrm{MAD}$.
+The slope-break signals use [`onset_level`](ptd_onset_level) instead.
+Default 4.0.
 
-* Variance signals walk back from the peak to where
-  $X \le \mathrm{med} + \mathrm{onset\_sigma} \cdot 1.4826\,\mathrm{MAD}$.
-* Slope-break signals walk back from the trigger to where
-  $|z| \le \mathrm{onset\_sigma}$.
+---
+
+(ptd_onset_level)=
+#### `onset_level`
+
+_type_: float \
+_default_: 1.5 \
+_example_:
+```
+onset_level: 1.5
+```
+
+Low-$\sigma$ walk-back level for the **slope-break** signals
+($H_{\text{break}}$, $V_{\text{break}}$).  It places the clean boundary at
+the **foot** of the transition — where $\langle H\rangle(T)$ /
+$\langle V\rangle(T)$ *first* start leaving the single-phase equation of
+state — rather than at the collapse.
+
+This distinction is important.  A reversible-scaling sweep **equilibrates
+the system at the boundary temperature** (the backward sweep holds it there
+for a full equilibration run), so the boundary must sit where the phase is
+still *cleanly* stable.  The fast diagnostic ramp, by contrast, superheats
+(or supercools) past that point and only collapses later; cutting at the
+collapse would park the production sweep right at the edge of the
+transition, where it melts/freezes during equilibration.  Walking the
+slope-break residual back to a low $|z|$ level finds the start of the
+deviation instead.  The criterion is phase-agnostic and works for melting,
+solid$\to$solid and freezing alike.
 
 The clean upper temperature ($T_{\text{clean}}$, used by `mode: adapt`) is
-then the **earliest onset temperature** across all triggered signals.
+the **earliest onset** across all triggered signals.
 
-* **Lower values** (e.g. 2.0) → earlier, more conservative onset →
-  clean boundary further from the transition (more margin, but less
-  usable single-phase range).
-* **Higher values** (e.g. 5.0) → onset placed closer to where the signal
-  is unambiguous → clean boundary closer to the transition (more
-  single-phase range, less margin).
+* **Lower values** (e.g. 1.0) → cut earlier, further from the transition
+  (more margin, less usable range).
+* **Higher values** (e.g. 3.0) → cut closer to the collapse (more usable
+  range, less margin).
 
-Default 4.0 is a compromise that keeps the boundary well clear of the
-transition on Cu EAM melting (~270 K margin) without throwing away
-hundreds of K of usable solid range.
+Note that a temperature *above* the equilibrium transition temperature is
+perfectly valid — reversible scaling deliberately samples the metastable
+(super-heated / super-cooled) branch.  `onset_level` does not pull the
+boundary below $T_m$; it only keeps it clear of the point where the phase
+actually loses stability under equilibration.  Default 1.5.
 
 ---
 ---
