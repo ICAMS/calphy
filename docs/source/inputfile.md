@@ -249,19 +249,11 @@ calculations:
 
 ### `phase_transition_detection`
 
-````{grid} 1 2 3 4
+````{grid} 1 2 3
 :outline:
 ```{grid-item} [](ptd_mode)
 ```
 ```{grid-item} [](ptd_prescan_steps)
-```
-```{grid-item} [](ptd_peak_threshold)
-```
-```{grid-item} [](ptd_min_agreement)
-```
-```{grid-item} [](ptd_onset_sigma)
-```
-```{grid-item} [](ptd_onset_level)
 ```
 ```{grid-item} [](ptd_onset_fraction)
 ```
@@ -1233,18 +1225,19 @@ Hamiltonian.  The scan evaluates five signals:
   baseline.  They fire near the actual onset and are phase-agnostic (work
   for solid$\to$solid as well as solid$\to$liquid).
 
-A transition is declared when at least [`min_agreement`](ptd_min_agreement)
-signals fire simultaneously.  The clean boundary is the **earliest onset**
-across all triggered signals, walked back from each peak/trigger using a
-common [`onset_sigma`](ptd_onset_sigma) noise-width threshold.
+A transition is declared when at least two signals fire simultaneously.  The
+clean boundary is taken from the **earliest onset** across the triggered
+signals, then backed off by [`onset_fraction`](ptd_onset_fraction) for safety.
+
+The scan exposes just three keywords — `mode`, `prescan_steps` and
+`onset_fraction`.  All detector-internal calibration (peak / agreement
+thresholds, walk-back levels, smoothing and fluctuation windows) uses fixed,
+well-tested defaults and is not configurable from the input file.
 
 ```
 phase_transition_detection:
    mode: adapt
    prescan_steps: 20000
-   peak_threshold: 12.0
-   min_agreement: 2
-   onset_level: 1.5
    onset_fraction: 0.85
 ```
 
@@ -1296,131 +1289,10 @@ A *faster* ramp (fewer steps) is cheaper but has two side effects: it
 collapses, and it produces **noisier** response-function signals.  Both push
 the detected onset closer to the collapse, leaving less margin — so the
 adapted ts sweep can melt/freeze during its boundary equilibration.  If that
-happens, increase `prescan_steps` (or lower [`onset_level`](ptd_onset_level)).
-The default 20000 fires all five signals cleanly on Cu EAM melting while
-staying cheaper than a full switching sweep.
-
----
-
-(ptd_peak_threshold)=
-#### `peak_threshold`
-
-_type_: float \
-_default_: 12.0 \
-_example_:
-```
-peak_threshold: 12.0
-```
-
-Modified-Z trigger threshold $\tau$ for the variance-based signals
-($C_p$, $\kappa_T$, $\alpha_P$).  A variance signal fires when its peak
-modified-Z score
-$\mathrm{modZ} = (X_{\text{peak}} - \mathrm{med})/(1.4826\,\mathrm{MAD})$
-exceeds $\tau$.  The default 12.0 cleanly separates real transitions
-($\mathrm{modZ} > 25$ on Cu EAM melting) from natural single-phase
-growth ($\mathrm{modZ} \le 7$ over a 200 K solid window).
-
-**System-size sensitivity.**  Variance signals scale with the inverse
-square root of the number of atoms — at smaller cell sizes the peak
-modified-Z score of a real transition can drop below 12 and the
-detector will silently miss the transition (the run completes but the
-forward / backward energy dissipation is anomalously large).
-Recommended values:
-
-| System size | `peak_threshold` |
-|---|---|
-| ≥ 1500 atoms (e.g. `repeat: [10,10,10]` fcc) | `12` (default) |
-| 500 – 1500 atoms | `8` |
-| < 500 atoms | `6` |
-
-If you're not sure, leave it at the default and inspect the pre-scan log
-output, which reports the detected clean range and the triggering signals.
-
-This parameter does **not** affect the slope-break signals
-($H_{\text{break}}$, $V_{\text{break}}$): they use a separate sigma
-threshold (`slope_break_sigma`, default 5) which is fixed in code.
-
----
-
-(ptd_min_agreement)=
-#### `min_agreement`
-
-_type_: int \
-_default_: 2 \
-_example_:
-```
-min_agreement: 2
-```
-
-Minimum number of signals that must trigger simultaneously for a
-transition to be declared.  Five signals are evaluated:
-$C_p$, $\kappa_T$, $\alpha_P$ (variance-based) and
-$H_{\text{break}}$, $V_{\text{break}}$ (slope-break).  The default 2
-gives strong discrimination against single-signal artefacts (one
-glitched volume sample, a pressure spike, etc.) while still catching
-transitions that are weak in one family but strong in the other.
-
----
-
-(ptd_onset_sigma)=
-#### `onset_sigma`
-
-_type_: float \
-_default_: 4.0 \
-_example_:
-```
-onset_sigma: 4.0
-```
-
-Walk-back threshold for the **variance-based** signals ($C_p$, $\kappa_T$,
-$\alpha_P$), whose rolling-window peak sits *at* the transition.  Each
-variance onset is walked back from its peak to where
-$X \le \mathrm{med} + \mathrm{onset\_sigma} \cdot 1.4826\,\mathrm{MAD}$.
-The slope-break signals use [`onset_level`](ptd_onset_level) instead.
-Default 4.0.
-
----
-
-(ptd_onset_level)=
-#### `onset_level`
-
-_type_: float \
-_default_: 1.5 \
-_example_:
-```
-onset_level: 1.5
-```
-
-Low-$\sigma$ walk-back level for the **slope-break** signals
-($H_{\text{break}}$, $V_{\text{break}}$).  It places the clean boundary at
-the **foot** of the transition — where $\langle H\rangle(T)$ /
-$\langle V\rangle(T)$ *first* start leaving the single-phase equation of
-state — rather than at the collapse.
-
-This distinction is important.  A reversible-scaling sweep **equilibrates
-the system at the boundary temperature** (the backward sweep holds it there
-for a full equilibration run), so the boundary must sit where the phase is
-still *cleanly* stable.  The fast diagnostic ramp, by contrast, superheats
-(or supercools) past that point and only collapses later; cutting at the
-collapse would park the production sweep right at the edge of the
-transition, where it melts/freezes during equilibration.  Walking the
-slope-break residual back to a low $|z|$ level finds the start of the
-deviation instead.  The criterion is phase-agnostic and works for melting,
-solid$\to$solid and freezing alike.
-
-The clean upper temperature ($T_{\text{clean}}$, used by `mode: adapt`) is
-the **earliest onset** across all triggered signals.
-
-* **Lower values** (e.g. 1.0) → cut earlier, further from the transition
-  (more margin, less usable range).
-* **Higher values** (e.g. 3.0) → cut closer to the collapse (more usable
-  range, less margin).
-
-Note that a temperature *above* the equilibrium transition temperature is
-perfectly valid — reversible scaling deliberately samples the metastable
-(super-heated / super-cooled) branch.  `onset_level` does not pull the
-boundary below $T_m$; it only keeps it clear of the point where the phase
-actually loses stability under equilibration.  Default 1.5.
+happens, increase `prescan_steps` (or lower
+[`onset_fraction`](ptd_onset_fraction)).  The default 20000 fires all five
+signals cleanly on Cu EAM melting while staying cheaper than a full switching
+sweep.
 
 ---
 
