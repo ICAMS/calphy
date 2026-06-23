@@ -249,7 +249,7 @@ calculations:
 
 ### `phase_transition_detection`
 
-````{grid} 1 2 3
+````{grid} 1 2 3 4
 :outline:
 ```{grid-item} [](ptd_mode)
 ```
