@@ -18,6 +18,10 @@ dependencies:
   - matplotlib
   - tqdm
   - pydantic >=2.3.0
+  # pandoc is required by nbsphinx to render the example notebooks.  Read the
+  # Docs ships it in the build image, but the GitHub Actions runner does not,
+  # so it must be declared here explicitly.
+  - pandoc
   - pip:
     - sphinx==5.3.0
     - sphinx_rtd_theme
