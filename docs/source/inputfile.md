@@ -253,13 +253,17 @@ calculations:
 :outline:
 ```{grid-item} [](ptd_mode)
 ```
-```{grid-item} [](ptd_temperature_window)
+```{grid-item} [](ptd_prescan_steps)
 ```
 ```{grid-item} [](ptd_peak_threshold)
 ```
 ```{grid-item} [](ptd_min_agreement)
 ```
 ```{grid-item} [](ptd_onset_sigma)
+```
+```{grid-item} [](ptd_onset_level)
+```
+```{grid-item} [](ptd_onset_fraction)
 ```
 ````
 
@@ -1113,10 +1117,6 @@ tolerance:
    pressure: 10.0
 ```
 
-```{note}
-`solid_fraction` and `liquid_fraction` are deprecated as of v1.8 and are no longer used.  Phase-stability checks during equilibration are now performed by the fluctuation-based detector — see the [`phase_transition_detection`](phase_transition_detection) block.  The parameters are still accepted in existing input files but have no effect.
-```
-
 ---
 
 (tol_lattice_constant)=
@@ -1148,26 +1148,44 @@ tolerance for the convergence of spring constant calculation.
 ---
 
 (tol_solid_fraction)=
-#### `solid_fraction` _(deprecated)_
+#### `solid_fraction`
 
 _type_: float \
 _default_: 0.0 \
-
-```{deprecated}
-This parameter is deprecated and has no effect. Phase-stability checks are now performed by the fluctuation-based `phase_transition_detection` detector. The field is kept for backward compatibility but is ignored at runtime.
+_example_:
 ```
+solid_fraction: 0.7
+```
+
+Minimum fraction of atoms that must remain identified as solid (by the
+common-neighbour / structure-detection algorithm) during a solid
+equilibration.  If the solid fraction falls below this value the system is
+considered to have melted and a `MeltedError` is raised.  The detection
+algorithm only recognises BCC/FCC/HCP/SC/DIA.
+
+**Disabled by default** (`0.0`): the check `solid_fraction < this` is never
+true at `0`, so no melt detection runs.  Set it to a positive value (e.g.
+`0.7`) to enable melt detection for a solid run.
 
 ---
 
 (tol_liquid_fraction)=
-#### `liquid_fraction` _(deprecated)_
+#### `liquid_fraction`
 
 _type_: float \
-_default_: 0.0 \
-
-```{deprecated}
-This parameter is deprecated and has no effect. Phase-stability checks are now performed by the fluctuation-based `phase_transition_detection` detector. The field is kept for backward compatibility but is ignored at runtime.
+_default_: 1.0 \
+_example_:
 ```
+liquid_fraction: 0.05
+```
+
+Maximum fraction of atoms that may be identified as solid during a liquid
+equilibration.  If the solid fraction exceeds this value the liquid is
+considered to have solidified and a `SolidifiedError` is raised.
+
+**Disabled by default** (`1.0`): the check `solid_fraction > this` is never
+true at `1.0`, so no solidification detection runs.  Set it to a value below
+1 (e.g. `0.05`) to enable solidification detection for a liquid run.
 
 ---
 
@@ -1189,40 +1207,45 @@ Tolerance (in bars) for the convergence of the average pressure during the equil
 (phase_transition_detection)=
 ## `phase_transition_detection` block
 
-Fluctuation-based detector that scans a reversible-scaling (`mode: ts`) sweep
-for first-order phase transitions and either warns, stops, or automatically
-truncates the sweep to a safe single-phase sub-range.  The detector evaluates
-five signals derived from the on-disk `ts.*.dat` columns:
+Configures a **pre-flight temperature-range scan** that runs *before* a
+reversible-scaling (`mode: ts`) calculation.  The scan performs a single fast
+**real-thermostat temperature ramp** ($T_0 \to T_f$ under NPT — the same
+physics as `mode: tscale`) and watches the fluctuation response functions for
+the onset of a first-order phase transition.  The clean sub-range it finds is
+then used to bound the production sweep, so the sweep never crosses a melting
+or solid–solid transition.
 
-* **Variance-based** (second moment): heat capacity $C_p$, isothermal
-  compressibility $\kappa_T$, isobaric thermal-expansion coefficient
-  $\alpha_P$.  These diverge in the two-phase region; they lag the
-  structural change because their rolling-window peak only appears once
-  enough mixed-phase samples have accumulated.
+Because the ramp uses a *measured* temperature (the thermostat genuinely
+ramps), the response functions are the plain NPT fluctuation expressions with
+**no $\lambda$ reduction** — unlike the production sweep, which scales the
+Hamiltonian.  The scan evaluates five signals:
+
+* **Variance-based** (second moment): heat capacity $C_p = \mathrm{Var}(H)/(k_B T^2)$,
+  isothermal compressibility $\kappa_T = \mathrm{Var}(V)/(k_B T \langle V\rangle)$,
+  isobaric thermal-expansion coefficient
+  $\alpha_P = \mathrm{Cov}(V,H)/(k_B T^2 \langle V\rangle)$, where
+  $H = \text{pe} + P V$ is the per-atom enthalpy.  These diverge in the
+  two-phase region.
 * **Slope-break** (first moment): $H_{\text{break}}$, $V_{\text{break}}$.
   These fit a low-order single-phase equation of state to the early part
-  of the sweep and flag a sustained deviation of $\langle H\rangle(T)$ or
-  $\langle V\rangle(T)$ from that baseline.  They fire near the actual
-  onset of the transition and are phase-agnostic (work for
-  solid$\to$solid as well as solid$\to$liquid).
+  of the ramp (in the *measured* temperature) and flag a sustained
+  deviation of $\langle H\rangle(T)$ or $\langle V\rangle(T)$ from that
+  baseline.  They fire near the actual onset and are phase-agnostic (work
+  for solid$\to$solid as well as solid$\to$liquid).
 
 A transition is declared when at least [`min_agreement`](ptd_min_agreement)
-signals fire simultaneously.  The recovery point is the **earliest onset**
+signals fire simultaneously.  The clean boundary is the **earliest onset**
 across all triggered signals, walked back from each peak/trigger using a
 common [`onset_sigma`](ptd_onset_sigma) noise-width threshold.
 
-For the full mathematical treatment — fit definitions, leverage-aware
-residual normalization, persistence and sign-coherence tests, the
-modified-Z score, and the recovery procedure — see the
-[transition-detection notes](transition_detection.md).
-
 ```
 phase_transition_detection:
-   mode: recover
-   temperature_window: 50.0
+   mode: adapt
+   prescan_steps: 20000
    peak_threshold: 12.0
    min_agreement: 2
-   onset_sigma: 4.0
+   onset_level: 1.5
+   onset_fraction: 0.85
 ```
 
 ---
@@ -1230,47 +1253,52 @@ phase_transition_detection:
 (ptd_mode)=
 #### `mode`
 
-_type_: string (`none` | `warn` | `recover` | `stop`) \
+_type_: string (`none` | `adapt` | `warn` | `stop`) \
 _default_: `none` \
 _example_:
 ```
-mode: recover
+mode: adapt
 ```
 
-Controls what happens when a transition is detected:
+Controls the pre-flight scan:
 
-* `none` — detection disabled entirely; sweep always completes (default).
-* `warn` — log a warning with the estimated transition temperature and
-  triggered signals, write response-function plots, continue the sweep
-  to completion.  Use this to observe detection without changing the
-  calculation outcome.
-* `recover` — truncate the forward sweep at the last clean block
-  boundary, save a checkpoint, continue with a backward sweep over the
-  reduced range $[T_0, T_k]$.  A valid free-energy curve is produced for
-  the single-phase region.  Requires
-  [`temperature_window`](ptd_temperature_window) > 0 so per-block
-  checkpoints are written.
-* `stop` — raise `PhaseTransitionError` and abort.  Use when you want to
-  inspect the raw data before deciding how to proceed.
+* `none` — the scan is disabled; the ts sweep runs over the requested
+  $[T_0, T_f]$ range as-is (default).
+* `adapt` — if the scan detects a transition, reduce the upper temperature
+  to the detected clean onset and run the ts sweep over $[T_0, T_{\text{clean}}]$,
+  **keeping the same number of switching steps**.  If the scan is clean
+  the range is unchanged.
+* `warn` — run the scan and log the detected clean range, but do **not**
+  modify the calculation; the ts sweep runs over the full requested range.
+  Use this to observe detection without changing the outcome.
+* `stop` — if a transition is detected, raise `PhaseTransitionError`
+  reporting the clean range so you can re-submit with a corrected
+  temperature range.
 
 ---
 
-(ptd_temperature_window)=
-#### `temperature_window`
+(ptd_prescan_steps)=
+#### `prescan_steps`
 
-_type_: float (K) \
-_default_: 50.0 \
+_type_: int \
+_default_: 20000 \
 _example_:
 ```
-temperature_window: 50.0
+prescan_steps: 20000
 ```
 
-Block width $\Delta T$ in Kelvin.  The ts sweep is split into
-$\lceil (T_{\text{stop}} - T_{\text{start}})/\Delta T \rceil$ contiguous
-blocks, and a configuration checkpoint is written at every block
-boundary.  These checkpoints are the candidate restart points for
-recovery in `mode: recover`.  Set to 0 to disable per-block checkpoints
-(post-hoc detection still runs but recovery is not possible).
+Number of MD steps for the pre-flight temperature ramp from $T_0$ to $T_f$.
+A diagnostic run, typically a little shorter than the production switching
+length (`n_switching_steps`).
+
+A *faster* ramp (fewer steps) is cheaper but has two side effects: it
+**superheats / supercools the metastable phase further** before it
+collapses, and it produces **noisier** response-function signals.  Both push
+the detected onset closer to the collapse, leaving less margin — so the
+adapted ts sweep can melt/freeze during its boundary equilibration.  If that
+happens, increase `prescan_steps` (or lower [`onset_level`](ptd_onset_level)).
+The default 20000 fires all five signals cleanly on Cu EAM melting while
+staying cheaper than a full switching sweep.
 
 ---
 
@@ -1305,11 +1333,8 @@ Recommended values:
 | 500 – 1500 atoms | `8` |
 | < 500 atoms | `6` |
 
-If you're not sure, leave it at the default — the
-``melting_temperature`` driver now monitors the per-sweep energy
-dissipation and explicitly aborts on contamination from missed
-transitions, so an under-tuned threshold surfaces as a clear error
-rather than a quietly wrong $T_m$.
+If you're not sure, leave it at the default and inspect the pre-scan log
+output, which reports the detected clean range and the triggering signals.
 
 This parameter does **not** affect the slope-break signals
 ($H_{\text{break}}$, $V_{\text{break}}$): they use a separate sigma
@@ -1347,27 +1372,92 @@ _example_:
 onset_sigma: 4.0
 ```
 
-Walk-back threshold used to locate the **onset temperature** from a
-detected peak or trigger.  Applied uniformly to all five signals:
+Walk-back threshold for the **variance-based** signals ($C_p$, $\kappa_T$,
+$\alpha_P$), whose rolling-window peak sits *at* the transition.  Each
+variance onset is walked back from its peak to where
+$X \le \mathrm{med} + \mathrm{onset\_sigma} \cdot 1.4826\,\mathrm{MAD}$.
+The slope-break signals use [`onset_level`](ptd_onset_level) instead.
+Default 4.0.
 
-* Variance signals walk back from the peak to where
-  $X \le \mathrm{med} + \mathrm{onset\_sigma} \cdot 1.4826\,\mathrm{MAD}$.
-* Slope-break signals walk back from the trigger to where
-  $|z| \le \mathrm{onset\_sigma}$.
+---
 
-The recovery checkpoint is then the last block boundary strictly
-**before** the earliest onset temperature across all triggered signals.
+(ptd_onset_level)=
+#### `onset_level`
 
-* **Lower values** (e.g. 2.0) → earlier, more conservative onset →
-  recovery cut further from the transition (more margin, but less
-  usable single-phase range).
-* **Higher values** (e.g. 5.0) → onset placed closer to where the signal
-  is unambiguous → recovery cut closer to the transition (more
-  single-phase range, less margin).
+_type_: float \
+_default_: 1.5 \
+_example_:
+```
+onset_level: 1.5
+```
 
-Default 4.0 is a compromise that keeps the cut well clear of the
-transition on Cu EAM melting (~270 K margin) without throwing away
-hundreds of K of usable solid sweep.
+Low-$\sigma$ walk-back level for the **slope-break** signals
+($H_{\text{break}}$, $V_{\text{break}}$).  It places the clean boundary at
+the **foot** of the transition — where $\langle H\rangle(T)$ /
+$\langle V\rangle(T)$ *first* start leaving the single-phase equation of
+state — rather than at the collapse.
+
+This distinction is important.  A reversible-scaling sweep **equilibrates
+the system at the boundary temperature** (the backward sweep holds it there
+for a full equilibration run), so the boundary must sit where the phase is
+still *cleanly* stable.  The fast diagnostic ramp, by contrast, superheats
+(or supercools) past that point and only collapses later; cutting at the
+collapse would park the production sweep right at the edge of the
+transition, where it melts/freezes during equilibration.  Walking the
+slope-break residual back to a low $|z|$ level finds the start of the
+deviation instead.  The criterion is phase-agnostic and works for melting,
+solid$\to$solid and freezing alike.
+
+The clean upper temperature ($T_{\text{clean}}$, used by `mode: adapt`) is
+the **earliest onset** across all triggered signals.
+
+* **Lower values** (e.g. 1.0) → cut earlier, further from the transition
+  (more margin, less usable range).
+* **Higher values** (e.g. 3.0) → cut closer to the collapse (more usable
+  range, less margin).
+
+Note that a temperature *above* the equilibrium transition temperature is
+perfectly valid — reversible scaling deliberately samples the metastable
+(super-heated / super-cooled) branch.  `onset_level` does not pull the
+boundary below $T_m$; it only keeps it clear of the point where the phase
+actually loses stability under equilibration.  Default 1.5.
+
+---
+
+(ptd_onset_fraction)=
+#### `onset_fraction`
+
+_type_: float \
+_default_: 0.85 \
+_example_:
+```
+onset_fraction: 0.85
+```
+
+Fractional safety margin applied to the detected onset.  The adapted upper
+temperature is
+
+$$T_{\text{clean}} = T_0 + \texttt{onset\_fraction}\,(T_{\text{onset}} - T_0).$$
+
+Why a margin on top of the onset?  The onset is the foot of the deviation in
+a **fast** diagnostic ramp, but the production ts sweep then *equilibrates*
+at the boundary for many steps — and the metastable phase has far more time
+to nucleate the transition during that equilibration than during the quick
+ramp.  Its practical stability limit therefore sits somewhat **below** the
+ramp onset, and the detected onset is itself noisy (it shifts with
+`prescan_steps`).  Backing the boundary off by a fixed fraction of the
+super-heated / super-cooled span ($T_{\text{onset}} - T_0$) makes the
+adapted sweep robust to both effects, and scales automatically with the
+size of the range.
+
+* **`1.0`** → no margin; cut exactly at the detected onset (least
+  conservative).
+* **Lower values** (e.g. 0.8) → more margin below the onset (safer, less
+  usable range).
+
+The formula is direction-agnostic: for a cooling sweep ($T_0 > T_f$) it
+pulls the boundary *up* toward $T_0$ (less super-cooled), exactly mirroring
+the heating case.  Default 0.85.
 
 ---
 ---

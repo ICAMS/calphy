@@ -49,7 +49,7 @@ from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
-__version__ = "1.8.2"
+__version__ = "1.8.3"
 
 
 def _check_equal(val):
@@ -248,33 +248,41 @@ class Queue(BaseModel, title="Options for configuring queue"):
 class Tolerance(BaseModel, title="Tolerance settings for convergence"):
     lattice_constant: Annotated[float, Field(default=0.0002, ge=0)]
     spring_constant: Annotated[float, Field(default=0.1, gt=0)]
-    solid_fraction: Annotated[float, Field(default=0.7, ge=0)]
-    liquid_fraction: Annotated[float, Field(default=0.05, ge=0)]
+    # Structural phase-stability checks during equilibration are OFF by
+    # default: solid_fraction=0 means the melt check (solid_fraction < this)
+    # never fires, and liquid_fraction=1.0 means the solidify check
+    # (solid_fraction > this) never fires.  Set solid_fraction > 0 (e.g. 0.7)
+    # to re-enable melt detection for a solid run, or liquid_fraction < 1
+    # (e.g. 0.05) to re-enable solidification detection for a liquid run.
+    solid_fraction: Annotated[float, Field(default=0.0, ge=0)]
+    liquid_fraction: Annotated[float, Field(default=1.0, ge=0)]
     pressure: Annotated[float, Field(default=10.0, ge=0)]
 
 
-class PhaseTransitionDetection(BaseModel, title="Settings for fluctuation-based phase transition detection"):
+class PhaseTransitionDetection(BaseModel, title="Settings for the pre-flight temperature-range scan"):
     mode: Annotated[
-        Literal["none", "warn", "recover", "stop"],
+        Literal["none", "adapt", "warn", "stop"],
         Field(
             default="none",
             description=(
-                "Controls what happens when a phase transition is detected "
-                "during a reversible-scaling sweep.\n"
-                "  'none'    — detection is disabled; sweep always completes "
-                "(default).\n"
-                "  'warn'    — detection runs and a warning is logged with the "
-                "estimated transition temperature and triggering signals; "
-                "response-function plots are generated; the sweep continues "
-                "to completion uninterrupted.  Use this to observe detection "
-                "without changing the calculation outcome.\n"
-                "  'recover' — truncate the forward sweep at the last clean "
-                "block boundary, save a checkpoint, and continue with a "
-                "backward sweep over the reduced range [T0, T_k].  A valid "
-                "free-energy curve is produced for the single-phase region.\n"
-                "  'stop'    — raise PhaseTransitionError and abort.  Use "
-                "when you want to inspect the raw data before deciding how "
-                "to proceed."
+                "Controls the pre-flight temperature-range scan that runs "
+                "before a reversible-scaling (ts) sweep.  The scan performs a "
+                "single fast real-thermostat temperature ramp (T0 -> Tf under "
+                "NPT) and watches the fluctuation response functions for the "
+                "onset of a phase transition.\n"
+                "  'none'  — the scan is disabled; the ts sweep runs over the "
+                "requested [T0, Tf] range as-is (default).\n"
+                "  'adapt' — if the scan detects a transition, reduce the upper "
+                "temperature to the detected clean onset and run the ts sweep "
+                "over [T0, T_clean] (keeping the same number of switching "
+                "steps).  If the scan is clean the range is unchanged.\n"
+                "  'warn'  — run the scan and log the detected clean range, but "
+                "do NOT modify the calculation; the ts sweep runs over the full "
+                "requested range.  Use this to observe detection without "
+                "changing the outcome.\n"
+                "  'stop'  — if a transition is detected, raise "
+                "PhaseTransitionError reporting the clean range so you can "
+                "re-submit with a corrected temperature range."
             ),
         ),
     ]
@@ -312,29 +320,71 @@ class PhaseTransitionDetection(BaseModel, title="Settings for fluctuation-based 
             default=4.0,
             gt=0,
             description=(
-                "Walk-back threshold used to locate the onset temperature from a "
-                "detected peak.  Applied to all signals: variance-based signals "
-                "(Cp, kappa_T, alpha_P) walk back to where the signal falls below "
-                "baseline_median + onset_sigma * MAD; slope-break signals "
-                "(H_break, V_break) walk back to where |z| falls below onset_sigma. "
-                "Lower values give earlier (more conservative) onsets and therefore "
-                "earlier recovery cuts; higher values place the onset closer to the "
-                "unambiguous part of the peak.  Default 4.0."
+                "Walk-back threshold for the variance-based signals (Cp, "
+                "kappa_T, alpha_P), whose rolling-window peak sits AT the "
+                "transition.  Their onset is walked back from the peak to where "
+                "the signal falls below baseline_median + onset_sigma * MAD.  "
+                "The slope-break signals use onset_level instead.  Default 4.0."
             ),
         ),
     ]
-    baseline_window: Annotated[int, Field(default=50, ge=5)]
-    recent_window: Annotated[int, Field(default=50, ge=5)]
-    min_samples_before_check: Annotated[int, Field(default=100, ge=10)]
-    temperature_window: Annotated[
+    onset_level: Annotated[
         float,
         Field(
-            default=50.0,
-            ge=0,
+            default=1.5,
+            gt=0,
             description=(
-                "Split each TS sweep into blocks of this width (in Kelvin). "
-                "The transition detector is called at each block boundary. "
-                "Set to 0 to run a single sweep with post-hoc detection only."
+                "Low-sigma walk-back level for the slope-break signals (H_break, "
+                "V_break), used to place the clean boundary at the FOOT of the "
+                "transition — where the mean enthalpy/volume first starts leaving "
+                "the single-phase equation of state — rather than at its collapse. "
+                "This matters because a reversible-scaling sweep equilibrates the "
+                "system at the boundary temperature, so the boundary must sit "
+                "where the phase is still cleanly stable, not at the point where a "
+                "fast diagnostic ramp finally lost (super)stability.  It is "
+                "phase-agnostic (melting, solid-solid, freezing).  Lower values "
+                "place the cut earlier (more margin); higher values place it "
+                "closer to the collapse.  Default 1.5."
+            ),
+        ),
+    ]
+    onset_fraction: Annotated[
+        float,
+        Field(
+            default=0.85,
+            gt=0,
+            le=1.0,
+            description=(
+                "Fractional safety margin applied to the detected onset: the "
+                "adapted upper temperature is "
+                "T_clean = T0 + onset_fraction * (T_onset - T0).  The detected "
+                "onset is the foot of the deviation in a *fast* diagnostic ramp, "
+                "but a reversible-scaling sweep then EQUILIBRATES at the boundary "
+                "for many steps and the metastable phase has more time to "
+                "nucleate the transition there — so its practical stability "
+                "limit is somewhat below the ramp onset, and the exact onset is "
+                "also noisy.  Backing the boundary off by a fraction of the "
+                "super-heated/cooled span makes the adapted sweep robust to both "
+                "effects.  1.0 disables the margin (cut exactly at the onset); "
+                "lower values give more margin (and less usable range).  "
+                "Default 0.85."
+            ),
+        ),
+    ]
+    prescan_steps: Annotated[
+        int,
+        Field(
+            default=20000,
+            ge=1000,
+            description=(
+                "Number of MD steps for the pre-flight temperature ramp from "
+                "T0 to Tf.  Typically a little shorter than the production "
+                "switching length.  Note that a *faster* ramp superheats (or "
+                "supercools) the metastable phase further and yields noisier "
+                "response-function signals, pushing the detected onset closer "
+                "to the collapse; if the adapted ts sweep melts/freezes during "
+                "its equilibration, increase this (or lower onset_level).  "
+                "Default 20000."
             ),
         ),
     ]

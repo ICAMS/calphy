@@ -35,6 +35,6 @@ class SolidifiedError(CustomError):
     pass
 
 class PhaseTransitionError(CustomError):
-    """Raised when the ts-sweep transition detector flags a phase transition."""
+    """Raised when the pre-flight temperature-range scan flags a phase transition."""
     pass
     
