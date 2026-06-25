@@ -197,6 +197,10 @@ calculations:
 ```
 ```{grid-item} [](ufm_sigma)
 ```
+```{grid-item} [](ufm_single_sigma)
+```
+```{grid-item} [](ufm_single_p)
+```
 ````
 
 ### `materials_project` 
@@ -1721,6 +1725,20 @@ uhlenbeck_ford_model:
   sigma: 1.5
 ```
 
+A single Uhlenbeck–Ford fluid has only one length scale (`sigma`) and works well for simple, single-scale liquids (e.g. metals). **Molecular liquids with two well-separated length scales** — for example water, with a short intramolecular O–H bond (~0.95 Å) alongside a longer intermolecular spacing (~2.8 Å) — cannot be represented by a single `sigma`: a `sigma` chosen for the intermolecular scale buries the bonded pair deep in the UFM repulsive core and the switch loses atoms. For these systems use the **two-leg path** (`sigma` given as a per-element-pair dict together with `single_sigma`), described below.
+
+```
+# two-leg example (water)
+uhlenbeck_ford_model:
+  p: 50.0
+  sigma:
+    H_H: 0.9
+    O_O: 2.8
+    H_O: 0.9
+  single_sigma: 1.0
+  single_p: 50.0
+```
+
 ---
 
 (ufm_p)=
@@ -1733,21 +1751,60 @@ _example_:
 p: 50.0
 ```
 
-Strength parameter of the Uhlenbeck–Ford pair potential. Larger values make the reference fluid more repulsive.
+Strength parameter of the Uhlenbeck–Ford pair potential. The energy scale is `eps = p · kB · T`, so `p` is also the confinement strength of the reference fluid in units of the thermal energy `kB·T`. Larger values make the reference fluid more repulsive and confine atoms more strongly; values that are too small (e.g. `p=1`) may fail to hold light atoms in place once the real potential is switched off, causing lost atoms. Only the tabulated values `1, 25, 50, 75, 100` are supported.
 
 ---
 
 (ufm_sigma)=
 #### `sigma`
 
-_type_: float \
+_type_: float _or_ dict \
 _default_: 1.5 \
 _example_:
 ```
 sigma: 1.5
 ```
+or, for the two-leg path (molecular liquids):
+```
+sigma:
+  H_H: 0.9
+  O_O: 2.8
+  H_O: 0.9
+```
 
 Length parameter (in Å) of the Uhlenbeck–Ford pair potential.
+
+When given as a **float**, a single-component UFM reference is used (original behaviour).
+
+When given as a **dict**, calphy uses the two-leg reference path: the real potential is first switched to a *multi-component* UFM with the per-element-pair length scales given here, and then to a single-component UFM at [`single_sigma`](ufm_single_sigma) whose absolute free energy is known analytically. Keys are of the form `<ElementA>_<ElementB>` (order-insensitive, e.g. `H_O` is the same as `O_H`). Any element pair not listed is filled in by LAMMPS geometric mixing. Choose the cross-term sigma (e.g. `H_O`) near the bonded distance so that bonded pairs stay outside the UFM repulsive core. Requires [`single_sigma`](ufm_single_sigma) to be set.
+
+---
+
+(ufm_single_sigma)=
+#### `single_sigma`
+
+_type_: float \
+_default_: None \
+_example_:
+```
+single_sigma: 1.0
+```
+
+Length parameter (in Å) of the **single-component** UFM endpoint used in the two-leg path. Only used when [`sigma`](ufm_sigma) is given as a dict. The free energy of this endpoint is evaluated analytically, so this is the reference whose free energy is actually known; the two switching legs (real → multi-component UFM → single-component UFM) connect the system to it. Choose a small value (e.g. ~1.0 Å) so that the second leg *shrinks* the repulsive cores — the numerically stable direction. When this keyword is not set, the single-leg behaviour is used and the dict form of `sigma` is not allowed.
+
+---
+
+(ufm_single_p)=
+#### `single_p`
+
+_type_: float \
+_default_: None (falls back to [`p`](ufm_p)) \
+_example_:
+```
+single_p: 50.0
+```
+
+Strength parameter `p` of the single-component UFM endpoint in the two-leg path. If omitted, the value of [`p`](ufm_p) is reused. Must be one of the tabulated values `1, 25, 50, 75, 100`.
 
 ---
 ---
