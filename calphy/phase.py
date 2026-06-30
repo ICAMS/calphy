@@ -212,7 +212,31 @@ class Phase:
         # reference system props; may not be always used
         # TODO : Add option to customize UFM parameters
         self.eps = self.calc._temperature * self.calc.uhlenbeck_ford_model.p * kb
-        self.ufm_cutoff = 5 * self.calc.uhlenbeck_ford_model.sigma
+
+        # Resolve the UFM length scale(s). `sigma` is either a scalar (original
+        # single-component reference) or a dict of per-element-pair values for the
+        # two-leg reference path. self._ufm_sigma_by_type maps (type_i, type_j) ->
+        # sigma; None for the scalar case. self._is_two_leg flags the new path.
+        self._ufm_sigma_by_type = self._resolve_ufm_sigmas()
+        self._is_two_leg = (
+            self.calc.uhlenbeck_ford_model.single_sigma is not None
+        )
+
+        if self._ufm_sigma_by_type is None:
+            sigma_max = self.calc.uhlenbeck_ford_model.sigma
+        else:
+            sigma_max = max(self._ufm_sigma_by_type.values())
+        # the multi-component (leg-1) UFM cutoff is set by the largest sigma
+        self.ufm_cutoff = 5 * sigma_max
+
+        # eps and cutoff for the single-component endpoint (leg 2)
+        if self._is_two_leg:
+            single_p = self.calc.uhlenbeck_ford_model.single_p
+            if single_p is None:
+                single_p = self.calc.uhlenbeck_ford_model.p
+            self.single_eps = self.calc._temperature * single_p * kb
+            self.single_sigma = self.calc.uhlenbeck_ford_model.single_sigma
+            self.single_ufm_cutoff = 5 * self.single_sigma
 
         # properties that will be calculated later
         self.volatom = None
@@ -248,6 +272,84 @@ class Phase:
         else:
             self.logger.info("pair_style or pair_coeff not provided")
         self._lmp = lmp
+
+    def _resolve_ufm_sigmas(self):
+        """
+        Resolve the UFM length scale into a per-LAMMPS-type-pair mapping.
+
+        Returns
+        -------
+        None
+            if ``uhlenbeck_ford_model.sigma`` is a scalar (original
+            single-component behaviour).
+        dict
+            mapping (type_i, type_j) with type_i <= type_j (1-indexed LAMMPS
+            types) -> sigma, when ``sigma`` is given as a dict of element-pair
+            length scales (two-leg path). Keys in the input are
+            "<elementA>_<elementB>" and are order-insensitive. Cross terms that
+            are not supplied are left out and filled by LAMMPS geometric mixing.
+        """
+        sigma = self.calc.uhlenbeck_ford_model.sigma
+        if not isinstance(sigma, dict):
+            return None
+
+        # element symbol -> 1-indexed LAMMPS type (order in `element` list)
+        elem_to_type = {el: i + 1 for i, el in enumerate(self.calc.element)}
+
+        resolved = {}
+        for key, val in sigma.items():
+            parts = key.split("_")
+            if len(parts) != 2:
+                raise ValueError(
+                    "UFM sigma key '%s' must be of the form 'ElementA_ElementB'"
+                    % key
+                )
+            ea, eb = parts
+            if ea not in elem_to_type or eb not in elem_to_type:
+                raise ValueError(
+                    "UFM sigma key '%s' refers to element(s) not in %s"
+                    % (key, self.calc.element)
+                )
+            ti, tj = elem_to_type[ea], elem_to_type[eb]
+            if ti > tj:
+                ti, tj = tj, ti
+            resolved[(ti, tj)] = float(val)
+        return resolved
+
+    def ufm_pair_coeff_commands(self, eps, sigma_scalar, sigma_by_type, substyle=""):
+        """
+        Build the ``pair_coeff`` command(s) for a UFM interaction.
+
+        Parameters
+        ----------
+        eps : float
+            UFM energy scale.
+        sigma_scalar : float
+            length scale to use when ``sigma_by_type`` is None (single-component).
+        sigma_by_type : dict or None
+            mapping (type_i, type_j) -> sigma for the multi-component case.
+        substyle : str
+            hybrid/scaled substyle token to insert after the type pair, e.g.
+            "ufm", "ufm 1", "ufm 2". Empty string for a plain (non-hybrid)
+            ``pair_style ufm`` where no style keyword is allowed.
+
+        Returns
+        -------
+        list of str
+        """
+        tok = (" " + substyle) if substyle else ""
+        if sigma_by_type is None:
+            return ["pair_coeff       * *%s %f %f" % (tok, eps, sigma_scalar)]
+        # Multi-component: LAMMPS requires EVERY declared type pair to be set, even
+        # for types not present in the structure. Emit a base "* *" coeff using a
+        # default sigma (the largest provided value) so all pairs are defined, then
+        # override the explicitly-specified pairs. Later pair_coeff lines override
+        # earlier ones in LAMMPS, so order matters: base first, specifics after.
+        default_sigma = max(sigma_by_type.values())
+        cmds = ["pair_coeff       * *%s %f %f" % (tok, eps, default_sigma)]
+        for (ti, tj), sig in sorted(sigma_by_type.items()):
+            cmds.append("pair_coeff       %d %d%s %f %f" % (ti, tj, tok, eps, sig))
+        return cmds
 
     def __repr__(self):
         """

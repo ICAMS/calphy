@@ -136,7 +136,7 @@ def integrate_path(
     return w, q, flambda
 
 
-def find_w(mainfolder, calc, full=False, solid=True):
+def find_w(mainfolder, calc, full=False, solid=True, prefix=""):
     """
     Integrate the irreversible work and dissipation for independent simulations
 
@@ -154,6 +154,11 @@ def find_w(mainfolder, calc, full=False, solid=True):
     usecols : tuple, optional
         Columns to read in from data file. Default (0, 1)
 
+    prefix : str, optional
+        infix inserted into the switching-data filenames, e.g. "leg1" reads
+        forward_leg1_%d.dat / backward_leg1_%d.dat. Empty string (default) reads
+        the original forward_%d.dat / backward_%d.dat.
+
     Returns
     -------
     ws : float
@@ -168,11 +173,12 @@ def find_w(mainfolder, calc, full=False, solid=True):
     ws = []
     qs = []
 
+    tag = ("_%s" % prefix) if prefix else ""
     for i in range(calc.n_iterations):
-        fwdfilestring = "forward_%d.dat" % (i + 1)
+        fwdfilestring = "forward%s_%d.dat" % (tag, i + 1)
         fwdfilename = os.path.join(mainfolder, fwdfilestring)
 
-        bkdfilestring = "backward_%d.dat" % (i + 1)
+        bkdfilestring = "backward%s_%d.dat" % (tag, i + 1)
         bkdfilename = os.path.join(mainfolder, bkdfilestring)
 
         w, q, flambda = integrate_path(

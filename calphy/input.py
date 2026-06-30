@@ -137,7 +137,20 @@ def _extract_elements_from_pair_coeff(pair_coeff_string):
 
 class UFMP(BaseModel, title="UFM potential input options"):
     p: Annotated[float, Field(default=50.0)]
-    sigma: Annotated[float, Field(default=1.5)]
+    # sigma may be a scalar (single-component UFM reference, original behaviour) or a
+    # mapping of per-element-pair length scales for the two-leg UFM reference path, e.g.
+    #   sigma: {H_H: 0.9, O_O: 2.8, H_O: 0.9}
+    # Keys are "<elementA>_<elementB>" (order-insensitive). Missing cross terms are
+    # filled by LAMMPS geometric mixing.
+    sigma: Annotated[Union[float, Dict[str, float]], Field(default=1.5)]
+    # When set, activates the two-leg UFM path: the system is first switched from the
+    # real potential to the (possibly multi-component) UFM at `sigma`, then from that
+    # UFM to a single-component UFM at `single_sigma` whose absolute free energy is
+    # known analytically (find_fe). Leaving this None reproduces the original
+    # single-leg behaviour exactly.
+    single_sigma: Annotated[Optional[float], Field(default=None)]
+    # p for the single-component endpoint; defaults to `p` when not given.
+    single_p: Annotated[Optional[float], Field(default=None)]
 
 
 class MonteCarlo(
