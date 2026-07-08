@@ -1,0 +1,28 @@
+# B10 — alchemy — Cu, 500 K, 0 bar, scaling one Cu EAM potential into another
+#        (eam/alloy Cu01 -> eam/fs Cu1); exercises the alchemy MD command stream.
+calculations:
+- element: Cu
+  mass: 63.546
+  lattice: FCC
+  lattice_constant: 3.615
+  repeat: [5, 5, 5]
+  mode: alchemy
+  reference_phase: solid
+  temperature: 500.0
+  pressure: 0.0
+  pair_style:
+  - eam/alloy
+  - eam/fs
+  pair_coeff:
+  - '* * tests/Cu01.eam.alloy Cu'
+  - '* * examples/potentials/Cu1.eam.fs Cu'
+  md:
+    timestep: 0.001
+    n_small_steps: 1000
+  n_equilibration_steps: 2500
+  n_switching_steps: 5000
+  n_iterations: 2
+  spring_constants: null
+  queue:
+    scheduler: local
+    cores: 4

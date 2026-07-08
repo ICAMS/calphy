@@ -1,0 +1,72 @@
+2026-07-08 21:08:15,361 calphy.helpers INFO     Temperature start: 400.000000 K, temperature stop: 700.000000 K, pressure: 0.000000 bar
+2026-07-08 21:08:15,361 calphy.helpers INFO     Pressure adjusted in iso
+2026-07-08 21:08:15,361 calphy.helpers INFO     Reference phase is solid
+2026-07-08 21:08:15,361 calphy.helpers INFO     Thermostat/Barostat combo for equilibration cycle is not explicitely specified
+2026-07-08 21:08:15,361 calphy.helpers INFO     Thermostat/Barostat combo for equilibration cycle can be specified using keyword equilibration_control
+2026-07-08 21:08:15,361 calphy.helpers INFO     Nose-Hoover thermostat damping is 0.100000
+2026-07-08 21:08:15,361 calphy.helpers INFO     Nose-Hoover barostat damping is 0.100000
+2026-07-08 21:08:15,361 calphy.helpers INFO     These values can be tuned by adding in the input file:
+2026-07-08 21:08:15,361 calphy.helpers INFO     nose_hoover:
+2026-07-08 21:08:15,361 calphy.helpers INFO        thermostat_damping: <float>
+2026-07-08 21:08:15,361 calphy.helpers INFO        barostat_damping: <float>
+2026-07-08 21:08:15,361 calphy.helpers INFO     Integration stage is done using Nose-Hoover thermostat and barostat when needed
+2026-07-08 21:08:15,361 calphy.helpers INFO     Thermostat damping is 0.100000
+2026-07-08 21:08:15,361 calphy.helpers INFO     Barostat damping is 0.100000
+2026-07-08 21:08:15,361 calphy.helpers INFO     500 atoms in 125 cells on 4 cores
+2026-07-08 21:08:15,361 calphy.helpers INFO     pair_style: eam/alloy
+2026-07-08 21:08:15,361 calphy.helpers INFO     pair_coeff: * * /Users/smenon/Documents/Projects/projects-calphy/calphy/tests/Cu01.eam.alloy Cu
+2026-07-08 21:08:17,676 calphy.helpers INFO     At count 1 mean pressure is 0.10 bar, std 168.30, vol/atom 12.0359
+2026-07-08 21:08:17,676 calphy.helpers INFO     Pressure within tolerance
+2026-07-08 21:08:17,676 calphy.helpers INFO     finalized vol/atom 12.035864 at pressure 0.098340
+2026-07-08 21:08:17,676 calphy.helpers INFO     Avg box dimensions x: 18.189000, y: 18.189000, z:18.189000
+2026-07-08 21:08:18,013 calphy.helpers INFO     At count 1 mean k is 2.068160 std is 0.010000
+2026-07-08 21:08:18,013 calphy.helpers INFO     finalized sprint constants
+2026-07-08 21:08:18,013 calphy.helpers INFO     [np.float64(2.0681599829148425)]
+2026-07-08 21:08:18,176 calphy.helpers INFO     Averaging routine finished in 2.814037 s
+2026-07-08 21:08:22,163 calphy.helpers INFO     Integration cycle 1 finished in 3.986980 s
+2026-07-08 21:08:26,567 calphy.helpers INFO     Integration cycle 2 finished in 4.404809 s
+2026-07-08 21:08:26,573 calphy.helpers INFO     Report written in /Users/smenon/Documents/Projects/projects-calphy/calphy/tests/baselines/B6/run/ts-fcc-solid-400-0/report.yaml
+2026-07-08 21:08:26,573 calphy.helpers INFO     Please cite the following publications:
+2026-07-08 21:08:26,573 calphy.helpers INFO     - 10.1103/PhysRevMaterials.5.103801
+2026-07-08 21:08:26,573 calphy.helpers INFO     Starting temperature sweep cycle: 1
+2026-07-08 21:08:26,574 calphy.helpers INFO     forward sweep (iteration 1): T 400.0 → 700.0 K, λ 1.0000 → 0.5714, P 0.0000 → 0.0000 bar
+2026-07-08 21:08:28,244 calphy.helpers INFO     forward sweep (iteration 1): initial equilibration start
+2026-07-08 21:08:28,680 calphy.helpers INFO     forward sweep (iteration 1): initial equilibration done
+2026-07-08 21:08:28,836 calphy.helpers INFO     forward sweep (iteration 1): COM-constrained equilibration start
+2026-07-08 21:08:29,273 calphy.helpers INFO     forward sweep (iteration 1): COM-constrained equilibration done
+2026-07-08 21:08:29,425 calphy.helpers INFO     forward sweep (iteration 1): sweep start
+2026-07-08 21:08:29,429 calphy.helpers INFO     ts-sweep forward (iteration 1): 5000 steps
+2026-07-08 21:08:30,949 calphy.helpers INFO     forward sweep (iteration 1): sweep done
+2026-07-08 21:08:30,965 calphy.helpers INFO     forward sweep (iteration 1): configuration saved to conf.ts.forward_1.data
+2026-07-08 21:08:31,030 calphy.helpers INFO     backward sweep (iteration 1): T 700.0 → 400.0 K, λ 0.5714 → 1.0000, P 0.0000 → 0.0000 bar
+2026-07-08 21:08:32,876 calphy.helpers INFO     backward sweep (iteration 1): middle equilibration start
+2026-07-08 21:08:33,744 calphy.helpers INFO     backward sweep (iteration 1): middle equilibration done
+2026-07-08 21:08:33,946 calphy.helpers INFO     backward sweep (iteration 1): sweep start
+2026-07-08 21:08:33,956 calphy.helpers INFO     ts-sweep backward (iteration 1): 5000 steps
+2026-07-08 21:08:35,086 calphy.helpers INFO     backward sweep (iteration 1): sweep done
+2026-07-08 21:08:35,155 calphy.helpers INFO     Finished temperature sweep cycle: 1
+2026-07-08 21:08:35,155 calphy.helpers INFO     Please cite the following publications:
+2026-07-08 21:08:35,155 calphy.helpers INFO     - 10.1103/PhysRevLett.83.3973
+2026-07-08 21:08:35,155 calphy.helpers INFO     TS integration cycle 1 finished in 8.581646 s
+2026-07-08 21:08:35,155 calphy.helpers INFO     Starting temperature sweep cycle: 2
+2026-07-08 21:08:35,155 calphy.helpers INFO     forward sweep (iteration 2): T 400.0 → 700.0 K, λ 1.0000 → 0.5714, P 0.0000 → 0.0000 bar
+2026-07-08 21:08:36,795 calphy.helpers INFO     forward sweep (iteration 2): initial equilibration start
+2026-07-08 21:08:37,163 calphy.helpers INFO     forward sweep (iteration 2): initial equilibration done
+2026-07-08 21:08:37,333 calphy.helpers INFO     forward sweep (iteration 2): COM-constrained equilibration start
+2026-07-08 21:08:37,648 calphy.helpers INFO     forward sweep (iteration 2): COM-constrained equilibration done
+2026-07-08 21:08:37,803 calphy.helpers INFO     forward sweep (iteration 2): sweep start
+2026-07-08 21:08:37,812 calphy.helpers INFO     ts-sweep forward (iteration 2): 5000 steps
+2026-07-08 21:08:38,923 calphy.helpers INFO     forward sweep (iteration 2): sweep done
+2026-07-08 21:08:38,939 calphy.helpers INFO     forward sweep (iteration 2): configuration saved to conf.ts.forward_2.data
+2026-07-08 21:08:38,998 calphy.helpers INFO     backward sweep (iteration 2): T 700.0 → 400.0 K, λ 0.5714 → 1.0000, P 0.0000 → 0.0000 bar
+2026-07-08 21:08:40,845 calphy.helpers INFO     backward sweep (iteration 2): middle equilibration start
+2026-07-08 21:08:41,442 calphy.helpers INFO     backward sweep (iteration 2): middle equilibration done
+2026-07-08 21:08:41,686 calphy.helpers INFO     backward sweep (iteration 2): sweep start
+2026-07-08 21:08:41,696 calphy.helpers INFO     ts-sweep backward (iteration 2): 5000 steps
+2026-07-08 21:08:42,851 calphy.helpers INFO     backward sweep (iteration 2): sweep done
+2026-07-08 21:08:42,920 calphy.helpers INFO     Finished temperature sweep cycle: 2
+2026-07-08 21:08:42,920 calphy.helpers INFO     Please cite the following publications:
+2026-07-08 21:08:42,920 calphy.helpers INFO     - 10.1103/PhysRevLett.83.3973
+2026-07-08 21:08:42,920 calphy.helpers INFO     TS integration cycle 2 finished in 7.765303 s
+2026-07-08 21:08:42,937 calphy.helpers INFO     Maximum energy dissipation along the temperature scaling part: 0.00015332057244702823 eV/atom
+2026-07-08 21:08:42,937 calphy.helpers WARNING  Found max energy dissipation of 0.00015332057244702823 along the temperature scaling path. Please ensure there are no structural changes!

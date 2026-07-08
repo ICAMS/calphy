@@ -1,0 +1,18 @@
+average:
+  density: 0.07424855894543714
+  vol_atom: 13.46764411638922
+input:
+  concentration: '1.0'
+  element: Cu
+  lattice: fcc
+  pressure: 0.0
+  temperature: 1400
+results:
+  com_correction: 0.0
+  einstein_crystal: 0.0
+  error: 0.0001569934628498082
+  free_energy: -4.225918060113829
+  pv: 0.0
+  reference_system: 2.1645891313779315
+  unit: eV/atom
+  work: 4.928934222352845

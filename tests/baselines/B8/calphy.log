@@ -1,0 +1,42 @@
+2026-07-08 21:08:35,494 calphy.helpers INFO     Temperature start: 400.000000 K, temperature stop: 700.000000 K, pressure: 0.000000 bar
+2026-07-08 21:08:35,494 calphy.helpers INFO     Pressure adjusted in iso
+2026-07-08 21:08:35,494 calphy.helpers INFO     Reference phase is solid
+2026-07-08 21:08:35,494 calphy.helpers INFO     Thermostat/Barostat combo for equilibration cycle is not explicitely specified
+2026-07-08 21:08:35,494 calphy.helpers INFO     Thermostat/Barostat combo for equilibration cycle can be specified using keyword equilibration_control
+2026-07-08 21:08:35,494 calphy.helpers INFO     Nose-Hoover thermostat damping is 0.100000
+2026-07-08 21:08:35,494 calphy.helpers INFO     Nose-Hoover barostat damping is 0.100000
+2026-07-08 21:08:35,494 calphy.helpers INFO     These values can be tuned by adding in the input file:
+2026-07-08 21:08:35,494 calphy.helpers INFO     nose_hoover:
+2026-07-08 21:08:35,494 calphy.helpers INFO        thermostat_damping: <float>
+2026-07-08 21:08:35,494 calphy.helpers INFO        barostat_damping: <float>
+2026-07-08 21:08:35,494 calphy.helpers INFO     Integration stage is done using Nose-Hoover thermostat and barostat when needed
+2026-07-08 21:08:35,494 calphy.helpers INFO     Thermostat damping is 0.100000
+2026-07-08 21:08:35,494 calphy.helpers INFO     Barostat damping is 0.100000
+2026-07-08 21:08:35,494 calphy.helpers INFO     500 atoms in 125 cells on 4 cores
+2026-07-08 21:08:35,494 calphy.helpers INFO     pair_style: eam/alloy
+2026-07-08 21:08:35,494 calphy.helpers INFO     pair_coeff: * * /Users/smenon/Documents/Projects/projects-calphy/calphy/tests/Cu01.eam.alloy Cu
+2026-07-08 21:08:37,557 calphy.helpers INFO     At count 1 mean pressure is -7.78 bar, std 160.65, vol/atom 12.0377
+2026-07-08 21:08:37,557 calphy.helpers INFO     Pressure within tolerance
+2026-07-08 21:08:37,557 calphy.helpers INFO     finalized vol/atom 12.037750 at pressure -7.778950
+2026-07-08 21:08:37,557 calphy.helpers INFO     Avg box dimensions x: 18.190000, y: 18.190000, z:18.190000
+2026-07-08 21:08:37,825 calphy.helpers INFO     At count 1 mean k is 2.068160 std is 0.010000
+2026-07-08 21:08:37,825 calphy.helpers INFO     finalized sprint constants
+2026-07-08 21:08:37,825 calphy.helpers INFO     [np.float64(2.0681599829148425)]
+2026-07-08 21:08:37,973 calphy.helpers INFO     Averaging routine finished in 2.478692 s
+2026-07-08 21:08:41,895 calphy.helpers INFO     Integration cycle 1 finished in 3.922132 s
+2026-07-08 21:08:45,627 calphy.helpers INFO     Integration cycle 2 finished in 3.731596 s
+2026-07-08 21:08:45,632 calphy.helpers INFO     Report written in /Users/smenon/Documents/Projects/projects-calphy/calphy/tests/baselines/B8/run/tscale-fcc-solid-400-0/report.yaml
+2026-07-08 21:08:45,632 calphy.helpers INFO     Please cite the following publications:
+2026-07-08 21:08:45,632 calphy.helpers INFO     - 10.1103/PhysRevMaterials.5.103801
+2026-07-08 21:08:47,707 calphy.helpers INFO     ts-sweep tscale forward (iteration 1): T 400.0 → 700.0 K, 5000 steps
+2026-07-08 21:08:47,722 calphy.helpers INFO     ts-sweep tscale forward (iteration 1): 5000 steps
+2026-07-08 21:08:48,793 calphy.helpers INFO     ts-sweep tscale backward (iteration 1): T 700.0 → 400.0 K, 5000 steps
+2026-07-08 21:08:48,808 calphy.helpers INFO     ts-sweep tscale backward (iteration 1): 5000 steps
+2026-07-08 21:08:49,487 calphy.helpers INFO     Temperature scaling cycle 1 finished in 3.854799 s
+2026-07-08 21:08:51,606 calphy.helpers INFO     ts-sweep tscale forward (iteration 2): T 400.0 → 700.0 K, 5000 steps
+2026-07-08 21:08:51,621 calphy.helpers INFO     ts-sweep tscale forward (iteration 2): 5000 steps
+2026-07-08 21:08:52,760 calphy.helpers INFO     ts-sweep tscale backward (iteration 2): T 700.0 → 400.0 K, 5000 steps
+2026-07-08 21:08:52,775 calphy.helpers INFO     ts-sweep tscale backward (iteration 2): 5000 steps
+2026-07-08 21:08:53,560 calphy.helpers INFO     Temperature scaling cycle 2 finished in 4.072300 s
+2026-07-08 21:08:53,576 calphy.helpers INFO     Maximum energy dissipation along the temperature scaling part: 0.007199367774212453 eV/atom
+2026-07-08 21:08:53,576 calphy.helpers WARNING  Found max energy dissipation of 0.007199367774212453 along the temperature scaling path. Please ensure there are no structural changes!

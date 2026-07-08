@@ -1,0 +1,35 @@
+2026-07-08 21:08:15,361 calphy.helpers INFO     Temperature start: 1400.000000 K, temperature stop: 1400.000000 K, pressure: 0.000000 bar
+2026-07-08 21:08:15,361 calphy.helpers INFO     Pressure adjusted in iso
+2026-07-08 21:08:15,361 calphy.helpers INFO     Reference phase is liquid
+2026-07-08 21:08:15,361 calphy.helpers INFO     Melting cycle is turned off
+2026-07-08 21:08:15,361 calphy.helpers INFO     Thermostat/Barostat combo for equilibration cycle is not explicitely specified
+2026-07-08 21:08:15,361 calphy.helpers INFO     Thermostat/Barostat combo for equilibration cycle can be specified using keyword equilibration_control
+2026-07-08 21:08:15,361 calphy.helpers INFO     Nose-Hoover thermostat damping is 0.100000
+2026-07-08 21:08:15,361 calphy.helpers INFO     Nose-Hoover barostat damping is 0.100000
+2026-07-08 21:08:15,361 calphy.helpers INFO     These values can be tuned by adding in the input file:
+2026-07-08 21:08:15,361 calphy.helpers INFO     nose_hoover:
+2026-07-08 21:08:15,361 calphy.helpers INFO        thermostat_damping: <float>
+2026-07-08 21:08:15,361 calphy.helpers INFO        barostat_damping: <float>
+2026-07-08 21:08:15,361 calphy.helpers INFO     Integration stage is done using Nose-Hoover thermostat and barostat when needed
+2026-07-08 21:08:15,361 calphy.helpers INFO     Thermostat damping is 0.100000
+2026-07-08 21:08:15,361 calphy.helpers INFO     Barostat damping is 0.100000
+2026-07-08 21:08:15,361 calphy.helpers INFO     500 atoms in 125 cells on 4 cores
+2026-07-08 21:08:15,361 calphy.helpers INFO     pair_style: eam/alloy
+2026-07-08 21:08:15,361 calphy.helpers INFO     pair_coeff: * * /Users/smenon/Documents/Projects/projects-calphy/calphy/tests/Cu01.eam.alloy Cu
+2026-07-08 21:08:17,171 calphy.helpers INFO     Rattling structure: velocities at 2*thigh=2800.000000, NVT cool-down to T=1400.000000
+2026-07-08 21:08:17,949 calphy.helpers INFO     At count 1 mean pressure is -65.91 bar, std 1097.69, vol/atom 12.8164
+2026-07-08 21:08:18,122 calphy.helpers INFO     At count 2 mean pressure is 40.00 bar, std 586.80, vol/atom 12.8465
+2026-07-08 21:08:18,315 calphy.helpers INFO     At count 3 mean pressure is 38.66 bar, std 665.05, vol/atom 12.8264
+2026-07-08 21:08:18,454 calphy.helpers INFO     At count 4 mean pressure is 11.51 bar, std 698.26, vol/atom 12.8206
+2026-07-08 21:08:18,575 calphy.helpers INFO     At count 5 mean pressure is 5.81 bar, std 720.83, vol/atom 12.8184
+2026-07-08 21:08:18,575 calphy.helpers INFO     Pressure within tolerance
+2026-07-08 21:08:18,575 calphy.helpers INFO     finalized vol/atom 12.818423 at pressure 5.811114
+2026-07-08 21:08:18,575 calphy.helpers INFO     Avg box dimensions x: 18.575000, y: 18.575000, z:18.575000
+2026-07-08 21:08:18,768 calphy.helpers INFO     Averaging routine finished in 3.406439 s
+2026-07-08 21:08:26,058 calphy.helpers INFO     Integration cycle 1 finished in 7.290067 s
+2026-07-08 21:08:33,747 calphy.helpers INFO     Integration cycle 2 finished in 7.688883 s
+2026-07-08 21:08:33,751 calphy.helpers INFO     Report written in /Users/smenon/Documents/Projects/projects-calphy/calphy/tests/baselines/B5/run/fe-fcc-liquid-1400-0/report.yaml
+2026-07-08 21:08:33,751 calphy.helpers INFO     Please cite the following publications:
+2026-07-08 21:08:33,751 calphy.helpers INFO     - 10.1103/PhysRevMaterials.5.103801
+2026-07-08 21:08:33,751 calphy.helpers INFO     - 10.1016/j.commatsci.2018.12.029
+2026-07-08 21:08:33,751 calphy.helpers INFO     - 10.1063/1.4967775
