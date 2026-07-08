@@ -76,10 +76,9 @@ class Liquid(cph.Phase):
         lmp.command(
             "displace_atoms all random 0.1 0.1 0.1 %d" % np.random.randint(1, 10000)
         )
-        lmp.velocity(
-            "all create",
-            2.0 * self.calc._temperature_high,
-            np.random.randint(1, 10000),
+        lmp.command(
+            "velocity all create %f %d"
+            % (2.0 * self.calc._temperature_high, np.random.randint(1, 10000))
         )
         lmp.command(
             "fix              nh_rattle all nvt temp %f %f %f"
@@ -89,7 +88,7 @@ class Liquid(cph.Phase):
                 self.calc.md.thermostat_damping[1],
             )
         )
-        lmp.run(int(self.calc.md.n_small_steps))
+        lmp.command("run %d" % int(self.calc.md.n_small_steps))
         lmp.command("unfix            nh_rattle")
 
     def melt_structure(self, lmp):
@@ -114,13 +113,12 @@ class Liquid(cph.Phase):
                 % (self.calc._temperature_high, thmult)
             )
             factor = (self.calc._temperature_high / self.calc._temperature) * thmult
-            lmp.velocity(
-                "all create",
-                self.calc._temperature * factor,
-                np.random.randint(1, 10000),
+            lmp.command(
+                "velocity all create %f %d"
+                % (self.calc._temperature * factor, np.random.randint(1, 10000))
             )
             self.fix_nose_hoover(lmp, temp_start_factor=factor, temp_end_factor=factor)
-            lmp.run(int(self.calc.md.n_small_steps))
+            lmp.command("run %d" % int(self.calc.md.n_small_steps))
             self.unfix_nose_hoover(lmp)
 
             self.dump_current_snapshot(lmp, "traj.melt")
@@ -195,8 +193,9 @@ class Liquid(cph.Phase):
         lmp = ph.set_mass(lmp, self.calc)
 
         # Melt regime for the liquid
-        lmp.velocity(
-            "all create", self.calc._temperature_high, np.random.randint(1, 10000)
+        lmp.command(
+            "velocity all create %f %d"
+            % (self.calc._temperature_high, np.random.randint(1, 10000))
         )
 
         # add some computes

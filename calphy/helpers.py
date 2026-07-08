@@ -29,7 +29,6 @@ import numpy as np
 from collections import Counter, defaultdict
 
 from pylammpsmpi import LammpsLibrary
-from lammps import lammps
 from ase.io import read, write
 
 import pyscal3.core as pc

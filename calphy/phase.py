@@ -410,7 +410,7 @@ class Phase:
         ``tolerance.solid_fraction: 0``.
         """
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
-        if solids / lmp.natoms < self.calc.tolerance.solid_fraction:
+        if solids / self.natoms < self.calc.tolerance.solid_fraction:
             self.lammps_close(lmp=lmp)
             # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
@@ -433,7 +433,7 @@ class Phase:
         ``tolerance.liquid_fraction`` the run is aborted with a SolidifiedError.
         """
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
-        if solids / lmp.natoms > self.calc.tolerance.liquid_fraction:
+        if solids / self.natoms > self.calc.tolerance.liquid_fraction:
             self.lammps_close(lmp=lmp)
             # Preserve log file on error
             logfile = os.path.join(self.simfolder, "log.lammps")
