@@ -306,6 +306,14 @@ class Liquid(cph.Phase):
         lmp.command("unfix            f1")
         lmp.command("unfix            f2")
 
+        # Output file naming. For the original single-leg path the files are
+        # forward_%d.dat / backward_%d.dat (unchanged). For the two-leg path this
+        # first leg (real -> multi-component UFM) writes *_leg1_%d.dat and the
+        # second leg (multi-component UFM -> single-component UFM) writes
+        # *_leg2_%d.dat.
+        leg1_fwd = "forward_leg1_%d.dat" if self._is_two_leg else "forward_%d.dat"
+        leg1_bkd = "backward_leg1_%d.dat" if self._is_two_leg else "backward_%d.dat"
+
         # ---------------------------------------------------------------
         # FWD cycle
         # ---------------------------------------------------------------
@@ -323,10 +331,13 @@ class Liquid(cph.Phase):
 
         for command in ph.hybrid_pair_coeff_commands(self.calc):
             lmp.command(command)
-        lmp.command(
-            "pair_coeff       * * ufm %f %f"
-            % (self.eps, self.calc.uhlenbeck_ford_model.sigma)
-        )
+        for command in self.ufm_pair_coeff_commands(
+            self.eps,
+            self.calc.uhlenbeck_ford_model.sigma,
+            self._ufm_sigma_by_type,
+            substyle="ufm",
+        ):
+            lmp.command(command)
 
         compute_commands, real_energy, compute_ids = ph.real_pair_compute_commands(
             self.calc
@@ -361,8 +372,8 @@ class Liquid(cph.Phase):
         lmp.command("fix_modify       f2 temp Tcm")
 
         lmp.command(
-            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file forward_%d.dat'
-            % iteration
+            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file %s'
+            % (leg1_fwd % iteration)
         )
         lmp.command("run               %d" % self.calc._n_switching_steps)
 
@@ -378,10 +389,13 @@ class Liquid(cph.Phase):
         # ---------------------------------------------------------------
 
         lmp.command("pair_style       ufm %f" % self.ufm_cutoff)
-        lmp.command(
-            "pair_coeff       * * %f %f"
-            % (self.eps, self.calc.uhlenbeck_ford_model.sigma)
-        )
+        for command in self.ufm_pair_coeff_commands(
+            self.eps,
+            self.calc.uhlenbeck_ford_model.sigma,
+            self._ufm_sigma_by_type,
+            substyle="",
+        ):
+            lmp.command(command)
 
         lmp.command("thermo_style     custom step pe")
         lmp.command("thermo           1000")
@@ -420,10 +434,13 @@ class Liquid(cph.Phase):
 
         for command in ph.hybrid_pair_coeff_commands(self.calc):
             lmp.command(command)
-        lmp.command(
-            "pair_coeff       * * ufm %f %f"
-            % (self.eps, self.calc.uhlenbeck_ford_model.sigma)
-        )
+        for command in self.ufm_pair_coeff_commands(
+            self.eps,
+            self.calc.uhlenbeck_ford_model.sigma,
+            self._ufm_sigma_by_type,
+            substyle="ufm",
+        ):
+            lmp.command(command)
 
         compute_commands, real_energy, compute_ids = ph.real_pair_compute_commands(
             self.calc
@@ -452,8 +469,8 @@ class Liquid(cph.Phase):
         lmp.command("fix_modify       f2 temp Tcm")
 
         lmp.command(
-            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file backward_%d.dat'
-            % iteration
+            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file %s'
+            % (leg1_bkd % iteration)
         )
         lmp.command("run               %d" % self.calc._n_switching_steps)
 
@@ -463,6 +480,12 @@ class Liquid(cph.Phase):
         for compute_id in compute_ids:
             lmp.command("uncompute        %s" % compute_id)
         lmp.command("uncompute        c2")
+
+        # ---------------------------------------------------------------
+        # LEG 2 (two-leg path only): multi-component UFM -> single-component UFM
+        # ---------------------------------------------------------------
+        if self._is_two_leg:
+            self._run_leg2(lmp, iteration)
 
         if self.calc.script_mode:
             file = os.path.join(self.simfolder, "integration.lmp")
@@ -477,6 +500,124 @@ class Liquid(cph.Phase):
             os.rename(logfile, os.path.join(self.simfolder, "integration.log.lammps"))
         except OSError as e:
             self.logger.warning(f"Failed to rename log file: {e}")
+
+    def _run_leg2(self, lmp, iteration):
+        """
+        Second leg of the two-leg UFM reference path.
+
+        Switches the system from the (multi-component) UFM reference used in leg 1
+        to a single-component UFM reference at ``single_sigma`` whose absolute free
+        energy is known analytically. Writes forward_leg2_%d.dat / backward_leg2_%d.dat.
+
+        At entry the simulation may be in any state (leg-1 backward leaves it on the
+        real potential); this method re-establishes pure multi-component UFM, briefly
+        equilibrates, then performs the forward and backward switching runs. The two
+        UFM end states are distinguished inside ``hybrid/scaled`` as substyles
+        ``ufm 1`` (multi-component, leg-1 sigmas) and ``ufm 2`` (single-component,
+        single_sigma).
+
+        Both substyles use the SAME eps so that only the length scale changes along
+        the leg. The single-component eps used for the analytic free energy
+        (``self.single_eps``) is applied at the find_fe stage, not here.
+        """
+        T = self.calc._temperature
+        tdamp = self.calc.md.thermostat_damping[1]
+
+        # re-establish pure multi-component UFM and equilibrate
+        lmp.command("pair_style       ufm %f" % self.ufm_cutoff)
+        for command in self.ufm_pair_coeff_commands(
+            self.eps, self.calc.uhlenbeck_ford_model.sigma,
+            self._ufm_sigma_by_type, substyle="",
+        ):
+            lmp.command(command)
+        lmp.command("thermo_style     custom step pe")
+        lmp.command("thermo           1000")
+        lmp.command("fix              f1 all nve")
+        lmp.command(
+            "fix              f2 all langevin %f %f %f %d zero yes"
+            % (T, T, tdamp, np.random.randint(1, 10000))
+        )
+        lmp.command("fix_modify       f2 temp Tcm")
+        lmp.command("run               %d" % self.calc.n_equilibration_steps)
+        lmp.command("unfix            f1")
+        lmp.command("unfix            f2")
+
+        # helper to set up the dual-ufm hybrid/scaled state for one direction
+        def setup_dual_ufm(forward):
+            if forward:
+                lmp.command("variable         flambda equal ramp(${li},${lf})")
+            else:
+                lmp.command("variable         flambda equal ramp(${lf},${li})")
+            lmp.command("variable         blambda equal 1.0-v_flambda")
+            # flambda scales the multi-component UFM (ufm 1); blambda the single (ufm 2)
+            lmp.command(
+                "pair_style       hybrid/scaled v_flambda ufm %f v_blambda ufm %f"
+                % (self.ufm_cutoff, self.single_ufm_cutoff)
+            )
+            for command in self.ufm_pair_coeff_commands(
+                self.eps, self.calc.uhlenbeck_ford_model.sigma,
+                self._ufm_sigma_by_type, substyle="ufm 1",
+            ):
+                lmp.command(command)
+            for command in self.ufm_pair_coeff_commands(
+                self.eps, self.single_sigma, None, substyle="ufm 2",
+            ):
+                lmp.command(command)
+            lmp.command("compute          c1 all pair ufm 1")
+            lmp.command("compute          c2 all pair ufm 2")
+            lmp.command("variable         dU1 equal c_c1/atoms")
+            lmp.command("variable         dU2 equal c_c2/atoms")
+            lmp.command("thermo_style     custom step v_dU1 v_dU2")
+            lmp.command("thermo           1000")
+            lmp.command("fix              f1 all nve")
+            lmp.command(
+                "fix              f2 all langevin %f %f %f %d zero yes"
+                % (T, T, tdamp, np.random.randint(1, 10000))
+            )
+            lmp.command("fix_modify       f2 temp Tcm")
+
+        def teardown():
+            lmp.command("unfix            f1")
+            lmp.command("unfix            f2")
+            lmp.command("unfix            f3")
+            lmp.command("uncompute        c1")
+            lmp.command("uncompute        c2")
+
+        # FWD: multi -> single
+        setup_dual_ufm(forward=True)
+        lmp.command(
+            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file forward_leg2_%d.dat'
+            % iteration
+        )
+        lmp.command("run               %d" % self.calc._n_switching_steps)
+        teardown()
+
+        # EQBRM at pure single-component UFM
+        lmp.command("pair_style       ufm %f" % self.single_ufm_cutoff)
+        for command in self.ufm_pair_coeff_commands(
+            self.eps, self.single_sigma, None, substyle="",
+        ):
+            lmp.command(command)
+        lmp.command("thermo_style     custom step pe")
+        lmp.command("thermo           1000")
+        lmp.command("fix              f1 all nve")
+        lmp.command(
+            "fix              f2 all langevin %f %f %f %d zero yes"
+            % (T, T, tdamp, np.random.randint(1, 10000))
+        )
+        lmp.command("fix_modify       f2 temp Tcm")
+        lmp.command("run               %d" % self.calc.n_equilibration_steps)
+        lmp.command("unfix            f1")
+        lmp.command("unfix            f2")
+
+        # BKD: single -> multi
+        setup_dual_ufm(forward=False)
+        lmp.command(
+            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file backward_leg2_%d.dat'
+            % iteration
+        )
+        lmp.command("run               %d" % self.calc._n_switching_steps)
+        teardown()
 
     def thermodynamic_integration(self):
         """
@@ -495,15 +636,44 @@ class Liquid(cph.Phase):
         Calculates the final work, energy dissipation and free energy by
         matching with UFM model
         """
-        w, q, qerr = find_w(self.simfolder, self.calc, full=True, solid=False)
+        if self._is_two_leg:
+            # Two-leg UFM path:
+            #   leg 1: real potential -> multi-component UFM   (work w1)
+            #   leg 2: multi-component UFM -> single-component UFM at single_sigma (work w2)
+            # The analytic reference is the single-component UFM at single_sigma/single_p,
+            # and the total switching work is w1 + w2.
+            w1, q1, qerr1 = find_w(
+                self.simfolder, self.calc, full=True, solid=False, prefix="leg1"
+            )
+            w2, q2, qerr2 = find_w(
+                self.simfolder, self.calc, full=True, solid=False, prefix="leg2"
+            )
+            w = w1 + w2
+            q = q1 + q2
+            qerr = np.sqrt(qerr1**2 + qerr2**2)
+            # store legs for diagnostics
+            self.w_leg1 = w1
+            self.w_leg2 = w2
 
-        # TODO: Hardcoded UFM parameters - enable option to change
-        f1 = get_uhlenbeck_ford_fe(
-            self.calc._temperature,
-            self.rho,
-            self.calc.uhlenbeck_ford_model.p,
-            self.calc.uhlenbeck_ford_model.sigma,
-        )
+            single_p = self.calc.uhlenbeck_ford_model.single_p
+            if single_p is None:
+                single_p = self.calc.uhlenbeck_ford_model.p
+            f1 = get_uhlenbeck_ford_fe(
+                self.calc._temperature,
+                self.rho,
+                single_p,
+                self.calc.uhlenbeck_ford_model.single_sigma,
+            )
+        else:
+            w, q, qerr = find_w(self.simfolder, self.calc, full=True, solid=False)
+
+            # TODO: Hardcoded UFM parameters - enable option to change
+            f1 = get_uhlenbeck_ford_fe(
+                self.calc._temperature,
+                self.rho,
+                self.calc.uhlenbeck_ford_model.p,
+                self.calc.uhlenbeck_ford_model.sigma,
+            )
 
         # Get ideal gas fe
         f2 = get_ideal_gas_fe(
