@@ -1,0 +1,44 @@
+units metal
+boundary p p p
+atom_style atomic
+timestep 0.001
+box tilt large
+echo log
+variable li equal 1.000000
+variable lf equal 0.571429
+pair_style eam/alloy
+read_data conf.equilibration.data
+pair_coeff * * tests/Cu01.eam.alloy Cu
+mass 1 63.546
+run 0
+change_box all x final 0.0 18.075000 y final 0.0 18.075000 z final 0.0 18.075000 remap units box
+fix f1 all npt temp 400.000000 400.000000 0.100000 iso 0.000000 0.000000 0.100000
+run 2500
+unfix f1
+variable xcm equal xcm(all,x)
+variable ycm equal xcm(all,y)
+variable zcm equal xcm(all,z)
+fix f1 all npt temp 400.000000 400.000000 0.100000 iso 0.000000 0.000000 0.100000 fixedpoint ${xcm} ${ycm} ${zcm}
+compute tcm all temp/com
+fix_modify f1 temp tcm
+variable step equal step
+variable dU equal c_thermo_pe/atoms
+thermo_style custom step pe c_tcm press vol
+thermo 10000
+velocity all create 400.000000 7271 mom yes rot yes dist gaussian
+run 2500
+variable T0_rs equal 400.000000
+variable flambda equal ramp(${li},${lf})
+variable blambda equal ramp(${lf},${li})
+variable fscale equal v_flambda-1.0
+variable bscale equal v_blambda-1.0
+variable one equal 1.0
+variable ftemp equal v_T0_rs/v_flambda
+variable btemp equal v_T0_rs/v_blambda
+pair_style hybrid/scaled v_one eam/alloy v_fscale eam/alloy
+pair_coeff * * eam/alloy 1 tests/Cu01.eam.alloy Cu
+pair_coeff * * eam/alloy 2 tests/Cu01.eam.alloy Cu
+fix f3 all print 1 "${dU} $(press) $(vol) ${flambda}" screen no file ts.forward_1.dat
+run 5000
+unfix f3
+write_data conf.ts.forward_1.data

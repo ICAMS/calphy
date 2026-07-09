@@ -1,0 +1,74 @@
+units metal
+boundary p p p
+atom_style atomic
+timestep 0.001
+box tilt large
+variable li equal 1.0
+variable lf equal 0.0
+pair_style eam/alloy
+read_data conf.equilibration.data
+pair_coeff * * tests/Cu01.eam.alloy Cu
+mass 1 63.546
+run 0
+change_box all x final 0.0 18.075000 y final 0.0 18.075000 z final 0.0 18.075000 remap units box
+fix f1 all nve
+fix f2 all langevin 1400.000000 1400.000000 0.100000 7271 zero yes
+run 2500
+unfix f1
+unfix f2
+variable flambda equal ramp(${li},${lf})
+variable blambda equal 1.0-v_flambda
+pair_style hybrid/scaled v_flambda eam/alloy v_blambda ufm 7.500000
+pair_coeff * * eam/alloy tests/Cu01.eam.alloy Cu
+pair_coeff * * ufm 6.032133 1.500000
+compute c_real1 all pair eam/alloy
+compute c2 all pair ufm
+variable step equal step
+variable dU1 equal (c_c_real1)/atoms
+variable dU2 equal c_c2/atoms
+thermo_style custom step v_dU1 v_dU2
+thermo 1000
+velocity all create 1400.000000 861 mom yes rot yes dist gaussian
+fix f1 all nve
+fix f2 all langevin 1400.000000 1400.000000 0.100000 5391 zero yes
+compute Tcm all temp/com
+fix_modify f2 temp Tcm
+fix f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file forward_1.dat
+run 5000
+unfix f1
+unfix f2
+unfix f3
+uncompute c_real1
+uncompute c2
+pair_style ufm 7.500000
+pair_coeff * * 6.032133 1.500000
+thermo_style custom step pe
+thermo 1000
+fix f1 all nve
+fix f2 all langevin 1400.000000 1400.000000 0.100000 5192 zero yes
+fix_modify f2 temp Tcm
+run 2500
+unfix f1
+unfix f2
+variable flambda equal ramp(${lf},${li})
+variable blambda equal 1.0-v_flambda
+pair_style hybrid/scaled v_flambda eam/alloy v_blambda ufm 7.500000
+pair_coeff * * eam/alloy tests/Cu01.eam.alloy Cu
+pair_coeff * * ufm 6.032133 1.500000
+compute c_real1 all pair eam/alloy
+compute c2 all pair ufm
+variable step equal step
+variable dU1 equal (c_c_real1)/atoms
+variable dU2 equal c_c2/atoms
+thermo_style custom step v_dU1 v_dU2
+thermo 1000
+fix f1 all nve
+fix f2 all langevin 1400.000000 1400.000000 0.100000 5735 zero yes
+fix_modify f2 temp Tcm
+fix f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file backward_1.dat
+run 5000
+unfix f1
+unfix f2
+unfix f3
+uncompute c_real1
+uncompute c2
