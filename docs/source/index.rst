@@ -46,6 +46,7 @@ publication <https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMateri
    Installation <gettingstarted> 
    Using calphy <running_calphy/running_calphy>
    inputfile
+   outputfiles
    examples
    research
    calphy

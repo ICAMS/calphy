@@ -483,7 +483,7 @@ _example_:
 n_iterations: 3
 ```
 
-The number of backward and forward integrations to be carried out in all modes. If more than one integration cycle is used, the errors can also be evaluated.
+The number of backward and forward integrations to be carried out in all modes. If more than one integration cycle is used, the errors can also be evaluated. The reported uncertainty is the standard error of the mean over these iterations, written as `error` in `report.yaml` — see [](outputfiles).
 
 ---
 
@@ -501,6 +501,12 @@ Controls how the scaling parameter λ is swept during reversible-scaling (`ts` m
 
 - **`linear`** (default): λ ramps linearly between the start and end values using LAMMPS `ramp()`. This is the original behaviour.
 - **`uniform_temperature`**: λ is chosen so that the equivalent reference temperature T₀/λ advances **linearly in MD steps**, giving a uniform number of samples per Kelvin across the sweep. This prevents the high-temperature end of the sweep from being under-sampled when the temperature range is large.
+
+```{note}
+`lambda_schedule` changes only the **sampling density** (and hence how the statistical error is distributed) along the temperature axis — it does **not** change the computed free energy. The integration is performed over the actual λ grid, so both schedules integrate to the same G(T); `uniform_temperature` simply spreads the samples (and the resulting error bars) evenly in temperature. Keep the default `linear` unless you are running a wide-range sweep and specifically want an even error profile across it.
+```
+
+The resulting free-energy-vs-temperature curve is written to `temperature_sweep.dat` — see [](outputfiles).
 
 ---
 
