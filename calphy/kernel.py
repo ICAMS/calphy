@@ -74,100 +74,37 @@ def run_jobs(inputfile, validate=False):
     print("Total number of %d calculations found" % len(calculations))
 
     for count, calc in enumerate(calculations):
-        script_mode = _getattr_safe(calc, "script_mode")
         queue = _getattr_safe(calc, "queue")
 
-        if script_mode:
-            identistring = calc.create_identifier()
-            scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
-            errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
+        identistring = calc.create_identifier()
+        scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
+        errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
 
-            scheduler_type = _getattr_safe(queue, "scheduler")
-            queue_dict = _to_dict(queue)
-            cores = _getattr_safe(queue, "cores")
+        # the below part assigns the schedulers
+        # now we have to write the submission scripts for the job
+        # parse Queue and import module
 
-            if scheduler_type == "local":
-                scheduler = pq.Local(queue_dict, cores=cores)
-            elif scheduler_type == "slurm":
-                scheduler = pq.SLURM(queue_dict, cores=cores)
-            elif scheduler_type == "sge":
-                scheduler = pq.SGE(queue_dict, cores=cores)
-            else:
-                raise ValueError("Unknown scheduler")
+        scheduler_type = _getattr_safe(queue, "scheduler")
+        queue_dict = _to_dict(queue)
+        cores = _getattr_safe(queue, "cores")
 
-            # add run commands
-            command = f"calphy_run_averaging -i {inputfile} -k {count}"
-            scheduler.queueoptions["commands"].append(command)
-
-            command = f"cp input.yaml {os.path.join(os.getcwd(), identistring)}"
-            scheduler.queueoptions["commands"].append(command)
-
-            command = f"cd {os.path.join(os.getcwd(), identistring)}"
-            scheduler.queueoptions["commands"].append(command)
-
-            mpi_exec = _getattr_safe(calc, "mpi_executable")
-            lammps_exec = _getattr_safe(calc, "lammps_executable")
-
-            if cores > 1:
-                # here turn on mpi
-                command = f"{mpi_exec} -np {cores} {lammps_exec} -in averaging.lmp"
-            else:
-                command = f"{lammps_exec} -in averaging.lmp"
-            scheduler.queueoptions["commands"].append(command)
-            scheduler.queueoptions["commands"].append("cd ..")
-
-            command = f"calphy_process_averaging -i {inputfile} -k {count}"
-            scheduler.queueoptions["commands"].append(command)
-
-            command = f"calphy_run_integration -i {inputfile} -k {count}"
-            scheduler.queueoptions["commands"].append(command)
-
-            command = f"cd {os.path.join(os.getcwd(), identistring)}"
-            scheduler.queueoptions["commands"].append(command)
-            if cores > 1:
-                # here turn on mpi
-                command = f"{mpi_exec} -np {cores} {lammps_exec} -in integration.lmp"
-            else:
-                command = f"{lammps_exec} -in integration.lmp"
-            scheduler.queueoptions["commands"].append(command)
-            scheduler.queueoptions["commands"].append("cd ..")
-
-            command = f"calphy_process_integration -i {inputfile} -k {count}"
-            scheduler.maincommand = command
-            scheduler.write_script(scriptpath)
-            # _ = scheduler.submit()
-
+        if scheduler_type == "local":
+            scheduler = pq.Local(queue_dict, cores=cores)
+        elif scheduler_type == "slurm":
+            scheduler = pq.SLURM(queue_dict, cores=cores)
+        elif scheduler_type == "sge":
+            scheduler = pq.SGE(queue_dict, cores=cores)
         else:
+            raise ValueError("Unknown scheduler")
 
-            identistring = calc.create_identifier()
-            scriptpath = os.path.join(os.getcwd(), ".".join([identistring, "sub"]))
-            errfile = os.path.join(os.getcwd(), ".".join([identistring, "err"]))
+        scheduler.queueoptions["jobname"] = "".join(
+            e for e in identistring if e.isalnum()
+        )
 
-            # the below part assigns the schedulers
-            # now we have to write the submission scripts for the job
-            # parse Queue and import module
-
-            scheduler_type = _getattr_safe(queue, "scheduler")
-            queue_dict = _to_dict(queue)
-            cores = _getattr_safe(queue, "cores")
-
-            if scheduler_type == "local":
-                scheduler = pq.Local(queue_dict, cores=cores)
-            elif scheduler_type == "slurm":
-                scheduler = pq.SLURM(queue_dict, cores=cores)
-            elif scheduler_type == "sge":
-                scheduler = pq.SGE(queue_dict, cores=cores)
-            else:
-                raise ValueError("Unknown scheduler")
-
-            scheduler.queueoptions["jobname"] = "".join(
-                e for e in identistring if e.isalnum()
-            )
-
-            # for lattice just provide the number of position
-            scheduler.maincommand = "calphy_kernel -i %s -k %d" % (inputfile, count)
-            scheduler.write_script(scriptpath)
-            _ = scheduler.submit()
+        # for lattice just provide the number of position
+        scheduler.maincommand = "calphy_kernel -i %s -k %d" % (inputfile, count)
+        scheduler.write_script(scriptpath)
+        _ = scheduler.submit()
 
 
 def main():

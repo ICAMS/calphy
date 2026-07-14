@@ -49,7 +49,7 @@ class Liquid(cph.Phase):
 
     """
 
-    def __init__(self, calculation=None, simfolder=None, log_to_screen=False, lmp=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
         """
         Set up class
         """
@@ -58,7 +58,6 @@ class Liquid(cph.Phase):
             calculation=calculation,
             simfolder=simfolder,
             log_to_screen=log_to_screen,
-            lmp=lmp,
         )
 
     def rattle_structure(self, lmp):
@@ -133,12 +132,7 @@ class Liquid(cph.Phase):
         # if melting cycle is over and still not melted, raise error
         if not melted:
             self.lammps_close(lmp=lmp)
-            # Preserve log file
-            logfile = os.path.join(self.simfolder, "log.lammps")
-            try:
-                os.rename(logfile, os.path.join(self.simfolder, "melting.log.lammps"))
-            except OSError as e:
-                self.logger.warning(f"Failed to rename log file: {e}")
+            lmp.rotate_logs("melting")
             raise SolidifiedError(
                 "Liquid system did not melt, maybe try a higher thigh temperature."
             )
@@ -165,23 +159,8 @@ class Liquid(cph.Phase):
         is calculated.
         At the end of the run, the averaged box dimensions are calculated.
         """
-        if self.calc.script_mode and self.calc.melting_cycle:
-            raise ValueError(
-                "melting_cycle requires Python-driven solid-fraction checks and "
-                "is not supported in script_mode. Use rattle (melting_cycle: False) "
-                "or run with script_mode: False."
-            )
-
         # create lammps object
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         lmp = ph.set_pair_style(lmp, self.calc)
 
@@ -223,25 +202,14 @@ class Liquid(cph.Phase):
         else:
             self.run_constrained_pressure_convergence(lmp)
 
-        if not self.calc.script_mode:
-            # check melted error
-            self.dump_current_snapshot(lmp, "traj.equilibration_stage1.dat")
-            self.check_if_solidfied(lmp, "traj.equilibration_stage1.dat")
-            self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
+        # check melted error
+        self.dump_current_snapshot(lmp, "traj.equilibration_stage1.dat")
+        self.check_if_solidfied(lmp, "traj.equilibration_stage1.dat")
+        self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
         lmp = ph.write_data(lmp, "conf.equilibration.data")
 
-        if self.calc.script_mode:
-            file = os.path.join(self.simfolder, "averaging.lmp")
-            lmp.write(file)
-            return
-
         self.lammps_close(lmp=lmp)
-        # Preserve log file
-        logfile = os.path.join(self.simfolder, "log.lammps")
-        try:
-            os.rename(logfile, os.path.join(self.simfolder, "averaging.log.lammps"))
-        except OSError as e:
-            self.logger.warning(f"Failed to rename log file: {e}")
+        lmp.rotate_logs("averaging")
 
     def run_integration(self, iteration=1):
         """
@@ -261,15 +229,7 @@ class Liquid(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         # Adiabatic switching parameters.
         lmp.command("variable        li       equal   1.0")
@@ -486,19 +446,9 @@ class Liquid(cph.Phase):
         if self._is_two_leg:
             self._run_leg2(lmp, iteration)
 
-        if self.calc.script_mode:
-            file = os.path.join(self.simfolder, "integration.lmp")
-            lmp.write(file)
-            return
-
         # close object
         self.lammps_close(lmp=lmp)
-        # Preserve log file
-        logfile = os.path.join(self.simfolder, "log.lammps")
-        try:
-            os.rename(logfile, os.path.join(self.simfolder, "integration.log.lammps"))
-        except OSError as e:
-            self.logger.warning(f"Failed to rename log file: {e}")
+        lmp.rotate_logs("integration")
 
     def _run_leg2(self, lmp, iteration):
         """

@@ -52,7 +52,7 @@ class Phase:
 
     """
 
-    def __init__(self, calculation=None, simfolder=None, log_to_screen=False, lmp=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
 
         self.calc = copy.deepcopy(calculation)
 
@@ -271,7 +271,6 @@ class Phase:
                 self.logger.info("second pair_coeff: %s" % self.calc.pair_coeff[1])
         else:
             self.logger.info("pair_style or pair_coeff not provided")
-        self._lmp = lmp
 
     def _resolve_ufm_sigmas(self):
         """
@@ -375,6 +374,9 @@ class Phase:
         )
         lmp.command("run               0")
         lmp.command("undump            2")
+        # flush: the dump file is read next by pyscal (melt/solidify checks,
+        # melt_structure, get_structures)
+        lmp.sync()
 
     def get_structures(self, stage="fe", direction="forward", n_iteration=1):
         """ """
@@ -412,14 +414,7 @@ class Phase:
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if solids / self.natoms < self.calc.tolerance.solid_fraction:
             self.lammps_close(lmp=lmp)
-            # Preserve log file on error
-            logfile = os.path.join(self.simfolder, "log.lammps")
-            try:
-                os.rename(
-                    logfile, os.path.join(self.simfolder, "melted_error.log.lammps")
-                )
-            except OSError as e:
-                self.logger.warning(f"Failed to rename log file: {e}")
+            lmp.rotate_logs("melted_error")
             raise MeltedError(
                 "System melted, increase size or reduce temp!\n Solid detection algorithm only works with BCC/FCC/HCP/SC/DIA. Detection algorithm can be turned off by setting:\n tolerance.solid_fraction: 0"
             )
@@ -435,14 +430,7 @@ class Phase:
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if solids / self.natoms > self.calc.tolerance.liquid_fraction:
             self.lammps_close(lmp=lmp)
-            # Preserve log file on error
-            logfile = os.path.join(self.simfolder, "log.lammps")
-            try:
-                os.rename(
-                    logfile, os.path.join(self.simfolder, "solidified_error.log.lammps")
-                )
-            except OSError as e:
-                self.logger.warning(f"Failed to rename log file: {e}")
+            lmp.rotate_logs("solidified_error")
             raise SolidifiedError("System solidified, increase temperature")
 
     def fix_nose_hoover(
@@ -740,28 +728,6 @@ class Phase:
         Notes
         -----
         Take the equilibrated structure and rigorously check for pressure convergence.
-        The cycle is stopped when the average pressure is within the given cutoff of the target pressure.
-        """
-        if self.calc.script_mode:
-            self.run_minimal_pressure_convergence(lmp)
-        else:
-            self.run_iterative_pressure_convergence(lmp)
-
-    def run_iterative_pressure_convergence(self, lmp):
-        """
-        Run a pressure convergence routine
-
-        Parameters
-        ----------
-        lmp: LAMMPS object
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        Take the equilibrated structure and rigorously check for pressure convergence.
 
         Full-length NPT cycles are run throughout.  The first cycle is excluded
         from the running average to discard the initial transient.  After
@@ -797,10 +763,11 @@ class Phase:
 
         for i in range(int(self.calc.md.n_cycles)):
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
+            lmp.sync()  # flush before reading avg.dat this cycle
 
-            file = os.path.join(self.simfolder, "avg.dat")
-
-            lx, ly, lz, ipress = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
+            lx, ly, lz, ipress = ph.read_timeseries(
+                self.simfolder, "avg.dat", usecols=(1, 2, 3, 4)
+            ).T
             # Average over all data after dropping the first cycle
             skip_samples = n_skip * ncount
             if len(ipress) <= skip_samples:
@@ -858,17 +825,7 @@ class Phase:
 
         if not converged:
             self.lammps_close(lmp=lmp)
-            # Preserve log file on error
-            logfile = os.path.join(self.simfolder, "log.lammps")
-            try:
-                os.rename(
-                    logfile,
-                    os.path.join(
-                        self.simfolder, "pressure_convergence_error.log.lammps"
-                    ),
-                )
-            except OSError as e:
-                self.logger.warning(f"Failed to rename log file: {e}")
+            lmp.rotate_logs("pressure_convergence_error")
             raise ValueError(
                 "Pressure did not converge after MD runs, maybe change lattice_constant and try?"
             )
@@ -931,61 +888,7 @@ class Phase:
         scale = max(0.96, min(1.04, scale))
         return scale
 
-    def run_minimal_pressure_convergence(self, lmp):
-        """
-        Run a pressure convergence routine
-
-        Parameters
-        ----------
-        lmp: LAMMPS object
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        Take the equilibrated structure and rigorously check for pressure convergence.
-        The cycle is stopped when the average pressure is within the given cutoff of the target pressure.
-        """
-
-        # apply fixes
-        if self.calc._qtb:
-            self.fix_qtb(lmp, ensemble="npt")
-        elif self.calc.equilibration_control == "nose-hoover":
-            self.fix_nose_hoover(lmp)
-        else:
-            self.fix_berendsen(lmp)
-
-        lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat"
-            % (
-                int(self.calc.md.n_every_steps),
-                int(self.calc.md.n_repeat_steps),
-                int(self.calc.md.n_every_steps * self.calc.md.n_repeat_steps),
-            )
-        )
-
-        lmp.command("run              %d" % int(self.calc.md.n_small_steps))
-        lmp.command("run              %d" % int(self.calc.n_equilibration_steps))
-
-        # unfix thermostat and barostat
-        if self.calc._qtb:
-            self.unfix_qtb(lmp)
-        elif self.calc.equilibration_control == "nose-hoover":
-            self.unfix_nose_hoover(lmp)
-        else:
-            self.unfix_berendsen(lmp)
-
-        lmp.command("unfix            2")
-
     def run_constrained_pressure_convergence(self, lmp):
-        if self.calc.script_mode:
-            self.run_minimal_constrained_pressure_convergence(lmp)
-        else:
-            self.run_iterative_constrained_pressure_convergence(lmp)
-
-    def run_iterative_constrained_pressure_convergence(self, lmp):
         """ """
         lmp.command(
             "velocity         all create %f %d"
@@ -1030,6 +933,7 @@ class Phase:
         converged = False
         for i in range(int(self.calc.md.n_cycles)):
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
+            lmp.sync()  # flush before process_pressure reads avg.dat
 
             # now we can check if it converted
             mean, std, volatom = self.process_pressure()
@@ -1053,35 +957,21 @@ class Phase:
 
         if not converged:
             self.lammps_close(lmp=lmp)
-            # Preserve log file on error
-            logfile = os.path.join(self.simfolder, "log.lammps")
-            try:
-                os.rename(
-                    logfile,
-                    os.path.join(
-                        self.simfolder, "constrained_pressure_error.log.lammps"
-                    ),
-                )
-            except OSError as e:
-                self.logger.warning(f"Failed to rename log file: {e}")
+            lmp.rotate_logs("constrained_pressure_error")
             raise ValueError("pressure did not converge")
 
     def process_pressure(
         self,
     ):
-        if self.calc.script_mode:
-            ncount = int(self.calc.n_equilibration_steps) // int(
-                self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
-            )
-        else:
-            ncount = int(self.calc.md.n_small_steps) // int(
-                self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
-            )
+        ncount = int(self.calc.md.n_small_steps) // int(
+            self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
+        )
 
-        # now we can check if it converted
-        file = os.path.join(self.simfolder, "avg.dat")
+        # now we can check if it converted; read the cumulative avg.dat across segments
+        lx, ly, lz, lxpc = ph.read_timeseries(
+            self.simfolder, "avg.dat", usecols=(1, 2, 3, 4)
+        ).T
         # we have to clean the data, so as just the last block is selected
-        lx, ly, lz, lxpc = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
         lx = lx[-ncount + 1 :]
         ly = ly[-ncount + 1 :]
         lz = lz[-ncount + 1 :]
@@ -1094,17 +984,13 @@ class Phase:
     def finalise_pressure(
         self,
     ):
-        if self.calc.script_mode:
-            ncount = int(self.calc.n_equilibration_steps) // int(
-                self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
-            )
-        else:
-            ncount = int(self.calc.md.n_small_steps) // int(
-                self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
-            )
+        ncount = int(self.calc.md.n_small_steps) // int(
+            self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
+        )
 
-        file = os.path.join(self.simfolder, "avg.dat")
-        lx, ly, lz, lxpc = np.loadtxt(file, usecols=(1, 2, 3, 4), unpack=True)
+        lx, ly, lz, lxpc = ph.read_timeseries(
+            self.simfolder, "avg.dat", usecols=(1, 2, 3, 4)
+        ).T
         lx = lx[-ncount + 1 :]
         ly = ly[-ncount + 1 :]
         lz = lz[-ncount + 1 :]
@@ -1125,55 +1011,6 @@ class Phase:
         self.logger.info(
             "Avg box dimensions x: %f, y: %f, z:%f" % (self.lx, self.ly, self.lz)
         )
-
-    def run_minimal_constrained_pressure_convergence(self, lmp):
-        """ """
-        lmp.command(
-            "velocity         all create %f %d"
-            % (self.calc._temperature, np.random.randint(1, 10000))
-        )
-        if self.calc._qtb:
-            qtb = self.calc.quantum_thermal_bath
-            lmp.command("fix              1 all nve")
-            lmp.command(
-                "fix              1q all qtb temp %f damp %f seed %d f_max %f N_f %d"
-                % (
-                    self.calc._temperature,
-                    qtb.thermostat_damping,
-                    np.random.randint(1, 10**8),
-                    qtb.f_max,
-                    qtb.n_f,
-                )
-            )
-        else:
-            lmp.command(
-                "fix              1 all nvt temp %f %f %f"
-                % (
-                    self.calc._temperature,
-                    self.calc._temperature,
-                    self.calc.md.thermostat_damping[1],
-                )
-            )
-        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
-        lmp.command("thermo           10")
-
-        # this is when the averaging routine starts
-        lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat"
-            % (
-                int(self.calc.md.n_every_steps),
-                int(self.calc.md.n_repeat_steps),
-                int(self.calc.md.n_every_steps * self.calc.md.n_repeat_steps),
-            )
-        )
-
-        lmp.command("run              %d" % int(self.calc.md.n_small_steps))
-        lmp.command("run              %d" % int(self.calc.n_equilibration_steps))
-
-        if self.calc._qtb:
-            lmp.command("unfix            1q")
-        lmp.command("unfix            1")
-        lmp.command("unfix            2")
 
     def submit_report(self, extra_dict=None):
         """
@@ -1317,15 +1154,7 @@ class Phase:
             iteration, t0, tf, li, lf, pi, pf,
         )
 
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f" % li)
@@ -1478,27 +1307,18 @@ class Phase:
                 sweep_label="forward (iteration %d)" % iteration,
             )
         except Exception:
-            # Make sure the LAMMPS instance (especially in interactive
-            # pylammpsmpi mode where it is reused for the backward sweep) is
-            # cleared and the log file is renamed before the exception
-            # propagates so a fresh lmp can be created for the backward sweep.
+            # Close the runner and rotate the log before the exception
+            # propagates, so the backward sweep can start from a clean state.
             try:
                 self.lammps_close(lmp=lmp)
             except Exception as _close_exc:
                 self.logger.debug(
                     "forward sweep cleanup: lammps_close failed: %s", _close_exc
                 )
-            logfile = os.path.join(self.simfolder, "log.lammps")
-            if os.path.exists(logfile):
-                try:
-                    os.rename(
-                        logfile,
-                        os.path.join(
-                            self.simfolder, "reversible_scaling_forward.log.lammps"
-                        ),
-                    )
-                except Exception:
-                    pass
+            try:
+                lmp.rotate_logs("reversible_scaling_forward")
+            except Exception:
+                pass
             raise
         self.logger.info("forward sweep (iteration %d): sweep done", iteration)
 
@@ -1523,15 +1343,7 @@ class Phase:
         )
 
         self.lammps_close(lmp=lmp)
-
-        logfile = os.path.join(self.simfolder, "log.lammps")
-        if os.path.exists(logfile):
-            os.rename(
-                logfile,
-                os.path.join(
-                    self.simfolder, "reversible_scaling_forward.log.lammps"
-                ),
-            )
+        lmp.rotate_logs("reversible_scaling_forward")
 
     def _reversible_scaling_backward(self, iteration: int = 1) -> None:
         """
@@ -1561,15 +1373,7 @@ class Phase:
             iteration, tf, t0, lf, li, pf, pi,
         )
 
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=False,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f" % li)
@@ -1643,12 +1447,11 @@ class Phase:
         )
 
         # Phase-stability check at Tf
-        if not self.calc.script_mode:
-            self.dump_current_snapshot(lmp, "traj.temp.dat")
-            if solid:
-                self.check_if_melted(lmp, "traj.temp.dat")
-            else:
-                self.check_if_solidfied(lmp, "traj.temp.dat")
+        self.dump_current_snapshot(lmp, "traj.temp.dat")
+        if solid:
+            self.check_if_melted(lmp, "traj.temp.dat")
+        else:
+            self.check_if_solidfied(lmp, "traj.temp.dat")
 
         # ── Switch from constant-λ scaled potential to ramping scaled
         # potential for the backward sweep.  The scaled potential is
@@ -1733,26 +1536,8 @@ class Phase:
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
 
-        if self.calc.script_mode:
-            file = os.path.join(
-                self.simfolder, "reversible_scaling_%d.lmp" % iteration
-            )
-            lmp.write(file)
-            self.logger.info("Please cite the following publications:")
-            self.logger.info("- 10.1103/PhysRevLett.83.3973")
-            self.publications.append("10.1103/PhysRevLett.83.3973")
-            return
-
         self.lammps_close(lmp=lmp)
-
-        logfile = os.path.join(self.simfolder, "log.lammps")
-        if os.path.exists(logfile):
-            os.rename(
-                logfile,
-                os.path.join(
-                    self.simfolder, "reversible_scaling_backward.log.lammps"
-                ),
-            )
+        lmp.rotate_logs("reversible_scaling_backward")
 
     def reversible_scaling(self, iteration=1):
         """
@@ -1874,15 +1659,7 @@ class Phase:
         )
 
         # ── Build the LAMMPS object and load the equilibrated configuration ──
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=False,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         lmp.command("echo              log")
         lmp = ph.set_pair_style(lmp, self.calc)
@@ -1922,12 +1699,7 @@ class Phase:
         lmp.command("unfix             f2")
 
         self.lammps_close(lmp=lmp)
-        logfile = os.path.join(self.simfolder, "log.lammps")
-        if os.path.exists(logfile):
-            try:
-                os.rename(logfile, os.path.join(self.simfolder, "prescan.log.lammps"))
-            except OSError:
-                pass
+        lmp.rotate_logs("prescan")
 
         # ── Analyse the ramp ────────────────────────────────────────────────
         scan_path = os.path.join(self.simfolder, scan_file)
@@ -2071,15 +1843,7 @@ class Phase:
         pf = lf * p0
 
         # create lammps object
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f" % li)
@@ -2169,12 +1933,11 @@ class Phase:
         lmp.command("run               0")
         lmp.command("undump            2")
 
-        if not self.calc.script_mode:
-            self.dump_current_snapshot(lmp, "traj.temp.dat")
-            if solid:
-                self.check_if_melted(lmp, "traj.temp.dat")
-            else:
-                self.check_if_solidfied(lmp, "traj.temp.dat")
+        self.dump_current_snapshot(lmp, "traj.temp.dat")
+        if solid:
+            self.check_if_melted(lmp, "traj.temp.dat")
+        else:
+            self.check_if_solidfied(lmp, "traj.temp.dat")
 
         # start reverse loop
         lmp.command("variable          lambda equal ramp(${lf},${li})")
@@ -2206,20 +1969,8 @@ class Phase:
 
         lmp.command("unfix             f2")
 
-        if self.calc.script_mode:
-            file = os.path.join(
-                self.simfolder, "temperature_scaling_%d.lmp" % iteration
-            )
-            lmp.write(file)
-            return
-
         self.lammps_close(lmp=lmp)
-        # Preserve log file
-        logfile = os.path.join(self.simfolder, "log.lammps")
-        if os.path.exists(logfile):
-            os.rename(
-                logfile, os.path.join(self.simfolder, "temperature_scaling.log.lammps")
-            )
+        lmp.rotate_logs("temperature_scaling")
 
     def pressure_scaling(self, iteration=1):
         """
@@ -2241,15 +1992,7 @@ class Phase:
         pf = self.calc._pressure_stop
 
         # create lammps object
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f" % li)
@@ -2351,12 +2094,9 @@ class Phase:
         )
         lmp.command("run               %d" % self.calc._n_sweep_steps)
 
-        # Preserve log file
-        logfile = os.path.join(self.simfolder, "log.lammps")
-        if os.path.exists(logfile):
-            os.rename(
-                logfile, os.path.join(self.simfolder, "pressure_scaling.log.lammps")
-            )
+        # close + rotate the log (previously pressure_scaling never closed lmp)
+        self.lammps_close(lmp=lmp)
+        lmp.rotate_logs("pressure_scaling")
 
         self.logger.info("Please cite the following publications:")
         self.logger.info("- 10.1016/j.commatsci.2022.111275")
@@ -2408,7 +2148,4 @@ class Phase:
             yaml.safe_dump(metadata, fout)
 
     def lammps_close(self, lmp):
-        if self._lmp is None:
-            lmp.close()
-        else:
-            lmp.clear()
+        lmp.close()

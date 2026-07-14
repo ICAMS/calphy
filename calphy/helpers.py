@@ -28,101 +28,71 @@ import logging
 import numpy as np
 from collections import Counter, defaultdict
 
-from pylammpsmpi import LammpsLibrary
 from ase.io import read, write
 
 import pyscal3.core as pc
 from pyscal3.trajectory import Trajectory
 
+from calphy.runner import (
+    ExecutableRunner,
+    resolve_lammps_executable,
+    resolve_mpi_executable,
+    preflight,
+    read_timeseries,
+)
 
-class LammpsScript:
-    """Collect LAMMPS commands instead of executing them.
 
-    Mirrors a small subset of the ``pylammpsmpi.LammpsLibrary`` interface so the
-    same calphy code paths can either run LAMMPS in-process or emit a script
-    that is executed by an external ``lmp`` binary. Any unknown attribute is
-    treated as a LAMMPS command name and lowered to ``command(...)``.
+def create_object(calc, directory):
     """
+    Create a runner that drives the external LAMMPS binary.
 
-    # Methods that must NOT be auto-lowered to LAMMPS commands.
-    _RESERVED_NAMES = frozenset({"script", "command", "write", "close", "clear"})
-
-    def __init__(self):
-        self.script = []
-
-    def command(self, command_str):
-        self.script.append(command_str)
-
-    def write(self, infile):
-        with open(infile, "w") as fout:
-            for line in self.script:
-                fout.write(f"{line}\n")
-
-    def close(self):
-        pass
-
-    def clear(self):
-        self.script = []
-
-    def __getattr__(self, name):
-        if name.startswith("_") or name in LammpsScript._RESERVED_NAMES:
-            raise AttributeError(name)
-
-        def _emit(*args):
-            self.command(" ".join([name, *(str(a) for a in args)]))
-
-        return _emit
-
-
-def create_object(
-    cores,
-    directory,
-    timestep,
-    cmdargs="",
-    init_commands=(),
-    script_mode=False,
-    lmp=None,
-):
-    """
-    Create LAMMPS object
+    Resolves the ``lmp`` (and, for ``cores > 1``, ``mpirun``) binary, runs the
+    preflight capability check, then returns an ``ExecutableRunner`` primed with
+    the same five init commands calphy has always emitted (with the
+    ``md.init_commands`` override merge preserved verbatim).
 
     Parameters
     ----------
-    cores : int
-        number of cores
+    calc : Calculation
+        the validated calculation object
 
-    directory: string
-        location of the work directory
-
-    timestep: float
-        timestep for the simulation
+    directory : string
+        location of the work (sim) folder
 
     Returns
     -------
-    lmp : LammpsLibrary object
+    lmp : ExecutableRunner
     """
-    if script_mode:
-        lmp = LammpsScript()
-    elif lmp is None:
-        if cmdargs == "":
-            cmdargs = []
-        elif isinstance(cmdargs, str):
-            cmdargs = cmdargs.split()
-        else:
-            cmdargs = list(cmdargs)
-        # Suppress LAMMPS stdout; Python logging handles screen output
-        if "-screen" not in cmdargs:
-            cmdargs.extend(["-screen", "none"])
-        lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
+    binary = resolve_lammps_executable(calc.lammps_executable)
+    mpi_command = (
+        resolve_mpi_executable(calc.mpi_executable) if calc.queue.cores > 1 else None
+    )
+    # once per calculation; get_binary_styles caches per (path, mtime)
+    preflight(calc, binary)
 
+    lmp = ExecutableRunner(
+        binary=binary,
+        mpi_command=mpi_command,
+        cores=calc.queue.cores,
+        cmdargs=calc.md.cmdargs,
+        directory=directory,
+        dry_run=False,
+    )
+    return emit_init_commands(lmp, calc)
+
+
+def emit_init_commands(lmp, calc):
+    """Emit the five init commands (units/boundary/atom_style/timestep/box),
+    applying the ``md.init_commands`` override merge, onto ``lmp``."""
     commands = [
         ["units", "metal"],
         ["boundary", "p p p"],
         ["atom_style", "atomic"],
-        ["timestep", str(timestep)],
+        ["timestep", str(calc.md.timestep)],
         ["box", "tilt large"],
     ]
 
+    init_commands = calc.md.init_commands
     if len(init_commands) > 0:
         # we need to replace some initial commands
         for rc in init_commands:

@@ -131,26 +131,44 @@ def make_calc(tmp_path):
     return _build
 
 
+class _Recorded:
+    """Adapter exposing ``.commands`` (whitespace- and simfolder-normalized)
+    over an ExecutableRunner's ``logical_commands``, so the golden tests read the
+    same logical stream whether the runner records or (dry-run) drives LAMMPS."""
+
+    def __init__(self, holder):
+        self._holder = holder
+
+    @property
+    def commands(self):
+        runner = self._holder["runner"]
+        return [normalize_command(c, runner.directory) for c in runner.logical_commands]
+
+
 @pytest.fixture
 def recorded_job(tmp_path, monkeypatch):
     """Factory: stage fixtures, patch the runner + solid-fraction, build a job.
 
-    Returns ``(job, recorder)``.  ``recorder.commands`` holds the stream after
-    the driver method is called.
+    Returns ``(job, recorder)``.  ``recorder.commands`` holds the logical command
+    stream after the driver method is called.  create_object is monkeypatched to
+    return an ``ExecutableRunner(dry_run=True)`` (Part 5.9): the driver's added
+    ``sync()`` calls are exercised but no LAMMPS binary runs, and
+    ``logical_commands`` excludes the runner-injected replay/restart lines.
     """
     import calphy.helpers as ph
+    from calphy.runner import ExecutableRunner
 
     np.random.seed(42)
-    recorder = RecordingRunner()
-    original_create_object = ph.create_object
+    holder = {}
 
-    def fake_create_object(*args, **kwargs):
-        # Reuse the real init-command emission (units/boundary/atom_style/
-        # timestep/box + init_commands merge) but onto the recorder, and force
-        # the library (non-script) path.
-        kwargs["lmp"] = recorder
-        kwargs["script_mode"] = False
-        return original_create_object(*args, **kwargs)
+    def fake_create_object(calc, directory):
+        lmp = ExecutableRunner(
+            binary="lmp", mpi_command=None, cores=1, cmdargs="",
+            directory=directory, dry_run=True,
+        )
+        ph.emit_init_commands(lmp, calc)
+        holder["runner"] = lmp
+        return lmp
 
     monkeypatch.setattr(ph, "create_object", fake_create_object)
 
@@ -168,7 +186,6 @@ def recorded_job(tmp_path, monkeypatch):
     def _make(JobClass, calc, fixtures=(), solid_fraction_seq=None,
               default_solid_fraction=None):
         simfolder = str(tmp_path)
-        recorder.simfolder = simfolder
         for fx in fixtures:
             shutil.copy(os.path.join(FIXTURE_DIR, fx), os.path.join(simfolder, fx))
         state["seq"] = list(solid_fraction_seq) if solid_fraction_seq else None
@@ -178,6 +195,6 @@ def recorded_job(tmp_path, monkeypatch):
             else calc._natoms
         )
         job = JobClass(calculation=calc, simfolder=simfolder)
-        return job, recorder
+        return job, _Recorded(holder)
 
     return _make

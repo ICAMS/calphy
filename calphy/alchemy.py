@@ -53,11 +53,11 @@ class Alchemy(cph.Phase):
 
     """
 
-    def __init__(self, calculation=None, simfolder=None, log_to_screen=False, lmp=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
 
         # call base class
         super().__init__(
-            calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen, lmp=lmp,
+            calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen,
         )
 
     def run_averaging(self):
@@ -81,15 +81,7 @@ class Alchemy(cph.Phase):
         Fix lattice option is not implemented at present.
         At the end of the run, the averaged box dimensions are calculated.
         """
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
 
@@ -125,27 +117,15 @@ class Alchemy(cph.Phase):
             # routine in which lattice constant will not varied, but is set to a given fixed value
             self.run_constrained_pressure_convergence(lmp)
 
-        if not self.calc.script_mode:
-            # check for melting
-            self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
-            self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
+        # check for melting
+        self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
+        self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
 
         # close object and process traj
         lmp = ph.write_data(lmp, "conf.equilibration.data")
 
-        if self.calc.script_mode:
-            file = os.path.join(self.simfolder, "averaging.lmp")
-            lmp.write(file)
-            return
-
         self.lammps_close(lmp=lmp)
-        # Preserve log file
-        logfile = os.path.join(self.simfolder, "log.lammps")
-        try:
-            if os.path.exists(logfile):
-                os.rename(logfile, os.path.join(self.simfolder, "averaging.log.lammps"))
-        except OSError as e:
-            self.logger.warning(f"Failed to rename log file: {e}")
+        lmp.rotate_logs("averaging")
 
     def run_integration(self, iteration=1):
         """
@@ -166,15 +146,7 @@ class Alchemy(cph.Phase):
         the lambda parameter. See algorithm 4 in publication.
         """
         # create lammps object
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         # Adiabatic switching parameters.
         lmp.command("variable        li       equal   1.0")
@@ -515,21 +487,8 @@ class Alchemy(cph.Phase):
                 lmp.command(f"unfix swap{idx}")
             # lmp.command("unfix swap_print")
 
-        if self.calc.script_mode:
-            file = os.path.join(self.simfolder, "integration.lmp")
-            lmp.write(file)
-            return
-
         self.lammps_close(lmp=lmp)
-        # Preserve log file
-        logfile = os.path.join(self.simfolder, "log.lammps")
-        try:
-            if os.path.exists(logfile):
-                os.rename(
-                    logfile, os.path.join(self.simfolder, "integration.log.lammps")
-                )
-        except OSError as e:
-            self.logger.warning(f"Failed to rename log file: {e}")
+        lmp.rotate_logs("integration")
 
     def thermodynamic_integration(self):
         """

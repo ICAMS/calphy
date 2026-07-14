@@ -498,6 +498,14 @@ class Calculation(BaseModel, title="Main input class"):
 
     @model_validator(mode="after")
     def _validate_all(self) -> "Input":
+        if self.script_mode:
+            raise ValueError(
+                "script_mode was removed in calphy v2. calphy now always drives "
+                "the LAMMPS executable directly; set lammps_executable (or use "
+                "$CALPHY_LAMMPS_EXECUTABLE / lmp on PATH) and remove script_mode "
+                "from the input file."
+            )
+
         if not (len(self.element) == len(self.mass)):
             raise ValueError("mass and elements should have same length")
 
@@ -1093,21 +1101,6 @@ class Calculation(BaseModel, title="Main input class"):
 
         os.mkdir(simfolder)
         return simfolder
-
-    @property
-    def savefile(self):
-        simfolder = self.get_folder_name()
-        return os.path.join(simfolder, "job.npy")
-
-
-def save_job(job):
-    filename = os.path.join(job.simfolder, "job.npy")
-    np.save(filename, job)
-
-
-def load_job(filename):
-    job = np.load(filename, allow_pickle=True).flatten()[0]
-    return job
 
 
 def read_inputfile(file, validate=True):
