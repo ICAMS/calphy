@@ -513,6 +513,19 @@ def test_read_timeseries_missing_raises(tmp_path):
         R.read_timeseries(str(tmp_path), "nope.dat", usecols=(1,))
 
 
+def test_read_timeseries_all_columns_multifile_mixed_rows(tmp_path):
+    # regression: usecols=None with a multi-row base and a single-row seg file
+    # (np.loadtxt squeezes the single row to 1D) must still concatenate.
+    with open(tmp_path / "m.dat", "w") as fh:
+        fh.write("# TimeStep v\n0 1.0\n100 2.0\n200 3.0\n")
+    with open(tmp_path / "m.dat.seg1", "w") as fh:
+        fh.write("# TimeStep v\n300 4.0\n")            # single row -> 1D from loadtxt
+    got = R.read_timeseries(str(tmp_path), "m.dat")     # usecols=None -> all columns
+    assert got.shape == (4, 2)
+    assert list(got[:, 0]) == [0.0, 100.0, 200.0, 300.0]
+    assert list(got[:, 1]) == [1.0, 2.0, 3.0, 4.0]
+
+
 # --------------------------------------------------------------------------- #
 # Import without pylammpsmpi
 # --------------------------------------------------------------------------- #

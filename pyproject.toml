@@ -50,5 +50,11 @@ calphy_kernel = "calphy.queuekernel:main"
 calphy_convert_input = "calphy.clitools:convert_legacy_inputfile"
 calphy_phase_diagram = "calphy.clitools:phase_diagram"
 
+[tool.pytest.ini_options]
+markers = [
+    "lammps: integration test that runs the real LAMMPS binary (skipped when no lmp resolves)",
+    "slow: slow integration test (the heavier end-to-end scenarios)",
+]
+
 [tool.setuptools.packages.find]
 include = ["calphy", "calphy.*"]

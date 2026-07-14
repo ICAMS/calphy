@@ -131,25 +131,17 @@ def read_timeseries(directory, name, usecols=None):
     if len(parts) == 1:
         return np.loadtxt(parts[0], usecols=usecols)
 
-    ncols = None
-    if usecols is not None and not np.isscalar(usecols):
-        ncols = len(usecols)
-
-    blocks = []
-    for path in parts:
-        arr = np.loadtxt(path, usecols=usecols)
-        if arr.size == 0:
-            continue
-        if ncols is not None and ncols > 1:
-            # np.loadtxt squeezes a single row to 1D -- restore the 2D shape.
-            arr = arr.reshape(-1, ncols)
-        else:
-            # a single value comes back 0-D; make it concatenable.
-            arr = np.atleast_1d(arr)
-        blocks.append(arr)
+    # Load each file as 2D (ndmin=2 normalizes single-row / single-column files
+    # that np.loadtxt would otherwise squeeze), then vstack.
+    blocks = [np.loadtxt(p, usecols=usecols, ndmin=2) for p in parts]
+    blocks = [b for b in blocks if b.size]
     if not blocks:
         return np.loadtxt(parts[0], usecols=usecols)
-    return np.concatenate(blocks, axis=0)
+    result = np.vstack(blocks)
+    # Match np.loadtxt's shape: a single selected column comes back 1D.
+    if result.shape[1] == 1:
+        return result[:, 0]
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -498,8 +490,11 @@ def _parse_styles(text):
         stripped = line.strip()
         if stripped.startswith("*"):
             current = None
-            if stripped.endswith("styles:"):
-                word = stripped[1:].strip().split()[0].lower()
+            # headings look like "* Pair styles:" or "* Fix styles" (some
+            # sections omit the trailing colon), so match tolerantly.
+            head = stripped[1:].strip().rstrip(":")
+            if head.lower().endswith("styles"):
+                word = head.split()[0].lower()
                 if word in result:
                     current = word
             continue
