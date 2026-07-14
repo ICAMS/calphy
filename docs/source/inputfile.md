@@ -745,16 +745,12 @@ Prefix string to be added to folder names for calculation. Folders for calculati
 (script_mode)=
 #### `script_mode`        
 
-_type_: bool \
-_default_: False \
-_example_:
-```
-script_mode: False
-```  
-
-If True, a LAMMPS executable script is written and executed instead of the library interface of LAMMPS.
-Works only with `reference_phase: solid`, and `mode: fe`.
-Needs specification of [`lammps_executable`](lammps_executable) and [`mpi_executable`](mpi_executable).
+**Removed in calphy v2.** calphy now always drives the LAMMPS executable
+directly (segmented, restart-continued runs), so there is no separate
+script/library mode to select. Setting `script_mode: True` in an input file
+raises a validation error; remove the key. To point calphy at a specific binary,
+use [`lammps_executable`](lammps_executable) (and [`mpi_executable`](mpi_executable)
+for parallel runs) — these now apply to **every** mode and reference phase.
 
 
 ---
@@ -766,12 +762,17 @@ _type_: string \
 _default_: None \
 _example_:
 ```
-lammps_executable: lmp_mpi
+lammps_executable: /path/to/lmp
 ```  
 
-LAMMPS executable to run the calculations with.
-Works only with `reference_phase: solid`, and `mode: fe`.
-Works only if [`script_mode`](script_mode) is `True`.
+The LAMMPS `lmp` binary calphy runs. Applies to every mode and reference phase.
+If not set, calphy resolves the binary in this order:
+
+1. this `lammps_executable` key,
+2. the environment variable `$CALPHY_LAMMPS_EXECUTABLE`,
+3. `lmp` on your `PATH`.
+
+If none resolve, calphy fails at startup with a message naming all three steps.
 
 
 
@@ -784,12 +785,12 @@ _type_: string \
 _default_: None \
 _example_:
 ```
-mpi_executable: mpiexec
+mpi_executable: mpirun
 ```  
 
-MPI executable to run the LAMMPS with.
-Works only with `reference_phase: solid`, and `mode: fe`.
-Works only if [`script_mode`](script_mode) is `True`.
+The MPI launcher used when `queue.cores > 1`. Resolved as
+`mpi_executable` → `$CALPHY_MPI_EXECUTABLE` → `mpirun` on `PATH`. Ignored for
+serial runs (`queue.cores == 1`).
 
 
 ---
@@ -946,7 +947,7 @@ md:
   cmdargs: "-k on g 1 -sf kk -pk kokkos newton on neigh half"
 ```
 
-Extra command-line arguments passed verbatim to the LAMMPS Python library when the LAMMPS object is created. Most commonly used to enable accelerator packages such as `KOKKOS`, `GPU` or `INTEL`.
+Extra command-line arguments appended verbatim to the `lmp` argv for every segment (i.e. `lmp -in seg.lmp -log seg.log -screen none <cmdargs>`). Most commonly used to enable accelerator packages such as `KOKKOS`, `GPU` or `INTEL`. (calphy manages `-in`, `-log` and `-screen` itself, so do not set those here.)
 
 ---
 

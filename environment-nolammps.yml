@@ -10,11 +10,11 @@ dependencies:
   - pytest
   - scipy
   - pyyaml
-  - mendeleev
-  - openmpi 
+  # openmpi provides mpirun for parallel (cores > 1) calphy runs; the build
+  # tools above are for compiling your own `lmp` binary (calphy drives the
+  # executable directly and no longer needs a LAMMPS python library).
+  - openmpi
   - numpy
-  - mpi4py
-  - pylammpsmpi
   - matplotlib
   - tqdm
   - pydantic >=2.3.0

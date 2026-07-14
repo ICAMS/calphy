@@ -29,12 +29,15 @@ From: ubuntu:22.04
     python3.8 -m venv /singularity-venv
     . /singularity-venv/bin/activate
 
-    # Install packages
-    pip install numpy==1.24.4 ase==3.23.0 mpi4py==3.1.5
-    pip install mendeleev==0.17.0 pylammpsmpi==0.2.16 pyscal==0.12 pyyaml==6.0.2 scipy==1.10.1 tqdm==4.66.2
+    # Install packages (calphy drives the external `lmp` binary directly, so no
+    # pylammpsmpi / mpi4py / LAMMPS python library is needed).
+    pip install numpy==1.24.4 ase==3.23.0
+    pip install mendeleev==0.17.0 pyscal==0.12 pyyaml==6.0.2 scipy==1.10.1 tqdm==4.66.2
     pip install calphy
 
-        # Clone lammps source and make
+    # Clone lammps source and build the `lmp` executable with the packages
+    # calphy needs (EXTRA-FIX: ti/spring, EXTRA-PAIR: ufm/hybrid-scaled,
+    # MC: atom/swap, QTB: fix qtb).  Put the binary on PATH as `lmp`.
     git clone https://github.com/lammps/lammps.git --branch patch_2Aug2023_update3
     cd /lammps/src/
     sed -i '35s/.*/LMP_INC = -DLAMMPS_GZIP -DLAMMPS_JPEG -DLAMMPS_PNG -DLAMMPS_FFMPEG -DLAMMPS_EXCEPTIONS/' MAKE/MACHINES/Makefile.ubuntu
@@ -42,9 +45,10 @@ From: ubuntu:22.04
     make yes-meam
     make yes-EXTRA-FIX
     make yes-EXTRA-PAIR
-    make -j 8 ubuntu mode=shlib
-    make install-python
-    cp liblammps_ubuntu.so  /singularity-venv/lib/python3.8/site-packages/lammps
+    make yes-MC
+    make yes-QTB
+    make -j 8 ubuntu
+    cp lmp_ubuntu /usr/local/bin/lmp
     cd ../../
 %runscript
 
