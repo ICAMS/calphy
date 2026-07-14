@@ -26,11 +26,14 @@ as a subprocess.
 import os
 import glob
 import shutil
+import logging
 import subprocess
 
 import numpy as np
 
 from calphy.errors import LammpsExecutionError, RunnerStateError
+
+logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
@@ -462,4 +465,138 @@ class ExecutableRunner:
             "  segment log:    %s\n"
             "  --- %s ---\n%s"
             % (reason, seg_path, log_path, source, excerpt)
+        )
+
+
+# --------------------------------------------------------------------------- #
+# Preflight capability check (Part 4)
+# --------------------------------------------------------------------------- #
+#: Section headings in `lmp -h` -> the category key we track.
+_STYLE_CATEGORIES = ("pair", "fix", "compute")
+
+#: Styles that come from an optional LAMMPS package, for the error message hint.
+_STYLE_PACKAGE = {
+    ("fix", "ti/spring"): "EXTRA-FIX",
+    ("pair", "ufm"): "EXTRA-PAIR",
+    ("fix", "atom/swap"): "MC",
+    ("fix", "qtb"): "QTB",
+    ("pair", "hybrid/scaled"): "EXTRA-PAIR",
+}
+
+_STYLE_CACHE = {}
+
+
+def _parse_styles(text):
+    """Parse the ``* Pair/Fix/Compute styles:`` sections of ``lmp -h`` output.
+
+    Captures every whitespace-separated token between a category heading and the
+    next ``*`` heading, so it is tolerant of column wrapping and blank lines.
+    """
+    result = {cat: set() for cat in _STYLE_CATEGORIES}
+    current = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("*"):
+            current = None
+            if stripped.endswith("styles:"):
+                word = stripped[1:].strip().split()[0].lower()
+                if word in result:
+                    current = word
+            continue
+        if current is not None and stripped:
+            result[current].update(stripped.split())
+    return result
+
+
+def _query_styles(binary):
+    try:
+        proc = subprocess.run(
+            [binary, "-h"], capture_output=True, text=True, timeout=60
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {cat: set() for cat in _STYLE_CATEGORIES}
+    text = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    return _parse_styles(text)
+
+
+def get_binary_styles(binary):
+    """Return ``{"pair": {...}, "fix": {...}, "compute": {...}}`` for ``binary``.
+
+    Parses ``lmp -h``.  Cached per (path, mtime).  If the binary cannot produce a
+    style listing (some builds crash on ``-h``), the returned sets are empty --
+    callers must treat an all-empty result as "capabilities unknown".
+    """
+    try:
+        mtime = os.path.getmtime(binary)
+    except OSError:
+        mtime = None
+    key = (binary, mtime)
+    if key not in _STYLE_CACHE:
+        _STYLE_CACHE[key] = _query_styles(binary)
+    return _STYLE_CACHE[key]
+
+
+def required_styles(calc):
+    """The pair/fix/compute styles a calculation needs, derived from ``calc``."""
+    pair = set(getattr(calc, "_pair_style_names", None) or [])
+    fix = {"nve", "nvt", "npt", "langevin", "ave/time", "print", "momentum"}
+    compute = {"msd", "temp/com", "pair"}
+
+    mode = calc.mode
+    phase = (calc.reference_phase or "").lower()
+
+    if phase == "solid" and mode in ("fe", "ts", "tscale"):
+        fix.add("ti/spring")
+    if phase == "liquid" or mode == "melting_temperature":
+        pair.add("ufm")
+        pair.add("hybrid/scaled")
+    if mode in ("ts", "tscale") or getattr(calc, "pair_mode", None) == "overlay":
+        pair.add("hybrid/scaled")
+    if getattr(getattr(calc, "monte_carlo", None), "n_swaps", 0) > 0:
+        fix.add("atom/swap")
+    if getattr(calc, "_qtb", False):
+        fix.add("qtb")
+
+    return {"pair": pair, "fix": fix, "compute": compute}
+
+
+def preflight(calc, binary):
+    """Verify ``binary`` provides every style ``calc`` needs, else raise ValueError.
+
+    Skips (with a logged warning) when ``CALPHY_SKIP_PREFLIGHT=1`` or when the
+    binary cannot report its styles.
+    """
+    if os.environ.get("CALPHY_SKIP_PREFLIGHT") == "1":
+        logger.warning(
+            "CALPHY_SKIP_PREFLIGHT=1: skipping the LAMMPS capability preflight."
+        )
+        return
+
+    available = get_binary_styles(binary)
+    if not any(available.values()):
+        logger.warning(
+            "Could not read a style list from `%s -h`; skipping the preflight "
+            "capability check. If a required style is missing the run will fail "
+            "later with a LAMMPS ERROR.", binary,
+        )
+        return
+
+    required = required_styles(calc)
+    missing = []
+    for cat in _STYLE_CATEGORIES:
+        for name in sorted(required.get(cat, set())):
+            if name not in available.get(cat, set()):
+                missing.append((cat, name))
+
+    if missing:
+        lines = []
+        for cat, name in missing:
+            pkg = _STYLE_PACKAGE.get((cat, name), "core / recent LAMMPS")
+            lines.append("  - %s style %r  (LAMMPS package: %s)" % (cat, name, pkg))
+        raise ValueError(
+            "The LAMMPS binary %r is missing styles this calculation needs:\n%s\n"
+            "Rebuild LAMMPS with the packages above (e.g. "
+            "`-D PKG_EXTRA-FIX=yes`) or use a full binary. Set "
+            "CALPHY_SKIP_PREFLIGHT=1 to bypass this check."
+            % (binary, "\n".join(lines))
         )
