@@ -1749,6 +1749,7 @@ class Phase:
         scan_file = "prescan.forward.dat"
         lmp.command(
             'fix               fp all print 1 "${dU} $(press) $(vol) $(temp)" '
+            'title "# dU[eV/atom] press[bar] vol[A^3] temp[K]" '
             'screen no file %s' % scan_file
         )
         self.logger.info("pre-scan: ramp start (%d steps)", n_scan)

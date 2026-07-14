@@ -218,16 +218,10 @@ def test_ts_mc_swaps(make_calc, recorded_job):
 
 
 # --------------------------------------------------------------------------- #
-# Prescan (phase_transition_detection) -- DEFERRED.
-# calphy.range_scan is missing from the codebase (pre-existing bug): any
-# mode != none raises ModuleNotFoundError.  See tests/baselines/BASELINE_INFO.md
-# (B12 deferral).  Kept as a skipped placeholder so the gap is visible.
+# Prescan (phase_transition_detection).  Records the diagnostic-ramp command
+# stream; the RangeScan analysis (calphy.range_scan) runs against the recorded
+# prescan.forward.dat when present and is skipped gracefully in dry-run.
 # --------------------------------------------------------------------------- #
-@pytest.mark.skip(
-    reason="prescan blocked: calphy.range_scan module missing (pre-existing bug), "
-    "phase_transition_detection.mode != none raises ModuleNotFoundError; see "
-    "tests/baselines/BASELINE_INFO.md (B12 deferral)."
-)
 def test_prescan(make_calc, recorded_job):
     calc = make_calc("B12")
     job, rec = recorded_job(Solid, calc)

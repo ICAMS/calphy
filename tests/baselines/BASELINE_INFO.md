@@ -76,14 +76,13 @@ Internal consistency checks (frozen as contract): **B1≈B9** (0 bar/500 K), **B
   with a QTB-enabled binary; the QTB command stream is still covered by the Part 2 golden and Part 4
   preflight (no binary needed).
 
-- **B12 — ts + prescan / solid, 400→700 K, `phase_transition_detection.mode: warn`.** BLOCKED by a
-  **pre-existing code bug**: `calphy/phase.py::scan_temperature_range` does
-  `from calphy.range_scan import RangeScan, plot_scan`, but **`calphy/range_scan.py` does not exist**
-  (not in the working tree, not git-tracked, not in history/stash). Any run with
-  `phase_transition_detection.mode != "none"` raises `ModuleNotFoundError: No module named
-  'calphy.range_scan'`. Input kept at `inputs/B12.yaml`. Prescan is treated as not-ready for this
-  refactor (Part 2 `prescan.txt` golden and Part 5.2 scan-sync are out of scope until `range_scan`
-  lands). Flagged as a bug to fix separately.
+- **B12 — ts + prescan / solid, 400→700 K, `phase_transition_detection.mode: warn`.** RESOLVED.
+  `calphy/range_scan.py` (the pure-numpy detector behind `scan_temperature_range`) was ported from
+  the `main` branch; its `RangeScan` / `plot_scan` / `ScanResult` API matches what `phase.py` already
+  expected, and the LAMMPS driving stays in `phase.py` (executable-runner native), so no backend
+  changes were needed. The `prescan.txt` golden is generated and end-to-end validated against real
+  LAMMPS (ramp 400→700 K, `prescan.forward.dat` analysed, `prescan_signals.png` written, correctly
+  reports no transition for solid Cu in-range). Input kept at `inputs/B12.yaml`.
 
 ## Environment / install note
 

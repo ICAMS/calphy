@@ -98,6 +98,19 @@ Free energy as a function of pressure.
 
 ---
 
+## Pre-flight temperature scan
+
+Produced only when [](phase_transition_detection) is enabled (`mode` other than
+`none`) for a `ts` run. A fast real-thermostat ramp is used to detect the onset
+of a phase transition before the production sweep.
+
+| File | Content |
+|---|---|
+| `prescan.forward.dat` | The diagnostic ramp time series — columns `dU` [eV/atom], `press` [bar], `vol` [Å³], `temp` [K] |
+| `prescan_signals.png` | Plot of the fluctuation response signals with the detected onset/peak marked (best-effort; skipped if matplotlib is unavailable) |
+
+---
+
 ## Raw switching data
 
 The per-step data recorded during each non-equilibrium switching run. There is
