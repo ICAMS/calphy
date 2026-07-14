@@ -37,4 +37,22 @@ class SolidifiedError(CustomError):
 class PhaseTransitionError(CustomError):
     """Raised when the pre-flight temperature-range scan flags a phase transition."""
     pass
-    
+
+
+class LammpsExecutionError(RuntimeError):
+    """LAMMPS binary exited abnormally.
+
+    Carries the segment script path, the segment log path, and a short excerpt of
+    the log (or stderr) so the failure can be diagnosed without re-running.
+    """
+    pass
+
+
+class RunnerStateError(RuntimeError):
+    """Invalid command sequence for segmented execution.
+
+    Raised for an unknown command, a dump left live across a segment boundary, an
+    immediate-evaluation variable crossing a boundary, or a ``fix print`` being
+    replayed -- anything the ExecutableRunner cannot faithfully reproduce.
+    """
+    pass
