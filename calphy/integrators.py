@@ -193,7 +193,10 @@ def find_w(mainfolder, calc, full=False, solid=True, prefix=""):
 
     wsmean = np.mean(ws)
     qsmean = np.mean(qs)
-    wsstd = np.std(ws)
+    # Uncertainty on the *mean* of n_iterations independent switching runs is the
+    # standard error of the mean (SEM = sample std / sqrt(N)), not the spread of
+    # the individual runs.  A single run yields no error estimate.
+    wsstd = np.std(ws, ddof=1) / np.sqrt(len(ws)) if len(ws) > 1 else 0.0
 
     if full:
         return wsmean, qsmean, wsstd
@@ -290,7 +293,8 @@ def integrate_rs(
 
     e_diss = np.min(es)
     wmean = np.mean(ws, axis=0)
-    werr = np.std(ws, axis=0)
+    # standard error of the mean across the nsims independent sweeps (see find_w)
+    werr = np.std(ws, axis=0, ddof=1) / np.sqrt(len(ws)) if len(ws) > 1 else np.zeros_like(wmean)
     temp = t / flambda
 
     f = f0 / flambda + 1.5 * kb * temp * np.log(flambda) + wmean
@@ -350,7 +354,8 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1, return_values=False):
         ws.append(w)
 
     wmean = np.mean(ws, axis=0)
-    werr = np.std(ws, axis=0)
+    # standard error of the mean across the nsims independent sweeps (see find_w)
+    werr = np.std(ws, axis=0, ddof=1) / np.sqrt(len(ws)) if len(ws) > 1 else np.zeros_like(wmean)
 
     press = np.linspace(pi, pf, len(wmean))
 
