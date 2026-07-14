@@ -22,7 +22,7 @@ variable dU equal pe/atoms
 variable lambda equal ramp(${li},${lf})
 variable pp equal ramp(${p0},${pf})
 fix f2 all npt temp 500.000000 500.000000 0.100000 iso 0.000000 50000.000000 0.100000
-fix f3 all print 1 "${dU} ${pp} $(vol) ${lambda}" screen no file ps.forward_1.dat
+fix f3 all print 1 "${dU} ${pp} $(vol) ${lambda}" title "# dU[eV/atom] press[bar] vol[A^3] lambda" screen no file ps.forward_1.dat
 run 5000
 unfix f2
 unfix f3
@@ -32,5 +32,5 @@ unfix 1
 variable lambda equal ramp(${lf},${li})
 variable pp equal ramp(${pf},${p0})
 fix f2 all npt temp 500.000000 500.000000 0.100000 iso 50000.000000 0.000000 0.100000
-fix f3 all print 1 "${dU} ${pp} $(vol) ${lambda}" screen no file ps.backward_1.dat
+fix f3 all print 1 "${dU} ${pp} $(vol) ${lambda}" title "# dU[eV/atom] press[bar] vol[A^3] lambda" screen no file ps.backward_1.dat
 run 5000

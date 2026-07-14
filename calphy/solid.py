@@ -370,7 +370,15 @@ class Solid(cph.Phase):
 
         str2.append('${lambda}"')
         str2 = " ".join(str2)
-        str3 = " screen no file forward_%d.dat" % iteration
+        title_cols = (
+            ["dU_sys[eV/atom]"]
+            + ["dU_ref%d[eV/atom]" % (i + 1) for i in range(self.calc.n_elements)]
+            + ["lambda"]
+        )
+        str3 = ' title "# %s" screen no file forward_%d.dat' % (
+            " ".join(title_cols),
+            iteration,
+        )
         command = str1 + str2 + str3
         lmp.command(command)
 
@@ -414,7 +422,15 @@ class Solid(cph.Phase):
 
         str2.append('${lambda}"')
         str2 = " ".join(str2)
-        str3 = " screen no file backward_%d.dat" % iteration
+        title_cols = (
+            ["dU_sys[eV/atom]"]
+            + ["dU_ref%d[eV/atom]" % (i + 1) for i in range(self.calc.n_elements)]
+            + ["lambda"]
+        )
+        str3 = ' title "# %s" screen no file backward_%d.dat' % (
+            " ".join(title_cols),
+            iteration,
+        )
         command = str1 + str2 + str3
         lmp.command(command)
 
@@ -486,6 +502,7 @@ class Solid(cph.Phase):
         self.feinstein = fe
         self.fcm = fcm
         self.w = w
+        self.qdiss = q
         self.ferr = qerr
 
         # add pressure contribution if required

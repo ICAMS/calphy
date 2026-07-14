@@ -30,7 +30,7 @@ variable dU1 equal c_c1/atoms
 variable dU2 equal c_c2/atoms
 thermo_style custom step v_dU1 v_dU2
 thermo 1000
-fix f2 all print 1 "${dU1} ${dU2} ${flambda}" screen no file forward_1.dat
+fix f2 all print 1 "${dU1} ${dU2} ${flambda}" title "# dU_1[eV/atom] dU_2[eV/atom] lambda" screen no file forward_1.dat
 run 5000
 unfix f2
 uncompute c1
@@ -52,7 +52,7 @@ variable dU1 equal c_c1/atoms
 variable dU2 equal c_c2/atoms
 thermo_style custom step v_dU1 v_dU2
 thermo 1000
-fix f2 all print 1 "${dU1} ${dU2} ${flambda}" screen no file backward_1.dat
+fix f2 all print 1 "${dU1} ${dU2} ${flambda}" title "# dU_1[eV/atom] dU_2[eV/atom] lambda" screen no file backward_1.dat
 run 5000
 unfix f2
 uncompute c1

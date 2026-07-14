@@ -19,7 +19,7 @@ variable step equal step
 variable dU equal pe/atoms
 variable lambda equal ramp(${li},${lf})
 fix f2 all npt temp 400.000000 700.000000 0.100000 iso 0.000000 0.000000 0.100000
-fix f3 all print 1 "${dU} $(press) $(vol) ${lambda}" screen no file ts.forward_1.dat
+fix f3 all print 1 "${dU} $(press) $(vol) ${lambda}" title "# dU[eV/atom] press[bar] vol[A^3] lambda" screen no file ts.forward_1.dat
 run 5000
 unfix f3
 unfix f2
@@ -34,7 +34,7 @@ run 0
 undump 2
 variable lambda equal ramp(${lf},${li})
 fix f2 all npt temp 400.000000 400.000000 0.100000 iso 0.000000 0.000000 0.100000
-fix f3 all print 1 "${dU} $(press) $(vol) ${lambda}" screen no file ts.backward_1.dat
+fix f3 all print 1 "${dU} $(press) $(vol) ${lambda}" title "# dU[eV/atom] press[bar] vol[A^3] lambda" screen no file ts.backward_1.dat
 run 5000
 unfix f3
 unfix f2

@@ -28,7 +28,7 @@ thermo 10
 run 1000
 unfix nh1
 fix nh1 all npt temp 1400.000000 1400.000000 0.100000 iso 0.000000 0.000000 0.100000
-fix 2 all ave/time 10 10 100 v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat
+fix 2 all ave/time 10 10 100 v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp title2 "# TimeStep lx[A] ly[A] lz[A] press[bar] pe[eV/atom] etotal[eV/atom] temp[K]" file avg.dat
 run 1000
 unfix nh1
 unfix 2

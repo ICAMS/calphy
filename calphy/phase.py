@@ -252,6 +252,14 @@ class Phase:
         self.w = 0
         self.pv = 0
         self.fe = 0
+        #: Mean switching dissipation q = 0.5*(W_fwd + W_bwd) [eV/atom]; a
+        #: measure of the irreversibility of the fe-mode switching (0 for a
+        #: perfectly reversible path).  Written to report.yaml as
+        #: results.dissipation.
+        self.qdiss = 0
+        #: Max energy dissipation along a ts/tscale reversible-scaling sweep
+        #: [eV/atom]; written to report.yaml as results.ts_dissipation.
+        self.ediss = 0
 
         # box dimensions that need to be stored
         self.lx = None
@@ -750,7 +758,9 @@ class Phase:
         ave_freq = ave_every * ave_repeat
 
         lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat"
+            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp "
+            'title2 "# TimeStep lx[A] ly[A] lz[A] press[bar] pe[eV/atom] etotal[eV/atom] temp[K]" '
+            "file avg.dat"
             % (ave_every, ave_repeat, ave_freq)
         )
 
@@ -921,7 +931,9 @@ class Phase:
 
         # this is when the averaging routine starts
         lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat"
+            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp "
+            'title2 "# TimeStep lx[A] ly[A] lz[A] press[bar] pe[eV/atom] etotal[eV/atom] temp[K]" '
+            "file avg.dat"
             % (
                 int(self.calc.md.n_every_steps),
                 int(self.calc.md.n_repeat_steps),
@@ -1058,6 +1070,7 @@ class Phase:
         report["results"]["einstein_crystal"] = float(self.feinstein)
         report["results"]["com_correction"] = float(self.fcm)
         report["results"]["work"] = float(self.w)
+        report["results"]["dissipation"] = float(self.qdiss)
         report["results"]["pv"] = float(self.pv)
         report["results"]["unit"] = "eV/atom"
 
@@ -1071,6 +1084,45 @@ class Phase:
             yaml.dump(report, f)
 
         self.logger.info("Report written in %s" % reportfile)
+
+    def _amend_report(self, updates):
+        """
+        Merge ``updates`` into the already-written ``report.yaml``.
+
+        Used by post-integration steps (e.g. the ts/tscale reversible-scaling
+        sweep) that produce quantities only available *after* the base report
+        has been written by :meth:`submit_report`.  Nested dicts are merged one
+        level deep so, e.g., ``{"results": {"ts_dissipation": x}}`` adds a key to
+        the existing ``results`` block without clobbering it.  Silently returns
+        if no report has been written yet.
+
+        Parameters
+        ----------
+        updates : dict
+            Keys/sub-keys to merge into the report.
+
+        Returns
+        -------
+        None
+        """
+        reportfile = os.path.join(self.simfolder, "report.yaml")
+        report = getattr(self, "report", None)
+        if report is None:
+            if not os.path.exists(reportfile):
+                return
+            with open(reportfile, "r") as f:
+                report = yaml.safe_load(f) or {}
+
+        for key, value in updates.items():
+            if isinstance(value, dict) and isinstance(report.get(key), dict):
+                report[key].update(value)
+            else:
+                report[key] = value
+
+        self.report = report
+        with open(reportfile, "w") as f:
+            yaml.dump(report, f)
+        self.logger.info("Report updated in %s" % reportfile)
 
         # now we have to write out the results
         self.logger.info("Please cite the following publications:")
@@ -1120,6 +1172,7 @@ class Phase:
         n_sweep = self.calc._n_sweep_steps
         lmp.command(
             'fix               f3 all print 1 "${dU} $(press) $(vol) ${%s}" '
+            'title "# dU[eV/atom] press[bar] vol[A^3] lambda" '
             'screen no file %s' % (lambda_var, output_file_pattern)
         )
         self.logger.info("ts-sweep %s: %d steps", sweep_label, n_sweep)
@@ -1600,6 +1653,11 @@ class Phase:
         # contaminated.
         self.ediss = float(ediss)
 
+        # Fold the sweep dissipation into report.yaml.  routine_fe() (called by
+        # routine_ts/tscale before the sweep) has already written the report, so
+        # amend it in place rather than rewriting the whole thing.
+        self._amend_report({"results": {"ts_dissipation": self.ediss}})
+
         self.logger.info(
             f"Maximum energy dissipation along the temperature scaling part: {ediss} eV/atom"
         )
@@ -2049,7 +2107,9 @@ class Phase:
             )
         )
         lmp.command(
-            'fix               f3 all print 1 "${dU} ${pp} $(vol) ${lambda}" screen no file ps.forward_%d.dat'
+            'fix               f3 all print 1 "${dU} ${pp} $(vol) ${lambda}" '
+            'title "# dU[eV/atom] press[bar] vol[A^3] lambda" '
+            "screen no file ps.forward_%d.dat"
             % iteration
         )
         lmp.command("run               %d" % self.calc._n_sweep_steps)
@@ -2089,7 +2149,9 @@ class Phase:
             )
         )
         lmp.command(
-            'fix               f3 all print 1 "${dU} ${pp} $(vol) ${lambda}" screen no file ps.backward_%d.dat'
+            'fix               f3 all print 1 "${dU} ${pp} $(vol) ${lambda}" '
+            'title "# dU[eV/atom] press[bar] vol[A^3] lambda" '
+            "screen no file ps.backward_%d.dat"
             % iteration
         )
         lmp.command("run               %d" % self.calc._n_sweep_steps)

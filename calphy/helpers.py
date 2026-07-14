@@ -327,6 +327,10 @@ def compute_msd(lmp, options):
         lmp.command("compute          c%d g%d msd com yes" % (i + 1, i + 1))
         lmp.command("variable         msd%d equal c_c%d[4]" % (i + 1, i + 1))
         str2.append("v_msd%d" % (i + 1))
+    title_cols = "# TimeStep " + " ".join(
+        "msd%d[A^2]" % (i + 1) for i in range(len(elements))
+    )
+    str2.append('title2 "%s"' % title_cols)
     str2.append("file")
     str2.append("msd.dat")
     str2 = " ".join(str2)

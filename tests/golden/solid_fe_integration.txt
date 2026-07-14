@@ -26,10 +26,10 @@ thermo 10000
 velocity all create 500.000000 861 mom yes rot yes dist gaussian
 fix ff1 g1 ti/spring 2.000000 5000 2500 function 2
 run 2500
-fix f4 all print 1 "${dU1} ${dU2} ${lambda}" screen no file forward_1.dat
+fix f4 all print 1 "${dU1} ${dU2} ${lambda}" title "# dU_sys[eV/atom] dU_ref1[eV/atom] lambda" screen no file forward_1.dat
 run 5000
 unfix f4
 run 2500
-fix f4 all print 1 "${dU1} ${dU2} ${lambda}" screen no file backward_1.dat
+fix f4 all print 1 "${dU1} ${dU2} ${lambda}" title "# dU_sys[eV/atom] dU_ref1[eV/atom] lambda" screen no file backward_1.dat
 run 5000
 unfix f4

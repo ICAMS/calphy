@@ -351,7 +351,9 @@ class Alchemy(cph.Phase):
 
         # save the necessary items to a file: first step
         lmp.command(
-            'fix             f2 all print 1 "${dU1} ${dU2} ${flambda}" screen no file forward_%d.dat'
+            'fix             f2 all print 1 "${dU1} ${dU2} ${flambda}" '
+            'title "# dU_1[eV/atom] dU_2[eV/atom] lambda" '
+            "screen no file forward_%d.dat"
             % iteration
         )
         lmp.command("run             %d" % self.calc._n_switching_steps)
@@ -470,7 +472,9 @@ class Alchemy(cph.Phase):
 
         # save the necessary items to a file: first step
         lmp.command(
-            'fix             f2 all print 1 "${dU1} ${dU2} ${flambda}" screen no file backward_%d.dat'
+            'fix             f2 all print 1 "${dU1} ${dU2} ${flambda}" '
+            'title "# dU_1[eV/atom] dU_2[eV/atom] lambda" '
+            "screen no file backward_%d.dat"
             % iteration
         )
         lmp.command("run             %d" % self.calc._n_switching_steps)
@@ -510,6 +514,7 @@ class Alchemy(cph.Phase):
         w, q, qerr = find_w(self.simfolder, self.calc, full=True, solid=False)
 
         self.w = w
+        self.qdiss = q
         self.ferr = qerr
         self.fe = self.w
 

@@ -331,7 +331,9 @@ class Liquid(cph.Phase):
         lmp.command("fix_modify       f2 temp Tcm")
 
         lmp.command(
-            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file %s'
+            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" '
+            'title "# dU_sys[eV/atom] dU_ref[eV/atom] lambda" '
+            "screen no file %s"
             % (leg1_fwd % iteration)
         )
         lmp.command("run               %d" % self.calc._n_switching_steps)
@@ -428,7 +430,9 @@ class Liquid(cph.Phase):
         lmp.command("fix_modify       f2 temp Tcm")
 
         lmp.command(
-            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file %s'
+            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" '
+            'title "# dU_sys[eV/atom] dU_ref[eV/atom] lambda" '
+            "screen no file %s"
             % (leg1_bkd % iteration)
         )
         lmp.command("run               %d" % self.calc._n_switching_steps)
@@ -535,7 +539,9 @@ class Liquid(cph.Phase):
         # FWD: multi -> single
         setup_dual_ufm(forward=True)
         lmp.command(
-            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file forward_leg2_%d.dat'
+            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" '
+            'title "# dU_sys[eV/atom] dU_ref[eV/atom] lambda" '
+            "screen no file forward_leg2_%d.dat"
             % iteration
         )
         lmp.command("run               %d" % self.calc._n_switching_steps)
@@ -562,7 +568,9 @@ class Liquid(cph.Phase):
         # BKD: single -> multi
         setup_dual_ufm(forward=False)
         lmp.command(
-            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file backward_leg2_%d.dat'
+            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" '
+            'title "# dU_sys[eV/atom] dU_ref[eV/atom] lambda" '
+            "screen no file backward_leg2_%d.dat"
             % iteration
         )
         lmp.command("run               %d" % self.calc._n_switching_steps)
@@ -637,6 +645,7 @@ class Liquid(cph.Phase):
         self.fref = f1
         self.fideal = f2
         self.w = w
+        self.qdiss = q
 
         # add pressure contribution if required
         if self.calc._pressure != 0:

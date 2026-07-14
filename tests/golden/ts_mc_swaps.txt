@@ -39,7 +39,7 @@ pair_style hybrid/scaled v_one eam/alloy v_fscale eam/alloy
 pair_coeff * * eam/alloy 1 tests/Cu01.eam.alloy Cu
 pair_coeff * * eam/alloy 2 tests/Cu01.eam.alloy Cu
 fix swap0 all atom/swap 100 5 861 ${ftemp} ke yes types 1 2
-fix f3 all print 1 "${dU} $(press) $(vol) ${flambda}" screen no file ts.forward_1.dat
+fix f3 all print 1 "${dU} $(press) $(vol) ${flambda}" title "# dU[eV/atom] press[bar] vol[A^3] lambda" screen no file ts.forward_1.dat
 run 5000
 unfix f3
 unfix swap0

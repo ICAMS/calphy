@@ -25,7 +25,7 @@ unfix nh1_qtb
 unfix nh1
 fix nh1 all nph iso 0.000000 0.000000 0.100000
 fix nh1_qtb all qtb temp 300.000000 damp 0.100000 seed 56755037 f_max 200.000000 N_f 100
-fix 2 all ave/time 10 10 100 v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp file avg.dat
+fix 2 all ave/time 10 10 100 v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp title2 "# TimeStep lx[A] ly[A] lz[A] press[bar] pe[eV/atom] etotal[eV/atom] temp[K]" file avg.dat
 run 1000
 unfix nh1_qtb
 unfix nh1
@@ -38,7 +38,7 @@ fix 3q all qtb temp 300.000000 damp 0.100000 seed 56882283 f_max 200.000000 N_f 
 group g1 type 1
 compute c1 g1 msd com yes
 variable msd1 equal c_c1[4]
-fix 4 all ave/time 10 10 100 v_msd1 file msd.dat
+fix 4 all ave/time 10 10 100 v_msd1 title2 "# TimeStep msd1[A^2]" file msd.dat
 run 1000
 unfix 3q
 unfix 3

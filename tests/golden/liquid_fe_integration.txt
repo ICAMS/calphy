@@ -33,7 +33,7 @@ fix f1 all nve
 fix f2 all langevin 1400.000000 1400.000000 0.100000 5391 zero yes
 compute Tcm all temp/com
 fix_modify f2 temp Tcm
-fix f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file forward_1.dat
+fix f3 all print 1 "${dU1} ${dU2} ${flambda}" title "# dU_sys[eV/atom] dU_ref[eV/atom] lambda" screen no file forward_1.dat
 run 5000
 unfix f1
 unfix f2
@@ -65,7 +65,7 @@ thermo 1000
 fix f1 all nve
 fix f2 all langevin 1400.000000 1400.000000 0.100000 5735 zero yes
 fix_modify f2 temp Tcm
-fix f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file backward_1.dat
+fix f3 all print 1 "${dU1} ${dU2} ${flambda}" title "# dU_sys[eV/atom] dU_ref[eV/atom] lambda" screen no file backward_1.dat
 run 5000
 unfix f1
 unfix f2

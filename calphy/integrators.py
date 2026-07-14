@@ -300,7 +300,12 @@ def integrate_rs(
     f = f0 / flambda + 1.5 * kb * temp * np.log(flambda) + wmean
 
     outfile = os.path.join(simfolder, "temperature_sweep.dat")
-    np.savetxt(outfile, np.column_stack((temp, f, werr)))
+    np.savetxt(
+        outfile,
+        np.column_stack((temp, f, werr)),
+        header="reversible-scaling free energy vs temperature\n"
+        "temperature[K]  free_energy[eV/atom]  error[eV/atom]",
+    )
 
     if not return_values:
         return None, e_diss
@@ -363,7 +368,12 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1, return_values=False):
 
     if not return_values:
         outfile = os.path.join(simfolder, "pressure_sweep.dat")
-        np.savetxt(outfile, np.column_stack((press, f, werr)))
+        np.savetxt(
+            outfile,
+            np.column_stack((press, f, werr)),
+            header="pressure-scaling free energy vs pressure\n"
+            "pressure[bar]  free_energy[eV/atom]  error[eV/atom]",
+        )
     else:
         return (press, f, werr)
 
