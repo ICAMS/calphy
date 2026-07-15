@@ -35,6 +35,11 @@ from ase.io import read, write
 import pyscal3.core as pc
 from pyscal3.trajectory import Trajectory
 
+try:
+    import lammps.mliap  # noqa: F401
+    _HAS_MLIAP = True
+except ImportError:
+    _HAS_MLIAP = False
 
 class LammpsScript:
     """Collect LAMMPS commands instead of executing them.
@@ -115,6 +120,8 @@ def create_object(
         if "-screen" not in cmdargs:
             cmdargs.extend(["-screen", "none"])
         lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
+        if _HAS_MLIAP:
+            lmp.activate_mliappy_kokkos()
 
     commands = [
         ["units", "metal"],
