@@ -11,7 +11,7 @@ dependencies:
   - openmpi
   - numpy >=2.0.0
   - mpi4py
-  - pylammpsmpi > 0.4.1
+  - pylammpsmpi >0.4.1
   - matplotlib
   - tqdm
   - pydantic >=2.3.0
