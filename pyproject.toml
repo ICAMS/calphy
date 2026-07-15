@@ -33,7 +33,7 @@ dependencies = [
     "scipy",
     "pydantic>=2.3.0",
     "pyscal3",
-    "pylammpsmpi>0.4.1",
+    "pylammpsmpi @ git+https://github.com/pyiron/pylammpsmpi.git@refs/pull/476/head", # PLACEHOLDER. REPLACE WITH "pylammpsmpi>0.4.1"
 ]
 
 [project.optional-dependencies]
