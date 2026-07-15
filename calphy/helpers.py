@@ -121,7 +121,10 @@ def create_object(
             cmdargs.extend(["-screen", "none"])
         lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
         if _HAS_MLIAP:
-            lmp.activate_mliappy_kokkos()
+            try:
+                lmp.activate_mliappy_kokkos()
+            except Exception:
+                lmp.activate_mliappy()
 
     commands = [
         ["units", "metal"],
