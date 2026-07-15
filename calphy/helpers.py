@@ -36,7 +36,7 @@ import pyscal3.core as pc
 from pyscal3.trajectory import Trajectory
 
 try:
-    import lammps.mliap  # noqa: F401
+    from lammps.mliap import activate_mliappy_kokkos
     _HAS_MLIAP = True
 except ImportError:
     _HAS_MLIAP = False
@@ -121,7 +121,7 @@ def create_object(
             cmdargs.extend(["-screen", "none"])
         lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
         if _HAS_MLIAP:
-            lmp.activate_mliappy_kokkos()
+            activate_mliappy_kokkos(lmp.lmp)
 
     commands = [
         ["units", "metal"],
