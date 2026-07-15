@@ -33,7 +33,7 @@ dependencies = [
     "scipy",
     "pydantic>=2",
     "pyscal3",
-    "pylammpsmpi",
+    "pylammpsmpi>0.4.1",
 ]
 
 [project.optional-dependencies]
