@@ -36,7 +36,7 @@ import pyscal3.core as pc
 from pyscal3.trajectory import Trajectory
 
 try:
-    from lammps.mliap import activate_mliappy_kokkos
+    import lammps.mliap
     _HAS_MLIAP = True
 except ImportError:
     _HAS_MLIAP = False
@@ -120,6 +120,7 @@ def create_object(
         if "-screen" not in cmdargs:
             cmdargs.extend(["-screen", "none"])
         lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
+        lmp.activate_mliappy_kokkos()
         if _HAS_MLIAP:
             activate_mliappy_kokkos(lmp.lmp)
 
