@@ -31,7 +31,7 @@ dependencies = [
     "mendeleev",
     "tqdm",
     "scipy",
-    "pydantic>=2",
+    "pydantic>=2.3.0",
     "pyscal3",
     "pylammpsmpi>0.4.1",
 ]
