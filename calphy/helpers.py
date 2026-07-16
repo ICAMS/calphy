@@ -31,13 +31,6 @@ from pyscal3.trajectory import Trajectory
 from pylammpsmpi import LammpsLibrary
 
 try:
-    import torch
-
-    has_gpu = torch.cuda.is_available()
-except ImportError:
-    has_gpu = False
-
-try:
     import lammps.mliap  # noqa: F401
 
     has_mliap = True
