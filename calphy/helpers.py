@@ -128,7 +128,6 @@ def create_object(
         ["boundary", "p p p"],
         ["atom_style", "atomic"],
         ["timestep", str(timestep)],
-        ["box", "tilt large"],
     ]
 
     if len(init_commands) > 0:
