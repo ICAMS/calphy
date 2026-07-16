@@ -722,3 +722,33 @@ Everything else reads files only after `close()`.
 - Any end-to-end delta exceeding the Part 6 tolerances.
 - Minimum supported LAMMPS version (affects preflight messaging; suggest documenting the version
   used in Part 0 as the reference).
+
+## Addendum (2026-07-16) — Decision 5: optional pylammpsmpi library backend
+
+Owner decision, superseding the "pylammpsmpi is fully removed" consequence of the
+original scope (the four locked decisions above stand unchanged):
+
+- calphy gets **two backends** behind one contract, `BaseRunner` in `runner.py`:
+  `command`, `sync`, `close`, `rotate_logs`, `read_timeseries`, `logical_commands`.
+  A runner owns *all* traffic across the LAMMPS boundary — commands in, data out.
+  Driver code (phase/solid/liquid/alchemy) never touches files or a LAMMPS handle
+  directly, so future backend-specific accessors (direct thermo/structure reads via
+  the library) can be added to the contract with a file-based default and a
+  library-mode override, without an `if backend:` ever appearing in driver code.
+- `ExecutableRunner` stays the **default**. `LibraryRunner` (`library_runner.py`)
+  drives a live `pylammpsmpi.LammpsLibrary` session: commands forward immediately,
+  `sync()` is a no-op (no segments, no restart replay, no `.seg*` files),
+  `rotate_logs` rotates a scratch `-log` target, tolerant of the drivers'
+  close-before-rotate ordering.
+- Selection: input key `execution_mode: executable | library` (default `executable`).
+  pylammpsmpi is an **optional dependency** (`pip install calphy[library]`), imported
+  lazily inside `LibraryRunner.__init__` only — `import calphy` never needs it.
+  Preflight and binary/MPI resolution are executable-mode only.
+- Unified-backend guarantee: goldens are asserted against **both** backends
+  (`tests/test_library_runner.py` runs full driver paths over a fake pylammpsmpi and
+  compares to the same immutable `tests/golden/*.txt`). Goldens/baselines remain
+  immutable contracts.
+
+Implemented as parts 8 (BaseRunner extraction + runner-mediated reads),
+9 (LibraryRunner + unit tests), 10 (wire-in: input key, create_object branch,
+pyproject extra, golden-equivalence tests, docs).

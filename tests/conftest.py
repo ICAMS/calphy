@@ -154,23 +154,53 @@ def recorded_job(tmp_path, monkeypatch):
     return an ``ExecutableRunner(dry_run=True)`` (Part 5.9): the driver's added
     ``sync()`` calls are exercised but no LAMMPS binary runs, and
     ``logical_commands`` excludes the runner-injected replay/restart lines.
+
+    ``_make(..., runner="library")`` substitutes a ``LibraryRunner`` over a fake
+    in-memory pylammpsmpi instead (Part 10), so the same goldens can assert both
+    backends emit an identical logical command stream.
     """
+    import sys
+    import types
+
     import calphy.helpers as ph
     from calphy.runner import ExecutableRunner
 
     np.random.seed(42)
     holder = {}
 
+    class _FakeLammpsLibrary:
+        """Command-swallowing stand-in for pylammpsmpi.LammpsLibrary."""
+
+        def __init__(self, cores=1, working_directory=".", cmdargs=None):
+            self.working_directory = working_directory
+
+        def command(self, s):
+            if s.startswith("log "):
+                open(os.path.join(self.working_directory, s.split()[1]), "w").close()
+
+        def close(self):
+            pass
+
     def fake_create_object(calc, directory):
-        lmp = ExecutableRunner(
-            binary="lmp", mpi_command=None, cores=1, cmdargs="",
-            directory=directory, dry_run=True,
-        )
+        if holder.get("mode") == "library":
+            from calphy.library_runner import LibraryRunner
+
+            lmp = LibraryRunner(cores=1, cmdargs="", directory=directory)
+        else:
+            lmp = ExecutableRunner(
+                binary="lmp", mpi_command=None, cores=1, cmdargs="",
+                directory=directory, dry_run=True,
+            )
         ph.emit_init_commands(lmp, calc)
         holder["runner"] = lmp
         return lmp
 
     monkeypatch.setattr(ph, "create_object", fake_create_object)
+
+    def _enable_fake_pylammpsmpi():
+        mod = types.ModuleType("pylammpsmpi")
+        mod.LammpsLibrary = _FakeLammpsLibrary
+        monkeypatch.setitem(sys.modules, "pylammpsmpi", mod)
 
     # Controllable solid-fraction: an optional finite sequence (for the melt
     # loop), else a constant default.  Default keeps checks passing.
@@ -184,7 +214,10 @@ def recorded_job(tmp_path, monkeypatch):
     monkeypatch.setattr(ph, "find_solid_fraction", fake_find_solid_fraction)
 
     def _make(JobClass, calc, fixtures=(), solid_fraction_seq=None,
-              default_solid_fraction=None):
+              default_solid_fraction=None, runner="executable"):
+        holder["mode"] = runner
+        if runner == "library":
+            _enable_fake_pylammpsmpi()
         simfolder = str(tmp_path)
         for fx in fixtures:
             shutil.copy(os.path.join(FIXTURE_DIR, fx), os.path.join(simfolder, fx))

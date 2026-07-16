@@ -761,6 +761,32 @@ for parallel runs) — these now apply to **every** mode and reference phase.
 
 ---
 
+(execution_mode)=
+#### `execution_mode`
+
+_type_: string \
+_default_: executable \
+_example_:
+```
+execution_mode: library
+```
+
+Selects the backend calphy uses to drive LAMMPS. Both backends emit the exact
+same command stream; only the transport differs.
+
+- `executable` (default): runs the `lmp` binary as a subprocess in segmented,
+  restart-continued runs. Uses [`lammps_executable`](lammps_executable) /
+  [`mpi_executable`](mpi_executable) to find the binaries.
+- `library`: drives a live in-memory LAMMPS session through
+  [pylammpsmpi](https://github.com/pyiron/pylammpsmpi). Requires the optional
+  dependency (`pip install calphy[library]`) plus the `lammps` Python module
+  (e.g. from the conda-forge `lammps` package). `lammps_executable`,
+  `mpi_executable`, and the preflight capability check do not apply; parallel
+  runs use `queue.cores` through pylammpsmpi's own MPI machinery.
+
+
+---
+
 (lammps_executable)=
 #### `lammps_executable`        
 

@@ -38,18 +38,20 @@ from calphy.runner import (
     resolve_lammps_executable,
     resolve_mpi_executable,
     preflight,
-    read_timeseries,
 )
 
 
 def create_object(calc, directory):
     """
-    Create a runner that drives the external LAMMPS binary.
+    Create the LAMMPS runner backend selected by ``calc.execution_mode``.
 
-    Resolves the ``lmp`` (and, for ``cores > 1``, ``mpirun``) binary, runs the
-    preflight capability check, then returns an ``ExecutableRunner`` primed with
-    the same five init commands calphy has always emitted (with the
-    ``md.init_commands`` override merge preserved verbatim).
+    ``executable`` (the default) resolves the ``lmp`` (and, for ``cores > 1``,
+    ``mpirun``) binary, runs the preflight capability check, and returns an
+    ``ExecutableRunner``.  ``library`` returns a ``LibraryRunner`` driving a
+    live pylammpsmpi session (optional dependency; imported lazily so the
+    default mode never needs it).  Both are primed with the same five init
+    commands calphy has always emitted (with the ``md.init_commands`` override
+    merge preserved verbatim).
 
     Parameters
     ----------
@@ -61,8 +63,19 @@ def create_object(calc, directory):
 
     Returns
     -------
-    lmp : ExecutableRunner
+    lmp : BaseRunner
+        an ``ExecutableRunner`` or ``LibraryRunner``
     """
+    if calc.execution_mode == "library":
+        from calphy.library_runner import LibraryRunner
+
+        lmp = LibraryRunner(
+            cores=calc.queue.cores,
+            cmdargs=calc.md.cmdargs,
+            directory=directory,
+        )
+        return emit_init_commands(lmp, calc)
+
     binary = resolve_lammps_executable(calc.lammps_executable)
     mpi_command = (
         resolve_mpi_executable(calc.mpi_executable) if calc.queue.cores > 1 else None
@@ -119,14 +132,14 @@ def create_structure(lmp, calc):
 
     Parameters
     ----------
-    lmp: LammpsLibrary object
+    lmp: BaseRunner
 
     calc: dict
         calculation dict with the necessary input
 
     Returns
     -------
-    lmp : LammpsLibrary object
+    lmp : BaseRunner
     """
     lmp.command("read_data      %s" % calc.lattice)
     return lmp
@@ -271,13 +284,13 @@ def set_potential(lmp, options):
 
     Parameters
     ----------
-    lmp : LammpsLibrary object
+    lmp : BaseRunner
 
     options : dict
 
     Returns
     -------
-    lmp : LammpsLibrary object
+    lmp : BaseRunner
     """
     set_pair_style(lmp, options)
     set_pair_coeff(lmp, options)

@@ -461,6 +461,7 @@ class Calculation(BaseModel, title="Main input class"):
     ]
 
     script_mode: Annotated[bool, Field(default=False)]
+    execution_mode: Annotated[str, Field(default="executable")]
     lammps_executable: Annotated[Union[str, None], Field(default=None)]
     mpi_executable: Annotated[Union[str, None], Field(default=None)]
 
@@ -504,6 +505,14 @@ class Calculation(BaseModel, title="Main input class"):
                 "the LAMMPS executable directly; set lammps_executable (or use "
                 "$CALPHY_LAMMPS_EXECUTABLE / lmp on PATH) and remove script_mode "
                 "from the input file."
+            )
+
+        if self.execution_mode not in ("executable", "library"):
+            raise ValueError(
+                "execution_mode must be 'executable' (drive the lmp binary, "
+                "the default) or 'library' (drive LAMMPS through pylammpsmpi; "
+                "needs the optional dependency: pip install calphy[library]), "
+                "got %r" % self.execution_mode
             )
 
         if not (len(self.element) == len(self.mass)):
@@ -1182,6 +1191,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
                 "element",
                 "mass",
                 "script_mode",
+                "execution_mode",
                 "lammps_executable",
                 "mpi_executable",
             ]:
@@ -1269,6 +1279,7 @@ def _convert_legacy_inputfile(file, return_calcs=False):
                     "element",
                     "mass",
                     "script_mode",
+                    "execution_mode",
                     "lammps_executable",
                     "mpi_executable",
                 ]:

@@ -7,7 +7,7 @@
 
 ### How calphy uses LAMMPS
 
-calphy drives molecular dynamics with [LAMMPS](https://www.lammps.org/). As of calphy v2 it does this by **running an external `lmp` executable** as a subprocess — it no longer needs LAMMPS compiled as a Python library (the old `pylammpsmpi`/`from lammps import lammps` route is gone). In practice this means:
+calphy drives molecular dynamics with [LAMMPS](https://www.lammps.org/). As of calphy v2 it does this by default by **running an external `lmp` executable** as a subprocess — it no longer needs LAMMPS compiled as a Python library. (A live-session library backend through `pylammpsmpi` is still available as an opt-in: install `pip install calphy[library]` and set `execution_mode: library` in the input file; see [`execution_mode`](execution_mode).) In practice the default means:
 
 - You **bring your own `lmp` binary** (from conda-forge, an HPC module, a container, or a manual build).
 - calphy locates it at run time in this order:

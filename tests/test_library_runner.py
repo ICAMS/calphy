@@ -147,6 +147,62 @@ def test_read_timeseries_single_file(tmp_path, fake_pylammpsmpi):
 
 
 # --------------------------------------------------------------------------- #
+# Backend equivalence: full driver paths must emit the exact command stream the
+# executable backend froze in tests/golden/ -- the "unified backends" contract.
+# --------------------------------------------------------------------------- #
+def test_solid_fe_averaging_matches_executable_golden(make_calc, recorded_job):
+    from calphy.solid import Solid
+    from conftest import assert_golden
+
+    calc = make_calc(
+        "B1", tolerance={"pressure": 1e12, "spring_constant": 1e12}
+    )
+    job, rec = recorded_job(
+        Solid, calc, fixtures=["avg.dat", "msd.dat"], runner="library"
+    )
+    job.run_averaging()
+    assert_golden(rec.commands, "solid_fe_averaging")
+
+
+def test_liquid_fe_averaging_meltcycle_matches_executable_golden(
+    make_calc, recorded_job
+):
+    from calphy.liquid import Liquid
+    from conftest import assert_golden
+
+    calc = make_calc(
+        "B4", tolerance={"pressure": 1e12, "spring_constant": 1e12}
+    )
+    n = calc._natoms
+    job, rec = recorded_job(
+        Liquid, calc, fixtures=["avg.dat"], solid_fraction_seq=[n, n, 0],
+        runner="library",
+    )
+    job.run_averaging()
+    assert_golden(rec.commands, "liquid_fe_averaging_meltcycle")
+
+
+# --------------------------------------------------------------------------- #
+# create_object backend selection
+# --------------------------------------------------------------------------- #
+def test_create_object_library_mode(tmp_path, fake_pylammpsmpi, make_calc):
+    import calphy.helpers as ph
+    from calphy.library_runner import LibraryRunner
+
+    calc = make_calc("B1", execution_mode="library")
+    lmp = ph.create_object(calc, str(tmp_path))
+    assert isinstance(lmp, LibraryRunner)
+    # primed with the usual five init commands
+    assert lmp.logical_commands[0] == "units metal"
+    assert len(lmp.logical_commands) == 5
+
+
+def test_execution_mode_validation(make_calc):
+    with pytest.raises(Exception, match="execution_mode"):
+        make_calc("B1", execution_mode="banana")
+
+
+# --------------------------------------------------------------------------- #
 # Import hygiene: calphy must import without pylammpsmpi installed
 # --------------------------------------------------------------------------- #
 def test_module_imports_without_pylammpsmpi():

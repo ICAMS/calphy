@@ -38,6 +38,9 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=7"]
 materials-project = ["mp_api"]
+# execution_mode: library -- drives LAMMPS through pylammpsmpi instead of the
+# lmp binary. Also needs the `lammps` python module (e.g. conda-forge lammps).
+library = ["pylammpsmpi"]
 
 [project.urls]
 Homepage = "https://github.com/ICAMS/calphy"
