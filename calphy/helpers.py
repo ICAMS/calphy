@@ -21,25 +21,29 @@ For more information contact:
 sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 """
 
-import os
-import shutil
-import warnings
 import logging
-import numpy as np
 from collections import Counter, defaultdict
 
-from pylammpsmpi import LammpsLibrary
-from lammps import lammps
-from ase.io import read, write
-
+import numpy as np
 import pyscal3.core as pc
 from pyscal3.trajectory import Trajectory
 
+from pylammpsmpi import LammpsLibrary
+
 try:
-    import lammps.mliap
-    _HAS_MLIAP = True
+    import torch
+
+    has_gpu = torch.cuda.is_available()
 except ImportError:
-    _HAS_MLIAP = False
+    has_gpu = False
+
+try:
+    import lammps.mliap  # noqa: F401
+
+    has_mliap = True
+except ImportError:
+    has_mliap = False
+
 
 class LammpsScript:
     """Collect LAMMPS commands instead of executing them.
@@ -120,11 +124,11 @@ def create_object(
         if "-screen" not in cmdargs:
             cmdargs.extend(["-screen", "none"])
         lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
-        if _HAS_MLIAP:
-            try:
-                lmp.activate_mliappy_kokkos()
-            except Exception:
-                lmp.activate_mliappy()
+        if has_mliap:
+            if "-k on" in cmdargs or "-kokkos on" in cmdargs:
+                lmp.lmp.activate_mliappy_kokkos()
+            else:
+                lmp.lmp.activate_mliappy()
 
     commands = [
         ["units", "metal"],
