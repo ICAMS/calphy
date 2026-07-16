@@ -21,19 +21,21 @@ For more information contact:
 sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 """
 
-import os
-import shutil
-import warnings
 import logging
-import numpy as np
 from collections import Counter, defaultdict
 
-from pylammpsmpi import LammpsLibrary
-from lammps import lammps
-from ase.io import read, write
-
+import numpy as np
 import pyscal3.core as pc
 from pyscal3.trajectory import Trajectory
+
+from pylammpsmpi import LammpsLibrary
+
+try:
+    import lammps.mliap  # noqa: F401
+
+    has_mliap = True
+except ImportError:
+    has_mliap = False
 
 
 class LammpsScript:
@@ -115,6 +117,11 @@ def create_object(
         if "-screen" not in cmdargs:
             cmdargs.extend(["-screen", "none"])
         lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
+        if has_mliap:
+            if "-k" in cmdargs or "-kokkos" in cmdargs:
+                lmp.lmp.activate_mliappy_kokkos()
+            else:
+                lmp.lmp.activate_mliappy()
 
     commands = [
         ["units", "metal"],

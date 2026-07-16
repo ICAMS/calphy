@@ -9,9 +9,9 @@ dependencies:
   - mendeleev
   - lammps
   - openmpi
-  - numpy
+  - numpy >=2.0.0
   - mpi4py
-  - pylammpsmpi
+  - pylammpsmpi >0.4.1
   - matplotlib
   - tqdm
   - pydantic >=2.3.0
