@@ -118,7 +118,7 @@ def create_object(
             cmdargs.extend(["-screen", "none"])
         lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
         if has_mliap:
-            if "-k on" in cmdargs or "-kokkos on" in cmdargs:
+            if "-k" in cmdargs or "-kokkos" in cmdargs:
                 lmp.lmp.activate_mliappy_kokkos()
             else:
                 lmp.lmp.activate_mliappy()
