@@ -94,7 +94,7 @@ class Solid(cph.Phase):
             for i in range(self.calc.md.n_cycles):
                 lmp.command("run              %d" % int(self.calc.md.n_small_steps))
                 lmp.sync()  # flush before analyse_spring_constants reads msd.dat
-                k_mean, k_std = self.analyse_spring_constants()
+                k_mean, k_std = self.analyse_spring_constants(lmp)
                 self.logger.info(
                     "At count %d mean k is %f std is %f" % (i + 1, k_mean[0], k_std[0])
                 )
@@ -121,7 +121,7 @@ class Solid(cph.Phase):
             lmp.command("unfix         3q")
         lmp.command("unfix         3")
 
-    def analyse_spring_constants(self):
+    def analyse_spring_constants(self, lmp):
         """
         Analyse spring constant routine
         """
@@ -130,7 +130,7 @@ class Solid(cph.Phase):
         )
 
         # now we can check if it converted; read cumulative msd.dat across segments
-        msd = ph.read_timeseries(self.simfolder, "msd.dat")
+        msd = lmp.read_timeseries("msd.dat")
         k_mean = []
         k_std = []
         for i in range(self.calc.n_elements):

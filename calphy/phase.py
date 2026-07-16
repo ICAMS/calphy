@@ -775,8 +775,8 @@ class Phase:
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
             lmp.sync()  # flush before reading avg.dat this cycle
 
-            lx, ly, lz, ipress = ph.read_timeseries(
-                self.simfolder, "avg.dat", usecols=(1, 2, 3, 4)
+            lx, ly, lz, ipress = lmp.read_timeseries(
+                "avg.dat", usecols=(1, 2, 3, 4)
             ).T
             # Average over all data after dropping the first cycle
             skip_samples = n_skip * ncount
@@ -948,7 +948,7 @@ class Phase:
             lmp.sync()  # flush before process_pressure reads avg.dat
 
             # now we can check if it converted
-            mean, std, volatom = self.process_pressure()
+            mean, std, volatom = self.process_pressure(lmp)
             self.logger.info(
                 "At count %d mean pressure is %f with %f vol/atom"
                 % (i + 1, mean, volatom)
@@ -956,7 +956,7 @@ class Phase:
 
             if (np.abs(mean - lastmean)) < 50 * self.calc.tolerance.pressure:
                 # here we actually have to set the pressure
-                self.finalise_pressure()
+                self.finalise_pressure(lmp)
                 converged = True
                 break
 
@@ -972,17 +972,13 @@ class Phase:
             lmp.rotate_logs("constrained_pressure_error")
             raise ValueError("pressure did not converge")
 
-    def process_pressure(
-        self,
-    ):
+    def process_pressure(self, lmp):
         ncount = int(self.calc.md.n_small_steps) // int(
             self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
         )
 
         # now we can check if it converted; read the cumulative avg.dat across segments
-        lx, ly, lz, lxpc = ph.read_timeseries(
-            self.simfolder, "avg.dat", usecols=(1, 2, 3, 4)
-        ).T
+        lx, ly, lz, lxpc = lmp.read_timeseries("avg.dat", usecols=(1, 2, 3, 4)).T
         # we have to clean the data, so as just the last block is selected
         lx = lx[-ncount + 1 :]
         ly = ly[-ncount + 1 :]
@@ -993,16 +989,12 @@ class Phase:
         volatom = np.mean((lx * ly * lz) / self.natoms)
         return mean, std, volatom
 
-    def finalise_pressure(
-        self,
-    ):
+    def finalise_pressure(self, lmp):
         ncount = int(self.calc.md.n_small_steps) // int(
             self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
         )
 
-        lx, ly, lz, lxpc = ph.read_timeseries(
-            self.simfolder, "avg.dat", usecols=(1, 2, 3, 4)
-        ).T
+        lx, ly, lz, lxpc = lmp.read_timeseries("avg.dat", usecols=(1, 2, 3, 4)).T
         lx = lx[-ncount + 1 :]
         ly = ly[-ncount + 1 :]
         lz = lz[-ncount + 1 :]

@@ -282,49 +282,33 @@ class SessionState:
 
 
 # --------------------------------------------------------------------------- #
-# ExecutableRunner
+# Backend contract
 # --------------------------------------------------------------------------- #
-def _normalize_cmdargs(cmdargs):
-    if cmdargs == "" or cmdargs is None:
-        return []
-    if isinstance(cmdargs, str):
-        return cmdargs.split()
-    return list(cmdargs)
+class BaseRunner:
+    """Common contract for calphy's LAMMPS backends.
 
-
-class ExecutableRunner:
-    """Drives an external LAMMPS binary in restart-continued segments.
+    A runner owns *all* traffic across the LAMMPS boundary: command strings go
+    in through :meth:`command`, results come back through data accessors like
+    :meth:`read_timeseries`.  Backends are free to implement the accessors
+    however they like (files today, direct library reads tomorrow) -- driver
+    code never touches a file path or a LAMMPS handle directly.
 
     Interface used by calphy: :meth:`command`, :meth:`sync`, :meth:`close`,
-    :meth:`rotate_logs`, and the :attr:`logical_commands` property.
+    :meth:`rotate_logs`, :meth:`read_timeseries`, and the
+    :attr:`logical_commands` property.
     """
 
-    def __init__(self, *, binary, mpi_command, cores, cmdargs, directory,
-                 restart_name="calphy.restart", dry_run=False, timeout=None):
-        self.binary = binary
-        self.mpi_command = mpi_command
-        self.cores = cores
-        self.cmdargs = _normalize_cmdargs(cmdargs)
+    def __init__(self, directory):
         self.directory = directory
-        self.restart_name = restart_name
-        self.dry_run = dry_run
-        self.timeout = timeout
-
-        self.state = SessionState()
-        self._buffer = []
         self._logical = []
-        self._segidx = -1
-        # (segidx, seg_script_basename, seg_log_path) since the last rotate_logs
-        self._pending_logs = []
 
-    # -- public interface --------------------------------------------------- #
     @property
     def logical_commands(self):
         """Every command ever passed to :meth:`command`, whitespace-normalized."""
         return list(self._logical)
 
     def command(self, s):
-        """Normalize whitespace, classify the first token, and buffer the command."""
+        """Normalize whitespace, classify the first token, and dispatch the command."""
         cmd = " ".join(s.split())
         if not cmd:
             return
@@ -335,6 +319,63 @@ class ExecutableRunner:
                 % (cmd, token)
             )
         self._logical.append(cmd)
+        self._dispatch(cmd)
+
+    def _dispatch(self, cmd):
+        """Backend-specific handling of one validated command."""
+        raise NotImplementedError
+
+    def sync(self):
+        """Make every result produced so far readable (data files up to date)."""
+        raise NotImplementedError
+
+    def close(self):
+        """End the session and release backend resources."""
+        raise NotImplementedError
+
+    def rotate_logs(self, stage_name):
+        """Collect the LAMMPS log output produced since the last rotation into
+        ``<stage_name>.log.lammps`` in the sim folder."""
+        raise NotImplementedError
+
+    def read_timeseries(self, name, usecols=None):
+        """Read a time series this session produced (fix ave/time output etc.)."""
+        return read_timeseries(self.directory, name, usecols=usecols)
+
+
+# --------------------------------------------------------------------------- #
+# ExecutableRunner
+# --------------------------------------------------------------------------- #
+def _normalize_cmdargs(cmdargs):
+    if cmdargs == "" or cmdargs is None:
+        return []
+    if isinstance(cmdargs, str):
+        return cmdargs.split()
+    return list(cmdargs)
+
+
+class ExecutableRunner(BaseRunner):
+    """Drives an external LAMMPS binary in restart-continued segments."""
+
+    def __init__(self, *, binary, mpi_command, cores, cmdargs, directory,
+                 restart_name="calphy.restart", dry_run=False, timeout=None):
+        super().__init__(directory)
+        self.binary = binary
+        self.mpi_command = mpi_command
+        self.cores = cores
+        self.cmdargs = _normalize_cmdargs(cmdargs)
+        self.restart_name = restart_name
+        self.dry_run = dry_run
+        self.timeout = timeout
+
+        self.state = SessionState()
+        self._buffer = []
+        self._segidx = -1
+        # (segidx, seg_script_basename, seg_log_path) since the last rotate_logs
+        self._pending_logs = []
+
+    def _dispatch(self, cmd):
+        """Buffer the command for the next segment flush."""
         self._buffer.append(cmd)
 
     def sync(self):
