@@ -56,6 +56,16 @@ class Phase:
 
         self.calc = copy.deepcopy(calculation)
 
+        # Master seed for every stochastic choice this job makes (LAMMPS
+        # velocity/langevin/atom-swap/qtb seeds, composition-scaling atom
+        # picks all draw from the np.random stream seeded here).  Backfilled
+        # into self.calc BEFORE the input is serialised below, so the
+        # simfolder copy of the input always records the seed actually used
+        # and any run can be reproduced by rerunning that file.
+        if self.calc.md.seed is None:
+            self.calc.md.seed = int(np.random.SeedSequence().entropy % (2**31 - 2)) + 1
+        np.random.seed(self.calc.md.seed)
+
         # serialise input
         indict = {"calculations": [self.calc.model_dump()]}
         with open(os.path.join(simfolder, "input_file.yaml"), "w") as fout:
@@ -67,6 +77,11 @@ class Phase:
 
         logfile = os.path.join(self.simfolder, "calphy.log")
         self.logger = ph.prepare_log(logfile, screen=log_to_screen)
+
+        self.logger.info(
+            "Master random seed is %d (md.seed; recorded in input_file.yaml)"
+            % self.calc.md.seed
+        )
 
         if self.calc._pressure is None:
             pressure_string = "None"

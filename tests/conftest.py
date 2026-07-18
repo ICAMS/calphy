@@ -224,6 +224,10 @@ def recorded_job(tmp_path, monkeypatch):
         holder["mode"] = runner
         if runner == "library":
             _enable_fake_pylammpsmpi()
+        # Pin the master seed to the value the goldens were recorded with:
+        # Phase.__init__ now does np.random.seed(md.seed), which must
+        # reproduce the historical np.random.seed(42) stream exactly.
+        calc.md.seed = 42
         simfolder = str(tmp_path)
         for fx in fixtures:
             shutil.copy(os.path.join(FIXTURE_DIR, fx), os.path.join(simfolder, fx))

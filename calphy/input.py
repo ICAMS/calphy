@@ -147,6 +147,8 @@ _REMOVED_KEYS = {
     "savefile": "job-state pickling was removed in calphy v2; rerun from the input file",
     "save_job": "job-state pickling was removed in calphy v2; rerun from the input file",
     "load_job": "job-state pickling was removed in calphy v2; rerun from the input file",
+    "seed": "use md.seed -- one master seed now controls every stochastic step "
+            "(the old quantum_thermal_bath seed was never actually applied)",
 }
 
 #: lazily built: ({field name -> [locations]}, {model class -> location label})
@@ -296,6 +298,12 @@ class MD(_StrictInput, title="MD specific input options"):
     barostat_damping: Annotated[float, Field(default=0.1, gt=0)]
     cmdargs: Annotated[str, Field(default="")]
     init_commands: Annotated[List, Field(default=[])]
+    # master seed for every stochastic choice a job makes: velocity creation,
+    # langevin/atom-swap/qtb fix seeds, composition-scaling atom picks. None
+    # (the default) draws a fresh seed per run; the seed actually used is
+    # always backfilled into the simfolder copy of the input file, so any run
+    # can be reproduced exactly by rerunning that file.
+    seed: Annotated[Optional[int], Field(default=None, gt=0)]
 
 
 class NoseHoover(_StrictInput, title="Specific input options for Nose-Hoover thermostat"):
@@ -323,7 +331,6 @@ class QuantumThermalBath(_StrictInput, title="Dammak quantum thermal bath (LAMMP
                     "Must exceed the highest phonon frequency of the system.")]
     n_f: Annotated[int, Field(default=100, gt=0,
         description="Number of frequency bins discretising the QTB spectrum.")]
-    seed: Annotated[int, Field(default=880302, gt=0)]
 
 
 class Queue(_StrictInput, title="Options for configuring queue"):

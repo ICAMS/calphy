@@ -118,6 +118,8 @@ points at where it belongs.
 ```
 ```{grid-item} [](init_commands)
 ```
+```{grid-item} [](md_seed)
+```
 ```` 
 
 ### `queue` 
@@ -255,8 +257,6 @@ points at where it belongs.
 ```{grid-item} [](qtb_f_max)
 ```
 ```{grid-item} [](qtb_n_f)
-```
-```{grid-item} [](qtb_seed)
 ```
 ````
 
@@ -1009,6 +1009,25 @@ init_commands:
 Provides the possibility to replace or add initial commands when the LAMMPS object is initialised. If the command is already used in calphy, for example `timestep` or `atom_style` they will be replaced. If it is a new command, it will be added. This commands receive higher priority than the ones that already exist. For examples if you provide `timestep: 0.002` in the `md` block, and `timestep 0.004` in `init_commands`, the timestep used would be 0.004.
 
 ---
+
+(md_seed)=
+#### `seed`
+
+_type_: integer or None \
+_default_: None \
+_example_:
+```
+md:
+  seed: 42
+```
+
+Master random seed for the calculation. Every stochastic choice a job makes draws from this one seed: `velocity create`, the Langevin thermostat, Monte-Carlo `atom/swap` moves, the QTB noise generator, and the random atom picks of composition scaling.
+
+If unset (the default), a fresh seed is drawn for every run, so repeated runs of the same input remain statistically independent. Whichever seed is used — given or drawn — is logged and **backfilled into the `input_file.yaml` copy written to the simulation folder**, so any past run can be reproduced exactly by rerunning that file.
+
+Note that a fixed seed makes the LAMMPS *input* deterministic; bitwise-identical trajectories additionally require the same LAMMPS build, core count, and hardware.
+
+---
 ---
 
 ## `queue` block
@@ -1642,19 +1661,6 @@ Number of frequency bins discretising the QTB power spectrum from 0 to `f_max`. 
 
 ---
 
-(qtb_seed)=
-#### `seed`
-
-_type_: integer \
-_default_: 880302 \
-_example_:
-```
-seed: 42
-```
-
-Random-number seed for the QTB noise generator. Change between iterations or between independent runs to obtain decorrelated noise realisations.
-
----
 ---
 
 ## `monte_carlo` block
