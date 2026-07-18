@@ -2,7 +2,6 @@ units metal
 boundary p p p
 atom_style atomic
 timestep 0.001
-box tilt large
 echo log
 pair_style eam/alloy
 read_data conf.equilibration.data

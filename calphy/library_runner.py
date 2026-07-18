@@ -24,8 +24,11 @@ imported lazily inside :class:`LibraryRunner` -- importing this module (or any
 other part of calphy) never requires it.
 """
 import os
+import logging
 
 from calphy.runner import BaseRunner, _normalize_cmdargs
+
+logger = logging.getLogger(__name__)
 
 
 class LibraryRunner(BaseRunner):
@@ -65,6 +68,36 @@ class LibraryRunner(BaseRunner):
         self.lmp = LammpsLibrary(
             cores=cores, working_directory=directory, cmdargs=cmdargs
         )
+        self._activate_mliap()
+
+    def _activate_mliap(self):
+        """Register the mliappy coupling in the live session when available.
+
+        Ported from upstream (ICAMS/calphy#260): python-coupled ML-IAP models
+        need an explicit activation call on the library. A binary driven by
+        ExecutableRunner instead loads ML-IAP models through its own embedded
+        python, so this is library-mode only. The activation proxies only
+        exist in pylammpsmpi > 0.4.1 (the calphy[library] pin); on older
+        versions warn and skip instead of crashing the fresh session.
+        """
+        try:
+            import lammps.mliap  # noqa: F401
+        except ImportError:
+            return
+        name = (
+            "activate_mliappy_kokkos"
+            if "-k" in self.cmdargs or "-kokkos" in self.cmdargs
+            else "activate_mliappy"
+        )
+        activate = getattr(self.lmp.lmp, name, None)
+        if activate is None:
+            logger.warning(
+                "lammps.mliap is available but this pylammpsmpi provides no "
+                "%s (needs pylammpsmpi > 0.4.1); python-coupled ML-IAP "
+                "models will not work in this session.", name,
+            )
+            return
+        activate()
 
     @staticmethod
     def _log_name(k):

@@ -21,8 +21,6 @@ calculations:
   - 5
   - 5
   temperature: 1200.0
-  phase_transition_detection:
-    mode: recover
 - element: Cu
   lattice: FCC
   lattice_constant: 3.697
@@ -45,8 +43,6 @@ calculations:
   - 5
   - 5
   temperature: 1200.0
-  phase_transition_detection:
-    mode: recover
 - element: Cu
   lattice: FCC
   lattice_constant: 3.697
@@ -69,5 +65,3 @@ calculations:
   - 5
   - 5
   temperature: 1200.0
-  phase_transition_detection:
-    mode: recover

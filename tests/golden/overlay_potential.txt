@@ -2,7 +2,6 @@ units metal
 boundary p p p
 atom_style atomic
 timestep 0.001
-box tilt large
 pair_style hybrid/overlay eam/alloy eam/alloy
 read_data structure.data
 pair_coeff * * eam/alloy 1 tests/Cu01.eam.alloy Cu

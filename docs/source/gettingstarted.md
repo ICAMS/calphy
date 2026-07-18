@@ -250,4 +250,5 @@ Notes on library mode:
 
 - [`lammps_executable`](lammps_executable), [`mpi_executable`](mpi_executable), and the preflight capability check do not apply; if a required LAMMPS package is missing, the run fails with a LAMMPS error instead.
 - Parallel runs use `queue.cores` through pylammpsmpi's own MPI machinery (`mpi4py`) — no external `mpirun` is involved.
+- Python-coupled [ML-IAP models](https://docs.lammps.org/Packages_details.html#pkg-ml-iap) (`mliappy`) are activated automatically when the LAMMPS python build provides `lammps.mliap` (the kokkos variant is used when `-k`/`-kokkos` appears in `md.cmdargs`).
 - Both backends emit the exact same LAMMPS command stream and give the same results; the choice is purely about how LAMMPS is deployed on your system.

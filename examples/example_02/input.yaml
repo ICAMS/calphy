@@ -28,9 +28,6 @@ calculations:
   temperature:
   - 500.0
   - 1500.0
-  phase_transition_detection:
-    mode: recover
-    peak_threshold: 6.0
 - element: Fe
   lattice: FCC
   lattice_constant: 6.0
@@ -60,5 +57,3 @@ calculations:
   temperature:
   - 100.0
   - 2000.0
-  phase_transition_detection:
-    mode: recover

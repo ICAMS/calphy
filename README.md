@@ -13,7 +13,7 @@ Calphy works with all [interatomic potentials implemented in LAMMPS](https://doc
 
 ## Installation, examples and documentation
 
-- Read the `calphy` installation instructions and documentation including examples [here](https://calphy.readthedocs.io/en/latest/index.html).
+- Read the `calphy` installation instructions and documentation including examples [here](https://calphy.org/).
 
 - For a description of the methods and algorithms implemented in `calphy`, please see the [associated publication](https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.5.103801).
 

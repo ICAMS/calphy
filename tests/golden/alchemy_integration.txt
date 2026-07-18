@@ -2,7 +2,6 @@ units metal
 boundary p p p
 atom_style atomic
 timestep 0.001
-box tilt large
 variable li equal 1.0
 variable lf equal 0.0
 pair_style eam/alloy

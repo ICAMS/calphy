@@ -49,7 +49,7 @@ def create_object(calc, directory):
     ``mpirun``) binary, runs the preflight capability check, and returns an
     ``ExecutableRunner``.  ``library`` returns a ``LibraryRunner`` driving a
     live pylammpsmpi session (optional dependency; imported lazily so the
-    default mode never needs it).  Both are primed with the same five init
+    default mode never needs it).  Both are primed with the same four init
     commands calphy has always emitted (with the ``md.init_commands`` override
     merge preserved verbatim).
 
@@ -95,14 +95,18 @@ def create_object(calc, directory):
 
 
 def emit_init_commands(lmp, calc):
-    """Emit the five init commands (units/boundary/atom_style/timestep/box),
-    applying the ``md.init_commands`` override merge, onto ``lmp``."""
+    """Emit the four init commands (units/boundary/atom_style/timestep),
+    applying the ``md.init_commands`` override merge, onto ``lmp``.
+
+    ``box tilt large`` was dropped upstream (ICAMS/calphy#262): the ``box``
+    command is deprecated in LAMMPS since 22Dec2022 and its arguments are
+    ignored.  The token stays in the runner vocabulary so older
+    ``md.init_commands`` overrides that still emit one keep validating."""
     commands = [
         ["units", "metal"],
         ["boundary", "p p p"],
         ["atom_style", "atomic"],
         ["timestep", str(calc.md.timestep)],
-        ["box", "tilt large"],
     ]
 
     init_commands = calc.md.init_commands

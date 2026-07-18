@@ -29,5 +29,3 @@ calculations:
     pressure: 1
   materials_project:
     api_key: MP_API_KEY
-  phase_transition_detection:
-    mode: recover

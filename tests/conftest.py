@@ -173,6 +173,12 @@ def recorded_job(tmp_path, monkeypatch):
 
         def __init__(self, cores=1, working_directory=".", cmdargs=None):
             self.working_directory = working_directory
+            # inner concurrent handle; MLIAP activation (if the test env has
+            # lammps.mliap importable) must be a harmless no-op here
+            self.lmp = types.SimpleNamespace(
+                activate_mliappy=lambda: None,
+                activate_mliappy_kokkos=lambda: None,
+            )
 
         def command(self, s):
             if s.startswith("log "):

@@ -13,6 +13,19 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURE_DIR = os.path.join(HERE, "fixtures")
 
 
+class _FakeConcurrent:
+    """The inner pylammpsmpi handle (LammpsLibrary.lmp); records MLIAP activation."""
+
+    def __init__(self):
+        self.activated = []
+
+    def activate_mliappy(self):
+        self.activated.append("mliappy")
+
+    def activate_mliappy_kokkos(self):
+        self.activated.append("mliappy_kokkos")
+
+
 class FakeLammpsLibrary:
     """Mimics the pylammpsmpi.LammpsLibrary surface LibraryRunner touches."""
 
@@ -22,6 +35,7 @@ class FakeLammpsLibrary:
         self.cmdargs = list(cmdargs or [])
         self.commands = []
         self.closed = False
+        self.lmp = _FakeConcurrent()
 
     def command(self, s):
         self.commands.append(s)
@@ -38,7 +52,21 @@ def fake_pylammpsmpi(monkeypatch):
     mod = types.ModuleType("pylammpsmpi")
     mod.LammpsLibrary = FakeLammpsLibrary
     monkeypatch.setitem(sys.modules, "pylammpsmpi", mod)
+    # deterministic MLIAP state: absent unless a test injects the fake below
+    monkeypatch.setitem(sys.modules, "lammps", None)
+    monkeypatch.setitem(sys.modules, "lammps.mliap", None)
     return mod
+
+
+@pytest.fixture
+def fake_lammps_mliap(monkeypatch):
+    """Make `import lammps.mliap` succeed (as when LAMMPS ships ML-IAP python)."""
+    mliap = types.ModuleType("lammps.mliap")
+    lammps_mod = types.ModuleType("lammps")
+    lammps_mod.mliap = mliap
+    monkeypatch.setitem(sys.modules, "lammps", lammps_mod)
+    monkeypatch.setitem(sys.modules, "lammps.mliap", mliap)
+    return mliap
 
 
 def make_runner(directory, cores=1, cmdargs=""):
@@ -97,6 +125,35 @@ def test_close_closes_library(tmp_path, fake_pylammpsmpi):
     run = make_runner(tmp_path)
     run.close()
     assert run.lmp.closed
+
+
+# --------------------------------------------------------------------------- #
+# MLIAP activation (upstream ICAMS/calphy#260)
+# --------------------------------------------------------------------------- #
+def test_no_mliap_activation_without_module(tmp_path, fake_pylammpsmpi):
+    run = make_runner(tmp_path)
+    assert run.lmp.lmp.activated == []
+
+
+def test_mliap_activated_when_available(tmp_path, fake_pylammpsmpi, fake_lammps_mliap):
+    run = make_runner(tmp_path)
+    assert run.lmp.lmp.activated == ["mliappy"]
+
+
+def test_mliap_kokkos_variant_with_k_flag(tmp_path, fake_pylammpsmpi, fake_lammps_mliap):
+    run = make_runner(tmp_path, cmdargs="-k on g 1 -sf kk")
+    assert run.lmp.lmp.activated == ["mliappy_kokkos"]
+
+
+def test_mliap_skipped_on_old_pylammpsmpi(
+    tmp_path, fake_pylammpsmpi, fake_lammps_mliap, monkeypatch, caplog
+):
+    # pylammpsmpi <= 0.4.1 has no activation proxies: warn and skip, never crash
+    monkeypatch.delattr(_FakeConcurrent, "activate_mliappy")
+    monkeypatch.delattr(_FakeConcurrent, "activate_mliappy_kokkos")
+    run = make_runner(tmp_path)
+    assert run.lmp.lmp.activated == []
+    assert any("pylammpsmpi" in r.message for r in caplog.records)
 
 
 # --------------------------------------------------------------------------- #
@@ -192,9 +249,9 @@ def test_create_object_library_mode(tmp_path, fake_pylammpsmpi, make_calc):
     calc = make_calc("B1", execution_mode="library")
     lmp = ph.create_object(calc, str(tmp_path))
     assert isinstance(lmp, LibraryRunner)
-    # primed with the usual five init commands
+    # primed with the usual four init commands
     assert lmp.logical_commands[0] == "units metal"
-    assert len(lmp.logical_commands) == 5
+    assert len(lmp.logical_commands) == 4
 
 
 def test_execution_mode_validation(make_calc):

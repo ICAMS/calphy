@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "calphy"
-version = "1.8.4"
+version = "1.8.5"
 description = "free energy calculation for python"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -31,7 +31,7 @@ dependencies = [
     "mendeleev",
     "tqdm",
     "scipy",
-    "pydantic>=2",
+    "pydantic>=2.3.0",
     "pyscal3",
 ]
 
@@ -40,7 +40,7 @@ test = ["pytest>=7"]
 materials-project = ["mp_api"]
 # execution_mode: library -- drives LAMMPS through pylammpsmpi instead of the
 # lmp binary. Also needs the `lammps` python module (e.g. conda-forge lammps).
-library = ["pylammpsmpi"]
+library = ["pylammpsmpi>0.4.1"]
 
 [project.urls]
 Homepage = "https://github.com/ICAMS/calphy"
