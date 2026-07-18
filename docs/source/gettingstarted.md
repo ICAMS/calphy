@@ -7,7 +7,7 @@
 
 ### How calphy uses LAMMPS
 
-calphy drives molecular dynamics with [LAMMPS](https://www.lammps.org/). As of calphy v2 it does this by default by **running an external `lmp` executable** as a subprocess — it no longer needs LAMMPS compiled as a Python library. (A live-session library backend through `pylammpsmpi` is still available as an opt-in: install `pip install calphy[library]` and set `execution_mode: library` in the input file; see [`execution_mode`](execution_mode).) In practice the default means:
+calphy drives molecular dynamics with [LAMMPS](https://www.lammps.org/). As of calphy v2 it does this by default by **running an external `lmp` executable** as a subprocess — no LAMMPS Python library is needed. (A live-session library backend through `pylammpsmpi` is available as an opt-in; see [the library backend](library-backend) below.) In practice the default means:
 
 - You **bring your own `lmp` binary** (from conda-forge, an HPC module, a container, or a manual build).
 - calphy locates it at run time in this order:
@@ -29,7 +29,7 @@ The conda-forge package pulls in a `lammps` build that provides the `lmp` binary
 ```{tab} pip
 `pip install calphy`
 
-`pip` installs the Python package only — **you still need an `lmp` binary** on your `PATH` (see *Installing LAMMPS* below).
+`pip` installs the Python package only — **you still need an `lmp` binary** on your `PATH` (see *Installing LAMMPS* below). For the optional library backend, use `pip install calphy[library]`.
 ```
 
 ```{tab} from repository
@@ -103,10 +103,11 @@ calphy requires Python ≥ 3.10 and the following packages (all installed automa
 
 - `pytest >= 7` for running the test-suite
 - `mp_api` for fetching structures from the [Materials Project](https://materialsproject.org/)
+- `pylammpsmpi` for the opt-in library backend (`pip install calphy[library]`, see [](library-backend))
 
 ## Installing LAMMPS
 
-calphy needs an `lmp` executable that includes the LAMMPS packages its methods rely on. You do **not** need to build LAMMPS as a Python library.
+calphy needs an `lmp` executable that includes the LAMMPS packages its methods rely on. For the default setup you do **not** need to build LAMMPS as a Python library — that is only required for the opt-in [library backend](library-backend) described at the end of this section.
 
 ### Which LAMMPS packages calphy needs
 
@@ -181,3 +182,72 @@ lmp -h | head      # should print the LAMMPS help / style listing
 ```
 
 If `lmp -h` lists the packages in the table above, you are ready to run calphy.
+
+(library-backend)=
+## The library backend (optional)
+
+Everything above is all you need for the default executable mode. Alternatively, calphy can drive a **live in-memory LAMMPS session** through [pylammpsmpi](https://github.com/pyiron/pylammpsmpi) by setting [`execution_mode: library`](execution_mode) in the input file. This requires two extra pieces:
+
+1. **pylammpsmpi**, installed as a calphy extra:
+
+   ```
+   pip install calphy[library]
+   ```
+
+2. **LAMMPS compiled as a Python library** — the `lammps` Python module plus the matching `liblammps` shared library.
+
+### Option 1 — conda-forge (recommended)
+
+The conda-forge `lammps` package ships the Python module and shared library alongside the `lmp` binary, so the same install covers both backends:
+
+```
+conda install -c conda-forge lammps
+pip install calphy[library]
+```
+
+### Option 2 — compile the library yourself
+
+For potentials with special compilation needs, build LAMMPS with library support in addition to the packages listed in the table above (this mirrors the [conda-forge recipe](https://github.com/conda-forge/lammps-feedstock/blob/master/recipe/build.sh)):
+
+```
+cd lammps-*/            # extracted source
+mkdir build_lib && cd build_lib
+cmake -D BUILD_LIB=ON \
+      -D BUILD_SHARED_LIBS=ON \
+      -D BUILD_MPI=ON \
+      -D PKG_MANYBODY=ON \
+      -D PKG_EXTRA-FIX=ON \
+      -D PKG_EXTRA-PAIR=ON \
+      -D PKG_MC=ON \
+      -D PKG_QTB=ON \
+      ../cmake
+make -j
+```
+
+Then install the Python wrapper and make the shared library findable (inside a conda environment, `$CONDA_PREFIX/lib` is a good target; sometimes `PREFIX` needs to be used instead):
+
+```
+cp liblammps* ../src
+cd ../src
+make install-python
+cp liblammps* $CONDA_PREFIX/lib/
+```
+
+The same optional package flags as for the executable build apply (`-D PKG_ML-PACE=ON`, `-D PKG_ML-SNAP=ON`, `-D PKG_MEAM=ON`, `-D PKG_KIM=ON`, ...).
+
+### Checking the library setup
+
+```
+python -c "from lammps import lammps; lammps(); print('lammps python module OK')"
+python -c "from pylammpsmpi import LammpsLibrary; print('pylammpsmpi OK')"
+```
+
+```{warning}
+The `lammps` Python module and the `liblammps` shared library must come from the **same LAMMPS version**. A mismatch (e.g. a pip-installed module over an older conda library) makes `lammps()` raise `AttributeError: LAMMPS Python module installed for LAMMPS version X, but shared library is version Y` — and under pylammpsmpi this surfaces as a calculation that **hangs at startup** rather than a clean error. If library-mode runs hang before producing any output, run the first check above in the same environment. Installing both from conda-forge in one step keeps the versions aligned.
+```
+
+Notes on library mode:
+
+- [`lammps_executable`](lammps_executable), [`mpi_executable`](mpi_executable), and the preflight capability check do not apply; if a required LAMMPS package is missing, the run fails with a LAMMPS error instead.
+- Parallel runs use `queue.cores` through pylammpsmpi's own MPI machinery (`mpi4py`) — no external `mpirun` is involved.
+- Both backends emit the exact same LAMMPS command stream and give the same results; the choice is purely about how LAMMPS is deployed on your system.
