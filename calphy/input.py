@@ -287,14 +287,13 @@ class MD(_StrictInput, title="MD specific input options"):
     n_every_steps: Annotated[int, Field(default=10, gt=0)]
     n_repeat_steps: Annotated[int, Field(default=10, gt=0)]
     n_cycles: Annotated[int, Field(default=100, gt=0)]
-    thermostat_damping: Annotated[
-        Union[float, conlist(float, min_length=2, max_length=2)],
-        Field(default=0.1, gt=0),
-    ]
-    barostat_damping: Annotated[
-        Union[float, conlist(float, min_length=2, max_length=2)],
-        Field(default=0.1, gt=0),
-    ]
+    # scalar in the input file (the integration-stage damping); Phase.__init__
+    # rewrites these at runtime into [equilibration, integration] pairs, with
+    # the equilibration value taken from the nose_hoover/berendsen/qtb block.
+    # (The former Union[float, 2-list] input form never validated -- gt broke
+    # the list branch -- and the drivers never handled a user-given list.)
+    thermostat_damping: Annotated[float, Field(default=0.1, gt=0)]
+    barostat_damping: Annotated[float, Field(default=0.1, gt=0)]
     cmdargs: Annotated[str, Field(default="")]
     init_commands: Annotated[List, Field(default=[])]
 
