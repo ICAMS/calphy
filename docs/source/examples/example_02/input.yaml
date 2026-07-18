@@ -5,7 +5,6 @@ calculations:
   mass: 55.845
   md:
     barostat_damping: 0.1
-    equilibration_control: nose_hoover
     thermostat_damping: 0.1
     timestep: 0.001
   mode: ts
@@ -30,14 +29,12 @@ calculations:
   - 1500.0
   phase_transition_detection:
     mode: recover
-    peak_threshold: 6.0
 - element: Fe
   lattice: FCC
   lattice_constant: 6.0
   mass: 55.845
   md:
     barostat_damping: 0.1
-    equilibration_control: nose_hoover
     thermostat_damping: 0.1
     timestep: 0.001
   mode: ts

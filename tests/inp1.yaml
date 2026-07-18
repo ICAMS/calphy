@@ -5,11 +5,9 @@ calculations:
   mass: 26.98
   md:
     barostat_damping: 0.1
-    equilibration_barostat_damping: 0.1
-    equilibration_control: nose-hoover
-    equilibration_thermostat_damping: 0.5
     thermostat_damping: 0.1
     timestep: 0.001
+  equilibration_control: nose-hoover
   mode: fe
   n_equilibration_steps: 1000
   n_iterations: 1

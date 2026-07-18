@@ -25,6 +25,7 @@ from typing_extensions import Annotated
 from typing import Any, Callable, Dict, List, ClassVar, Literal, Optional, Union
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     ValidationError,
     model_validator,
@@ -32,6 +33,7 @@ from pydantic import (
     conlist,
     PrivateAttr,
 )
+import difflib
 from pydantic.functional_validators import AfterValidator, BeforeValidator
 from annotated_types import Len
 import mendeleev
@@ -135,7 +137,85 @@ def _extract_elements_from_pair_coeff(pair_coeff_string):
     return elements if len(elements) > 0 else None
 
 
-class UFMP(BaseModel, title="UFM potential input options"):
+# --------------------------------------------------------------------------- #
+# Strict input models: unknown keys are hard errors, with hints.
+# A typo in an input key must never silently fall back to a default.
+# --------------------------------------------------------------------------- #
+
+#: input keys that existed in calphy v1, with their migration message
+_REMOVED_KEYS = {
+    "savefile": "job-state pickling was removed in calphy v2; rerun from the input file",
+    "save_job": "job-state pickling was removed in calphy v2; rerun from the input file",
+    "load_job": "job-state pickling was removed in calphy v2; rerun from the input file",
+}
+
+#: lazily built: ({field name -> [locations]}, {model class -> location label})
+_INPUT_LAYOUT = None
+
+
+def _input_layout():
+    """Map every input field to the block(s) it lives in.
+
+    Built lazily on the first unknown-key error, once every model below is
+    defined.  Nested blocks are discovered from Calculation's fields whose
+    defaults are input models, so new blocks are picked up automatically.
+    """
+    global _INPUT_LAYOUT
+    if _INPUT_LAYOUT is None:
+        field_locs = {}
+        model_locs = {Calculation: "the calculation block"}
+        for name, field in Calculation.model_fields.items():
+            field_locs.setdefault(name, []).append("the calculation block")
+            if isinstance(field.default, _StrictInput):
+                block_cls = type(field.default)
+                model_locs[block_cls] = "the '%s:' block" % name
+                for fname in block_cls.model_fields:
+                    field_locs.setdefault(fname, []).append("the '%s:' block" % name)
+        _INPUT_LAYOUT = (field_locs, model_locs)
+    return _INPUT_LAYOUT
+
+
+def _unknown_key_message(cls, key):
+    """One error line for unknown ``key`` on model ``cls``, with the best hint."""
+    if key in _REMOVED_KEYS:
+        return "input key '%s': %s" % (key, _REMOVED_KEYS[key])
+    field_locs, model_locs = _input_layout()
+    here = model_locs.get(cls, "the '%s' block" % cls.__name__)
+    msg = "unknown input key '%s' in %s" % (key, here)
+    close = difflib.get_close_matches(key, cls.model_fields.keys(), n=1)
+    if close:
+        return "%s -- did you mean '%s'?" % (msg, close[0])
+    if key in field_locs:  # right key, wrong block
+        return "%s -- '%s' belongs in %s" % (msg, key, field_locs[key][0])
+    close = difflib.get_close_matches(key, field_locs.keys(), n=1, cutoff=0.75)
+    if close:
+        return "%s -- did you mean '%s' (in %s)?" % (
+            msg, close[0], field_locs[close[0]][0],
+        )
+    return msg
+
+
+class _StrictInput(BaseModel):
+    """Base class for every input block: unknown keys raise, with hints."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_unknown_keys(cls, data):
+        if isinstance(data, dict):
+            unknown = [
+                k for k in data
+                if isinstance(k, str) and k not in cls.model_fields
+            ]
+            if unknown:
+                raise ValueError(
+                    "; ".join(_unknown_key_message(cls, k) for k in unknown)
+                )
+        return data
+
+
+class UFMP(_StrictInput, title="UFM potential input options"):
     p: Annotated[float, Field(default=50.0)]
     # sigma may be a scalar (single-component UFM reference, original behaviour) or a
     # mapping of per-element-pair length scales for the two-leg UFM reference path, e.g.
@@ -154,7 +234,7 @@ class UFMP(BaseModel, title="UFM potential input options"):
 
 
 class MonteCarlo(
-    BaseModel, title="Options for Monte Carlo moves during particle swap moves"
+    _StrictInput, title="Options for Monte Carlo moves during particle swap moves"
 ):
     n_steps: Annotated[
         int, Field(default=1, gt=0, description="perform swap moves every n_step")
@@ -186,7 +266,7 @@ class MonteCarlo(
     ]
 
 
-class CompositionScaling(BaseModel, title="Composition scaling input options"):
+class CompositionScaling(_StrictInput, title="Composition scaling input options"):
     _input_chemical_composition: PrivateAttr(default=None)
     output_chemical_composition: Annotated[dict, Field(default={}, required=False)]
     restrictions: Annotated[
@@ -194,7 +274,7 @@ class CompositionScaling(BaseModel, title="Composition scaling input options"):
     ]
 
 
-class MD(BaseModel, title="MD specific input options"):
+class MD(_StrictInput, title="MD specific input options"):
     timestep: Annotated[
         float,
         Field(
@@ -219,17 +299,17 @@ class MD(BaseModel, title="MD specific input options"):
     init_commands: Annotated[List, Field(default=[])]
 
 
-class NoseHoover(BaseModel, title="Specific input options for Nose-Hoover thermostat"):
+class NoseHoover(_StrictInput, title="Specific input options for Nose-Hoover thermostat"):
     thermostat_damping: Annotated[float, Field(default=0.1, gt=0)]
     barostat_damping: Annotated[float, Field(default=0.1, gt=0)]
 
 
-class Berendsen(BaseModel, title="Specific input options for Berendsen thermostat"):
+class Berendsen(_StrictInput, title="Specific input options for Berendsen thermostat"):
     thermostat_damping: Annotated[float, Field(default=100.0, gt=0)]
     barostat_damping: Annotated[float, Field(default=100.0, gt=0)]
 
 
-class QuantumThermalBath(BaseModel, title="Dammak quantum thermal bath (LAMMPS fix qtb)"):
+class QuantumThermalBath(_StrictInput, title="Dammak quantum thermal bath (LAMMPS fix qtb)"):
     """
     Colored-noise Langevin thermostat that injects quantum statistics into
     classical MD (Dammak et al., Phys. Rev. Lett. 103, 190601, 2009).
@@ -247,7 +327,7 @@ class QuantumThermalBath(BaseModel, title="Dammak quantum thermal bath (LAMMPS f
     seed: Annotated[int, Field(default=880302, gt=0)]
 
 
-class Queue(BaseModel, title="Options for configuring queue"):
+class Queue(_StrictInput, title="Options for configuring queue"):
     scheduler: Annotated[str, Field(default="local")]
     cores: Annotated[int, Field(default=1, gt=0)]
     jobname: Annotated[str, Field(default="calphy")]
@@ -258,7 +338,7 @@ class Queue(BaseModel, title="Options for configuring queue"):
     options: Annotated[Dict[str, str], Field(default={})]
 
 
-class Tolerance(BaseModel, title="Tolerance settings for convergence"):
+class Tolerance(_StrictInput, title="Tolerance settings for convergence"):
     lattice_constant: Annotated[float, Field(default=0.0002, ge=0)]
     spring_constant: Annotated[float, Field(default=0.1, gt=0)]
     # Structural phase-stability checks during equilibration are OFF by
@@ -272,7 +352,7 @@ class Tolerance(BaseModel, title="Tolerance settings for convergence"):
     pressure: Annotated[float, Field(default=10.0, ge=0)]
 
 
-class PhaseTransitionDetection(BaseModel, title="Settings for the pre-flight temperature-range scan"):
+class PhaseTransitionDetection(_StrictInput, title="Settings for the pre-flight temperature-range scan"):
     mode: Annotated[
         Literal["none", "adapt", "warn", "stop"],
         Field(
@@ -348,13 +428,13 @@ class PhaseTransitionDetection(BaseModel, title="Settings for the pre-flight tem
     # onset_level overlapped with onset_fraction.  Users tune the scan through
     # mode, prescan_steps and onset_fraction only.
 
-class MeltingTemperature(BaseModel, title="Input options for melting temperature mode"):
+class MeltingTemperature(_StrictInput, title="Input options for melting temperature mode"):
     guess: Annotated[Union[float, None], Field(default=None, gt=0)]
     step: Annotated[int, Field(default=200, ge=20)]
     attempts: Annotated[int, Field(default=5, ge=1)]
 
 
-class MaterialsProject(BaseModel, title="Input options for materials project"):
+class MaterialsProject(_StrictInput, title="Input options for materials project"):
     api_key: Annotated[str, Field(default="", exclude=True)]
     conventional: Annotated[bool, Field(default=True)]
     target_natoms: Annotated[
@@ -378,7 +458,7 @@ class MaterialsProject(BaseModel, title="Input options for materials project"):
         return value
 
 
-class Calculation(BaseModel, title="Main input class"):
+class Calculation(_StrictInput, title="Main input class"):
     monte_carlo: Optional[MonteCarlo] = MonteCarlo()
     composition_scaling: Optional[CompositionScaling] = CompositionScaling()
     md: Optional[MD] = MD()
@@ -1132,21 +1212,28 @@ def read_inputfile(file, validate=True):
     if not os.path.exists(file):
         raise FileNotFoundError(f"Input file {file} not found.")
 
-    with open(file, "r") as fin:
-        data = yaml.safe_load(fin)
-
-    if "element" in data.keys():
-        # old format
-        outfile = _convert_legacy_inputfile(file)
-    else:
-        outfile = file
-    calculations = _read_inputfile(outfile, validate=validate)
-    return calculations
+    return _read_inputfile(file, validate=validate)
 
 
 def _read_inputfile(file, validate=False):
     with open(file, "r") as fin:
         data = yaml.safe_load(fin)
+    if not isinstance(data, dict) or "calculations" not in data:
+        if isinstance(data, dict) and "element" in data:
+            raise ValueError(
+                "%s uses the legacy calphy input format (top-level keys "
+                "instead of a 'calculations:' list). Automatic conversion "
+                "was removed in calphy v2; convert the file once with an "
+                "older calphy (pip install 'calphy<2', then "
+                "calphy_convert_input) or restructure it by hand." % file
+            )
+        raise ValueError("%s has no 'calculations:' list" % file)
+    stray = [k for k in data if k != "calculations"]
+    if stray:
+        raise ValueError(
+            "unknown top-level key(s) %s in %s -- everything except "
+            "'calculations:' goes inside a calculation block" % (stray, file)
+        )
     calculations = []
     for count, calc in enumerate(tqdm(data["calculations"])):
         calc["kernel"] = count
@@ -1160,176 +1247,6 @@ def _read_inputfile(file, validate=False):
             # Skip expensive validation - for fast parsing
             calculations.append(Calculation.model_construct(**calc))
     return calculations
-
-
-def _convert_legacy_inputfile(file, return_calcs=False):
-    with open(file, "r") as fin:
-        data = yaml.safe_load(fin)
-    if not "element" in data.keys():
-        # new format
-        raise ValueError("Not old format, exiting..")
-
-    # prepare combos
-    calculations = []
-    for cc, ci in enumerate(data["calculations"]):
-        mode = ci["mode"]
-        if mode == "melting_temperature":
-            calc = {}
-            for key in [
-                "md",
-                "queue",
-                "tolerance",
-                "melting_temperature",
-                "nose_hoover",
-                "berendsen",
-                "composition_scaling",
-                "temperature_high",
-            ]:
-                if key in data.keys():
-                    calc[key] = copy.copy(data[key])
-            for key in [
-                "element",
-                "mass",
-                "script_mode",
-                "execution_mode",
-                "lammps_executable",
-                "mpi_executable",
-            ]:
-                if key in data.keys():
-                    calc[key] = data[key]
-            for key in [
-                "mode",
-                "pair_style",
-                "pair_coeff",
-                "pair_mode",
-                "pair_style_options",
-                "npt",
-                "repeat",
-                "n_equilibration_steps",
-                "n_switching_steps",
-                "n_print_steps",
-                "n_iterations",
-                "potential_file",
-                "spring_constants",
-                "melting_cycle",
-                "equilibration_control",
-                "folder_prefix",
-                "temperature_high",
-            ]:
-                if key in ci.keys():
-                    calc[key] = ci[key]
-
-            # calc['pressure'] = float(np.atleast_1d(ci["pressure"]) if "pressure" in ci.keys() else np.atleast_1d(0))
-            # calc['temperature'] = float(np.atleast_1d(ci["temperature"]) if "temperature" in ci.keys() else np.atleast_1d(0))
-            # calc['lattice'] = str(ci["lattice"]) if "lattice" in ci.keys() else 'none'
-            # calc['reference_phase'] = str(ci["reference_phase"]) if "reference_phase" in ci.keys() else 'none'
-            # calc['lattice_constant'] = float(ci["lattice_constant"]) if "lattice_constant" in ci.keys() else 0
-            calc["kernel"] = cc
-            calc["inputfile"] = file
-            calculations.append(calc)
-
-        else:
-            pressure = np.atleast_1d(ci["pressure"])
-            temperature = np.atleast_1d(ci["temperature"])
-            lattice = np.atleast_1d(ci["lattice"])
-            reference_phase = np.atleast_1d(ci["reference_phase"])
-            if "lattice_constant" in ci.keys():
-                lattice_constant = np.atleast_1d(ci["lattice_constant"])
-            else:
-                lattice_constant = [0 for x in range(len(lattice))]
-
-            lat_props = [
-                {
-                    "lattice": lattice[x],
-                    "lattice_constant": lattice_constant[x],
-                    "reference_phase": reference_phase[x],
-                }
-                for x in range(len(lattice))
-            ]
-
-            if (mode == "fe") or (mode == "alchemy") or (mode == "composition_scaling"):
-                combos = itertools.product(lat_props, pressure, temperature)
-            elif mode == "ts" or mode == "tscale":
-                if not len(temperature) == 2:
-                    raise ValueError("ts/tscale mode needs 2 temperature values")
-                temperature = [temperature]
-                combos = itertools.product(lat_props, pressure, temperature)
-            elif mode == "pscale":
-                if not len(pressure) == 2:
-                    raise ValueError("pscale mode needs 2 pressure values")
-                pressure = [pressure]
-                combos = itertools.product(lat_props, pressure, temperature)
-
-            cc = 0
-            for combo in combos:
-                calc = {}
-                for key in [
-                    "md",
-                    "queue",
-                    "tolerance",
-                    "melting_temperature",
-                    "nose_hoover",
-                    "berendsen",
-                    "composition_scaling",
-                    "temperature_high",
-                ]:
-                    if key in data.keys():
-                        calc[key] = copy.copy(data[key])
-                for key in [
-                    "element",
-                    "mass",
-                    "script_mode",
-                    "execution_mode",
-                    "lammps_executable",
-                    "mpi_executable",
-                ]:
-                    if key in data.keys():
-                        calc[key] = data[key]
-                for key in [
-                    "mode",
-                    "pair_style",
-                    "pair_coeff",
-                    "pair_mode",
-                    "pair_style_options",
-                    "npt",
-                    "repeat",
-                    "n_equilibration_steps",
-                    "n_switching_steps",
-                    "n_print_steps",
-                    "n_iterations",
-                    "potential_file",
-                    "spring_constants",
-                    "melting_cycle",
-                    "equilibration_control",
-                    "folder_prefix",
-                    "temperature_high",
-                ]:
-                    if key in ci.keys():
-                        calc[key] = ci[key]
-                # print(combo)
-                calc["lattice"] = str(combo[0]["lattice"])
-                calc["lattice_constant"] = float(combo[0]["lattice_constant"])
-                calc["reference_phase"] = str(combo[0]["reference_phase"])
-                calc["pressure"] = _to_float(combo[1])
-                calc["temperature"] = _to_float(combo[2])
-                calc["kernel"] = cc
-                calc["inputfile"] = file
-                cc += 1
-                calculations.append(calc)
-
-    if return_calcs:
-        return calculations
-    else:
-        newdata = {}
-        newdata["calculations"] = calculations
-        # print(newdata)
-        outfile = "new." + file
-        warnings.warn(
-            f"Old style input file calphy < v2 found. Converted input in {outfile}. Please check!"
-        )
-        with open(outfile, "w") as fout:
-            yaml.safe_dump(newdata, fout)
-        return outfile
 
 
 def generate_metadata():

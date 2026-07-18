@@ -15,6 +15,15 @@ calculations:
     key2: value2
 ```
 
+```{note}
+Input keys are validated strictly: an unrecognized key anywhere in the file is
+an error at startup, not silently ignored — a typo like `n_iteration` would
+otherwise silently run with the default `n_iterations`. The error message
+suggests the closest matching key and, when a key was placed in the wrong
+block (e.g. `timestep` at the calculation level instead of under `md:`),
+points at where it belongs.
+```
+
 
 ## `calculations`
 

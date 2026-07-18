@@ -50,7 +50,6 @@ Repository = "https://github.com/ICAMS/calphy"
 [project.scripts]
 calphy = "calphy.kernel:main"
 calphy_kernel = "calphy.queuekernel:main"
-calphy_convert_input = "calphy.clitools:convert_legacy_inputfile"
 calphy_phase_diagram = "calphy.clitools:phase_diagram"
 
 [tool.pytest.ini_options]
