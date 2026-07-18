@@ -27,5 +27,3 @@ calculations:
   - 5
   - 5
   temperature: 600.0
-  phase_transition_detection:
-    mode: recover

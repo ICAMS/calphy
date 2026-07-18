@@ -27,8 +27,6 @@ calculations:
   temperature:
   - 500.0
   - 1500.0
-  phase_transition_detection:
-    mode: recover
 - element: Fe
   lattice: FCC
   lattice_constant: 6.0
@@ -57,5 +55,3 @@ calculations:
   temperature:
   - 100.0
   - 2000.0
-  phase_transition_detection:
-    mode: recover

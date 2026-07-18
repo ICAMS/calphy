@@ -28,5 +28,3 @@ calculations:
   temperature: 100.0
   tolerance:
     pressure: 1
-  phase_transition_detection:
-    mode: recover
