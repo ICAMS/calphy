@@ -617,3 +617,131 @@ def test_phase_diagram_from_tdb_missing_file(tmp_path):
     with pytest.raises(FileNotFoundError):
         PhaseDiagram.from_tdb(str(tmp_path / "does_not_exist.tdb"))
 
+
+def test_to_tdb_poly6_L_parameters_and_metadata(tmp_path):
+    """Default poly6 mode writes full T-dependence in full-range L params."""
+    pd_obj = _make_tdb_phase_diagram()
+    out = tmp_path / "poly6.tdb"
+    pd_obj.to_tdb(str(out), elements=("Au", "Cu"))
+    text = out.read_text()
+
+    # metadata records the L form
+    import json
+    from calphy.phase_diagram import _TDB_METADATA_PREFIX
+    meta_line = next(
+        l for l in text.splitlines() if l.startswith(_TDB_METADATA_PREFIX)
+    )
+    meta = json.loads(meta_line[len(_TDB_METADATA_PREFIX):])
+    assert meta["L_temperature_form"] == "poly6"
+    assert meta["limited_L_n_terms"] == 3
+    assert "aucu" in meta["limited_rk_order"]
+
+    # at least one FCC L parameter carries a T*LN(T) term (poly6, not linear)
+    fcc_L_lines = [
+        l for l in text.splitlines() if l.startswith("PARAMETER L(FCC")
+    ]
+    assert fcc_L_lines
+    assert any("T*LN(T)" in l for l in fcc_L_lines)
+
+
+def test_to_tdb_linear_mode_and_validation(tmp_path):
+    """L_temperature_form='linear' refits a+bT; invalid values raise."""
+    pd_obj = _make_tdb_phase_diagram()
+    out = tmp_path / "linear.tdb"
+    pd_obj.to_tdb(str(out), elements=("Au", "Cu"), L_temperature_form="linear")
+    text = out.read_text()
+    fcc_L_lines = [
+        l for l in text.splitlines() if l.startswith("PARAMETER L(FCC")
+    ]
+    assert fcc_L_lines
+    assert not any("LN(T)" in l for l in fcc_L_lines)
+
+    with pytest.raises(ValueError, match="L_temperature_form"):
+        pd_obj.to_tdb(str(out), elements=("Au", "Cu"), L_temperature_form="cubic")
+
+
+def test_from_tdb_full_range_surfaces_roundtrip_exactly(tmp_path):
+    """poly6 mode: from_tdb recovers full-range G(x,T) to write precision."""
+    from calphy.phase_diagram import PhaseDiagram, _eval_calphad_surface_at
+
+    pd_obj = _make_tdb_phase_diagram()
+    pd_obj.build_calphad_surface(rk_order=3)
+    out = tmp_path / "exact.tdb"
+    pd_obj.to_tdb(str(out), elements=("Au", "Cu"))
+
+    loaded = PhaseDiagram.from_tdb(str(out))
+    xg = np.linspace(0.01, 0.99, 51)
+    for ph in ("fcc", "lqd"):
+        for T in (450.0, 900.0, 1350.0):
+            g0 = _eval_calphad_surface_at(pd_obj._calphad_surfaces[ph], xg, T)
+            g1 = _eval_calphad_surface_at(loaded._calphad_surfaces[ph], xg, T)
+            assert np.max(np.abs(g1 - g0)) < 1e-5  # eV/atom
+
+
+def test_limited_range_bounded_fit_convex_well():
+    """The bounded fit keeps the ordered-phase well convex (no W bottom)."""
+    from calphy.phase_diagram import (
+        _phase_data_as_points,
+        _fit_limited_range_surface_bounded,
+        _eval_calphad_surface_at,
+    )
+
+    pd_obj = _make_tdb_phase_diagram()
+    pd_obj.build_calphad_surface(rk_order=3)
+    host = pd_obj._calphad_surfaces["fcc"]
+    points = _phase_data_as_points(pd_obj.df, "aucu")
+
+    fit = _fit_limited_range_surface_bounded(
+        points, host, rk_order=4, n_T_terms=3,
+        constraint_T_range=(298.15, 1400.0),
+    )
+    # L_coeffs comes back zero-padded to the 6-term CALPHAD layout
+    assert fit["L_coeffs"].shape == (4, 6)
+    assert np.allclose(fit["L_coeffs"][:, 3:], 0.0)
+    assert fit["constraint_violation_max"] < 1e-4
+
+    xg = np.linspace(0.451, 0.549, 101)
+    for T in (500.0, 700.0, 900.0):
+        g_ph = _eval_calphad_surface_at(fit, xg, T)
+        g_host = _eval_calphad_surface_at(host, xg, T)
+        diff = g_ph - g_host
+        # single local minimum: sign of the derivative changes at most once
+        sign_changes = np.sum(np.abs(np.diff(np.sign(np.diff(diff)))) > 0)
+        assert sign_changes <= 1
+
+    with pytest.raises(ValueError, match="n_T_terms"):
+        _fit_limited_range_surface_bounded(points, host, n_T_terms=4)
+
+
+def test_to_tdb_pycalphad_reproduces_surface(tmp_path):
+    """pycalphad evaluates the TDB to the same G(x,T) as calphy's surface."""
+    pycalphad = pytest.importorskip("pycalphad")
+    from pycalphad import Database, calculate
+    from calphy.phase_diagram import _eval_calphad_surface_at, EV_TO_J_MOL
+
+    pd_obj = _make_tdb_phase_diagram()
+    pd_obj.build_calphad_surface(rk_order=3)
+    out = tmp_path / "pycalphad.tdb"
+    pd_obj.to_tdb(str(out), elements=("Au", "Cu"))
+
+    db = Database(str(out))
+    assert {"FCC", "LQD", "AUCU"} <= set(db.phases)
+
+    xg = np.linspace(0.05, 0.95, 19)
+    for ph, tdb_name in (("fcc", "FCC"), ("lqd", "LQD")):
+        n_subl = len(db.phases[tdb_name].constituents)
+        cols = [1.0 - xg, xg]
+        if n_subl == 2:
+            cols.append(np.ones_like(xg))
+        pts = np.column_stack(cols)
+        for T in (500.0, 1000.0, 1350.0):
+            res = calculate(
+                db, ["AU", "CU", "VA"], tdb_name, T=T, P=101325, N=1,
+                points=pts, output="GM",
+            )
+            g_tdb = res.GM.values.flatten() / EV_TO_J_MOL
+            g_surf = _eval_calphad_surface_at(
+                pd_obj._calphad_surfaces[ph], xg, T
+            )
+            assert np.max(np.abs(g_tdb - g_surf)) < 1e-4  # eV/atom
+

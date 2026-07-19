@@ -2194,15 +2194,143 @@ def _fit_limited_range_surface(points, host_surface, rk_order=3,
     }
 
 
+def _limited_phase_pseudo_points(
+    df, phase, composition_interval, fit_order=4, n_T_max=41, n_x=41,
+    ideal_configurational_entropy=True,
+):
+    """
+    Build dense pseudo-data for a limited-range phase from calphy's own
+    per-temperature polynomial fits (:func:`get_phase_free_energy` — the
+    same smoothing :meth:`PhaseDiagram.calculate` applies to narrow
+    phases).
+
+    Fitting the TDB Redlich-Kister model against ~11 raw composition
+    points leaves the interior of a high-order RK well underdetermined:
+    the outside-window inequality constraints then tilt the well minimum
+    away from the data (0.02+ in x for AuCu MD data), which shows up as
+    a "boot-shaped" single-phase window near the order-disorder dome
+    top.  Sampling the per-T polynomial fit densely across the window
+    pins the interior shape — the RK fit then tracks the well-minimum
+    location and depth of calphy's own construction to ~0.003 in x.
+
+    Parameters
+    ----------
+    df : DataFrame
+        The PhaseDiagram dataframe.
+    phase : str
+        Phase name.
+    composition_interval : tuple
+        (x_lo, x_hi) window for the phase.
+    fit_order : int
+        Polynomial order of the per-T fit (default 4 — the same default
+        :meth:`PhaseDiagram.calculate` uses).
+    n_T_max : int
+        Maximum number of temperature slices to sample (evenly spaced
+        over the unique data temperatures).
+    n_x : int
+        Composition grid points per temperature slice.
+
+    Returns
+    -------
+    DataFrame with columns (composition, temperature, free_energy), or
+    ``None`` if no temperature slice could be fit (too few compositions
+    for *fit_order*) — callers should fall back to the raw data points.
+    """
+    sub = df.loc[df["phase"] == phase]
+    all_T = sorted(
+        {
+            float(t)
+            for arr in sub["temperature"]
+            for t in np.atleast_1d(np.asarray(arr, dtype=float))
+            if np.isfinite(t)
+        }
+    )
+    if not all_T:
+        return None
+    if len(all_T) > n_T_max:
+        idx = np.linspace(0, len(all_T) - 1, int(n_T_max)).round().astype(int)
+        all_T = [all_T[i] for i in np.unique(idx)]
+
+    rows = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for T in all_T:
+            d = get_phase_free_energy(
+                df,
+                phase,
+                T,
+                composition_interval=tuple(composition_interval),
+                ideal_configurational_entropy=ideal_configurational_entropy,
+                fit_order=fit_order,
+                composition_grid=int(n_x),
+            )
+            if d is None:
+                continue
+            for x, G in zip(d["composition"], d["free_energy"]):
+                if np.isfinite(x) and np.isfinite(G):
+                    rows.append((float(x), float(T), float(G)))
+    if not rows:
+        return None
+    return pd.DataFrame(
+        rows, columns=["composition", "temperature", "free_energy"]
+    )
+
+
+def _limited_phase_min_depth_by_T(points, host_surface, fit=None):
+    """
+    Per-temperature minimum of ``G_phase - G_host`` (eV/atom) across the
+    phase's composition points — the depth of the ordered-phase well
+    below the host.  With ``fit=None`` the depth comes from the data
+    points themselves; otherwise the fit surface is evaluated at the
+    same (x, T) points.
+
+    Returns (T_sorted, depth) arrays.
+    """
+    x = points["composition"].to_numpy(dtype=float)
+    T = points["temperature"].to_numpy(dtype=float)
+    if fit is None:
+        G = points["free_energy"].to_numpy(dtype=float)
+    else:
+        G = np.array(
+            [
+                _eval_calphad_surface_at(fit, np.array([xi]), ti)[0]
+                for xi, ti in zip(x, T)
+            ]
+        )
+    G_host = np.array(
+        [
+            _eval_calphad_surface_at(host_surface, np.array([xi]), ti)[0]
+            for xi, ti in zip(x, T)
+        ]
+    )
+    diff = G - G_host
+    T_unique = np.unique(T)
+    depth = np.array([np.min(diff[T == t]) for t in T_unique])
+    return T_unique, depth
+
+
+def _first_zero_crossing(T, depth):
+    """T where depth first crosses from <=0 to >0 (linear interp), or None."""
+    for i in range(len(depth) - 1):
+        if depth[i] <= 0.0 < depth[i + 1]:
+            f = depth[i] / (depth[i] - depth[i + 1])
+            return float(T[i] + f * (T[i + 1] - T[i]))
+    return None
+
+
 def _fit_limited_range_surface_bounded(
     points,
     host_surface,
     rk_order=3,
-    n_constraint_x=20,
-    n_constraint_T=12,
+    n_T_terms=2,
+    n_constraint_x=32,
+    n_constraint_T=24,
     constraint_T_range=None,
     constraint_margin=0.02,
-    bound_slack=0.0,
+    bound_slack=-0.001,
+    convexity_constraint=True,
+    n_convexity_x=25,
+    ridge_lambda=1e-8,
 ):
     """
     Fit a 1-sublattice (A,B) RK surface to a limited-window phase, with the
@@ -2232,7 +2360,12 @@ def _fit_limited_range_surface_bounded(
         (full-range) phase.  Must contain ``coeffs_A``, ``coeffs_B``,
         ``L_coeffs``.
     rk_order : int
-        RK order (default 3).  Each ``L_k(T) = a + b·T``.
+        RK order (default 3).
+    n_T_terms : int
+        Temperature basis terms per L_k: ``2`` → ``a + b·T`` (default),
+        ``3`` → ``a + b·T + c·T·ln T``.  Three terms capture the
+        curvature of the ordered-phase stability window in T (e.g. the
+        steepening of the well below ~500 K) that a linear form misses.
     n_constraint_x : int
         How many composition points to enforce the inequality at, total
         across the two outside-window regions (default 20).
@@ -2240,14 +2373,46 @@ def _fit_limited_range_surface_bounded(
         Distance from the window edge at which to start placing constraints.
     bound_slack : float
         Slack on the inequality (eV/atom); positive values let G_phase dip
-        slightly below G_host, negative values force a margin.  Default 0.
+        slightly below G_host, negative values force a margin.  Default
+        ``-0.001`` (a 1 meV/atom strict margin): the constraint is only
+        enforced at sample points, and between samples the polynomial can
+        wiggle a fraction of a meV below the host — enough for pycalphad
+        to draw hairline spurious lenses near the pure endpoints, where
+        the phase and host energies are degenerate by construction.  The
+        margin buries those wiggles.
+    convexity_constraint : bool
+        If True (default), additionally require ``d²G/dx² >= 0`` at
+        ``n_convexity_x`` compositions *inside* the data window (crossed
+        with the constraint temperatures).  A narrow ordered phase is a
+        single-phase field — its G(x) well must be convex.  Without this,
+        a high-order RK fit can develop a slightly W-shaped well bottom,
+        which pycalphad resolves as a spurious miscibility gap inside the
+        phase (extra ``#2`` composition sets in the diagram).  The
+        constraint is linear in L (G_xs is linear in L and the ideal
+        term's curvature is fixed), so it slots into the same SLSQP
+        problem.
+    ridge_lambda : float
+        Scaled Tikhonov ridge on the L coefficients (default ``1e-8``).
+        Without it, high-order fits can satisfy the data and every
+        sampled constraint with absurd cancelling magnitudes (L terms of
+        ±thousands of eV summing to meV) whose residual wiggles
+        *between* the constraint samples dip below the host and draw
+        hairline phantom lenses.  Each coefficient is scaled by its
+        natural magnitude (1, T_mid, T_mid·lnT_mid) so the penalty is
+        dimensionally even.  Keep it weak: narrow windows legitimately
+        need large high-order L (``(1-2x)^k`` is tiny there), and a
+        strong ridge biases the well's T-slope, shifting dissolution
+        temperatures by tens of K.
 
     Returns
     -------
     dict
         Same keys as :func:`_fit_limited_range_surface` plus
         ``constraint_violation_max`` (largest violation in eV/atom, ≤ 0 if
-        feasible) and ``n_constraints``.
+        feasible) and ``n_constraints``.  ``L_coeffs`` is returned in the
+        zero-padded six-term CALPHAD layout ``(rk_order, 6)`` — columns
+        ``[a, b·T, c·T·lnT, 0, 0, 0]`` — so it evaluates directly with
+        :func:`_eval_calphad_surface_at`.
     """
     from scipy.optimize import minimize
 
@@ -2267,6 +2432,9 @@ def _fit_limited_range_surface_bounded(
         G_ideal = kb * T_arr * (x_arr * log_x + (1.0 - x_arr) * log_1mx)
         return G_lin, G_ideal
 
+    if n_T_terms not in (2, 3):
+        raise ValueError(f"n_T_terms must be 2 or 3, got {n_T_terms}")
+
     def _basis(x_arr, T_arr):
         pf = x_arr * (1.0 - x_arr)
         cols = []
@@ -2274,6 +2442,8 @@ def _fit_limited_range_surface_bounded(
             pk = pf * (1.0 - 2.0 * x_arr) ** k
             cols.append(pk)
             cols.append(pk * T_arr)
+            if n_T_terms >= 3:
+                cols.append(pk * T_arr * np.log(T_arr))
         return np.column_stack(cols)
 
     # ---- data side: linear LSQ target for G_xs at data points ----
@@ -2281,17 +2451,38 @@ def _fit_limited_range_surface_bounded(
     G_xs_target = G_data - G_lin - G_ideal
     A_data = _basis(x, T)
 
+    # ---- ridge rows: suppress huge cancelling L magnitudes ----
+    if ridge_lambda and ridge_lambda > 0:
+        T_mid = float(np.mean(T))
+        scales = [1.0, T_mid, T_mid * np.log(T_mid)][:n_T_terms]
+        ridge = np.sqrt(float(ridge_lambda)) * np.diag(
+            np.tile(np.asarray(scales), rk_order)
+        )
+        A_data = np.vstack([A_data, ridge])
+        G_xs_target = np.concatenate(
+            [G_xs_target, np.zeros(ridge.shape[0])]
+        )
+
     # ---- constraint side: sample points outside the window ----
     x_min = float(np.min(x))
     x_max = float(np.max(x))
     half = max(1, n_constraint_x // 2)
+    # Each outside region gets a linear grid plus a geometric grid
+    # clustered toward the pure endpoint: G_phase - G_host tends to zero
+    # there by construction (shared GHSER, x(1-x) excess prefactor), so
+    # sub-meV polynomial wiggles between widely spaced samples are
+    # enough to create spurious hairline lenses near x = 0 / x = 1.
     cx_list = []
     if x_min - constraint_margin > 1e-3:
-        cx_list.append(np.linspace(1e-3, x_min - constraint_margin, half))
+        hi = x_min - constraint_margin
+        cx_list.append(np.linspace(1e-3, hi, half))
+        cx_list.append(np.geomspace(1e-3, hi, half))
     if 1.0 - (x_max + constraint_margin) > 1e-3:
-        cx_list.append(np.linspace(x_max + constraint_margin, 1.0 - 1e-3, half))
+        lo = x_max + constraint_margin
+        cx_list.append(np.linspace(lo, 1.0 - 1e-3, half))
+        cx_list.append(1.0 - np.geomspace(1e-3, 1.0 - lo, half))
     constraint_x = (
-        np.concatenate(cx_list) if cx_list else np.empty(0, dtype=float)
+        np.unique(np.concatenate(cx_list)) if cx_list else np.empty(0, dtype=float)
     )
 
     # Sample T uniformly across the constraint range, not just at the data
@@ -2330,8 +2521,30 @@ def _fit_limited_range_surface_bounded(
                 G_xs_host_c += pf_c * (1.0 - 2.0 * cx) ** k * L_host[k]
         rhs_con = G_xs_host_c - float(bound_slack)
     else:
-        A_con = np.zeros((0, 2 * rk_order))
+        A_con = np.zeros((0, n_T_terms * rk_order))
         rhs_con = np.zeros(0)
+    n_outside = len(rhs_con)
+
+    # ---- convexity constraints inside the data window ----
+    # Require G''(x, T) >= 0 with G = G_lin + G_ideal + G_xs.  G_lin is
+    # linear in x, G_ideal'' = kb·T·(1/x + 1/(1-x)) is fixed, and G_xs''
+    # is linear in L, so the constraint is  B''(x,T) @ L >= -G_ideal''.
+    # B'' is evaluated by central differences of the basis.
+    if convexity_constraint:
+        h = 1e-4
+        cvx_x = np.linspace(x_min + h, x_max - h, int(n_convexity_x))
+        cvx_T = np.linspace(
+            float(constraint_T_range[0]),
+            float(constraint_T_range[1]),
+            int(n_constraint_T),
+        )
+        vx, vT = np.meshgrid(cvx_x, cvx_T, indexing="ij")
+        vx = vx.ravel()
+        vT = vT.ravel()
+        B_pp = (_basis(vx + h, vT) - 2.0 * _basis(vx, vT) + _basis(vx - h, vT)) / h**2
+        G_ideal_pp = kb * vT * (1.0 / vx + 1.0 / (1.0 - vx))
+        A_con = np.vstack([A_con, B_pp])
+        rhs_con = np.concatenate([rhs_con, -G_ideal_pp])
 
     # ---- unconstrained warm start ----
     L0, _, _, _ = np.linalg.lstsq(A_data, G_xs_target, rcond=None)
@@ -2357,14 +2570,35 @@ def _fit_limited_range_surface_bounded(
         )
         L_flat = result.x
         success = bool(result.success)
-        violation_max = float(np.max(rhs_con - A_con @ L_flat)) if len(rhs_con) else 0.0
+        # Report the G_phase >= G_host violation (eV/atom) separately from
+        # the convexity rows, whose residuals live in eV/atom per x² units.
+        slack_all = rhs_con - A_con @ L_flat
+        violation_max = (
+            float(np.max(slack_all[:n_outside])) if n_outside else 0.0
+        )
+        convexity_violation_max = (
+            float(np.max(slack_all[n_outside:]))
+            if len(slack_all) > n_outside
+            else 0.0
+        )
     else:
         L_flat = L0
         success = True
         violation_max = 0.0
+        convexity_violation_max = 0.0
 
-    L_coeffs = L_flat.reshape(rk_order, 2)
-    rms = float(np.sqrt(np.mean((A_data @ L_flat - G_xs_target) ** 2)) * EV_TO_J_MOL)
+    # Zero-padded six-term CALPHAD layout: [a, b, c, 0, 0, 0] per L_k.
+    L_by_k = L_flat.reshape(rk_order, n_T_terms)
+    L_coeffs = np.zeros((rk_order, 6))
+    L_coeffs[:, :n_T_terms] = L_by_k
+    # RMS over the data rows only (excluding any ridge rows).
+    n_data = len(x)
+    rms = float(
+        np.sqrt(
+            np.mean((A_data[:n_data] @ L_flat - G_xs_target[:n_data]) ** 2)
+        )
+        * EV_TO_J_MOL
+    )
     return {
         "coeffs_A": coeffs_A,
         "coeffs_B": coeffs_B,
@@ -2372,8 +2606,10 @@ def _fit_limited_range_surface_bounded(
         "rms_j_mol": rms,
         "n_fit_points": int(len(x)),
         "rk_order": int(rk_order),
+        "n_T_terms": int(n_T_terms),
         "n_constraints": int(len(rhs_con)),
         "constraint_violation_max": violation_max,
+        "convexity_violation_max": convexity_violation_max,
         "success": success,
     }
 
@@ -3784,6 +4020,10 @@ class PhaseDiagram:
         rk_order=3,
         T_min=298.15,
         T_max=None,
+        L_temperature_form="poly6",
+        limited_rk_order=None,
+        limited_L_n_terms=3,
+        limited_fit_order=4,
         full_range_ridge_lambda=100.0,
         compound_anti_site_penalty=80000.0,
         compound_pure_sublattice_penalty=80000.0,
@@ -3808,8 +4048,14 @@ class PhaseDiagram:
           (drops melting points by hundreds of K).
         - Phases listed in ``line_compounds`` are 2-sublattice ``A:B``
           with a single 6-term polynomial G(T) per formula unit.
-        - All Redlich-Kister L parameters are written as ``a + b·T``
-          (standard SGTE convention; see :ref:`LIMITATIONS` below).
+        - Full-range phases' Redlich-Kister L parameters are written with
+          the temperature dependence chosen by ``L_temperature_form``:
+          the exact six-term polynomials from
+          :meth:`build_calphad_surface` (``"poly6"``, default — the TDB
+          then reproduces calphy's G(x,T) surface *exactly* inside the
+          validity range) or a ridge-regularised ``a + b·T`` refit
+          (``"linear"``, the standard SGTE convention).  Limited-range
+          phases always use ``a + b·T`` from the bounded fit.
 
         A JSON metadata comment (``$ CALPHY_TDB_METADATA``) is embedded
         in the header so :meth:`from_tdb` can recover phase classification
@@ -3832,13 +4078,55 @@ class PhaseDiagram:
             ``T_max`` defaults to the max temperature found in ``self.df``
             — pycalphad extrapolates blindly beyond this, so leaving it
             tight to the actual MD range is the conservative choice.
+        L_temperature_form : str
+            Temperature form for full-range solution phases' L_k(T)
+            parameters.
+
+            ``"poly6"`` (default)
+                Write the six-term CALPHAD polynomials fitted by
+                :meth:`build_calphad_surface` verbatim.  The TDB free
+                energy of every full-range phase is then *identical* to
+                calphy's own CALPHAD surface, so a pycalphad phase
+                diagram computed from the TDB matches
+                ``calculate(calphad_surface=True)`` inside the validity
+                range.  Do not evaluate the TDB outside
+                ``[T_min, T_max]`` — the polynomial tails are unbounded.
+            ``"linear"``
+                Legacy SGTE-style refit of each L_k as ``a + b·T`` with
+                Tikhonov ridge regularisation
+                (``full_range_ridge_lambda``).  Smoother extrapolation
+                but drifts up to tens of meV/atom from the calphy
+                surface, visibly narrowing e.g. the solid–liquid lens.
+        limited_rk_order : int, optional
+            RK order for limited-range phases' bounded fit.  By default
+            the order is auto-selected per phase: the lowest of
+            (3, 4, 5, 6) that fits the phase's pseudo-data to better
+            than ~1 meV/atom RMS (wider composition windows need more
+            terms — an underfit well overstabilises the phase and
+            pushes its dissolution temperature up by ~100 K, an overfit
+            one adds interior wiggle).  Pass an integer to force a
+            fixed order instead.
+        limited_L_n_terms : int
+            T-basis terms per L_k in the bounded fit: ``2`` → a + b·T,
+            ``3`` → a + b·T + c·T·lnT (default).  Three terms follow
+            the curvature of the stability window in T.
+        limited_fit_order : int
+            Polynomial order of the per-temperature smoothing fit used
+            to generate dense pseudo-data for limited-range phases
+            (default 4 — the same default :meth:`calculate` uses for
+            narrow phases).  The RK model is fit against these smooth
+            per-T curves rather than the raw composition points, which
+            keeps the well-minimum location — and hence the shape of
+            the single-phase window near the dome top — faithful to
+            calphy's own construction.
         full_range_ridge_lambda : float
             Tikhonov ridge weight used in refitting full-range solution
-            phases' L_k(T) as ``a + b·T``.  Plain LSQ on noisy liquid data
-            gives unstable huge cancelling magnitudes that produce wavy
-            liquidi and spurious miscibility gaps on extrapolation; the
-            ridge bounds the magnitudes.  Default ``100`` — increase for
-            smoother (and less data-faithful) L; decrease for more
+            phases' L_k(T) as ``a + b·T`` when
+            ``L_temperature_form="linear"``.  Plain LSQ on noisy liquid
+            data gives unstable huge cancelling magnitudes that produce
+            wavy liquidi and spurious miscibility gaps on extrapolation;
+            the ridge bounds the magnitudes.  Default ``100`` — increase
+            for smoother (and less data-faithful) L; decrease for more
             data-faithful (and possibly less stable) L.
         compound_anti_site_penalty, compound_pure_sublattice_penalty : float
             Reserved for the 2-sublattice CEF (A,B):(A,B) compound code
@@ -3850,17 +4138,16 @@ class PhaseDiagram:
         -----------------------
         The TDB is a *lossy projection* of the calphy MD data:
 
-        1. **L_k refit is regularised.** Full-range solution phases'
-           ``L_k(T)`` from :meth:`build_calphad_surface` is a 6-term
-           polynomial in T.  Before writing, those L_k are refit as
-           ``a + b·T`` with Tikhonov ridge regularisation
-           (``full_range_ridge_lambda``).  This trades data-fit accuracy
-           (inside the calphy T range) for smoother T extrapolation and
-           matches the standard SGTE convention for L parameters.  In
-           practice the per-point ``G(x,T)`` drift is O(1 mJ/mol) for
-           well-sampled phases (FCC) and up to ~40 meV/atom for noisy
-           ones (LQD).  Diagrams plotted within the TDB's T validity
-           range remain qualitatively correct.
+        1. **Full-range phases are exact only in poly6 mode.** With the
+           default ``L_temperature_form="poly6"`` the full-range solution
+           phases' G(x,T) in the TDB equals calphy's CALPHAD surface
+           exactly (same 6-term pure-element G and L_k polynomials).
+           With ``"linear"``, L_k are refit as ``a + b·T`` with Tikhonov
+           ridge regularisation (``full_range_ridge_lambda``), trading
+           data-fit accuracy for smoother T extrapolation: the per-point
+           ``G(x,T)`` drift is a few meV/atom for well-sampled phases
+           (FCC) and up to ~20-40 meV/atom for noisy ones (LQD), which
+           visibly distorts the solid-liquid lens.
 
         2. **Limited-range phases use a bounded SLSQP fit**, not the
            original ``build_calphad_surface`` (which has no surface for
@@ -3893,6 +4180,11 @@ class PhaseDiagram:
                 raise ValueError(
                     f"line_compound '{ph}' is not in self.phases {self.phases}"
                 )
+        if L_temperature_form not in ("poly6", "linear"):
+            raise ValueError(
+                "L_temperature_form must be 'poly6' or 'linear', got "
+                f"{L_temperature_form!r}"
+            )
 
         # ---- Element handling ----
         if elements is None:
@@ -3983,22 +4275,29 @@ class PhaseDiagram:
                         f"Phase '{ph}': calphad surface unavailable; skipping."
                     )
                     continue
-                # Fit L_k with linear T + ridge against the phase's own
-                # 6-term pure-element G.  Both host and non-host
-                # full-range phases keep independent 6-term G for their
-                # pure endpoints — forcing a non-host phase's pure G to
-                # be GHSER + linear-offset loses too much curvature for
-                # noisy MD data (e.g. pure-Au LQD melting drifted by
-                # >200 K).  GHSER FUNCTION blocks are still emitted and
-                # used by the host phase and by limited-range phases
-                # (which by construction share the host's pure G).
-                phase_data = self.df.loc[self.df["phase"] == ph]
-                linear_fit = _fit_solution_linear_L_regularized(
-                    phase_data, s, rk_order=rk_order,
-                    lam=full_range_ridge_lambda,
-                    fit_pure_element_offsets=False,
-                )
-                records.append({"name": ph, "kind": "solution", "fit": linear_fit})
+                # Both host and non-host full-range phases keep
+                # independent 6-term G for their pure endpoints —
+                # forcing a non-host phase's pure G to be GHSER +
+                # linear-offset loses too much curvature for noisy MD
+                # data (e.g. pure-Au LQD melting drifted by >200 K).
+                # GHSER FUNCTION blocks are still emitted and used by
+                # the host phase and by limited-range phases (which by
+                # construction share the host's pure G).
+                if L_temperature_form == "poly6":
+                    # Write the build_calphad_surface fit verbatim: the
+                    # TDB G(x,T) is then identical to calphy's surface.
+                    records.append({"name": ph, "kind": "solution", "fit": s})
+                else:
+                    # Legacy: refit L_k as a + b·T with ridge.
+                    phase_data = self.df.loc[self.df["phase"] == ph]
+                    linear_fit = _fit_solution_linear_L_regularized(
+                        phase_data, s, rk_order=rk_order,
+                        lam=full_range_ridge_lambda,
+                        fit_pure_element_offsets=False,
+                    )
+                    records.append(
+                        {"name": ph, "kind": "solution", "fit": linear_fit}
+                    )
             else:
                 # 1-sublattice (A,B) RK with hard inequality
                 # G_phase(x, T) >= G_host(x, T) enforced outside the data
@@ -4010,13 +4309,69 @@ class PhaseDiagram:
                 # — collapses to a near-line-compound appearance with
                 # default penalties, losing the solubility window that
                 # calphy data captures.
-                points = _phase_data_as_points(self.df, ph)
-                fit = _fit_limited_range_surface_bounded(
-                    points,
-                    host_surface,
-                    rk_order=rk_order,
-                    constraint_T_range=(T_min, T_max),
+                # Prefer dense pseudo-data from calphy's own per-T
+                # polynomial fits (same smoothing calculate() uses for
+                # narrow phases): it pins the RK well's interior shape,
+                # keeping the well-minimum location faithful to the data
+                # near the order-disorder dome top.  Fall back to the
+                # raw points if the per-T fit is not possible (too few
+                # compositions).
+                points = _limited_phase_pseudo_points(
+                    self.df,
+                    ph,
+                    self.composition_intervals.get(ph, (0.0, 1.0)),
+                    fit_order=limited_fit_order,
                 )
+                if points is None:
+                    points = _phase_data_as_points(self.df, ph)
+                n_x = int(points["composition"].nunique())
+                if limited_rk_order is not None:
+                    rk_candidates = [int(limited_rk_order)]
+                else:
+                    # Auto-select the RK order: wider windows need more
+                    # terms (au2cu spanning Δx=0.2 needs order 5 where
+                    # aucu at Δx=0.1 is fine with 4).
+                    rk_candidates = [
+                        rk for rk in (3, 4, 5, 6) if rk <= max(1, n_x - 1)
+                    ] or [max(1, n_x - 1)]
+
+                # The phase-diagram-relevant scalar is the dissolution
+                # temperature — where the well's minimum depth below the
+                # host crosses zero.  Pick the RK order that reproduces
+                # the pseudo-data's crossing best (an underfit well is
+                # too deep at mid-T and pushes the dissolution up by
+                # tens of K); fall back to RMS if the phase never
+                # dissolves inside the data range.
+                T_d, depth_d = _limited_phase_min_depth_by_T(
+                    points, host_surface
+                )
+                T_cross_data = _first_zero_crossing(T_d, depth_d)
+                fit = None
+                best_key = None
+                for rk_ph in rk_candidates:
+                    trial = _fit_limited_range_surface_bounded(
+                        points,
+                        host_surface,
+                        rk_order=rk_ph,
+                        n_T_terms=limited_L_n_terms,
+                        constraint_T_range=(T_min, T_max),
+                    )
+                    if T_cross_data is not None:
+                        T_f, depth_f = _limited_phase_min_depth_by_T(
+                            points, host_surface, fit=trial
+                        )
+                        T_cross_fit = _first_zero_crossing(T_f, depth_f)
+                        dT = (
+                            abs(T_cross_fit - T_cross_data)
+                            if T_cross_fit is not None
+                            else float("inf")
+                        )
+                        key = (dT, trial["rms_j_mol"])
+                    else:
+                        key = (0.0, trial["rms_j_mol"])
+                    if best_key is None or key < best_key:
+                        best_key = key
+                        fit = trial
                 if fit.get("constraint_violation_max", 0.0) > 1e-4:
                     warnings.warn(
                         f"Phase '{ph}': bounded fit could not fully satisfy "
@@ -4042,6 +4397,13 @@ class PhaseDiagram:
             "line_compounds": line_compounds,
             "host_phase": host_phase,
             "rk_order": int(rk_order),
+            "L_temperature_form": L_temperature_form,
+            "limited_rk_order": {
+                r["name"]: int(r["fit"]["rk_order"])
+                for r in records
+                if r["kind"] == "limited_range"
+            },
+            "limited_L_n_terms": int(limited_L_n_terms),
             "T_min": T_min,
             "T_max": T_max,
             "units": "J/mol-atoms",
@@ -4235,7 +4597,9 @@ class PhaseDiagram:
             elif rec["kind"] == "limited_range":
                 # 1-sublattice (A,B):VA, sharing GHSER with the host
                 # (the bounded fit set coeffs_A/B equal to the host's).
-                # L_k(T) is linear in T from the SLSQP-bounded fit.
+                # L_k(T) comes from the SLSQP-bounded fit — either
+                # linear (a + b·T) or zero-padded poly6 with a T·lnT
+                # term, depending on limited_L_n_terms.
                 lines.append(
                     f"PARAMETER G({tdb_name},{el_a}:VA;0) {T_min:.2f} "
                     f"+{ghser_name_a}#; {T_max:.2f} N !"
@@ -4246,9 +4610,12 @@ class PhaseDiagram:
                 )
                 L = np.asarray(fit["L_coeffs"], dtype=float)
                 for k in range(L.shape[0]):
-                    a = L[k, 0] * EV_TO_J_MOL
-                    b = L[k, 1] * EV_TO_J_MOL
-                    expr = _format_tdb_expr_linear(a, b)
+                    if L.shape[1] == 6:
+                        expr = _format_tdb_expr_poly6(L[k] * EV_TO_J_MOL)
+                    else:
+                        a = L[k, 0] * EV_TO_J_MOL
+                        b = L[k, 1] * EV_TO_J_MOL
+                        expr = _format_tdb_expr_linear(a, b)
                     lines.append(
                         f"PARAMETER L({tdb_name},{el_a},{el_b}:VA;{k}) "
                         f"{T_min:.2f} {expr}; {T_max:.2f} N !"
