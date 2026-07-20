@@ -33,12 +33,14 @@ dependencies = [
     "scipy",
     "pydantic>=2.3.0",
     "pyscal3",
-    "pylammpsmpi>0.4.1"
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
 materials-project = ["mp_api"]
+# execution_mode: library -- drives LAMMPS through pylammpsmpi instead of the
+# lmp binary. Also needs the `lammps` python module (e.g. conda-forge lammps).
+library = ["pylammpsmpi>0.4.1"]
 
 [project.urls]
 Homepage = "https://github.com/ICAMS/calphy"
@@ -48,12 +50,13 @@ Repository = "https://github.com/ICAMS/calphy"
 [project.scripts]
 calphy = "calphy.kernel:main"
 calphy_kernel = "calphy.queuekernel:main"
-calphy_run_averaging = "calphy.clitools:run_averaging"
-calphy_process_averaging = "calphy.clitools:process_averaging"
-calphy_run_integration = "calphy.clitools:run_integration"
-calphy_process_integration = "calphy.clitools:process_integration"
-calphy_convert_input = "calphy.clitools:convert_legacy_inputfile"
 calphy_phase_diagram = "calphy.clitools:phase_diagram"
+
+[tool.pytest.ini_options]
+markers = [
+    "lammps: integration test that runs the real LAMMPS binary (skipped when no lmp resolves)",
+    "slow: slow integration test (the heavier end-to-end scenarios)",
+]
 
 [tool.setuptools.packages.find]
 include = ["calphy", "calphy.*"]

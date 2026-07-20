@@ -1,0 +1,20 @@
+units metal
+boundary p p p
+atom_style atomic
+timestep 0.001
+echo log
+pair_style eam/alloy
+read_data conf.equilibration.data
+pair_coeff * * tests/Cu01.eam.alloy Cu
+mass 1 63.546
+run 0
+change_box all x final 0.0 18.075000 y final 0.0 18.075000 z final 0.0 18.075000 remap units box
+fix 1 all npt temp 400.000000 400.000000 0.100000 iso 0.000000 0.000000 0.100000
+run 2500
+unfix 1
+variable dU equal pe/atoms
+fix f2 all npt temp 400.000000 700.000000 0.100000 iso 0.000000 0.000000 0.100000
+fix fp all print 1 "${dU} $(press) $(vol) $(temp)" title "# dU[eV/atom] press[bar] vol[A^3] temp[K]" screen no file prescan.forward.dat
+run 20000
+unfix fp
+unfix f2

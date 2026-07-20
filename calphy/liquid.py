@@ -49,7 +49,7 @@ class Liquid(cph.Phase):
 
     """
 
-    def __init__(self, calculation=None, simfolder=None, log_to_screen=False, lmp=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
         """
         Set up class
         """
@@ -58,7 +58,6 @@ class Liquid(cph.Phase):
             calculation=calculation,
             simfolder=simfolder,
             log_to_screen=log_to_screen,
-            lmp=lmp,
         )
 
     def rattle_structure(self, lmp):
@@ -76,10 +75,9 @@ class Liquid(cph.Phase):
         lmp.command(
             "displace_atoms all random 0.1 0.1 0.1 %d" % np.random.randint(1, 10000)
         )
-        lmp.velocity(
-            "all create",
-            2.0 * self.calc._temperature_high,
-            np.random.randint(1, 10000),
+        lmp.command(
+            "velocity all create %f %d"
+            % (2.0 * self.calc._temperature_high, np.random.randint(1, 10000))
         )
         lmp.command(
             "fix              nh_rattle all nvt temp %f %f %f"
@@ -89,7 +87,7 @@ class Liquid(cph.Phase):
                 self.calc.md.thermostat_damping[1],
             )
         )
-        lmp.run(int(self.calc.md.n_small_steps))
+        lmp.command("run %d" % int(self.calc.md.n_small_steps))
         lmp.command("unfix            nh_rattle")
 
     def melt_structure(self, lmp):
@@ -114,13 +112,12 @@ class Liquid(cph.Phase):
                 % (self.calc._temperature_high, thmult)
             )
             factor = (self.calc._temperature_high / self.calc._temperature) * thmult
-            lmp.velocity(
-                "all create",
-                self.calc._temperature * factor,
-                np.random.randint(1, 10000),
+            lmp.command(
+                "velocity all create %f %d"
+                % (self.calc._temperature * factor, np.random.randint(1, 10000))
             )
             self.fix_nose_hoover(lmp, temp_start_factor=factor, temp_end_factor=factor)
-            lmp.run(int(self.calc.md.n_small_steps))
+            lmp.command("run %d" % int(self.calc.md.n_small_steps))
             self.unfix_nose_hoover(lmp)
 
             self.dump_current_snapshot(lmp, "traj.melt")
@@ -135,12 +132,7 @@ class Liquid(cph.Phase):
         # if melting cycle is over and still not melted, raise error
         if not melted:
             self.lammps_close(lmp=lmp)
-            # Preserve log file
-            logfile = os.path.join(self.simfolder, "log.lammps")
-            try:
-                os.rename(logfile, os.path.join(self.simfolder, "melting.log.lammps"))
-            except OSError as e:
-                self.logger.warning(f"Failed to rename log file: {e}")
+            lmp.rotate_logs("melting")
             raise SolidifiedError(
                 "Liquid system did not melt, maybe try a higher thigh temperature."
             )
@@ -167,23 +159,8 @@ class Liquid(cph.Phase):
         is calculated.
         At the end of the run, the averaged box dimensions are calculated.
         """
-        if self.calc.script_mode and self.calc.melting_cycle:
-            raise ValueError(
-                "melting_cycle requires Python-driven solid-fraction checks and "
-                "is not supported in script_mode. Use rattle (melting_cycle: False) "
-                "or run with script_mode: False."
-            )
-
         # create lammps object
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         lmp = ph.set_pair_style(lmp, self.calc)
 
@@ -195,8 +172,9 @@ class Liquid(cph.Phase):
         lmp = ph.set_mass(lmp, self.calc)
 
         # Melt regime for the liquid
-        lmp.velocity(
-            "all create", self.calc._temperature_high, np.random.randint(1, 10000)
+        lmp.command(
+            "velocity all create %f %d"
+            % (self.calc._temperature_high, np.random.randint(1, 10000))
         )
 
         # add some computes
@@ -224,25 +202,14 @@ class Liquid(cph.Phase):
         else:
             self.run_constrained_pressure_convergence(lmp)
 
-        if not self.calc.script_mode:
-            # check melted error
-            self.dump_current_snapshot(lmp, "traj.equilibration_stage1.dat")
-            self.check_if_solidfied(lmp, "traj.equilibration_stage1.dat")
-            self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
+        # check melted error
+        self.dump_current_snapshot(lmp, "traj.equilibration_stage1.dat")
+        self.check_if_solidfied(lmp, "traj.equilibration_stage1.dat")
+        self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
         lmp = ph.write_data(lmp, "conf.equilibration.data")
 
-        if self.calc.script_mode:
-            file = os.path.join(self.simfolder, "averaging.lmp")
-            lmp.write(file)
-            return
-
         self.lammps_close(lmp=lmp)
-        # Preserve log file
-        logfile = os.path.join(self.simfolder, "log.lammps")
-        try:
-            os.rename(logfile, os.path.join(self.simfolder, "averaging.log.lammps"))
-        except OSError as e:
-            self.logger.warning(f"Failed to rename log file: {e}")
+        lmp.rotate_logs("averaging")
 
     def run_integration(self, iteration=1):
         """
@@ -262,15 +229,7 @@ class Liquid(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         # Adiabatic switching parameters.
         lmp.command("variable        li       equal   1.0")
@@ -372,7 +331,9 @@ class Liquid(cph.Phase):
         lmp.command("fix_modify       f2 temp Tcm")
 
         lmp.command(
-            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file %s'
+            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" '
+            'title "# dU_sys[eV/atom] dU_ref[eV/atom] lambda" '
+            "screen no file %s"
             % (leg1_fwd % iteration)
         )
         lmp.command("run               %d" % self.calc._n_switching_steps)
@@ -469,7 +430,9 @@ class Liquid(cph.Phase):
         lmp.command("fix_modify       f2 temp Tcm")
 
         lmp.command(
-            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file %s'
+            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" '
+            'title "# dU_sys[eV/atom] dU_ref[eV/atom] lambda" '
+            "screen no file %s"
             % (leg1_bkd % iteration)
         )
         lmp.command("run               %d" % self.calc._n_switching_steps)
@@ -487,19 +450,9 @@ class Liquid(cph.Phase):
         if self._is_two_leg:
             self._run_leg2(lmp, iteration)
 
-        if self.calc.script_mode:
-            file = os.path.join(self.simfolder, "integration.lmp")
-            lmp.write(file)
-            return
-
         # close object
         self.lammps_close(lmp=lmp)
-        # Preserve log file
-        logfile = os.path.join(self.simfolder, "log.lammps")
-        try:
-            os.rename(logfile, os.path.join(self.simfolder, "integration.log.lammps"))
-        except OSError as e:
-            self.logger.warning(f"Failed to rename log file: {e}")
+        lmp.rotate_logs("integration")
 
     def _run_leg2(self, lmp, iteration):
         """
@@ -586,7 +539,9 @@ class Liquid(cph.Phase):
         # FWD: multi -> single
         setup_dual_ufm(forward=True)
         lmp.command(
-            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file forward_leg2_%d.dat'
+            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" '
+            'title "# dU_sys[eV/atom] dU_ref[eV/atom] lambda" '
+            "screen no file forward_leg2_%d.dat"
             % iteration
         )
         lmp.command("run               %d" % self.calc._n_switching_steps)
@@ -613,7 +568,9 @@ class Liquid(cph.Phase):
         # BKD: single -> multi
         setup_dual_ufm(forward=False)
         lmp.command(
-            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" screen no file backward_leg2_%d.dat'
+            'fix              f3 all print 1 "${dU1} ${dU2} ${flambda}" '
+            'title "# dU_sys[eV/atom] dU_ref[eV/atom] lambda" '
+            "screen no file backward_leg2_%d.dat"
             % iteration
         )
         lmp.command("run               %d" % self.calc._n_switching_steps)
@@ -688,6 +645,7 @@ class Liquid(cph.Phase):
         self.fref = f1
         self.fideal = f2
         self.w = w
+        self.qdiss = q
 
         # add pressure contribution if required
         if self.calc._pressure != 0:

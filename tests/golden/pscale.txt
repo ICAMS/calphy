@@ -1,0 +1,35 @@
+units metal
+boundary p p p
+atom_style atomic
+timestep 0.001
+echo log
+variable li equal 1.000000
+variable lf equal 50000.000000
+variable p0 equal 0.000000
+variable pf equal 50000.000000
+pair_style eam/alloy
+read_data conf.equilibration.data
+pair_coeff * * tests/Cu01.eam.alloy Cu
+mass 1 63.546
+run 0
+change_box all x final 0.0 18.075000 y final 0.0 18.075000 z final 0.0 18.075000 remap units box
+fix 1 all npt temp 500.000000 500.000000 0.100000 iso 0.000000 0.000000 0.100000
+run 2500
+unfix 1
+variable step equal step
+variable dU equal pe/atoms
+variable lambda equal ramp(${li},${lf})
+variable pp equal ramp(${p0},${pf})
+fix f2 all npt temp 500.000000 500.000000 0.100000 iso 0.000000 50000.000000 0.100000
+fix f3 all print 1 "${dU} ${pp} $(vol) ${lambda}" title "# dU[eV/atom] press[bar] vol[A^3] lambda" screen no file ps.forward_1.dat
+run 5000
+unfix f2
+unfix f3
+fix 1 all npt temp 500.000000 500.000000 0.100000 iso 50000.000000 50000.000000 0.100000
+run 2500
+unfix 1
+variable lambda equal ramp(${lf},${li})
+variable pp equal ramp(${pf},${p0})
+fix f2 all npt temp 500.000000 500.000000 0.100000 iso 50000.000000 0.000000 0.100000
+fix f3 all print 1 "${dU} ${pp} $(vol) ${lambda}" title "# dU[eV/atom] press[bar] vol[A^3] lambda" screen no file ps.backward_1.dat
+run 5000

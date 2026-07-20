@@ -69,7 +69,6 @@ def test_qtb_user_parameters_round_trip(tmp_path):
         "barostat_damping": 0.2,
         "f_max": 30.0,
         "n_f": 50,
-        "seed": 12345,
     }
     fn = _write_yaml(tmp_path, {"calculations": [calc]})
     [opts] = read_inputfile(fn)
@@ -78,7 +77,6 @@ def test_qtb_user_parameters_round_trip(tmp_path):
     assert qtb.barostat_damping == pytest.approx(0.2)
     assert qtb.f_max == pytest.approx(30.0)
     assert qtb.n_f == 50
-    assert qtb.seed == 12345
 
 
 def test_fe_qtb_rejects_liquid_reference(tmp_path):

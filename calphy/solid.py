@@ -51,23 +51,16 @@ class Solid(cph.Phase):
 
     """
 
-    def __init__(self, calculation=None, simfolder=None, log_to_screen=False, lmp=None):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
 
         # call base class
         super().__init__(
             calculation=calculation,
             simfolder=simfolder,
             log_to_screen=log_to_screen,
-            lmp=lmp,
         )
 
     def run_spring_constant_convergence(self, lmp):
-        if self.calc.script_mode:
-            self.run_minimal_spring_constant_convergence(lmp)
-        else:
-            self.run_iterative_spring_constant_convergence(lmp)
-
-    def run_iterative_spring_constant_convergence(self, lmp):
         """ """
         if self.calc._qtb:
             qtb = self.calc.quantum_thermal_bath
@@ -100,7 +93,8 @@ class Solid(cph.Phase):
             laststd = 0.00
             for i in range(self.calc.md.n_cycles):
                 lmp.command("run              %d" % int(self.calc.md.n_small_steps))
-                k_mean, k_std = self.analyse_spring_constants()
+                lmp.sync()  # flush before analyse_spring_constants reads msd.dat
+                k_mean, k_std = self.analyse_spring_constants(lmp)
                 self.logger.info(
                     "At count %d mean k is %f std is %f" % (i + 1, k_mean[0], k_std[0])
                 )
@@ -127,25 +121,20 @@ class Solid(cph.Phase):
             lmp.command("unfix         3q")
         lmp.command("unfix         3")
 
-    def analyse_spring_constants(self):
+    def analyse_spring_constants(self, lmp):
         """
         Analyse spring constant routine
         """
-        if self.calc.script_mode:
-            ncount = int(self.calc.md.n_small_steps) // int(
-                self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
-            )
-        else:
-            ncount = int(self.calc.n_equilibration_steps) // int(
-                self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
-            )
+        ncount = int(self.calc.n_equilibration_steps) // int(
+            self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
+        )
 
-        # now we can check if it converted
-        file = os.path.join(self.simfolder, "msd.dat")
+        # now we can check if it converted; read cumulative msd.dat across segments
+        msd = lmp.read_timeseries("msd.dat")
         k_mean = []
         k_std = []
         for i in range(self.calc.n_elements):
-            quant = np.loadtxt(file, usecols=(i + 1,), unpack=True)[-ncount + 1 :]
+            quant = msd[:, i + 1][-ncount + 1 :]
             mean_quant = np.round(np.mean(quant), decimals=2)
             std_quant = np.round(np.std(quant), decimals=2)
             if mean_quant == 0:
@@ -178,53 +167,6 @@ class Solid(cph.Phase):
         self.logger.info("finalized sprint constants")
         self.logger.info(self.k)
 
-    def run_minimal_spring_constant_convergence(self, lmp):
-        """ """
-        if self.calc._qtb:
-            qtb = self.calc.quantum_thermal_bath
-            lmp.command("fix              3 all nve")
-            lmp.command(
-                "fix              3q all qtb temp %f damp %f seed %d f_max %f N_f %d"
-                % (
-                    self.calc._temperature,
-                    qtb.thermostat_damping,
-                    np.random.randint(1, 10**8),
-                    qtb.f_max,
-                    qtb.n_f,
-                )
-            )
-        else:
-            lmp.command(
-                "fix              3 all nvt temp %f %f %f"
-                % (
-                    self.calc._temperature,
-                    self.calc._temperature,
-                    self.calc.md.thermostat_damping[1],
-                )
-            )
-
-        # apply fix
-        lmp = ph.compute_msd(lmp, self.calc)
-
-        if ph.check_if_any_is_none(self.calc.spring_constants):
-            # similar averaging routine
-            lmp.command("run              %d" % int(self.calc.md.n_small_steps))
-            lmp.command("run              %d" % int(self.calc.n_equilibration_steps))
-
-        else:
-            if not (len(self.calc.spring_constants) == self.calc.n_elements):
-                raise ValueError(
-                    "Spring constant input length should be same as number of elements, spring constant length %d, # elements %d"
-                    % (len(self.calc.spring_constants), self.calc.n_elements)
-                )
-
-            # still run a small NVT cycle
-            lmp.command("run              %d" % int(self.calc.md.n_small_steps))
-
-        if self.calc._qtb:
-            lmp.command("unfix         3q")
-        lmp.command("unfix         3")
-
     def run_averaging(self):
         """
         Run averaging routine
@@ -247,43 +189,8 @@ class Solid(cph.Phase):
         is calculated.
         At the end of the run, the averaged box dimensions are calculated.
         """
-        if self.calc.script_mode:
-            self.run_minimal_averaging()
-        else:
-            self.run_interactive_averaging()
 
-    def run_interactive_averaging(self):
-        """
-        Run averaging routine
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        Run averaging routine using LAMMPS. Starting from the initial lattice two different routines can
-        be followed:
-        If pressure is specified, MD simulations are run until the pressure converges within the given
-        threshold value.
-        If `fix_lattice` option is True, then the input structure is used as it is and the corresponding pressure
-        is calculated.
-        At the end of the run, the averaged box dimensions are calculated.
-        """
-
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         # set up potential
         lmp = ph.set_pair_style(lmp, self.calc)
@@ -333,100 +240,7 @@ class Solid(cph.Phase):
         lmp = ph.write_data(lmp, "conf.equilibration.data")
         # close object and process traj
         self.lammps_close(lmp=lmp)
-        # Preserve log file
-        logfile = os.path.join(self.simfolder, "log.lammps")
-        try:
-            if os.path.exists(logfile):
-                os.rename(logfile, os.path.join(self.simfolder, "averaging.log.lammps"))
-        except OSError as e:
-            self.logger.warning(f"Failed to rename log file: {e}")
-
-    def run_minimal_averaging(self):
-        """
-        Run averaging routine
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        Run averaging routine using LAMMPS. Starting from the initial lattice two different routines can
-        be followed:
-        If pressure is specified, MD simulations are run until the pressure converges within the given
-        threshold value.
-        If `fix_lattice` option is True, then the input structure is used as it is and the corresponding pressure
-        is calculated.
-        At the end of the run, the averaged box dimensions are calculated.
-        """
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode,
-            lmp=self._lmp,
-        )
-
-        # set up potential
-        lmp = ph.set_pair_style(lmp, self.calc)
-
-        # set up structure
-        lmp = ph.create_structure(lmp, self.calc)
-
-        lmp = ph.set_pair_coeff(lmp, self.calc)
-        lmp = ph.set_mass(lmp, self.calc)
-
-        # add some computes
-        lmp.command("variable         mvol equal vol")
-        lmp.command("variable         mlx equal lx")
-        lmp.command("variable         mly equal ly")
-        lmp.command("variable         mlz equal lz")
-        lmp.command("variable         mpress equal press")
-        lmp.command("variable         mpe equal pe/atoms")
-        lmp.command("variable         metotal equal etotal/atoms")
-        lmp.command("variable         mtemp equal temp")
-
-        # Run if a constrained lattice is not needed
-        if not self.calc._fix_lattice:
-            if self.calc._pressure == 0:
-                self.run_zero_pressure_equilibration(lmp)
-            else:
-                self.run_finite_pressure_equilibration(lmp)
-
-            # this is when the averaging routine starts
-            self.run_pressure_convergence(lmp)
-
-            # dump snapshot and check if melted
-            self.dump_current_snapshot(lmp, "traj.equilibration_stage1.dat")
-
-        # run if a constrained lattice is used
-        else:
-            # routine in which lattice constant will not varied, but is set to a given fixed value
-            self.run_constrained_pressure_convergence(lmp)
-
-        # start MSD calculation routine
-        # there two possibilities here - if spring constants are provided, use it. If not, calculate it
-        self.run_spring_constant_convergence(lmp)
-
-        # check for melting
-        self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
-        lmp = ph.write_data(lmp, "conf.equilibration.data")
-        # close object and process traj
-
-        # now serialise script
-        file = os.path.join(self.simfolder, "averaging.lmp")
-        lmp.write(file)
-
-    def process_averaging_results(self):
-        k_m, k_s = self.analyse_spring_constants()
-        self.assign_spring_constants(k_m)
-        self.finalise_pressure()
+        lmp.rotate_logs("averaging")
 
     def run_integration(self, iteration=1):
         """
@@ -446,15 +260,7 @@ class Solid(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
-        lmp = ph.create_object(
-            cores=self.cores,
-            directory=self.simfolder,
-            timestep=self.calc.md.timestep,
-            cmdargs=self.calc.md.cmdargs,
-            init_commands=self.calc.md.init_commands,
-            script_mode=self.calc.script_mode,
-            lmp=self._lmp,
-        )
+        lmp = ph.create_object(self.calc, self.simfolder)
 
         # set up potential
         lmp = ph.set_pair_style(lmp, self.calc)
@@ -564,7 +370,15 @@ class Solid(cph.Phase):
 
         str2.append('${lambda}"')
         str2 = " ".join(str2)
-        str3 = " screen no file forward_%d.dat" % iteration
+        title_cols = (
+            ["dU_sys[eV/atom]"]
+            + ["dU_ref%d[eV/atom]" % (i + 1) for i in range(self.calc.n_elements)]
+            + ["lambda"]
+        )
+        str3 = ' title "# %s" screen no file forward_%d.dat' % (
+            " ".join(title_cols),
+            iteration,
+        )
         command = str1 + str2 + str3
         lmp.command(command)
 
@@ -608,7 +422,15 @@ class Solid(cph.Phase):
 
         str2.append('${lambda}"')
         str2 = " ".join(str2)
-        str3 = " screen no file backward_%d.dat" % iteration
+        title_cols = (
+            ["dU_sys[eV/atom]"]
+            + ["dU_ref%d[eV/atom]" % (i + 1) for i in range(self.calc.n_elements)]
+            + ["lambda"]
+        )
+        str3 = ' title "# %s" screen no file backward_%d.dat' % (
+            " ".join(title_cols),
+            iteration,
+        )
         command = str1 + str2 + str3
         lmp.command(command)
 
@@ -642,20 +464,8 @@ class Solid(cph.Phase):
         #    lmp.command("unfix swap2")
 
         # close object
-        if not self.calc.script_mode:
-            self.lammps_close(lmp=lmp)
-            # Preserve log file
-            logfile = os.path.join(self.simfolder, "log.lammps")
-            try:
-                if os.path.exists(logfile):
-                    os.rename(
-                        logfile, os.path.join(self.simfolder, "integration.log.lammps")
-                    )
-            except OSError as e:
-                self.logger.warning(f"Failed to rename log file: {e}")
-        else:
-            file = os.path.join(self.simfolder, "integration.lmp")
-            lmp.write(file)
+        self.lammps_close(lmp=lmp)
+        lmp.rotate_logs("integration")
 
     def thermodynamic_integration(self):
         """
@@ -692,6 +502,7 @@ class Solid(cph.Phase):
         self.feinstein = fe
         self.fcm = fcm
         self.w = w
+        self.qdiss = q
         self.ferr = qerr
 
         # add pressure contribution if required

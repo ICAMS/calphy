@@ -1,0 +1,27 @@
+calculations:
+- element: Cu
+  lattice: fcc
+  mass: 63.546
+  equilibration_control: berendsen
+  md:
+    timestep: 0.001
+  mode: ts
+  n_equilibration_steps: 10000
+  n_iterations: 1
+  n_switching_steps: 50000
+  pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
+  pair_style: eam/alloy
+  pressure: 0.0
+  queue:
+    commands:
+    - conda activate calphy-dev
+    cores: 4
+    scheduler: local
+  reference_phase: solid
+  repeat:
+  - 10
+  - 10
+  - 10
+  temperature:
+  - 400.0
+  - 1200.0

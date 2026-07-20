@@ -1,0 +1,5 @@
+# tests/fixtures/ holds committed Part 0.3 reference data (an immutable contract used by
+# the Part 2 mock tests). Override the aggressive root .gitignore so these files are tracked.
+!*.dat
+!*.data
+!traj.*

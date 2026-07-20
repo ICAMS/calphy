@@ -5,35 +5,53 @@
 
 `calphy` can be installed on Linux and Mac OS based systems. On Windows systems, it is recommended to use  [Windows subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install).
 
+### How calphy uses LAMMPS
+
+calphy drives molecular dynamics with [LAMMPS](https://www.lammps.org/). As of calphy v2 it does this by default by **running an external `lmp` executable** as a subprocess — no LAMMPS Python library is needed. (A live-session library backend through `pylammpsmpi` is available as an opt-in; see [the library backend](library-backend) below.) In practice the default means:
+
+- You **bring your own `lmp` binary** (from conda-forge, an HPC module, a container, or a manual build).
+- calphy locates it at run time in this order:
+  1. the `lammps_executable` key in the input file,
+  2. the environment variable `$CALPHY_LAMMPS_EXECUTABLE`,
+  3. `lmp` on your `PATH`.
+- For parallel runs (`queue.cores > 1`) the MPI launcher is resolved the same way: `mpi_executable` → `$CALPHY_MPI_EXECUTABLE` → `mpirun` on `PATH`.
+
+Before the first simulation, calphy runs a quick **preflight** check (`lmp -h`) and reports, with a clear message, any LAMMPS package a calculation needs but the binary does not provide. Set `CALPHY_SKIP_PREFLIGHT=1` to bypass it.
+
 ### Normal installation
 
 ```{tab} Conda
 `conda install -c conda-forge calphy`
+
+The conda-forge package pulls in a `lammps` build that provides the `lmp` binary, so a full setup works out of the box.
 ```
 
 ```{tab} pip
 `pip install calphy`
+
+`pip` installs the Python package only — **you still need an `lmp` binary** on your `PATH` (see *Installing LAMMPS* below). For the optional library backend, use `pip install calphy[library]`.
 ```
 
 ```{tab} from repository
-`git clone https://github.com/ICAMS/calphy.git`  
-`cd calphy`  
+`git clone https://github.com/ICAMS/calphy.git`
+`cd calphy`
 `pip install .`
+
+As with `pip`, provide an `lmp` binary separately.
 ```
 
 ```{tab} Singularity
-A singularity containter can be used for running calphy locally or on HPC machines.
-The containerised environment contains all of the packages required to run calphy.
+A singularity container can be used for running calphy locally or on HPC machines.
+The containerised environment contains all of the packages required to run calphy, including the `lmp` binary.
 
 ### Downloading the container
 
-The containerised environemnt can be pulled from the repository with:       
+The containerised environment can be pulled from the repository with:
 `singularity pull --arch amd64 library://sebastianhavens/calphy/calphy:latest`
-
 
 [Calphy image repository](https://cloud.sylabs.io/library/sebastianhavens/calphy/calphy)
 
-### Ruinning jobs using the container
+### Running jobs using the container
 
 On HPC machines you can usually load the singularity module with:
 `module load singularity` if it is not already available.
@@ -42,7 +60,7 @@ You can initiate calculations using this container with the following line:
 
 `singularity exec --bind $PWD --pwd $PWD {location_of_.sif_image} calphy_kernel -i {input_file} -k 0`
 
-where `{location_of_.sif_image}` is the file location of the containerlised environment you just pulled and `{input_file}` is the name of your input file.
+where `{location_of_.sif_image}` is the file location of the containerised environment you just pulled and `{input_file}` is the name of your input file.
 This line can be placed within a slurm script.
 
 In the calphy input file, the scheduler should be set to local.<br>
@@ -51,49 +69,33 @@ For parallel calculations to run effectively, the OpenMPI module on the host sys
 ---
 ```
 
-
 ### Using a conda environment
 
 It is **strongly** recommended to install and use `calphy` within a conda environment. To see how you can install conda see [here](https://docs.conda.io/projects/conda/en/latest/user-guide/install/).
 
-Once a conda distribution is available, the following steps will help set up an environment to use `calphy`. First step is to clone the repository.
+Once a conda distribution is available, clone the repository and create the environment from the included file:
 
 ```
 git clone https://github.com/ICAMS/calphy.git
-```
-
-After cloning, an environment can be created from the included file-
-
-```
 cd calphy
 conda env create -f environment.yml
-```
-
-Note that the conda-forge distribution of LAMMPS will be automatically installed. Alternatively, you can use an existing version of LAMMPS (compiled as library). If a LAMMPS distribution need not be installed, use the  `calphy/environment-nolammps.yml` file instead to create the environment.
-This will install the necessary packages and create an environment called calphy. It can be activated by,
-
-```
 conda activate calphy
-```
-
-then, install `calphy` using,
-
-```
 pip install .
 ```
-The environment is now set up to run calphy.
+
+`environment.yml` installs the conda-forge `lammps` package (which ships the `lmp` binary calphy drives) together with `openmpi` (for `mpirun`). If you would rather supply your own `lmp` binary — e.g. an HPC module or a custom build — use `calphy/environment-nolammps.yml` instead, which creates the same environment without LAMMPS.
 
 ### Dependencies
 
 calphy requires Python ≥ 3.10 and the following packages (all installed automatically when using `pip install` or the supplied conda environment file):
 
-- [LAMMPS](https://www.lammps.org/) compiled as a Python library (`conda install -c conda-forge lammps`)
+- an external [LAMMPS](https://www.lammps.org/) **`lmp` binary** — *not* a pip/conda dependency; provide it yourself (see below)
 - `numpy >= 2`
 - `scipy`
 - `matplotlib`
 - `pyyaml`
 - `tqdm`
-- `pydantic`
+- `pydantic >= 2`
 - `mendeleev`
 - [`pyscal3`](https://pyscal.org/)
 
@@ -101,88 +103,152 @@ calphy requires Python ≥ 3.10 and the following packages (all installed automa
 
 - `pytest >= 7` for running the test-suite
 - `mp_api` for fetching structures from the [Materials Project](https://materialsproject.org/)
+- `pylammpsmpi` for the opt-in library backend (`pip install calphy[library]`, see [](library-backend))
 
-### About [LAMMPS](https://www.lammps.org/) for `calphy`
+## Installing LAMMPS
 
-calphy uses LAMMPS as the driver for molecular dynamics simulations. For calphy to work, LAMMPS needs to be compiled as a library along with the Python interface. The easiest way to do this is to install LAMMPS through the conda-forge channel using:
+calphy needs an `lmp` executable that includes the LAMMPS packages its methods rely on. For the default setup you do **not** need to build LAMMPS as a Python library — that is only required for the opt-in [library backend](library-backend) described at the end of this section.
+
+### Which LAMMPS packages calphy needs
+
+| calphy feature | LAMMPS package | provides |
+|---|---|---|
+| EAM / MEAM / most `pair_style`s | `MANYBODY` (and the relevant potential package) | your interatomic potential |
+| solid free energy, `ts`, `tscale` | `EXTRA-FIX` | `fix ti/spring` (Frenkel–Ladd spring) |
+| liquid free energy, `melting_temperature` | `EXTRA-PAIR` | `pair_style ufm`, `pair_style hybrid/scaled` |
+| Monte-Carlo swaps (`monte_carlo.n_swaps > 0`) | `MC` | `fix atom/swap` |
+| `mode: fe-qtb` (quantum thermal bath) | `QTB` | `fix qtb` |
+
+The preflight check verifies these for each calculation and tells you exactly which package to add if one is missing.
+
+### Option 1 — conda-forge (recommended)
 
 ```
 conda install -c conda-forge lammps
 ```
 
-Alternatively, when interatomic potentials with special compilation needs are to be used, a recent stable release of LAMMPS can be compiled manually using the following set of instructions.
+This provides an `lmp` binary with the common packages (MANYBODY, EXTRA-FIX, EXTRA-PAIR, MC). If you need `mode: fe-qtb`, check that the build includes the QTB package (`lmp -h | grep qtb`); if not, use a build/module that has it or compile one (below).
 
-In order to help with installing all the prerequisites, an environment file which does not include the LAMMPS distribution is also provided. **This is only required if you want use a conda environment.** This environment can be installed using:
+### Option 2 — an HPC module or existing binary
 
-```
-cd calphy
-conda env create -f environment-nolammps.yml
-```
-
-Activate the environment using:
+If your cluster already provides LAMMPS:
 
 ```
-conda activate calphy2
+module load lammps          # or your site's module name
 ```
 
-Obtain the stable version from [here](https://github.com/lammps/lammps/releases) and extract the archive. From the extracted archive, the following steps, used in the [conda-forge recipe](https://github.com/conda-forge/lammps-feedstock/blob/master/recipe/build.sh) can be run:
+and point calphy at it (any one of these):
 
 ```
-mkdir build_lib
-cd build_lib
-cmake -D BUILD_LIB=ON -D BUILD_SHARED_LIBS=ON -D BUILD_MPI=ON -D PKG_MPIIO=ON -D LAMMPS_EXCEPTIONS=yes -D PKG_MANYBODY=ON -D PKG_MISC=ON -D PKG_MISC=ON -D PKG_EXTRA-COMPUTE=ON -D PKG_EXTRA-DUMP=ON -D PKG_EXTRA-FIX=ON -D PKG_EXTRA-PAIR=ON ../cmake
-make
-cp liblammps${SHLIB_EXT}* ../src 
-cd ../src
-make install-python 
-mkdir -p $PREFIX/include/lammps
-cp library.h $PREFIX/include/lammps
-cp liblammps${SHLIB_EXT}* "${PREFIX}"/lib/
-cd ..
+# in the input file
+lammps_executable: /path/to/lmp
+
+# or in the environment
+export CALPHY_LAMMPS_EXECUTABLE=/path/to/lmp
+export CALPHY_MPI_EXECUTABLE=/path/to/mpirun   # only needed for cores > 1
 ```
 
-(**Optional**) The above commands only builds the [MANYBODY](https://docs.lammps.org/Packages_details.html#pkg-manybody) package. To use some of the other potentials, the following commands could be added to the `cmake` call.
+### Option 3 — compile it yourself
 
-- `-D PKG_ML-PACE=ON` for performant [Atomic Cluster Expansion](https://docs.lammps.org/Packages_details.html#pkg-ml-pace) potential (from [June 2022 version](https://github.com/lammps/lammps/releases/tag/patch_27Oct2021)).
-- `-D PKG_ML-SNAP=ON`for [SNAP potential](https://docs.lammps.org/Packages_details.html#pkg-ml-snap).
-- `-D PKG_MEAM=ON` for [MEAM potential](https://docs.lammps.org/Packages_details.html#meam-package).
+Obtain a recent stable release from [the LAMMPS releases page](https://github.com/lammps/lammps/releases), extract it, and build the **executable** with the packages calphy needs:
+
+```
+cd lammps-*/            # extracted source
+mkdir build && cd build
+cmake -D BUILD_MPI=ON \
+      -D PKG_MANYBODY=ON \
+      -D PKG_EXTRA-FIX=ON \
+      -D PKG_EXTRA-PAIR=ON \
+      -D PKG_MC=ON \
+      -D PKG_QTB=ON \
+      ../cmake
+make -j
+```
+
+This produces an `lmp` binary in the `build` directory. Put it on your `PATH` (or point `lammps_executable`/`$CALPHY_LAMMPS_EXECUTABLE` at it). Add further package flags for special potentials, for example:
+
+- `-D PKG_ML-PACE=ON` for the [Atomic Cluster Expansion](https://docs.lammps.org/Packages_details.html#pkg-ml-pace) potential.
+- `-D PKG_ML-SNAP=ON` for the [SNAP potential](https://docs.lammps.org/Packages_details.html#pkg-ml-snap).
+- `-D PKG_MEAM=ON` for the [MEAM potential](https://docs.lammps.org/Packages_details.html#meam-package).
 - `-D PKG_KIM=ON` for [KIM support](https://docs.lammps.org/Packages_details.html#pkg-kim).
-- `-D PKG_QTB=ON` for the [Dammak quantum thermal bath](https://docs.lammps.org/fix_qtb.html) (`fix qtb`), required by calphy's `mode: fe-qtb`.
 
-Install the python wrapper:
+### Checking the LAMMPS setup
+
+Confirm calphy can find and use the binary:
 
 ```
+which lmp          # or: echo $CALPHY_LAMMPS_EXECUTABLE
+lmp -h | head      # should print the LAMMPS help / style listing
+```
+
+If `lmp -h` lists the packages in the table above, you are ready to run calphy.
+
+(library-backend)=
+## The library backend (optional)
+
+Everything above is all you need for the default executable mode. Alternatively, calphy can drive a **live in-memory LAMMPS session** through [pylammpsmpi](https://github.com/pyiron/pylammpsmpi) by setting [`execution_mode: library`](execution_mode) in the input file. This requires two extra pieces:
+
+1. **pylammpsmpi**, installed as a calphy extra:
+
+   ```
+   pip install calphy[library]
+   ```
+
+2. **LAMMPS compiled as a Python library** — the `lammps` Python module plus the matching `liblammps` shared library.
+
+### Option 1 — conda-forge (recommended)
+
+The conda-forge `lammps` package ships the Python module and shared library alongside the `lmp` binary, so the same install covers both backends:
+
+```
+conda install -c conda-forge lammps
+pip install calphy[library]
+```
+
+### Option 2 — compile the library yourself
+
+For potentials with special compilation needs, build LAMMPS with library support in addition to the packages listed in the table above (this mirrors the [conda-forge recipe](https://github.com/conda-forge/lammps-feedstock/blob/master/recipe/build.sh)):
+
+```
+cd lammps-*/            # extracted source
+mkdir build_lib && cd build_lib
+cmake -D BUILD_LIB=ON \
+      -D BUILD_SHARED_LIBS=ON \
+      -D BUILD_MPI=ON \
+      -D PKG_MANYBODY=ON \
+      -D PKG_EXTRA-FIX=ON \
+      -D PKG_EXTRA-PAIR=ON \
+      -D PKG_MC=ON \
+      -D PKG_QTB=ON \
+      ../cmake
+make -j
+```
+
+Then install the Python wrapper and make the shared library findable (inside a conda environment, `$CONDA_PREFIX/lib` is a good target; sometimes `PREFIX` needs to be used instead):
+
+```
+cp liblammps* ../src
 cd ../src
 make install-python
+cp liblammps* $CONDA_PREFIX/lib/
 ```
 
-**In the case of a conda environment**, the following commands can be used to copy the compiled libraries to an accessible path (sometimes `PREFIX` needs to be used instead of `CONDA_PREFIX`):
+The same optional package flags as for the executable build apply (`-D PKG_ML-PACE=ON`, `-D PKG_ML-SNAP=ON`, `-D PKG_MEAM=ON`, `-D PKG_KIM=ON`, ...).
+
+### Checking the library setup
 
 ```
-mkdir -p $CONDA_PREFIX/include/lammps
-cp library.h $CONDA_PREFIX/include/lammps
-cp liblammps${SHLIB_EXT}* $CONDA_PREFIX/lib/
+python -c "from lammps import lammps; lammps(); print('lammps python module OK')"
+python -c "from pylammpsmpi import LammpsLibrary; print('pylammpsmpi OK')"
 ```
 
-Once LAMMPS is compiled and the libraries are available in an accessible location, the following commands can be used within python to test the installation:
-
-```
-from lammps import lammps
-lmp = lammps()
+```{warning}
+The `lammps` Python module and the `liblammps` shared library must come from the **same LAMMPS version**. A mismatch (e.g. a pip-installed module over an older conda library) makes `lammps()` raise `AttributeError: LAMMPS Python module installed for LAMMPS version X, but shared library is version Y` — and under pylammpsmpi this surfaces as a calculation that **hangs at startup** rather than a clean error. If library-mode runs hang before producing any output, run the first check above in the same environment. Installing both from conda-forge in one step keeps the versions aligned.
 ```
 
-Finally install calphy:
+Notes on library mode:
 
-```
-cd calphy
-pip install .
-```
-
-
-
-
-
-
-
-
-
+- [`lammps_executable`](lammps_executable), [`mpi_executable`](mpi_executable), and the preflight capability check do not apply; if a required LAMMPS package is missing, the run fails with a LAMMPS error instead.
+- Parallel runs use `queue.cores` through pylammpsmpi's own MPI machinery (`mpi4py`) — no external `mpirun` is involved.
+- Python-coupled [ML-IAP models](https://docs.lammps.org/Packages_details.html#pkg-ml-iap) (`mliappy`) are activated automatically when the LAMMPS python build provides `lammps.mliap` (the kokkos variant is used when `-k`/`-kokkos` appears in `md.cmdargs`).
+- Both backends emit the exact same LAMMPS command stream and give the same results; the choice is purely about how LAMMPS is deployed on your system.

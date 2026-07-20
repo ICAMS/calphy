@@ -18,24 +18,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Miniforge
-        uses: conda-incubator/setup-miniconda@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          miniforge-version: latest
-          channels: conda-forge
-          environment-file: environment.yml
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
-      - name: Upgrade pylammpsmpi
-        shell: bash -l {0}
-        run: pip install --upgrade pylammpsmpi
-
+      # Every runtime dependency (numpy, scipy, pyscal3, mendeleev, ...) ships
+      # wheels on PyPI, so plain pip is enough -- no conda env-solve, no LAMMPS.
       - name: Install calphy
-        shell: bash -l {0}
-        run: |
-          pip install -e ".[test]"
-          pip install --upgrade pylammpsmpi
+        run: pip install -e ".[test]"
 
-      - name: Run tests
-        shell: bash -l {0}
-        run: pytest tests/ -v
+      # The LAMMPS integration suite (tests/test_integration_lammps.py, marked
+      # `lammps`) drives a real `lmp` binary end to end -- too slow and fragile
+      # for hosted CI, so it is deliberately excluded here.  Run it locally
+      # before a release against a LAMMPS-enabled environment:
+      #
+      #     conda env create -f environment.yml   # ships conda-forge lammps
+      #     pytest -m lammps -v
+      #
+      # See tests/baselines/BASELINE_INFO.md for the frozen reference results.
+      # Everything the excluded suite does NOT cover -- the exact command stream
+      # calphy emits (golden tests), the dry-run runner, the fake-pylammpsmpi
+      # library backend, input validation, and all pure-python paths -- needs no
+      # binary and runs on every push below.
+      - name: Run tests (no LAMMPS binary required)
+        run: pytest tests/ -m "not lammps" -v

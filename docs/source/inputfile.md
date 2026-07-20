@@ -15,6 +15,15 @@ calculations:
     key2: value2
 ```
 
+```{note}
+Input keys are validated strictly: an unrecognized key anywhere in the file is
+an error at startup, not silently ignored — a typo like `n_iteration` would
+otherwise silently run with the default `n_iterations`. The error message
+suggests the closest matching key and, when a key was placed in the wrong
+block (e.g. `timestep` at the calculation level instead of under `md:`),
+points at where it belongs.
+```
+
 
 ## `calculations`
 
@@ -108,6 +117,8 @@ calculations:
 ```{grid-item} [](cmdargs)
 ```
 ```{grid-item} [](init_commands)
+```
+```{grid-item} [](md_seed)
 ```
 ```` 
 
@@ -246,8 +257,6 @@ calculations:
 ```{grid-item} [](qtb_f_max)
 ```
 ```{grid-item} [](qtb_n_f)
-```
-```{grid-item} [](qtb_seed)
 ```
 ````
 
@@ -483,7 +492,7 @@ _example_:
 n_iterations: 3
 ```
 
-The number of backward and forward integrations to be carried out in all modes. If more than one integration cycle is used, the errors can also be evaluated.
+The number of backward and forward integrations to be carried out in all modes. If more than one integration cycle is used, the errors can also be evaluated. The reported uncertainty is the standard error of the mean over these iterations, written as `error` in `report.yaml` — see [](outputfiles).
 
 ---
 
@@ -501,6 +510,12 @@ Controls how the scaling parameter λ is swept during reversible-scaling (`ts` m
 
 - **`linear`** (default): λ ramps linearly between the start and end values using LAMMPS `ramp()`. This is the original behaviour.
 - **`uniform_temperature`**: λ is chosen so that the equivalent reference temperature T₀/λ advances **linearly in MD steps**, giving a uniform number of samples per Kelvin across the sweep. This prevents the high-temperature end of the sweep from being under-sampled when the temperature range is large.
+
+```{note}
+`lambda_schedule` changes only the **sampling density** (and hence how the statistical error is distributed) along the temperature axis — it does **not** change the computed free energy. The integration is performed over the actual λ grid, so both schedules integrate to the same G(T); `uniform_temperature` simply spreads the samples (and the resulting error bars) evenly in temperature. Keep the default `linear` unless you are running a wide-range sweep and specifically want an even error profile across it.
+```
+
+The resulting free-energy-vs-temperature curve is written to `temperature_sweep.dat` — see [](outputfiles).
 
 ---
 
@@ -745,16 +760,39 @@ Prefix string to be added to folder names for calculation. Folders for calculati
 (script_mode)=
 #### `script_mode`        
 
-_type_: bool \
-_default_: False \
+**Removed in calphy v2.** calphy now always drives the LAMMPS executable
+directly (segmented, restart-continued runs), so there is no separate
+script/library mode to select. Setting `script_mode: True` in an input file
+raises a validation error; remove the key. To point calphy at a specific binary,
+use [`lammps_executable`](lammps_executable) (and [`mpi_executable`](mpi_executable)
+for parallel runs) — these now apply to **every** mode and reference phase.
+
+
+---
+
+(execution_mode)=
+#### `execution_mode`
+
+_type_: string \
+_default_: executable \
 _example_:
 ```
-script_mode: False
-```  
+execution_mode: library
+```
 
-If True, a LAMMPS executable script is written and executed instead of the library interface of LAMMPS.
-Works only with `reference_phase: solid`, and `mode: fe`.
-Needs specification of [`lammps_executable`](lammps_executable) and [`mpi_executable`](mpi_executable).
+Selects the backend calphy uses to drive LAMMPS. Both backends emit the exact
+same command stream; only the transport differs.
+
+- `executable` (default): runs the `lmp` binary as a subprocess in segmented,
+  restart-continued runs. Uses [`lammps_executable`](lammps_executable) /
+  [`mpi_executable`](mpi_executable) to find the binaries.
+- `library`: drives a live in-memory LAMMPS session through
+  [pylammpsmpi](https://github.com/pyiron/pylammpsmpi). Requires the optional
+  dependency (`pip install calphy[library]`) plus LAMMPS compiled as a Python
+  library — see [the library backend](library-backend) for setup instructions.
+  `lammps_executable`, `mpi_executable`, and the preflight capability check do
+  not apply; parallel runs use `queue.cores` through pylammpsmpi's own MPI
+  machinery.
 
 
 ---
@@ -766,12 +804,17 @@ _type_: string \
 _default_: None \
 _example_:
 ```
-lammps_executable: lmp_mpi
+lammps_executable: /path/to/lmp
 ```  
 
-LAMMPS executable to run the calculations with.
-Works only with `reference_phase: solid`, and `mode: fe`.
-Works only if [`script_mode`](script_mode) is `True`.
+The LAMMPS `lmp` binary calphy runs. Applies to every mode and reference phase.
+If not set, calphy resolves the binary in this order:
+
+1. this `lammps_executable` key,
+2. the environment variable `$CALPHY_LAMMPS_EXECUTABLE`,
+3. `lmp` on your `PATH`.
+
+If none resolve, calphy fails at startup with a message naming all three steps.
 
 
 
@@ -784,12 +827,12 @@ _type_: string \
 _default_: None \
 _example_:
 ```
-mpi_executable: mpiexec
+mpi_executable: mpirun
 ```  
 
-MPI executable to run the LAMMPS with.
-Works only with `reference_phase: solid`, and `mode: fe`.
-Works only if [`script_mode`](script_mode) is `True`.
+The MPI launcher used when `queue.cores > 1`. Resolved as
+`mpi_executable` → `$CALPHY_MPI_EXECUTABLE` → `mpirun` on `PATH`. Ignored for
+serial runs (`queue.cores == 1`).
 
 
 ---
@@ -946,7 +989,7 @@ md:
   cmdargs: "-k on g 1 -sf kk -pk kokkos newton on neigh half"
 ```
 
-Extra command-line arguments passed verbatim to the LAMMPS Python library when the LAMMPS object is created. Most commonly used to enable accelerator packages such as `KOKKOS`, `GPU` or `INTEL`.
+Extra command-line arguments appended verbatim to the `lmp` argv for every segment (i.e. `lmp -in seg.lmp -log seg.log -screen none <cmdargs>`). Most commonly used to enable accelerator packages such as `KOKKOS`, `GPU` or `INTEL`. (calphy manages `-in`, `-log` and `-screen` itself, so do not set those here.)
 
 ---
 
@@ -964,6 +1007,25 @@ init_commands:
 ```
 
 Provides the possibility to replace or add initial commands when the LAMMPS object is initialised. If the command is already used in calphy, for example `timestep` or `atom_style` they will be replaced. If it is a new command, it will be added. This commands receive higher priority than the ones that already exist. For examples if you provide `timestep: 0.002` in the `md` block, and `timestep 0.004` in `init_commands`, the timestep used would be 0.004.
+
+---
+
+(md_seed)=
+#### `seed`
+
+_type_: integer or None \
+_default_: None \
+_example_:
+```
+md:
+  seed: 42
+```
+
+Master random seed for the calculation. Every stochastic choice a job makes draws from this one seed: `velocity create`, the Langevin thermostat, Monte-Carlo `atom/swap` moves, the QTB noise generator, and the random atom picks of composition scaling.
+
+If unset (the default), a fresh seed is drawn for every run, so repeated runs of the same input remain statistically independent. Whichever seed is used — given or drawn — is logged and **backfilled into the `input_file.yaml` copy written to the simulation folder**, so any past run can be reproduced exactly by rerunning that file.
+
+Note that a fixed seed makes the LAMMPS *input* deterministic; bitwise-identical trajectories additionally require the same LAMMPS build, core count, and hardware.
 
 ---
 ---
@@ -1599,19 +1661,6 @@ Number of frequency bins discretising the QTB power spectrum from 0 to `f_max`. 
 
 ---
 
-(qtb_seed)=
-#### `seed`
-
-_type_: integer \
-_default_: 880302 \
-_example_:
-```
-seed: 42
-```
-
-Random-number seed for the QTB noise generator. Change between iterations or between independent runs to obtain decorrelated noise realisations.
-
----
 ---
 
 ## `monte_carlo` block

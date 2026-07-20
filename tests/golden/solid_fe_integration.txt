@@ -1,0 +1,34 @@
+units metal
+boundary p p p
+atom_style atomic
+timestep 0.001
+pair_style eam/alloy
+read_data conf.equilibration.data
+pair_coeff * * tests/Cu01.eam.alloy Cu
+mass 1 63.546
+run 0
+change_box all x final 0.0 18.075000 y final 0.0 18.075000 z final 0.0 18.075000 remap units box
+group g1 type 1
+variable count1 equal count(g1)
+run 0
+fix f1 all nve
+fix ff1 g1 ti/spring 10.0 100 100 function 2
+fix f3 all langevin 500.000000 500.000000 0.100000 7271 zero yes
+compute Tcm all temp/com
+fix_modify f3 temp Tcm
+variable step equal step
+variable dU1 equal pe/atoms
+variable dU2 equal f_ff1
+variable lambda equal f_ff1[1]
+thermo_style custom step pe c_Tcm
+thermo 10000
+velocity all create 500.000000 861 mom yes rot yes dist gaussian
+fix ff1 g1 ti/spring 2.000000 5000 2500 function 2
+run 2500
+fix f4 all print 1 "${dU1} ${dU2} ${lambda}" title "# dU_sys[eV/atom] dU_ref1[eV/atom] lambda" screen no file forward_1.dat
+run 5000
+unfix f4
+run 2500
+fix f4 all print 1 "${dU1} ${dU2} ${lambda}" title "# dU_sys[eV/atom] dU_ref1[eV/atom] lambda" screen no file backward_1.dat
+run 5000
+unfix f4

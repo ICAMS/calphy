@@ -1,0 +1,41 @@
+units metal
+boundary p p p
+atom_style atomic
+timestep 0.001
+pair_style eam/alloy
+read_data structure.data
+pair_coeff * * tests/Cu01.eam.alloy Cu
+mass 1 63.546
+variable mvol equal vol
+variable mlx equal lx
+variable mly equal ly
+variable mlz equal lz
+variable mpress equal press
+variable mpe equal pe/atoms
+variable metotal equal etotal/atoms
+variable mtemp equal temp
+velocity all create 500.000000 7271
+fix nh1 all npt temp 500.000000 500.000000 0.100000 iso 0.000000 0.000000 0.100000
+thermo_style custom step pe press vol etotal temp lx ly lz
+thermo 10
+run 1000
+unfix nh1
+fix nh1 all npt temp 500.000000 500.000000 0.100000 iso 0.000000 0.000000 0.100000
+fix 2 all ave/time 10 10 100 v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp title2 "# TimeStep lx[A] ly[A] lz[A] press[bar] pe[eV/atom] etotal[eV/atom] temp[K]" file avg.dat
+run 1000
+unfix nh1
+unfix 2
+dump 2 all custom 1 traj.equilibration_stage1.dat id type mass x y z vx vy vz
+run 0
+undump 2
+fix 3 all nvt temp 500.000000 500.000000 0.100000
+group g1 type 1
+compute c1 g1 msd com yes
+variable msd1 equal c_c1[4]
+fix 4 all ave/time 10 10 100 v_msd1 title2 "# TimeStep msd1[A^2]" file msd.dat
+run 1000
+unfix 3
+dump 2 all custom 1 traj.equilibration_stage2.dat id type mass x y z vx vy vz
+run 0
+undump 2
+write_data conf.equilibration.data

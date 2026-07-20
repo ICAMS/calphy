@@ -21,115 +21,95 @@ For more information contact:
 sarath.menon@ruhr-uni-bochum.de/yury.lysogorskiy@icams.rub.de
 """
 
+import os
+import shutil
+import warnings
 import logging
+import numpy as np
 from collections import Counter, defaultdict
 
-import numpy as np
+from ase.io import read, write
+
 import pyscal3.core as pc
 from pyscal3.trajectory import Trajectory
 
-from pylammpsmpi import LammpsLibrary
-
-try:
-    import lammps.mliap  # noqa: F401
-
-    has_mliap = True
-except ImportError:
-    has_mliap = False
+from calphy.runner import (
+    ExecutableRunner,
+    resolve_lammps_executable,
+    resolve_mpi_executable,
+    preflight,
+)
 
 
-class LammpsScript:
-    """Collect LAMMPS commands instead of executing them.
-
-    Mirrors a small subset of the ``pylammpsmpi.LammpsLibrary`` interface so the
-    same calphy code paths can either run LAMMPS in-process or emit a script
-    that is executed by an external ``lmp`` binary. Any unknown attribute is
-    treated as a LAMMPS command name and lowered to ``command(...)``.
+def create_object(calc, directory):
     """
+    Create the LAMMPS runner backend selected by ``calc.execution_mode``.
 
-    # Methods that must NOT be auto-lowered to LAMMPS commands.
-    _RESERVED_NAMES = frozenset({"script", "command", "write", "close", "clear"})
-
-    def __init__(self):
-        self.script = []
-
-    def command(self, command_str):
-        self.script.append(command_str)
-
-    def write(self, infile):
-        with open(infile, "w") as fout:
-            for line in self.script:
-                fout.write(f"{line}\n")
-
-    def close(self):
-        pass
-
-    def clear(self):
-        self.script = []
-
-    def __getattr__(self, name):
-        if name.startswith("_") or name in LammpsScript._RESERVED_NAMES:
-            raise AttributeError(name)
-
-        def _emit(*args):
-            self.command(" ".join([name, *(str(a) for a in args)]))
-
-        return _emit
-
-
-def create_object(
-    cores,
-    directory,
-    timestep,
-    cmdargs="",
-    init_commands=(),
-    script_mode=False,
-    lmp=None,
-):
-    """
-    Create LAMMPS object
+    ``executable`` (the default) resolves the ``lmp`` (and, for ``cores > 1``,
+    ``mpirun``) binary, runs the preflight capability check, and returns an
+    ``ExecutableRunner``.  ``library`` returns a ``LibraryRunner`` driving a
+    live pylammpsmpi session (optional dependency; imported lazily so the
+    default mode never needs it).  Both are primed with the same four init
+    commands calphy has always emitted (with the ``md.init_commands`` override
+    merge preserved verbatim).
 
     Parameters
     ----------
-    cores : int
-        number of cores
+    calc : Calculation
+        the validated calculation object
 
-    directory: string
-        location of the work directory
-
-    timestep: float
-        timestep for the simulation
+    directory : string
+        location of the work (sim) folder
 
     Returns
     -------
-    lmp : LammpsLibrary object
+    lmp : BaseRunner
+        an ``ExecutableRunner`` or ``LibraryRunner``
     """
-    if script_mode:
-        lmp = LammpsScript()
-    elif lmp is None:
-        if cmdargs == "":
-            cmdargs = []
-        elif isinstance(cmdargs, str):
-            cmdargs = cmdargs.split()
-        else:
-            cmdargs = list(cmdargs)
-        # Suppress LAMMPS stdout; Python logging handles screen output
-        if "-screen" not in cmdargs:
-            cmdargs.extend(["-screen", "none"])
-        lmp = LammpsLibrary(cores=cores, working_directory=directory, cmdargs=cmdargs)
-        if has_mliap:
-            if "-k" in cmdargs or "-kokkos" in cmdargs:
-                lmp.lmp.activate_mliappy_kokkos()
-            else:
-                lmp.lmp.activate_mliappy()
+    if calc.execution_mode == "library":
+        from calphy.library_runner import LibraryRunner
 
+        lmp = LibraryRunner(
+            cores=calc.queue.cores,
+            cmdargs=calc.md.cmdargs,
+            directory=directory,
+        )
+        return emit_init_commands(lmp, calc)
+
+    binary = resolve_lammps_executable(calc.lammps_executable)
+    mpi_command = (
+        resolve_mpi_executable(calc.mpi_executable) if calc.queue.cores > 1 else None
+    )
+    # once per calculation; get_binary_styles caches per (path, mtime)
+    preflight(calc, binary)
+
+    lmp = ExecutableRunner(
+        binary=binary,
+        mpi_command=mpi_command,
+        cores=calc.queue.cores,
+        cmdargs=calc.md.cmdargs,
+        directory=directory,
+        dry_run=False,
+    )
+    return emit_init_commands(lmp, calc)
+
+
+def emit_init_commands(lmp, calc):
+    """Emit the four init commands (units/boundary/atom_style/timestep),
+    applying the ``md.init_commands`` override merge, onto ``lmp``.
+
+    ``box tilt large`` was dropped upstream (ICAMS/calphy#262): the ``box``
+    command is deprecated in LAMMPS since 22Dec2022 and its arguments are
+    ignored.  The token stays in the runner vocabulary so older
+    ``md.init_commands`` overrides that still emit one keep validating."""
     commands = [
         ["units", "metal"],
         ["boundary", "p p p"],
         ["atom_style", "atomic"],
-        ["timestep", str(timestep)],
+        ["timestep", str(calc.md.timestep)],
     ]
 
+    init_commands = calc.md.init_commands
     if len(init_commands) > 0:
         # we need to replace some initial commands
         for rc in init_commands:
@@ -156,14 +136,14 @@ def create_structure(lmp, calc):
 
     Parameters
     ----------
-    lmp: LammpsLibrary object
+    lmp: BaseRunner
 
     calc: dict
         calculation dict with the necessary input
 
     Returns
     -------
-    lmp : LammpsLibrary object
+    lmp : BaseRunner
     """
     lmp.command("read_data      %s" % calc.lattice)
     return lmp
@@ -308,13 +288,13 @@ def set_potential(lmp, options):
 
     Parameters
     ----------
-    lmp : LammpsLibrary object
+    lmp : BaseRunner
 
     options : dict
 
     Returns
     -------
-    lmp : LammpsLibrary object
+    lmp : BaseRunner
     """
     set_pair_style(lmp, options)
     set_pair_coeff(lmp, options)
@@ -364,6 +344,10 @@ def compute_msd(lmp, options):
         lmp.command("compute          c%d g%d msd com yes" % (i + 1, i + 1))
         lmp.command("variable         msd%d equal c_c%d[4]" % (i + 1, i + 1))
         str2.append("v_msd%d" % (i + 1))
+    title_cols = "# TimeStep " + " ".join(
+        "msd%d[A^2]" % (i + 1) for i in range(len(elements))
+    )
+    str2.append('title2 "%s"' % title_cols)
     str2.append("file")
     str2.append("msd.dat")
     str2 = " ".join(str2)

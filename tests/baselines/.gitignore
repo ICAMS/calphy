@@ -1,0 +1,6 @@
+# tests/baselines/ holds the committed Part 0.2 numerical baselines (an immutable contract).
+# Override the aggressive root .gitignore so the report / log / data files are tracked.
+# (Transient per-run sim folders are not kept here, so no fe-*/ts-*/... negations are needed.)
+!calphy.log
+!*.dat
+!*.data

@@ -7,11 +7,13 @@ dependencies:
   - scipy
   - pyyaml
   - mendeleev
+  # lammps ships the `lmp` binary that calphy now drives directly (via
+  # calphy.runner.ExecutableRunner); openmpi provides mpirun for cores > 1.
+  # The same conda-forge lammps also provides the python module needed for
+  # the optional library backend (pip install calphy[library]).
   - lammps
   - openmpi
   - numpy >=2.0.0
-  - mpi4py
-  - pylammpsmpi >0.4.1
   - matplotlib
   - tqdm
   - pydantic >=2.3.0
