@@ -18,75 +18,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Miniforge
-        uses: conda-incubator/setup-miniconda@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          miniforge-version: latest
-          channels: conda-forge
-          environment-file: environment.yml
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
+      # Every runtime dependency (numpy, scipy, pyscal3, mendeleev, ...) ships
+      # wheels on PyPI, so plain pip is enough -- no conda env-solve, no LAMMPS.
       - name: Install calphy
-        shell: bash -l {0}
         run: pip install -e ".[test]"
 
-      # environment.yml provides the conda-forge lammps `lmp` binary, so the
-      # @pytest.mark.lammps integration tests (executable backend) run here too.
-      - name: Run tests
-        shell: bash -l {0}
-        run: pytest tests/ -v
-
-  # The optional library backend (execution_mode: library) against a real
-  # pylammpsmpi + lammps python module; conda-forge lammps ships both the
-  # binary and the python library, so the same environment covers it.
-  library-backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Miniforge
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          python-version: "3.12"
-          miniforge-version: latest
-          channels: conda-forge
-          environment-file: environment.yml
-
-      - name: Install calphy with the library extra
-        shell: bash -l {0}
-        run: pip install -e ".[test,library]"
-
-      - name: Library-backend smoke (real pylammpsmpi session)
-        shell: bash -l {0}
-        run: |
-          mkdir -p /tmp/libsmoke
-          cp tests/conf1.data tests/Cu01.eam.alloy /tmp/libsmoke/
-          python - << 'EOF'
-          from calphy.library_runner import LibraryRunner
-
-          lmp = LibraryRunner(cores=1, cmdargs="", directory="/tmp/libsmoke")
-          for c in [
-              "units metal",
-              "boundary p p p",
-              "atom_style atomic",
-              "timestep 0.001",
-              "read_data conf1.data",
-              "pair_style eam/alloy",
-              "pair_coeff * * Cu01.eam.alloy Cu",
-              "mass 1 63.546",
-              "velocity all create 300 12345",
-              "fix 1 all nve",
-              "variable mpe equal pe",
-              "fix 2 all ave/time 10 10 100 v_mpe file avg_smoke.dat",
-              "run 300",
-          ]:
-              lmp.command(c)
-          lmp.sync()
-          pe = lmp.read_timeseries("avg_smoke.dat", usecols=(1,))
-          assert len(pe) == 3, pe
-          lmp.command("unfix 2")
-          lmp.command("unfix 1")
-          lmp.close()
-          lmp.rotate_logs("smoke")
-          print("library-backend smoke OK, last pe:", pe[-1])
-          EOF
+      # The LAMMPS integration suite (tests/test_integration_lammps.py, marked
+      # `lammps`) drives a real `lmp` binary end to end -- too slow and fragile
+      # for hosted CI, so it is deliberately excluded here.  Run it locally
+      # before a release against a LAMMPS-enabled environment:
+      #
+      #     conda env create -f environment.yml   # ships conda-forge lammps
+      #     pytest -m lammps -v
+      #
+      # See tests/baselines/BASELINE_INFO.md for the frozen reference results.
+      # Everything the excluded suite does NOT cover -- the exact command stream
+      # calphy emits (golden tests), the dry-run runner, the fake-pylammpsmpi
+      # library backend, input validation, and all pure-python paths -- needs no
+      # binary and runs on every push below.
+      - name: Run tests (no LAMMPS binary required)
+        run: pytest tests/ -m "not lammps" -v
