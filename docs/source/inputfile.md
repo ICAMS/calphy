@@ -82,7 +82,7 @@ points at where it belongs.
 ```
 ```{grid-item} [](folder_prefix)
 ```
-```{grid-item} [](script_mode)
+```{grid-item} [](execution_mode)
 ```
 ```{grid-item} [](lammps_executable)
 ```
