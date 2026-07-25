@@ -95,6 +95,8 @@ class SLURM:
             "memory": None,
             "cores": cores,
             "cpus_per_task": None,
+            "gres": None,
+            "account": None,
             "hint": "nomultithread",
             "directory": directory,
             "options": {},
