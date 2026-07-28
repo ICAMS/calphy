@@ -197,12 +197,18 @@ class Liquid(cph.Phase):
             # now assign correct temperature and equilibrate
             self.run_zero_pressure_equilibration(lmp)
 
+            # equilibration-frame dump (post warm-up; no-op unless
+            # n_print_steps_equilibration > 0)
+            self.start_equilibration_dump(lmp)
+
             # converge pressure
             self.run_pressure_convergence(lmp)
         else:
+            self.start_equilibration_dump(lmp)
             self.run_constrained_pressure_convergence(lmp)
 
         # check melted error
+        self.stop_equilibration_dump(lmp)
         self.dump_current_snapshot(lmp, "traj.equilibration_stage1.dat")
         self.check_if_solidfied(lmp, "traj.equilibration_stage1.dat")
         self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")

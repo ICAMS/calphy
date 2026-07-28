@@ -218,6 +218,10 @@ class Solid(cph.Phase):
             else:
                 self.run_finite_pressure_equilibration(lmp)
 
+            # equilibration-frame dump (post warm-up; no-op unless
+            # n_print_steps_equilibration > 0)
+            self.start_equilibration_dump(lmp)
+
             # this is when the averaging routine starts
             self.run_pressure_convergence(lmp)
 
@@ -227,6 +231,7 @@ class Solid(cph.Phase):
 
         # run if a constrained lattice is used
         else:
+            self.start_equilibration_dump(lmp)
             # routine in which lattice constant will not varied, but is set to a given fixed value
             self.run_constrained_pressure_convergence(lmp)
 
@@ -235,6 +240,7 @@ class Solid(cph.Phase):
         self.run_spring_constant_convergence(lmp)
 
         # check for melting
+        self.stop_equilibration_dump(lmp)
         self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
         self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
         lmp = ph.write_data(lmp, "conf.equilibration.data")
