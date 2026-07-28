@@ -64,7 +64,20 @@ def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=Fal
     Returns
     -------
     df: pandas DataFrame
-        DataFrame with results
+        DataFrame with results. In addition to the columns produced
+        previously, this also includes:
+
+        - free_energy_error: array (ts/tscale, from temperature_sweep.dat)
+          or 0.0 (fe/alchemy/composition_scaling); the statistical
+          standard error of the mean free energy, not a hysteresis check.
+        - dissipation: mean switching dissipation (fe/alchemy) or NaN (ts/tscale)
+        - ts_dissipation: max hysteresis over a ts/tscale sweep, or NaN otherwise
+        - forward_energy_diff / backward_energy_diff: list of arrays, one per
+          reversible-scaling replica (ts/tscale only, else None); the raw
+          per-lambda energy differential, useful to see *where* along the
+          sweep forward/backward diverge (phase-transition diagnostic).
+        - forward_lambda / backward_lambda: matching lambda arrays for the
+          above (ts/tscale only, else None)
     """
     try:
         import pandas as pd
@@ -78,6 +91,9 @@ def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=Fal
     datadict["temperature"] = []
     datadict["pressure"] = []
     datadict["free_energy"] = []
+    datadict["free_energy_error"] = []
+    datadict["dissipation"] = []
+    datadict["ts_dissipation"] = []
     datadict["reference_phase"] = []
     datadict["error_code"] = []
     datadict["composition"] = []
@@ -85,6 +101,10 @@ def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=Fal
     datadict["ideal_entropy"] = []
     datadict["phase_name"] = []
     datadict["reference_composition"] = []
+    datadict["forward_energy_diff"] = []
+    datadict["backward_energy_diff"] = []
+    datadict["forward_lambda"] = []
+    datadict["backward_lambda"] = []
 
     folders = next(os.walk(mainfolder))[1]
     for folder in folders:
@@ -119,6 +139,13 @@ def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=Fal
         # check output file
         outfile = os.path.join(mainfolder, folder, "report.yaml")
         datadict["error_code"].append(None)
+        datadict["free_energy_error"].append(np.nan)
+        datadict["dissipation"].append(np.nan)
+        datadict["ts_dissipation"].append(np.nan)
+        datadict["forward_energy_diff"].append(None)
+        datadict["backward_energy_diff"].append(None)
+        datadict["forward_lambda"].append(None)
+        datadict["backward_lambda"].append(None)
 
         # print(inpfile)
         if not os.path.exists(outfile):
@@ -131,12 +158,17 @@ def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=Fal
 
         if mode in ["fe", "alchemy", "composition_scaling"]:
             datadict["status"].append("True")
+            datadict["free_energy_error"][-1] = 0.0
 
         # ok, valid calculation, try to parse input file to get info
         with open(outfile, "r") as fin:
             out = yaml.safe_load(fin)
 
         datadict["free_energy"].append(out["results"]["free_energy"])
+        # scalar quality metrics calphy already computes: qdiss (mean switching
+        # dissipation, fe/alchemy) and max hysteresis over a ts/tscale sweep
+        datadict["dissipation"][-1] = out["results"].get("dissipation", np.nan)
+        datadict["ts_dissipation"][-1] = out["results"].get("ts_dissipation", np.nan)
 
         # add normal composition
         el_arr = np.array(out["input"]["element"].split(" ")).astype(str)
@@ -170,9 +202,45 @@ def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=Fal
             )
             if os.path.exists(datafile):
                 datadict["status"].append("True")
-                t, f = np.loadtxt(datafile, unpack=True, usecols=(0, 1))
+                t, f, ferr = np.loadtxt(datafile, unpack=True, usecols=(0, 1, 2))
                 datadict["temperature"][-1] = t
                 datadict["free_energy"][-1] = f
+                datadict["free_energy_error"][-1] = ferr
+
+                # raw per-lambda energy differential of each forward/backward
+                # switching replica; diverging forward vs. backward curves
+                # signal hysteresis/a structural change during the sweep
+                # (ts_dissipation above is just the max of this difference)
+                f_ediffs = []
+                b_ediffs = []
+                f_lambdas = []
+                b_lambdas = []
+                i = 1
+                while True:
+                    fwdfile = os.path.join(
+                        mainfolder, folder, f"ts.forward_{i}.dat"
+                    )
+                    bkdfile = os.path.join(
+                        mainfolder, folder, f"ts.backward_{i}.dat"
+                    )
+                    if not (os.path.exists(fwdfile) and os.path.exists(bkdfile)):
+                        break
+                    fdx, _fp, _fvol, flambda = np.loadtxt(
+                        fwdfile, unpack=True, comments="#"
+                    )
+                    bdx, _bp, _bvol, blambda = np.loadtxt(
+                        bkdfile, unpack=True, comments="#"
+                    )
+                    f_ediffs.append(fdx / flambda)
+                    b_ediffs.append(bdx / blambda)
+                    f_lambdas.append(flambda)
+                    b_lambdas.append(blambda)
+                    i += 1
+
+                datadict["forward_energy_diff"][-1] = f_ediffs if f_ediffs else None
+                datadict["backward_energy_diff"][-1] = b_ediffs if b_ediffs else None
+                datadict["forward_lambda"][-1] = f_lambdas if f_lambdas else None
+                datadict["backward_lambda"][-1] = b_lambdas if b_lambdas else None
             else:
                 datadict["status"].append("False")
                 errfile = os.path.join(os.getcwd(), mainfolder, folder + ".sub.err")
