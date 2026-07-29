@@ -561,6 +561,7 @@ class Calculation(_StrictInput, title="Main input class"):
     _n_sweep_steps: int = PrivateAttr(default=50000)
     n_print_steps: Annotated[int, Field(default=0)]
     n_print_steps_equilibration: Annotated[int, Field(default=0)]
+    alchemy_coupling: Annotated[bool, Field(default=False)]
     n_iterations: Annotated[int, Field(default=1)]
     lambda_schedule: Annotated[str, Field(default="linear")]
     equilibration_control: Annotated[Union[str, None], Field(default=None)]
