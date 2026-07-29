@@ -629,8 +629,8 @@ class Alchemy(cph.Phase):
                                               "forward_%d.dat" % i))
                 bkd = np.loadtxt(os.path.join(self.simfolder,
                                               "backward_%d.dat" % i))
-                wf = np.trapz(fwd[:, 0], fwd[:, 2])          # lam 0 -> 1
-                wb = -np.trapz(bkd[:, 0], bkd[:, 2])         # lam 1 -> 0
+                wf = np.trapezoid(fwd[:, 0], fwd[:, 2])          # lam 0 -> 1
+                wb = -np.trapezoid(bkd[:, 0], bkd[:, 2])         # lam 1 -> 0
                 ws.append(0.5 * (wf + wb))
                 qs.append(0.5 * (wf - wb))
             self.w = float(np.mean(ws))
