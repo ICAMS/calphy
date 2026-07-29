@@ -94,7 +94,10 @@ class Alchemy(cph.Phase):
         W = int <U_last>_lam dlam;  dF = (W_f + W_b)/2 per iteration."""
         lmp = ph.create_object(self.calc, self.simfolder)
         conf = os.path.join(self.simfolder, "conf.equilibration.data")
-        self._coupling_pair(lmp, ramp="0.0")
+        # style only before read_data (pair_coeff needs the box)
+        ns = self.calc._pair_style_with_options
+        terms = " ".join(f"1.0 {s}" for s in ns[:-1]) + f" 0.0 {ns[-1]}"
+        lmp.command("pair_style       hybrid/scaled %s" % terms)
         lmp = ph.read_data(lmp, conf)
         self._coupling_pair(lmp, ramp="0.0")
         lmp = ph.set_mass(lmp, self.calc)
