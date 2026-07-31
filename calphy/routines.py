@@ -335,6 +335,68 @@ class MeltingTemp:
         self.logger.info("STATE: Predicted Tm from extrapolation: %f K" % tpred)
         return tpred
 
+    # Half-width of the finite-difference stencil used to take the local
+    # dF/dT on either side of the crossing, in samples.  Capped against the
+    # sweep length so a short sweep cannot index past either end.
+    CROSSING_STENCIL = 50
+
+    def _crossing_error(self, arg, suberr):
+        """
+        Propagate the free-energy uncertainty at the crossing into an
+        uncertainty on Tm.
+
+        The two curves cross at index ``arg``; converting a free-energy error
+        into a temperature error needs the rate at which they separate there,
+        i.e. the difference of their local slopes.  That slope is taken from a
+        symmetric finite difference around ``arg``.
+
+        The stencil is clamped to the array: ``find_tm`` only rejects
+        ``arg == 0`` and ``arg == len - 1``, so a crossing near either end
+        would otherwise read ``arg + 50`` past the end (IndexError, raised in
+        postprocessing after all the MD has been paid for) or ``arg - 50`` as
+        a negative index, which numpy silently wraps to the far end of the
+        sweep and turns the local slope into a chord across the whole
+        temperature range.
+
+        Parameters
+        ----------
+        arg : int
+            Index of the crossing.
+        suberr : float
+            Combined free-energy uncertainty at the crossing, in eV/atom.
+
+        Returns
+        -------
+        tmerr : float
+            Uncertainty on Tm in K, or ``np.nan`` if the local slopes are too
+            close to distinguish (parallel curves give no crossing scale).
+        """
+        n = len(self.solres[1])
+        half = max(1, min(self.CROSSING_STENCIL, n // 20))
+        lo = max(arg - half, 0)
+        hi = min(arg + half, n - 1)
+        if hi <= lo:
+            self.logger.warning(
+                "Sweep has too few samples (%d) to estimate a slope at the "
+                "crossing; reporting Tm without an error estimate." % n
+            )
+            return np.nan
+
+        def _slope(res):
+            dt = res[0][hi] - res[0][lo]
+            if dt == 0:
+                return np.nan
+            return (res[1][hi] - res[1][lo]) / dt
+
+        slope_diff = _slope(self.solres) - _slope(self.lqdres)
+        if not np.isfinite(slope_diff) or slope_diff == 0:
+            self.logger.warning(
+                "Solid and liquid free-energy curves are parallel at the "
+                "crossing; reporting Tm without an error estimate."
+            )
+            return np.nan
+        return suberr / slope_diff
+
     def find_tm(self):
         """
         Find melting temperature
@@ -377,15 +439,7 @@ class MeltingTemp:
                 self.calc_tm = self.solres[0][arg]
                 # get errors
                 suberr = np.sqrt(self.solres[2][arg] ** 2 + self.lqdres[2][arg] ** 2)
-                sol_slope = (self.solres[1][arg + 50] - self.solres[1][arg - 50]) / (
-                    self.solres[0][arg + 50] - self.solres[0][arg - 50]
-                )
-                lqd_slope = (self.lqdres[1][arg + 50] - self.lqdres[1][arg - 50]) / (
-                    self.lqdres[0][arg + 50] - self.lqdres[0][arg - 50]
-                )
-                slope_diff = sol_slope - lqd_slope
-                tmerr = suberr / slope_diff
-                self.tmerr = tmerr
+                self.tmerr = self._crossing_error(arg, suberr)
                 return self.calc_tm, self.tmerr
 
             self.attempts += 1
