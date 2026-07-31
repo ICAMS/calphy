@@ -363,6 +363,14 @@ class Tolerance(_StrictInput, title="Tolerance settings for convergence"):
     # (e.g. 0.05) to enable them for any other mode.
     solid_fraction: Annotated[float, Field(default=0.0, ge=0)]
     liquid_fraction: Annotated[float, Field(default=1.0, ge=0)]
+    # Irreversible work per atom above which a switching path is called into
+    # question, in eV/atom; 0 disables the check.  Dissipation enters the free
+    # energy directly, so for a melting point it converts to a temperature
+    # error of roughly dissipation / dS_fus -- at a typical dS_fus of ~1.2 kB
+    # the default of 1 meV/atom is about 10 K.  A clean sweep sits one to two
+    # orders of magnitude below it; a sweep whose structure changed partway
+    # (the forward and backward integrals then cannot match) sits well above.
+    dissipation: Annotated[float, Field(default=0.001, ge=0)]
     pressure: Annotated[float, Field(default=10.0, ge=0)]
 
 

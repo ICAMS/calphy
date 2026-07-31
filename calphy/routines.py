@@ -269,6 +269,38 @@ class MeltingTemp:
             scale_energy=True, return_values=True
         )
 
+        self._report_sweep_quality()
+
+    def _report_sweep_quality(self):
+        """
+        Repeat any dissipation warning from the two sub-calculations here.
+
+        The solid and liquid sweeps log into their own simfolders, which nobody
+        reads when the point of the mode is a single number at the end.  A
+        sweep that dissipated heavily produces a free energy that is wrong by
+        an amount no averaging removes, and the crossing of two such curves is
+        wrong with it -- so the warning has to reach the melting-temperature
+        log, where it will actually be seen.
+        """
+        offenders = [
+            (job.calc.reference_phase, job.ediss)
+            for job in (self.soljob, self.lqdjob)
+            if getattr(job, "ediss_high", False)
+        ]
+        if not offenders:
+            return
+        detail = ", ".join(
+            "%s %.3e eV/atom" % (phase, value) for phase, value in offenders
+        )
+        self.logger.warning(
+            "Melting temperature is being extrapolated from a sweep that did "
+            "not stay reversible (%s; tolerance.dissipation = %.3e). The phase "
+            "very likely changed during the sweep, so treat the reported Tm as "
+            "unreliable rather than as an answer -- see the warnings in the "
+            "sub-calculation logs." % (detail, self.calc.tolerance.dissipation)
+        )
+        self.logger.warning("STATE: Tm unreliable, sweep dissipation too high")
+
     def start_calculation(self):
         """
         Start calculation

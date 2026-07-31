@@ -145,6 +145,10 @@ def gather_results(
           standard error of the mean free energy, not a hysteresis check.
         - dissipation: mean switching dissipation (fe/alchemy) or NaN (ts/tscale)
         - ts_dissipation: max hysteresis over a ts/tscale sweep, or NaN otherwise
+        - ts_dissipation_high: True where that hysteresis exceeded
+          tolerance.dissipation, i.e. the sweep did not stay reversible and the
+          free energy it produced should not be trusted; False when it was
+          within tolerance, NaN where no verdict was recorded
         - forward_energy_diff / backward_energy_diff: list of arrays, one per
           reversible-scaling replica (ts/tscale only, else None); the raw
           per-lambda energy differential, useful to see *where* along the
@@ -177,6 +181,7 @@ def gather_results(
     datadict["free_energy_error"] = []
     datadict["dissipation"] = []
     datadict["ts_dissipation"] = []
+    datadict["ts_dissipation_high"] = []
     datadict["reference_phase"] = []
     datadict["error_code"] = []
     datadict["composition"] = []
@@ -225,6 +230,7 @@ def gather_results(
         datadict["free_energy_error"].append(np.nan)
         datadict["dissipation"].append(np.nan)
         datadict["ts_dissipation"].append(np.nan)
+        datadict["ts_dissipation_high"].append(np.nan)
         datadict["forward_energy_diff"].append(None)
         datadict["backward_energy_diff"].append(None)
         datadict["forward_lambda"].append(None)
@@ -252,6 +258,9 @@ def gather_results(
         # dissipation, fe/alchemy) and max hysteresis over a ts/tscale sweep
         datadict["dissipation"][-1] = out["results"].get("dissipation", np.nan)
         datadict["ts_dissipation"][-1] = out["results"].get("ts_dissipation", np.nan)
+        datadict["ts_dissipation_high"][-1] = out["results"].get(
+            "ts_dissipation_high", np.nan
+        )
 
         # add normal composition
         el_arr = np.array(out["input"]["element"].split(" ")).astype(str)

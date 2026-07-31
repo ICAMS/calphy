@@ -277,6 +277,10 @@ class Phase:
         #: Max energy dissipation along a ts/tscale reversible-scaling sweep
         #: [eV/atom]; written to report.yaml as results.ts_dissipation.
         self.ediss = 0
+        #: Whether that sweep exceeded tolerance.dissipation, i.e. whether the
+        #: path was irreversible enough to doubt the free energy it produced.
+        #: Written to report.yaml as results.ts_dissipation_high.
+        self.ediss_high = False
 
         # box dimensions that need to be stored
         self.lx = None
@@ -443,6 +447,59 @@ class Phase:
             structures = ph.get_structures(filename, species, index=None)
 
         return structures
+
+    def check_dissipation(self, value, stage):
+        """
+        Judge the irreversibility of a switching path and log the verdict.
+
+        Dissipation is the work the path threw away by not staying in
+        equilibrium, and it enters the free energy directly.  A path that is
+        merely fast dissipates a little; a path whose structure changed partway
+        (a solid that melted at the top of a ts sweep, say) dissipates orders
+        of magnitude more, because the forward and backward integrals no longer
+        describe the same system.  The free energy is then wrong in a way no
+        amount of averaging fixes, so it is worth saying out loud.
+
+        Parameters
+        ----------
+        value : float
+            Dissipation in eV/atom.
+        stage : str
+            Human-readable name of the path, used in the message.
+
+        Returns
+        -------
+        bool
+            True if the dissipation exceeds ``tolerance.dissipation``.  False
+            when it does not, and whenever the check is disabled.
+        """
+        threshold = self.calc.tolerance.dissipation
+        value = float(np.abs(value))
+        self.logger.info("%s dissipation: %.3e eV/atom" % (stage, value))
+
+        if threshold <= 0:
+            self.logger.info(
+                "Dissipation check disabled (tolerance.dissipation = 0)"
+            )
+            return False
+        if value <= threshold:
+            return False
+
+        # rough Tm impact, for a typical entropy of fusion of ~1.2 kB/atom
+        t_equiv = value / (1.2 * kb)
+        self.logger.warning(
+            "%s dissipation is %.3e eV/atom, %.0fx the tolerance of %.3e "
+            "(tolerance.dissipation). The path is far from reversible, which "
+            "usually means the structure changed partway through it -- a solid "
+            "that melted or a liquid that froze during the sweep. The free "
+            "energy from this path is unreliable: on a melting point this much "
+            "dissipation is worth roughly %.0f K. Check "
+            "traj.temp.dat / the equilibration trajectories, and consider "
+            "enabling the structural checks (tolerance.solid_fraction > 0, "
+            "tolerance.liquid_fraction < 1) or narrowing the temperature range."
+            % (stage, value, value / threshold, threshold, t_equiv)
+        )
+        return True
 
     def _log_phase_detection_state(self):
         """
@@ -1769,18 +1826,23 @@ class Phase:
         # contaminated.
         self.ediss = float(ediss)
 
+        self.ediss_high = self.check_dissipation(
+            self.ediss, "Reversible-scaling sweep (%s)" % self.calc.reference_phase
+        )
+
         # Fold the sweep dissipation into report.yaml.  routine_fe() (called by
         # routine_ts/tscale before the sweep) has already written the report, so
-        # amend it in place rather than rewriting the whole thing.
-        self._amend_report({"results": {"ts_dissipation": self.ediss}})
-
-        self.logger.info(
-            f"Maximum energy dissipation along the temperature scaling part: {ediss} eV/atom"
+        # amend it in place rather than rewriting the whole thing.  The verdict
+        # travels with the number so a harvested frame can be filtered on it
+        # without re-deriving the threshold.
+        self._amend_report(
+            {
+                "results": {
+                    "ts_dissipation": self.ediss,
+                    "ts_dissipation_high": bool(self.ediss_high),
+                }
+            }
         )
-        if np.abs(ediss) > 1e-4:
-            self.logger.warning(
-                f"Found max energy dissipation of {ediss} along the temperature scaling path. Please ensure there are no structural changes!"
-            )
 
         if return_values:
             return res
