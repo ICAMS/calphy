@@ -60,6 +60,95 @@ class Alchemy(cph.Phase):
             calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen,
         )
 
+    def _coupling_pair(self, lmp, ramp="0.0", tag=None):
+        """Coupling mode: base components (all but last) at constant scale
+        1.0, the LAST component scaled by `ramp` (a constant or v_name).
+        H(lam) = U_base + lam*U_last — an alchemical coupling ramp of one
+        added component over an arbitrary multi-component base. With `tag`,
+        defines compute cR<tag> + variable dUc<tag> for the ramped
+        component's per-atom energy (unique ids per stage)."""
+        ns = self.calc._pair_style_with_options
+        names = self.calc._pair_style_names
+        terms = " ".join(f"1.0 {s}" for s in ns[:-1]) + f" {ramp} {ns[-1]}"
+        lmp.command("pair_style       hybrid/scaled %s" % terms)
+        for i, pc in enumerate(self.calc.pair_coeff):
+            words = pc.split()
+            same = [j for j, n in enumerate(names) if n == names[i]]
+            idx = [names[i]] + ([str(same.index(i) + 1)]
+                                if len(same) > 1 else [])
+            lmp.command("pair_coeff       "
+                        + " ".join([*words[:2], *idx, *words[2:]]))
+        if tag is not None:
+            same = [j for j, n in enumerate(names) if n == names[-1]]
+            occ = (" %d" % (same.index(len(names) - 1) + 1)) \
+                if len(same) > 1 else ""
+            lmp.command("compute         cR%s all pair %s%s"
+                        % (tag, names[-1], occ))
+            lmp.command("variable        dUc%s equal c_cR%s/atoms"
+                        % (tag, tag))
+        return lmp
+
+    def _run_integration_coupling(self, iteration=1):
+        """Coupling-mode integration: ramp ONLY the last component 0->1
+        (forward) and 1->0 (backward) over the fixed base.
+        W = int <U_last>_lam dlam;  dF = (W_f + W_b)/2 per iteration."""
+        lmp = ph.create_object(self.calc, self.simfolder)
+        conf = os.path.join(self.simfolder, "conf.equilibration.data")
+        # style only before read_data (pair_coeff needs the box)
+        ns = self.calc._pair_style_with_options
+        terms = " ".join(f"1.0 {s}" for s in ns[:-1]) + f" 0.0 {ns[-1]}"
+        lmp.command("pair_style       hybrid/scaled %s" % terms)
+        lmp = ph.read_data(lmp, conf)
+        self._coupling_pair(lmp, ramp="0.0")
+        lmp = ph.set_mass(lmp, self.calc)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp.command(
+            "velocity          all create %f %d mom yes rot yes dist gaussian"
+            % (self.calc._temperature, np.random.randint(1, 10000)))
+        if self.calc.npt:
+            lmp.command(
+                "fix             f1 all npt temp %f %f %f %s %f %f %f"
+                % (self.calc._temperature, self.calc._temperature,
+                   self.calc.md.thermostat_damping[1], self.iso,
+                   self.calc._pressure, self.calc._pressure,
+                   self.calc.md.barostat_damping[1]))
+        else:
+            lmp.command("fix             f1 all nvt temp %f %f %f"
+                        % (self.calc._temperature, self.calc._temperature,
+                           self.calc.md.thermostat_damping[1]))
+        lmp.command("thermo_style    custom step pe")
+        lmp.command("thermo          1000")
+        lmp.command("run             %d" % self.calc.n_equilibration_steps)
+
+        # forward: 0 -> 1
+        lmp.command("variable         clambda equal ramp(0.0,1.0)")
+        self._coupling_pair(lmp, ramp="v_clambda", tag="f")
+        lmp.command(
+            'fix             f2 all print 1 "${dUcf} ${dUcf} ${clambda}" '
+            'title "# dU_ramped[eV/atom] dU_ramped[eV/atom] lambda" '
+            "screen no file forward_%d.dat" % iteration)
+        lmp.command("run             %d" % self.calc._n_switching_steps)
+        lmp.command("unfix           f2")
+        lmp.command("uncompute       cRf")
+        lmp.command("variable        clambda delete")
+
+        # equilibrate at lam = 1 (full base + component)
+        self._coupling_pair(lmp, ramp="1.0")
+        lmp.command("run             %d" % self.calc.n_equilibration_steps)
+
+        # backward: 1 -> 0
+        lmp.command("variable         clambda equal ramp(1.0,0.0)")
+        self._coupling_pair(lmp, ramp="v_clambda", tag="b")
+        lmp.command(
+            'fix             f3 all print 1 "${dUcb} ${dUcb} ${clambda}" '
+            'title "# dU_ramped[eV/atom] dU_ramped[eV/atom] lambda" '
+            "screen no file backward_%d.dat" % iteration)
+        lmp.command("run             %d" % self.calc._n_switching_steps)
+        lmp.command("unfix           f3")
+
+        self.lammps_close(lmp=lmp)
+        lmp.rotate_logs("integration")
+
     def run_averaging(self):
         """
         Run averaging routine
@@ -83,13 +172,23 @@ class Alchemy(cph.Phase):
         """
         lmp = ph.create_object(self.calc, self.simfolder)
 
-        lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+        if self.calc.alchemy_coupling:
+            # equilibrate on the BASE system (lam = 0): full base, ramped
+            # component at scale 0
+            ns = self.calc._pair_style_with_options
+            terms = (" ".join(f"1.0 {s}" for s in ns[:-1])
+                     + f" 0.0 {ns[-1]}")
+            lmp.command("pair_style       hybrid/scaled %s" % terms)
+            lmp = ph.create_structure(lmp, self.calc)
+            self._coupling_pair(lmp, ramp="0.0")
+        else:
+            lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
 
-        # set up structure
-        lmp = ph.create_structure(lmp, self.calc)
+            # set up structure
+            lmp = ph.create_structure(lmp, self.calc)
 
-        # set up potential
-        lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+            # set up potential
+            lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
         lmp = ph.set_mass(lmp, self.calc)
 
         # add some computes
@@ -109,17 +208,26 @@ class Alchemy(cph.Phase):
             else:
                 self.run_finite_pressure_equilibration(lmp)
 
+            # equilibration-frame dump (no-op unless
+            # n_print_steps_equilibration > 0)
+            self.start_equilibration_dump(lmp)
+
             # this is when the averaging routine starts
             self.run_pressure_convergence(lmp)
 
         # run if a constrained lattice is used
         else:
+            self.start_equilibration_dump(lmp)
             # routine in which lattice constant will not varied, but is set to a given fixed value
             self.run_constrained_pressure_convergence(lmp)
 
-        # check for melting
+        # check for melting (skip in coupling mode: the base ensemble may
+        # legitimately be a liquid — the phase was validated when its
+        # baseline free energy was measured)
+        self.stop_equilibration_dump(lmp)
         self.dump_current_snapshot(lmp, "traj.equilibration_stage2.dat")
-        self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
+        if not self.calc.alchemy_coupling:
+            self.check_if_melted(lmp, "traj.equilibration_stage2.dat")
 
         # close object and process traj
         lmp = ph.write_data(lmp, "conf.equilibration.data")
@@ -145,6 +253,9 @@ class Alchemy(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
+        if self.calc.alchemy_coupling:
+            return self._run_integration_coupling(iteration=iteration)
+
         # create lammps object
         lmp = ph.create_object(self.calc, self.simfolder)
 
@@ -511,6 +622,23 @@ class Alchemy(cph.Phase):
         Calculates the final work, energy dissipation; In alchemical mode, there is reference system,
         the calculated free energy is the same as the work.
         """
+        if self.calc.alchemy_coupling:
+            ws, qs = [], []
+            for i in range(1, self.calc.n_iterations + 1):
+                fwd = np.loadtxt(os.path.join(self.simfolder,
+                                              "forward_%d.dat" % i))
+                bkd = np.loadtxt(os.path.join(self.simfolder,
+                                              "backward_%d.dat" % i))
+                wf = np.trapezoid(fwd[:, 0], fwd[:, 2])          # lam 0 -> 1
+                wb = -np.trapezoid(bkd[:, 0], bkd[:, 2])         # lam 1 -> 0
+                ws.append(0.5 * (wf + wb))
+                qs.append(0.5 * (wf - wb))
+            self.w = float(np.mean(ws))
+            self.qdiss = float(np.mean(qs))
+            self.ferr = float(np.std(ws))
+            self.fe = self.w
+            return
+
         w, q, qerr = find_w(self.simfolder, self.calc, full=True, solid=False)
 
         self.w = w

@@ -401,6 +401,24 @@ class Phase:
         # melt_structure, get_structures)
         lmp.sync()
 
+    def start_equilibration_dump(self, lmp, filename="traj.equilibration.dat"):
+        """Continuous every-n-th-step dump through the equilibration stages
+        (pressure convergence onward), enabled by
+        n_print_steps_equilibration > 0. Off by default: behavior is then
+        identical to unpatched calphy. Dump id deq avoids the id 2 used by
+        dump_current_snapshot."""
+        if self.calc.n_print_steps_equilibration > 0:
+            lmp.command(
+                "dump              deq all custom %d %s id type mass x y z vx vy vz"
+                % (self.calc.n_print_steps_equilibration, filename)
+            )
+
+    def stop_equilibration_dump(self, lmp):
+        """ """
+        if self.calc.n_print_steps_equilibration > 0:
+            lmp.command("undump            deq")
+            lmp.sync()
+
     def get_structures(self, stage="fe", direction="forward", n_iteration=1):
         """ """
         species = self.calc.element
