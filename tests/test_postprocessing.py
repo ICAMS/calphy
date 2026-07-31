@@ -95,12 +95,13 @@ def _make_fe_calc(folder, with_report=True):
 
 
 def test_gather_results_ts_mode_with_replicas(tmp_path):
-    """ts mode picks up free_energy_error, ts_dissipation, and per-replica
-    forward/backward energy-diff + lambda arrays."""
+    """ts mode picks up free_energy_error, ts_dissipation, and -- when the
+    switching data is asked for -- per-replica forward/backward energy-diff +
+    lambda arrays."""
     mainfolder = tmp_path / "calcs"
     t, f, ferr, lam = _make_ts_calc(str(mainfolder / "run1"))
 
-    df = gather_results(str(mainfolder))
+    df = gather_results(str(mainfolder), include_sweep_data=True)
     row = df.loc[df.calculation == "run1"].iloc[0]
 
     assert row.status == "True"
