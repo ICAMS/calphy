@@ -43,6 +43,7 @@ INIT_TOKENS = frozenset({"units", "atom_style", "boundary", "box", "timestep"})
 STICKY_TOKENS = frozenset({
     "pair_style", "pair_coeff", "mass", "group", "compute", "variable",
     "fix", "fix_modify", "thermo", "thermo_style", "echo", "dump",
+    "dump_modify",
 })
 ONE_SHOT_TOKENS = frozenset({
     "run", "velocity", "displace_atoms", "change_box",
@@ -188,7 +189,7 @@ class SessionState:
         self.computes = {}              # id -> command
         self.variables = {}             # name -> command (position kept on redefine)
         self.fixes = {}                 # id -> {"command": str, "fix_modify": [str]}
-        self.dumps = {}                 # id -> command
+        self.dumps = {}                 # id -> {"command": str, "dump_modify": [str]}
         self.thermo = None
         self.thermo_style = None
         self.echo = None
@@ -227,7 +228,12 @@ class SessionState:
         elif t == "unfix":
             self.fixes.pop(tokens[1], None)
         elif t == "dump":
-            self.dumps[tokens[1]] = cmd
+            self.dumps[tokens[1]] = {"command": cmd, "dump_modify": []}
+        elif t == "dump_modify":
+            did = tokens[1]
+            if did not in self.dumps:
+                raise RunnerStateError("dump_modify references unknown dump id %r" % did)
+            self.dumps[did]["dump_modify"].append(cmd)
         elif t == "undump":
             self.dumps.pop(tokens[1], None)
         elif t == "thermo":
@@ -243,11 +249,15 @@ class SessionState:
     # -- replay ------------------------------------------------------------- #
     def check_replayable(self):
         """Raise if the current state cannot be faithfully carried across a boundary."""
-        if self.dumps:
-            raise RunnerStateError(
-                "dump(s) %s are live at a segment boundary; calphy must undump "
-                "before a read" % sorted(self.dumps)
-            )
+        # A live dump used to be refused here, because a replayed `dump`
+        # reopens its file in truncate mode and every frame written before
+        # the boundary would be silently lost. build_replay_header now
+        # re-emits each live dump followed by `dump_modify <id> append yes`,
+        # which makes the crossing faithful, so this is no longer fatal.
+        #
+        # This is what lets n_print_steps_equilibration work under the
+        # executable runner: its `deq` dump must stay open across the
+        # pressure-convergence and spring-constant stages, and both sync().
         immediate = [n for n, c in self.variables.items() if "$(" in c]
         if immediate:
             raise RunnerStateError(
@@ -272,6 +282,13 @@ class SessionState:
         for entry in self.fixes.values():
             lines.append(_rewrite_replayed_fix(entry["command"], segidx))
             lines.extend(entry["fix_modify"])
+        # Live dumps: re-open in APPEND mode so frames written in earlier
+        # segments survive. Without the dump_modify the replayed `dump`
+        # truncates its file and the trajectory silently restarts empty.
+        for did, entry in self.dumps.items():
+            lines.append(entry["command"])
+            lines.extend(entry["dump_modify"])
+            lines.append("dump_modify %s append yes" % did)
         if self.thermo_style is not None:
             lines.append(self.thermo_style)
         if self.thermo is not None:

@@ -228,13 +228,64 @@ def test_overlay_pair_block_replays_completely(tmp_path):
     ]
 
 
-def test_live_dump_at_sync_raises(tmp_path):
+def test_live_dump_crosses_boundary_in_append_mode(tmp_path):
+    """A dump left open across a segment boundary must be replayed with
+    `append yes`: a bare replayed `dump` reopens its file in truncate mode
+    and would silently discard every frame from the earlier segments.
+
+    This is what n_print_steps_equilibration needs -- its `deq` dump stays
+    open across pressure-convergence and spring-constant convergence, and
+    both of those sync().
+    """
     run = make_runner(tmp_path)
     feed(run, BOOT + ["dump d1 all custom 1 t.dat id x", "run 1"])
-    run.sync()                          # seg 0 verbatim (dump still live in state)
+    run.sync()                          # seg 0 verbatim (dump still live)
     run.command("run 1")
-    with pytest.raises(RunnerStateError, match="dump"):
+    run.sync()                          # must NOT raise any more
+
+    lines = seg_lines(tmp_path, 1)
+    assert "dump d1 all custom 1 t.dat id x" in lines
+    assert "dump_modify d1 append yes" in lines
+    # the modify has to follow the dump that defines the id
+    assert lines.index("dump_modify d1 append yes") > \
+        lines.index("dump d1 all custom 1 t.dat id x")
+    # seg 0 must NOT append -- it is the segment that creates the file
+    assert "dump_modify d1 append yes" not in seg_lines(tmp_path, 0)
+
+
+def test_user_dump_modify_replays_before_append(tmp_path):
+    """A dump_modify issued by calphy is sticky and replays, ahead of the
+    runner's own append directive."""
+    run = make_runner(tmp_path)
+    feed(run, BOOT + ["dump d1 all custom 1 t.dat id x",
+                      "dump_modify d1 sort id", "run 1"])
+    run.sync()
+    run.command("run 1")
+    run.sync()
+
+    lines = seg_lines(tmp_path, 1)
+    assert lines.index("dump_modify d1 sort id") > \
+        lines.index("dump d1 all custom 1 t.dat id x")
+    assert lines.index("dump_modify d1 append yes") > \
+        lines.index("dump_modify d1 sort id")
+
+
+def test_dump_modify_unknown_id_raises(tmp_path):
+    run = make_runner(tmp_path)
+    feed(run, BOOT + ["dump_modify nosuch append yes"])
+    with pytest.raises(RunnerStateError, match="unknown dump id"):
         run.sync()
+
+
+def test_undumped_dump_is_not_replayed(tmp_path):
+    """undump must drop the dump from the replay header entirely."""
+    run = make_runner(tmp_path)
+    feed(run, BOOT + ["dump d1 all custom 1 t.dat id x", "run 1", "undump d1"])
+    run.sync()
+    run.command("run 1")
+    run.sync()
+    lines = seg_lines(tmp_path, 1)
+    assert not [l for l in lines if l.startswith(("dump d1", "dump_modify d1"))]
 
 
 def test_dump_undump_within_segment_is_fine(tmp_path):
