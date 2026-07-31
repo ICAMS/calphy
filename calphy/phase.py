@@ -105,6 +105,8 @@ class Phase:
             else:
                 self.logger.info("Melting cycle is turned off")
 
+        self._log_phase_detection_state()
+
         # now thermostat and barostat damping process
         if self.calc.equilibration_control is None:
             self.logger.info(
@@ -441,6 +443,51 @@ class Phase:
             structures = ph.get_structures(filename, species, index=None)
 
         return structures
+
+    def _log_phase_detection_state(self):
+        """
+        Record whether the structural phase-stability check that applies to
+        this run's reference phase is actually reachable.
+
+        The measured solid fraction is bounded to [0, 1], so
+        ``tolerance.solid_fraction = 0`` makes the melt check impossible to
+        trigger and ``tolerance.liquid_fraction = 1`` does the same for the
+        solidification check.  Both are off by default, which means a run can
+        silently report a free energy for a structure that changed phase
+        during equilibration -- worth a warning in the log so the condition is
+        visible after the fact.
+        """
+        if self.calc.reference_phase == "solid":
+            threshold = self.calc.tolerance.solid_fraction
+            if threshold <= 0:
+                self.logger.warning(
+                    "Melt detection is DISABLED (tolerance.solid_fraction = "
+                    "%g): if this solid melts during equilibration the run "
+                    "will continue and report a free energy for the melted "
+                    "structure. Set tolerance.solid_fraction > 0 (e.g. 0.7) "
+                    "to enable it." % threshold
+                )
+            else:
+                self.logger.info(
+                    "Melt detection enabled at tolerance.solid_fraction = %g"
+                    % threshold
+                )
+        else:
+            threshold = self.calc.tolerance.liquid_fraction
+            if threshold >= 1:
+                self.logger.warning(
+                    "Solidification detection is DISABLED "
+                    "(tolerance.liquid_fraction = %g): if this liquid freezes "
+                    "during equilibration the run will continue and report a "
+                    "free energy for the frozen structure. Set "
+                    "tolerance.liquid_fraction < 1 (e.g. 0.05) to enable it."
+                    % threshold
+                )
+            else:
+                self.logger.info(
+                    "Solidification detection enabled at "
+                    "tolerance.liquid_fraction = %g" % threshold
+                )
 
     def check_if_melted(self, lmp, filename):
         """

@@ -71,6 +71,54 @@ class MeltingTemp:
         logfile = os.path.join(os.getcwd(), f"{self.calc.create_identifier()}.log")
         self.logger = ph.prepare_log(logfile, screen=log_to_screen)
 
+    # Values used when melting_temperature has to switch the structural
+    # phase-stability checks back on for its sub-calculations.
+    DETECTION_SOLID_FRACTION = 0.7
+    DETECTION_LIQUID_FRACTION = 0.05
+
+    def _enable_phase_detection(self, calc):
+        """
+        Force the structural phase-stability checks on for a sub-calculation.
+
+        ``run_jobs`` signals "solid melted" / "liquid froze" purely through
+        MeltedError / SolidifiedError, and ``start_calculation`` walks the
+        temperature bracket on those signals alone.  The measured solid
+        fraction is bounded to [0, 1], so the shipped defaults
+        (``solid_fraction = 0``, ``liquid_fraction = 1``) make both checks
+        unreachable -- the bracket would never be corrected and Tm would be
+        reported without ever verifying that the solid stayed solid and the
+        liquid stayed liquid.
+
+        The checks are therefore enabled here for this mode only, leaving the
+        global defaults alone.  An explicit user setting is always respected.
+
+        Parameters
+        ----------
+        calc : dict
+            Raw sub-calculation dict, mutated in place before it is parsed.
+        """
+        tolerance = calc.setdefault("tolerance", {})
+        if not isinstance(tolerance, dict):
+            return
+        if tolerance.get("solid_fraction") is None:
+            tolerance["solid_fraction"] = self.DETECTION_SOLID_FRACTION
+            self.logger.warning(
+                "mode melting_temperature: enabling melt detection with "
+                "tolerance.solid_fraction = %g (the default of 0 makes the "
+                "check unreachable, and the temperature bracket is advanced "
+                "only when it fires). Set tolerance.solid_fraction "
+                "explicitly to override." % self.DETECTION_SOLID_FRACTION
+            )
+        if tolerance.get("liquid_fraction") is None:
+            tolerance["liquid_fraction"] = self.DETECTION_LIQUID_FRACTION
+            self.logger.warning(
+                "mode melting_temperature: enabling solidification detection "
+                "with tolerance.liquid_fraction = %g (the default of 1 makes "
+                "the check unreachable, and the temperature bracket is "
+                "advanced only when it fires). Set tolerance.liquid_fraction "
+                "explicitly to override." % self.DETECTION_LIQUID_FRACTION
+            )
+
     def prepare_calcs(self):
         """
         Prepare calculations list from given object
@@ -101,6 +149,7 @@ class MeltingTemp:
             calc["n_iterations"] = data["calculations"][int(self.calc.kernel)][
                 "n_iterations"
             ]
+        self._enable_phase_detection(calc)
         calculations["calculations"].append(calc)
 
         with open(self.calc.inputfile, "r") as fin:
@@ -115,6 +164,7 @@ class MeltingTemp:
             calc["n_iterations"] = data["calculations"][int(self.calc.kernel)][
                 "n_iterations"
             ]
+        self._enable_phase_detection(calc)
         calculations["calculations"].append(calc)
 
         outfile = f"{self.calc.create_identifier()}.{self.attempts}.yaml"
