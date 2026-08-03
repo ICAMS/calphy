@@ -44,7 +44,64 @@ def _extract_error(errfile):
     return error_code
 
 
-def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=False):
+def _read_sweep_data(folder, stride=1):
+    """
+    Read the per-lambda switching data of every reversible-scaling replica.
+
+    Parameters
+    ----------
+    folder : str
+        Calculation folder holding ``ts.forward_<i>.dat`` /
+        ``ts.backward_<i>.dat``.
+    stride : int, optional
+        Keep every n-th sample.
+
+    Returns
+    -------
+    dict
+        ``forward_energy_diff`` / ``backward_energy_diff`` (energy differential
+        per lambda) and ``forward_lambda`` / ``backward_lambda``, each a list
+        with one array per replica, or None where no replica was found.
+
+    Raises
+    ------
+    Exception
+        Propagates any read/parse failure; the caller decides whether one bad
+        calculation should be fatal.
+    """
+    f_ediffs, b_ediffs, f_lambdas, b_lambdas = [], [], [], []
+    i = 1
+    while True:
+        fwdfile = os.path.join(folder, f"ts.forward_{i}.dat")
+        bkdfile = os.path.join(folder, f"ts.backward_{i}.dat")
+        if not (os.path.exists(fwdfile) and os.path.exists(bkdfile)):
+            break
+        # ndmin=2 so a single-row sweep still unpacks as columns
+        fwd = np.loadtxt(fwdfile, comments="#", ndmin=2)[::stride]
+        bkd = np.loadtxt(bkdfile, comments="#", ndmin=2)[::stride]
+        fdx, flambda = fwd[:, 0], fwd[:, 3]
+        bdx, blambda = bkd[:, 0], bkd[:, 3]
+        f_ediffs.append(fdx / flambda)
+        b_ediffs.append(bdx / blambda)
+        f_lambdas.append(flambda)
+        b_lambdas.append(blambda)
+        i += 1
+
+    return {
+        "forward_energy_diff": f_ediffs or None,
+        "backward_energy_diff": b_ediffs or None,
+        "forward_lambda": f_lambdas or None,
+        "backward_lambda": b_lambdas or None,
+    }
+
+
+def gather_results(
+    mainfolder,
+    reduce_composition=True,
+    extract_phase_prefix=False,
+    include_sweep_data=False,
+    sweep_data_stride=1,
+):
     """
     Gather results from all subfolders in a given folder into a Pandas DataFrame
 
@@ -61,6 +118,22 @@ def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=Fal
         Should be used in conjuction with phase diagram mode.
         Extracts the prefix and add it as a phase_name column.
 
+    include_sweep_data: bool, optional, default False
+        Load the raw per-lambda switching data of every reversible-scaling
+        replica into the frame.  Off by default because it is expensive:
+        ``ts.forward_*.dat`` / ``ts.backward_*.dat`` are written by
+        ``fix print 1``, i.e. one row per MD step, so a sweep of
+        ``n_switching_steps`` keeps roughly ``n_switching_steps * 32`` bytes
+        per replica per calculation resident in the frame (~1.6 MB per
+        calculation for a 50000-step sweep, scaling with ``n_iterations``).
+        Enable it when diagnosing *where* along a sweep forward and backward
+        diverge; leave it off to gather free energies.
+
+    sweep_data_stride: int, optional, default 1
+        Keep only every n-th sample of the sweep data.  Only meaningful with
+        ``include_sweep_data=True``; a stride of 10--100 preserves the shape
+        of the hysteresis while cutting the memory cost proportionally.
+
     Returns
     -------
     df: pandas DataFrame
@@ -72,13 +145,27 @@ def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=Fal
           standard error of the mean free energy, not a hysteresis check.
         - dissipation: mean switching dissipation (fe/alchemy) or NaN (ts/tscale)
         - ts_dissipation: max hysteresis over a ts/tscale sweep, or NaN otherwise
+        - ts_dissipation_high: True where that hysteresis exceeded
+          tolerance.dissipation, i.e. the sweep did not stay reversible and the
+          free energy it produced should not be trusted; False when it was
+          within tolerance, NaN where no verdict was recorded
         - forward_energy_diff / backward_energy_diff: list of arrays, one per
           reversible-scaling replica (ts/tscale only, else None); the raw
           per-lambda energy differential, useful to see *where* along the
           sweep forward/backward diverge (phase-transition diagnostic).
+          Populated only when ``include_sweep_data`` is True, else None.
         - forward_lambda / backward_lambda: matching lambda arrays for the
           above (ts/tscale only, else None)
+
+    Notes
+    -----
+    A calculation whose sweep files are unreadable (a job killed mid-sweep
+    leaves a ragged final row) does not abort the gather: its sweep columns
+    stay None and the reason is recorded in ``error_code``.
     """
+    if sweep_data_stride < 1:
+        raise ValueError("sweep_data_stride must be >= 1")
+
     try:
         import pandas as pd
     except ImportError:
@@ -94,6 +181,7 @@ def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=Fal
     datadict["free_energy_error"] = []
     datadict["dissipation"] = []
     datadict["ts_dissipation"] = []
+    datadict["ts_dissipation_high"] = []
     datadict["reference_phase"] = []
     datadict["error_code"] = []
     datadict["composition"] = []
@@ -142,6 +230,7 @@ def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=Fal
         datadict["free_energy_error"].append(np.nan)
         datadict["dissipation"].append(np.nan)
         datadict["ts_dissipation"].append(np.nan)
+        datadict["ts_dissipation_high"].append(np.nan)
         datadict["forward_energy_diff"].append(None)
         datadict["backward_energy_diff"].append(None)
         datadict["forward_lambda"].append(None)
@@ -169,6 +258,9 @@ def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=Fal
         # dissipation, fe/alchemy) and max hysteresis over a ts/tscale sweep
         datadict["dissipation"][-1] = out["results"].get("dissipation", np.nan)
         datadict["ts_dissipation"][-1] = out["results"].get("ts_dissipation", np.nan)
+        datadict["ts_dissipation_high"][-1] = out["results"].get(
+            "ts_dissipation_high", np.nan
+        )
 
         # add normal composition
         el_arr = np.array(out["input"]["element"].split(" ")).astype(str)
@@ -207,40 +299,33 @@ def gather_results(mainfolder, reduce_composition=True, extract_phase_prefix=Fal
                 datadict["free_energy"][-1] = f
                 datadict["free_energy_error"][-1] = ferr
 
-                # raw per-lambda energy differential of each forward/backward
+                # Raw per-lambda energy differential of each forward/backward
                 # switching replica; diverging forward vs. backward curves
                 # signal hysteresis/a structural change during the sweep
-                # (ts_dissipation above is just the max of this difference)
-                f_ediffs = []
-                b_ediffs = []
-                f_lambdas = []
-                b_lambdas = []
-                i = 1
-                while True:
-                    fwdfile = os.path.join(
-                        mainfolder, folder, f"ts.forward_{i}.dat"
-                    )
-                    bkdfile = os.path.join(
-                        mainfolder, folder, f"ts.backward_{i}.dat"
-                    )
-                    if not (os.path.exists(fwdfile) and os.path.exists(bkdfile)):
-                        break
-                    fdx, _fp, _fvol, flambda = np.loadtxt(
-                        fwdfile, unpack=True, comments="#"
-                    )
-                    bdx, _bp, _bvol, blambda = np.loadtxt(
-                        bkdfile, unpack=True, comments="#"
-                    )
-                    f_ediffs.append(fdx / flambda)
-                    b_ediffs.append(bdx / blambda)
-                    f_lambdas.append(flambda)
-                    b_lambdas.append(blambda)
-                    i += 1
-
-                datadict["forward_energy_diff"][-1] = f_ediffs if f_ediffs else None
-                datadict["backward_energy_diff"][-1] = b_ediffs if b_ediffs else None
-                datadict["forward_lambda"][-1] = f_lambdas if f_lambdas else None
-                datadict["backward_lambda"][-1] = b_lambdas if b_lambdas else None
+                # (ts_dissipation above is just the max of this difference).
+                #
+                # Opt-in: these files carry one row per MD step, so loading
+                # them for every calculation dominates both the runtime and
+                # the size of the returned frame.
+                if include_sweep_data:
+                    try:
+                        sweeps = _read_sweep_data(
+                            os.path.join(mainfolder, folder), sweep_data_stride
+                        )
+                    except Exception as exc:
+                        # a job killed mid-sweep leaves a ragged final row;
+                        # that must not cost us every other calculation
+                        warnings.warn(
+                            "could not read switching data in %s: %s: %s"
+                            % (folder, type(exc).__name__, exc),
+                            RuntimeWarning,
+                        )
+                        datadict["error_code"][-1] = "unreadable switching data: %s" % (
+                            type(exc).__name__,
+                        )
+                    else:
+                        for key, val in sweeps.items():
+                            datadict[key][-1] = val
             else:
                 datadict["status"].append("False")
                 errfile = os.path.join(os.getcwd(), mainfolder, folder + ".sub.err")

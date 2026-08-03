@@ -105,6 +105,8 @@ class Phase:
             else:
                 self.logger.info("Melting cycle is turned off")
 
+        self._log_phase_detection_state()
+
         # now thermostat and barostat damping process
         if self.calc.equilibration_control is None:
             self.logger.info(
@@ -275,6 +277,10 @@ class Phase:
         #: Max energy dissipation along a ts/tscale reversible-scaling sweep
         #: [eV/atom]; written to report.yaml as results.ts_dissipation.
         self.ediss = 0
+        #: Whether that sweep exceeded tolerance.dissipation, i.e. whether the
+        #: path was irreversible enough to doubt the free energy it produced.
+        #: Written to report.yaml as results.ts_dissipation_high.
+        self.ediss_high = False
 
         # box dimensions that need to be stored
         self.lx = None
@@ -441,6 +447,104 @@ class Phase:
             structures = ph.get_structures(filename, species, index=None)
 
         return structures
+
+    def check_dissipation(self, value, stage):
+        """
+        Judge the irreversibility of a switching path and log the verdict.
+
+        Dissipation is the work the path threw away by not staying in
+        equilibrium, and it enters the free energy directly.  A path that is
+        merely fast dissipates a little; a path whose structure changed partway
+        (a solid that melted at the top of a ts sweep, say) dissipates orders
+        of magnitude more, because the forward and backward integrals no longer
+        describe the same system.  The free energy is then wrong in a way no
+        amount of averaging fixes, so it is worth saying out loud.
+
+        Parameters
+        ----------
+        value : float
+            Dissipation in eV/atom.
+        stage : str
+            Human-readable name of the path, used in the message.
+
+        Returns
+        -------
+        bool
+            True if the dissipation exceeds ``tolerance.dissipation``.  False
+            when it does not, and whenever the check is disabled.
+        """
+        threshold = self.calc.tolerance.dissipation
+        value = float(np.abs(value))
+        self.logger.info("%s dissipation: %.3e eV/atom" % (stage, value))
+
+        if threshold <= 0:
+            self.logger.info(
+                "Dissipation check disabled (tolerance.dissipation = 0)"
+            )
+            return False
+        if value <= threshold:
+            return False
+
+        # rough Tm impact, for a typical entropy of fusion of ~1.2 kB/atom
+        t_equiv = value / (1.2 * kb)
+        self.logger.warning(
+            "%s dissipation is %.3e eV/atom, %.0fx the tolerance of %.3e "
+            "(tolerance.dissipation). The path is far from reversible, which "
+            "usually means the structure changed partway through it -- a solid "
+            "that melted or a liquid that froze during the sweep. The free "
+            "energy from this path is unreliable: on a melting point this much "
+            "dissipation is worth roughly %.0f K. Check "
+            "traj.temp.dat / the equilibration trajectories, and consider "
+            "enabling the structural checks (tolerance.solid_fraction > 0, "
+            "tolerance.liquid_fraction < 1) or narrowing the temperature range."
+            % (stage, value, value / threshold, threshold, t_equiv)
+        )
+        return True
+
+    def _log_phase_detection_state(self):
+        """
+        Record whether the structural phase-stability check that applies to
+        this run's reference phase is actually reachable.
+
+        The measured solid fraction is bounded to [0, 1], so
+        ``tolerance.solid_fraction = 0`` makes the melt check impossible to
+        trigger and ``tolerance.liquid_fraction = 1`` does the same for the
+        solidification check.  Both are off by default, which means a run can
+        silently report a free energy for a structure that changed phase
+        during equilibration -- worth a warning in the log so the condition is
+        visible after the fact.
+        """
+        if self.calc.reference_phase == "solid":
+            threshold = self.calc.tolerance.solid_fraction
+            if threshold <= 0:
+                self.logger.warning(
+                    "Melt detection is DISABLED (tolerance.solid_fraction = "
+                    "%g): if this solid melts during equilibration the run "
+                    "will continue and report a free energy for the melted "
+                    "structure. Set tolerance.solid_fraction > 0 (e.g. 0.7) "
+                    "to enable it." % threshold
+                )
+            else:
+                self.logger.info(
+                    "Melt detection enabled at tolerance.solid_fraction = %g"
+                    % threshold
+                )
+        else:
+            threshold = self.calc.tolerance.liquid_fraction
+            if threshold >= 1:
+                self.logger.warning(
+                    "Solidification detection is DISABLED "
+                    "(tolerance.liquid_fraction = %g): if this liquid freezes "
+                    "during equilibration the run will continue and report a "
+                    "free energy for the frozen structure. Set "
+                    "tolerance.liquid_fraction < 1 (e.g. 0.05) to enable it."
+                    % threshold
+                )
+            else:
+                self.logger.info(
+                    "Solidification detection enabled at "
+                    "tolerance.liquid_fraction = %g" % threshold
+                )
 
     def check_if_melted(self, lmp, filename):
         """
@@ -803,6 +907,19 @@ class Phase:
         pv_history = []  # [(vol_per_atom, mean_pressure), ...]
         n_fit_warmup = 5  # run this many cycles before attempting linear P-V fit
         n_skip = 1  # drop first cycle(s) from averaging (transient)
+        # Index of the first avg.dat sample that belongs to the *current* box.
+        # A change_box below resizes the cell discontinuously, so every sample
+        # recorded before it describes a different thermodynamic state and must
+        # not enter the mean pressure, the stored box dimensions, or the P-V
+        # fit.  We slice rather than truncate the file: avg.dat may be spread
+        # over per-segment parts that the runner concatenates on read, and
+        # driver code does not own those paths.
+        reset_index = 0
+        # True for the single cycle directly after a rescale.  Unlike cycle 1
+        # of the loop -- which follows a full equilibration run -- that cycle
+        # has no prior equilibration at the new box, so it is pure transient
+        # and may neither declare convergence nor feed the P-V fit.
+        just_rescaled = False
 
         for i in range(int(self.calc.md.n_cycles)):
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
@@ -811,6 +928,21 @@ class Phase:
             lx, ly, lz, ipress = lmp.read_timeseries(
                 "avg.dat", usecols=(1, 2, 3, 4)
             ).T
+            n_samples_total = len(ipress)
+            # keep only what was sampled at the box we are currently in
+            lx = lx[reset_index:]
+            ly = ly[reset_index:]
+            lz = lz[reset_index:]
+            ipress = ipress[reset_index:]
+
+            if just_rescaled:
+                just_rescaled = False
+                self.logger.info(
+                    "At count %d discarding transient cycle after box rescale"
+                    % (i + 1)
+                )
+                continue
+
             # Average over all data after dropping the first cycle
             skip_samples = n_skip * ncount
             if len(ipress) <= skip_samples:
@@ -855,16 +987,25 @@ class Phase:
             else:
                 # After enough warmup cycles, fit P(V) linearly and rescale box
                 if len(pv_history) >= n_fit_warmup:
-                    scale = self._fit_volume_scale(pv_history, target_pressure)
+                    # change_box scales the box as it stands *now*, so the
+                    # scale factor has to be referred to the current volume,
+                    # not to the windowed mean volume that went into the fit.
+                    current_volatom = float(lx[-1] * ly[-1] * lz[-1]) / self.natoms
+                    scale = self._fit_volume_scale(
+                        pv_history, target_pressure, current_volatom
+                    )
                     if scale is not None:
                         self.logger.info(
-                            "Applying linear P-V fit correction — scale factor %.6f"
-                            % scale
+                            "Applying linear P-V fit correction — scale factor "
+                            "%.6f (from vol/atom %.4f)" % (scale, current_volatom)
                         )
                         lmp.command(
                             "change_box       all x scale %f y scale %f z scale %f remap"
                             % (scale, scale, scale)
                         )
+                        # everything sampled so far belongs to the old box
+                        reset_index = n_samples_total
+                        just_rescaled = True
 
         if not converged:
             self.lammps_close(lmp=lmp)
@@ -884,7 +1025,7 @@ class Phase:
         lmp.command("unfix            2")
 
     @staticmethod
-    def _fit_volume_scale(pv_history, target_pressure):
+    def _fit_volume_scale(pv_history, target_pressure, current_volume=None):
         """
         Estimate a box scale factor by fitting a linear P(V) model to the
         accumulated volume/pressure history and predicting the volume at
@@ -895,6 +1036,13 @@ class Phase:
         pv_history : list of (vol_per_atom, pressure) tuples
         target_pressure : float
             Target pressure in bar.
+        current_volume : float, optional
+            Volume per atom of the box as it stands right now.  The returned
+            factor is applied by ``change_box ... scale``, which acts on the
+            current box, so the prediction must be referred to that volume.
+            Defaults to the most recent entry of ``pv_history`` -- a windowed
+            mean that lags the box whenever it is still moving, so callers
+            driving a live box should pass the current value explicitly.
 
         Returns
         -------
@@ -921,9 +1069,9 @@ class Phase:
             return None
 
         V_target = (target_pressure - intercept) / slope
-        V_curr = vols[-1]
+        V_curr = vols[-1] if current_volume is None else current_volume
 
-        if V_target <= 0:
+        if V_target <= 0 or V_curr <= 0:
             return None
 
         scale = (V_target / V_curr) ** (1.0 / 3.0)
@@ -1678,18 +1826,23 @@ class Phase:
         # contaminated.
         self.ediss = float(ediss)
 
+        self.ediss_high = self.check_dissipation(
+            self.ediss, "Reversible-scaling sweep (%s)" % self.calc.reference_phase
+        )
+
         # Fold the sweep dissipation into report.yaml.  routine_fe() (called by
         # routine_ts/tscale before the sweep) has already written the report, so
-        # amend it in place rather than rewriting the whole thing.
-        self._amend_report({"results": {"ts_dissipation": self.ediss}})
-
-        self.logger.info(
-            f"Maximum energy dissipation along the temperature scaling part: {ediss} eV/atom"
+        # amend it in place rather than rewriting the whole thing.  The verdict
+        # travels with the number so a harvested frame can be filtered on it
+        # without re-deriving the threshold.
+        self._amend_report(
+            {
+                "results": {
+                    "ts_dissipation": self.ediss,
+                    "ts_dissipation_high": bool(self.ediss_high),
+                }
+            }
         )
-        if np.abs(ediss) > 1e-4:
-            self.logger.warning(
-                f"Found max energy dissipation of {ediss} along the temperature scaling path. Please ensure there are no structural changes!"
-            )
 
         if return_values:
             return res

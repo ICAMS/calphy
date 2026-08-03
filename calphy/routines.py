@@ -71,6 +71,54 @@ class MeltingTemp:
         logfile = os.path.join(os.getcwd(), f"{self.calc.create_identifier()}.log")
         self.logger = ph.prepare_log(logfile, screen=log_to_screen)
 
+    # Values used when melting_temperature has to switch the structural
+    # phase-stability checks back on for its sub-calculations.
+    DETECTION_SOLID_FRACTION = 0.7
+    DETECTION_LIQUID_FRACTION = 0.05
+
+    def _enable_phase_detection(self, calc):
+        """
+        Force the structural phase-stability checks on for a sub-calculation.
+
+        ``run_jobs`` signals "solid melted" / "liquid froze" purely through
+        MeltedError / SolidifiedError, and ``start_calculation`` walks the
+        temperature bracket on those signals alone.  The measured solid
+        fraction is bounded to [0, 1], so the shipped defaults
+        (``solid_fraction = 0``, ``liquid_fraction = 1``) make both checks
+        unreachable -- the bracket would never be corrected and Tm would be
+        reported without ever verifying that the solid stayed solid and the
+        liquid stayed liquid.
+
+        The checks are therefore enabled here for this mode only, leaving the
+        global defaults alone.  An explicit user setting is always respected.
+
+        Parameters
+        ----------
+        calc : dict
+            Raw sub-calculation dict, mutated in place before it is parsed.
+        """
+        tolerance = calc.setdefault("tolerance", {})
+        if not isinstance(tolerance, dict):
+            return
+        if tolerance.get("solid_fraction") is None:
+            tolerance["solid_fraction"] = self.DETECTION_SOLID_FRACTION
+            self.logger.warning(
+                "mode melting_temperature: enabling melt detection with "
+                "tolerance.solid_fraction = %g (the default of 0 makes the "
+                "check unreachable, and the temperature bracket is advanced "
+                "only when it fires). Set tolerance.solid_fraction "
+                "explicitly to override." % self.DETECTION_SOLID_FRACTION
+            )
+        if tolerance.get("liquid_fraction") is None:
+            tolerance["liquid_fraction"] = self.DETECTION_LIQUID_FRACTION
+            self.logger.warning(
+                "mode melting_temperature: enabling solidification detection "
+                "with tolerance.liquid_fraction = %g (the default of 1 makes "
+                "the check unreachable, and the temperature bracket is "
+                "advanced only when it fires). Set tolerance.liquid_fraction "
+                "explicitly to override." % self.DETECTION_LIQUID_FRACTION
+            )
+
     def prepare_calcs(self):
         """
         Prepare calculations list from given object
@@ -101,6 +149,7 @@ class MeltingTemp:
             calc["n_iterations"] = data["calculations"][int(self.calc.kernel)][
                 "n_iterations"
             ]
+        self._enable_phase_detection(calc)
         calculations["calculations"].append(calc)
 
         with open(self.calc.inputfile, "r") as fin:
@@ -115,6 +164,7 @@ class MeltingTemp:
             calc["n_iterations"] = data["calculations"][int(self.calc.kernel)][
                 "n_iterations"
             ]
+        self._enable_phase_detection(calc)
         calculations["calculations"].append(calc)
 
         outfile = f"{self.calc.create_identifier()}.{self.attempts}.yaml"
@@ -219,6 +269,38 @@ class MeltingTemp:
             scale_energy=True, return_values=True
         )
 
+        self._report_sweep_quality()
+
+    def _report_sweep_quality(self):
+        """
+        Repeat any dissipation warning from the two sub-calculations here.
+
+        The solid and liquid sweeps log into their own simfolders, which nobody
+        reads when the point of the mode is a single number at the end.  A
+        sweep that dissipated heavily produces a free energy that is wrong by
+        an amount no averaging removes, and the crossing of two such curves is
+        wrong with it -- so the warning has to reach the melting-temperature
+        log, where it will actually be seen.
+        """
+        offenders = [
+            (job.calc.reference_phase, job.ediss)
+            for job in (self.soljob, self.lqdjob)
+            if getattr(job, "ediss_high", False)
+        ]
+        if not offenders:
+            return
+        detail = ", ".join(
+            "%s %.3e eV/atom" % (phase, value) for phase, value in offenders
+        )
+        self.logger.warning(
+            "Melting temperature is being extrapolated from a sweep that did "
+            "not stay reversible (%s; tolerance.dissipation = %.3e). The phase "
+            "very likely changed during the sweep, so treat the reported Tm as "
+            "unreliable rather than as an answer -- see the warnings in the "
+            "sub-calculation logs." % (detail, self.calc.tolerance.dissipation)
+        )
+        self.logger.warning("STATE: Tm unreliable, sweep dissipation too high")
+
     def start_calculation(self):
         """
         Start calculation
@@ -285,6 +367,68 @@ class MeltingTemp:
         self.logger.info("STATE: Predicted Tm from extrapolation: %f K" % tpred)
         return tpred
 
+    # Half-width of the finite-difference stencil used to take the local
+    # dF/dT on either side of the crossing, in samples.  Capped against the
+    # sweep length so a short sweep cannot index past either end.
+    CROSSING_STENCIL = 50
+
+    def _crossing_error(self, arg, suberr):
+        """
+        Propagate the free-energy uncertainty at the crossing into an
+        uncertainty on Tm.
+
+        The two curves cross at index ``arg``; converting a free-energy error
+        into a temperature error needs the rate at which they separate there,
+        i.e. the difference of their local slopes.  That slope is taken from a
+        symmetric finite difference around ``arg``.
+
+        The stencil is clamped to the array: ``find_tm`` only rejects
+        ``arg == 0`` and ``arg == len - 1``, so a crossing near either end
+        would otherwise read ``arg + 50`` past the end (IndexError, raised in
+        postprocessing after all the MD has been paid for) or ``arg - 50`` as
+        a negative index, which numpy silently wraps to the far end of the
+        sweep and turns the local slope into a chord across the whole
+        temperature range.
+
+        Parameters
+        ----------
+        arg : int
+            Index of the crossing.
+        suberr : float
+            Combined free-energy uncertainty at the crossing, in eV/atom.
+
+        Returns
+        -------
+        tmerr : float
+            Uncertainty on Tm in K, or ``np.nan`` if the local slopes are too
+            close to distinguish (parallel curves give no crossing scale).
+        """
+        n = len(self.solres[1])
+        half = max(1, min(self.CROSSING_STENCIL, n // 20))
+        lo = max(arg - half, 0)
+        hi = min(arg + half, n - 1)
+        if hi <= lo:
+            self.logger.warning(
+                "Sweep has too few samples (%d) to estimate a slope at the "
+                "crossing; reporting Tm without an error estimate." % n
+            )
+            return np.nan
+
+        def _slope(res):
+            dt = res[0][hi] - res[0][lo]
+            if dt == 0:
+                return np.nan
+            return (res[1][hi] - res[1][lo]) / dt
+
+        slope_diff = _slope(self.solres) - _slope(self.lqdres)
+        if not np.isfinite(slope_diff) or slope_diff == 0:
+            self.logger.warning(
+                "Solid and liquid free-energy curves are parallel at the "
+                "crossing; reporting Tm without an error estimate."
+            )
+            return np.nan
+        return suberr / slope_diff
+
     def find_tm(self):
         """
         Find melting temperature
@@ -327,15 +471,7 @@ class MeltingTemp:
                 self.calc_tm = self.solres[0][arg]
                 # get errors
                 suberr = np.sqrt(self.solres[2][arg] ** 2 + self.lqdres[2][arg] ** 2)
-                sol_slope = (self.solres[1][arg + 50] - self.solres[1][arg - 50]) / (
-                    self.solres[0][arg + 50] - self.solres[0][arg - 50]
-                )
-                lqd_slope = (self.lqdres[1][arg + 50] - self.lqdres[1][arg - 50]) / (
-                    self.lqdres[0][arg + 50] - self.lqdres[0][arg - 50]
-                )
-                slope_diff = sol_slope - lqd_slope
-                tmerr = suberr / slope_diff
-                self.tmerr = tmerr
+                self.tmerr = self._crossing_error(arg, suberr)
                 return self.calc_tm, self.tmerr
 
             self.attempts += 1

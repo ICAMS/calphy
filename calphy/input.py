@@ -51,7 +51,7 @@ from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 
 def _check_equal(val):
@@ -347,14 +347,30 @@ class Queue(_StrictInput, title="Options for configuring queue"):
 class Tolerance(_StrictInput, title="Tolerance settings for convergence"):
     lattice_constant: Annotated[float, Field(default=0.0002, ge=0)]
     spring_constant: Annotated[float, Field(default=0.1, gt=0)]
-    # Structural phase-stability checks during equilibration are OFF by
-    # default: solid_fraction=0 means the melt check (solid_fraction < this)
-    # never fires, and liquid_fraction=1.0 means the solidify check
-    # (solid_fraction > this) never fires.  Set solid_fraction > 0 (e.g. 0.7)
-    # to re-enable melt detection for a solid run, or liquid_fraction < 1
-    # (e.g. 0.05) to re-enable solidification detection for a liquid run.
+    # Structural phase-stability checks during equilibration.  The melt check
+    # fires when the measured solid fraction drops below solid_fraction; the
+    # solidify check fires when it rises above liquid_fraction.  Because the
+    # fraction is bounded to [0, 1], solid_fraction=0 makes the melt check
+    # unreachable and liquid_fraction=1 makes the solidify check unreachable
+    # -- that is how each check is disabled, and both are OFF by default.
+    #
+    # Phase.__init__ logs a warning whenever the check relevant to a run's
+    # reference phase is disabled.  mode "melting_temperature" is the one
+    # exception: its temperature bracket is advanced only by the resulting
+    # MeltedError/SolidifiedError, so MeltingTemp re-enables them (see
+    # MeltingTemp._enable_phase_detection) rather than report an unvalidated
+    # Tm.  Set solid_fraction > 0 (e.g. 0.7) or liquid_fraction < 1
+    # (e.g. 0.05) to enable them for any other mode.
     solid_fraction: Annotated[float, Field(default=0.0, ge=0)]
     liquid_fraction: Annotated[float, Field(default=1.0, ge=0)]
+    # Irreversible work per atom above which a switching path is called into
+    # question, in eV/atom; 0 disables the check.  Dissipation enters the free
+    # energy directly, so for a melting point it converts to a temperature
+    # error of roughly dissipation / dS_fus -- at a typical dS_fus of ~1.2 kB
+    # the default of 1 meV/atom is about 10 K.  A clean sweep sits one to two
+    # orders of magnitude below it; a sweep whose structure changed partway
+    # (the forward and backward integrals then cannot match) sits well above.
+    dissipation: Annotated[float, Field(default=0.001, ge=0)]
     pressure: Annotated[float, Field(default=10.0, ge=0)]
 
 
