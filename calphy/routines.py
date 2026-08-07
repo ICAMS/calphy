@@ -694,6 +694,25 @@ def routine_composition_scaling(job):
     mcorsum = job.mass_integration(ref_mass, target_masses, target_counts)
 
     job.fe = job.fe - mcorsum
+
+    # Restore the original element list so that submit_report writes the
+    # correct element names (e.g. 'Pd Cu') instead of the pair_list_old
+    # mapping (e.g. 'Pd Pd') that was needed during the LAMMPS integration.
+    job.calc.element = backup_element
+
+    # Update _element_dict to reflect the output composition so that
+    # report.yaml records the target concentrations rather than the input
+    # structure's composition (which is typically a pure element).
+    output_comp = job.calc.composition_scaling.output_chemical_composition
+    total_atoms = sum(output_comp.values())
+    for el in backup_element:
+        if el in output_comp:
+            job.calc._element_dict[el]["count"] = output_comp[el]
+            job.calc._element_dict[el]["composition"] = output_comp[el] / total_atoms
+        else:
+            job.calc._element_dict[el]["count"] = 0
+            job.calc._element_dict[el]["composition"] = 0.0
+
     job.submit_report(
         extra_dict={
             "results": {
