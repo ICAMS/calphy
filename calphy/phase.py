@@ -1314,36 +1314,90 @@ class Phase:
     # Internal helpers for temperature-window block sweeps
     # ------------------------------------------------------------------
 
-    # Length of the warm start that opens a reversible-scaling forward sweep,
-    # in barostat (NVT: thermostat) relaxation times.
-    RS_WARM_START_RELAXATION_TIMES = 10
+    # Length of a warm start, in barostat (NVT: thermostat) relaxation times.
+    WARM_START_RELAXATION_TIMES = 10
 
-    def _rs_warm_start_steps(self) -> int:
+    def _warm_start_steps(self, npt: bool) -> int:
         """
-        Number of MD steps for the warm start of a reversible-scaling forward
-        sweep.
+        Number of MD steps for a warm start: a short run that re-thermalises a
+        configuration which is already an equilibrium sample.
 
-        The sweep starts from ``conf.equilibration.data``, which the averaging
-        stage left equilibrated at (T0, P).  The only perturbation left to
-        relax is the ``remap_box`` to the mean box dimensions, and the
-        velocities are regenerated right after this run anyway, before the
-        COM-constrained equilibration of ``n_equilibration_steps``.  A few
-        barostat relaxation times are therefore sufficient; a full
-        ``n_equilibration_steps`` here was pure overhead.
+        Used where a stage starts from an equilibrated configuration whose
+        velocities are regenerated anyway -- the reversible-scaling forward
+        sweep and the first block of an fe integration both read
+        ``conf.equilibration.data`` (or a chained predecessor) and recreate
+        velocities before the sampling that matters.  The only perturbations
+        left to relax are the ``remap_box`` to the mean box dimensions and the
+        thermostat change, so a few relaxation times of the slowest coupling
+        (the barostat under NPT, otherwise the thermostat) are sufficient; a
+        full ``n_equilibration_steps`` here was pure overhead.
+
+        Parameters
+        ----------
+        npt : bool
+            Whether the run is barostatted; selects which damping time sets
+            the scale.
 
         Returns
         -------
         int
-            ``RS_WARM_START_RELAXATION_TIMES`` times the barostat (thermostat
-            for NVT) damping time in steps, never more than
-            ``n_equilibration_steps`` and never less than 1.
+            ``WARM_START_RELAXATION_TIMES`` times the damping time in steps,
+            never more than ``n_equilibration_steps`` and never less than 1.
+            With the quantum thermal bath the full ``n_equilibration_steps``
+            is kept: the shortened blocks have not been validated against a
+            QTB-enabled binary.
         """
-        if self.calc.npt:
+        if self.calc._qtb:
+            return int(self.calc.n_equilibration_steps)
+        if npt:
             tau = self.calc.md.barostat_damping[1]
         else:
             tau = self.calc.md.thermostat_damping[1]
-        n_warm = int(round(self.RS_WARM_START_RELAXATION_TIMES * tau / self.calc.md.timestep))
+        n_warm = int(round(self.WARM_START_RELAXATION_TIMES * tau / self.calc.md.timestep))
         return max(1, min(n_warm, int(self.calc.n_equilibration_steps)))
+
+    def _integration_start_configuration(self, iteration: int) -> str:
+        """
+        Configuration file an fe integration iteration starts from.
+
+        Iteration 1 starts from ``conf.equilibration.data``.  Later iterations
+        chain from ``conf.fe.backward_<iteration-1>.data``, the state the
+        previous backward leg ended in: the real system at T.  Successive
+        switching runs therefore sample points of one continuous trajectory,
+        a full switching cycle apart, instead of restarting from the same file
+        and relying on a long equilibration to forget it -- which is what lets
+        the first equilibration block be a short warm start without
+        correlating the iterations.  Falls back to the equilibration
+        configuration if the chained file is missing, e.g. when a single
+        iteration is re-run by hand.
+
+        Parameters
+        ----------
+        iteration : int
+            Integration iteration index (1-based).
+
+        Returns
+        -------
+        str
+            Absolute path of the configuration to read.
+        """
+        default = os.path.join(self.simfolder, "conf.equilibration.data")
+        if iteration <= 1:
+            return default
+        chained = os.path.join(
+            self.simfolder, "conf.fe.backward_%d.data" % (iteration - 1)
+        )
+        if os.path.exists(chained):
+            self.logger.info(
+                "integration iteration %d starts from %s (end of the previous "
+                "backward leg)", iteration, os.path.basename(chained),
+            )
+            return chained
+        self.logger.warning(
+            "integration iteration %d: %s not found, starting from "
+            "conf.equilibration.data instead", iteration, os.path.basename(chained),
+        )
+        return default
 
     def _run_sweep(
         self,
@@ -1385,7 +1439,7 @@ class Phase:
         """
         Perform the forward sweep of a reversible-scaling calculation.
 
-        1. Short NPT warm start at T0 (see :meth:`_rs_warm_start_steps`).
+        1. Short NPT warm start at T0 (see :meth:`_warm_start_steps`).
         2. COM-constrained equilibration at T0.
         3. Forward sweep: λ 1 → T0/Tf.
         4. Write ``conf.ts.forward_{iteration}.data`` for the backward sweep.
@@ -1438,7 +1492,7 @@ class Phase:
                 % (t0, t0, self.calc.md.thermostat_damping[1])
             )
 
-        n_warm = self._rs_warm_start_steps()
+        n_warm = self._warm_start_steps(npt=self.calc.npt)
         self.logger.info(
             "forward sweep (iteration %d): warm start of %d steps "
             "(configuration already equilibrated; velocities are regenerated "

@@ -3,7 +3,7 @@ boundary p p p
 atom_style atomic
 timestep 0.001
 pair_style eam/alloy
-read_data conf.equilibration.data
+read_data conf.fe.backward_1.data
 pair_coeff * * tests/Cu01.eam.alloy Cu
 mass 1 63.546
 run 0
@@ -25,13 +25,13 @@ thermo 10000
 velocity all create 500.000000 861 mom yes rot yes dist gaussian
 fix ff1 g1 ti/spring 2.000000 5000 1000 function 2
 run 1000
-fix f4 all print 1 "${dU1} ${dU2} ${lambda}" title "# dU_sys[eV/atom] dU_ref1[eV/atom] lambda" screen no file forward_1.dat
+fix f4 all print 1 "${dU1} ${dU2} ${lambda}" title "# dU_sys[eV/atom] dU_ref1[eV/atom] lambda" screen no file forward_2.dat
 run 5000
 unfix f4
 pair_modify compute no
 run 1000
 pair_modify compute yes
-fix f4 all print 1 "${dU1} ${dU2} ${lambda}" title "# dU_sys[eV/atom] dU_ref1[eV/atom] lambda" screen no file backward_1.dat
+fix f4 all print 1 "${dU1} ${dU2} ${lambda}" title "# dU_sys[eV/atom] dU_ref1[eV/atom] lambda" screen no file backward_2.dat
 run 5000
 unfix f4
-write_data conf.fe.backward_1.data
+write_data conf.fe.backward_2.data

@@ -10,6 +10,8 @@ the recorded commands, only the number of cycles (the multi-cycle repetition is
 exercised with real LAMMPS in Part 6).  The pre-set box/spring values used for the
 integration / sweep methods stand in for what run_averaging would have measured.
 """
+import os
+
 import pytest
 
 from calphy.solid import Solid
@@ -228,3 +230,31 @@ def test_prescan(make_calc, recorded_job):
     _set_state(job)
     job.scan_temperature_range()
     assert_golden(rec.commands, "prescan")
+
+
+# --------------------------------------------------------------------------- #
+# fe integration: chained iterations
+# --------------------------------------------------------------------------- #
+def test_solid_fe_integration_chained(make_calc, recorded_job, tmp_path):
+    """Iteration 2 starts from the configuration the previous backward leg
+    wrote (conf.fe.backward_1.data) rather than from conf.equilibration.data."""
+    calc = make_calc("B1", **LOOSE_TOL)
+    job, rec = recorded_job(Solid, calc)
+    _set_state(job, k=KSPRING)
+    open(os.path.join(str(tmp_path), "conf.fe.backward_1.data"), "w").close()
+    job.run_integration(iteration=2)
+    assert_golden(rec.commands, "solid_fe_integration_chained")
+
+
+def test_integration_start_configuration_fallback(make_calc, recorded_job, tmp_path):
+    """Without the chained file a later iteration falls back to the
+    equilibration configuration; iteration 1 never looks for one."""
+    calc = make_calc("B1", **LOOSE_TOL)
+    job, rec = recorded_job(Solid, calc)
+    equil = os.path.join(str(tmp_path), "conf.equilibration.data")
+    assert job._integration_start_configuration(1) == equil
+    assert job._integration_start_configuration(3) == equil
+    chained = os.path.join(str(tmp_path), "conf.fe.backward_2.data")
+    open(chained, "w").close()
+    assert job._integration_start_configuration(3) == chained
+    assert job._integration_start_configuration(2) == equil   # backward_1 missing

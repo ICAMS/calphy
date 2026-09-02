@@ -12,7 +12,7 @@ run 0
 change_box all x final 0.0 18.075000 y final 0.0 18.075000 z final 0.0 18.075000 remap units box
 fix f1 all nve
 fix f2 all langevin 1400.000000 1400.000000 0.100000 7271 zero yes
-run 2500
+run 1000
 unfix f1
 unfix f2
 variable flambda equal ramp(${li},${lf})
@@ -71,3 +71,4 @@ unfix f2
 unfix f3
 uncompute c_real1
 uncompute c2
+write_data conf.fe.backward_1.data
