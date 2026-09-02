@@ -258,3 +258,29 @@ def test_integration_start_configuration_fallback(make_calc, recorded_job, tmp_p
     open(chained, "w").close()
     assert job._integration_start_configuration(3) == chained
     assert job._integration_start_configuration(2) == equil   # backward_1 missing
+
+
+def _seeds(commands):
+    """(velocity seed, thermostat seed) drawn by one integration iteration."""
+    vel = [c for c in commands if c.startswith("velocity all create")]
+    therm = [c for c in commands if c.startswith("fix") and " langevin " in c]
+    assert vel and therm
+    return int(vel[-1].split()[4]), int(therm[-1].split()[7])
+
+
+@pytest.mark.parametrize("JobClass, scenario, kwargs",
+                         [(Solid, "B1", {"k": KSPRING}), (Liquid, "B4", {})])
+def test_iterations_draw_fresh_seeds(make_calc, recorded_job, tmp_path, JobClass, scenario, kwargs):
+    """Chained iterations reuse positions, so their independence rests on every
+    iteration drawing new velocity and thermostat seeds from the job's stream."""
+    calc = make_calc(scenario, **LOOSE_TOL)
+    job, rec = recorded_job(JobClass, calc)
+    _set_state(job, **kwargs)
+    seen = []
+    for it in (1, 2, 3):
+        open(os.path.join(str(tmp_path), "conf.fe.backward_%d.data" % (it - 1)), "w").close()
+        job.run_integration(iteration=it)
+        seen.append(_seeds(rec.commands))
+    vel, therm = zip(*seen)
+    assert len(set(vel)) == 3, "velocity seeds repeat across iterations: %s" % (vel,)
+    assert len(set(therm)) == 3, "thermostat seeds repeat across iterations: %s" % (therm,)
