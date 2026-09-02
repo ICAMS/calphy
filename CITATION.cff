@@ -61,4 +61,4 @@ abstract: >-
   examples illustrate the accuracy and efficiency of
   our implementation.
 license-url: 'https://github.com/ICAMS/calphy/blob/main/LICENSE'
-version: 2.1.0
+version: 2.1.1
