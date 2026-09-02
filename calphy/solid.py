@@ -419,8 +419,16 @@ class Solid(cph.Phase):
         #    lmp.command("unfix swap")
         #    lmp.command("unfix swap2")
 
-        # Equilibriate
+        # Equilibrate at the Einstein-crystal end.  fix ti/spring holds
+        # lambda at exactly 1 for this whole run, so the interatomic forces
+        # enter as (1 - lambda) * f = 0 and the pair style would be evaluated
+        # every step only to be multiplied by zero.  Switching the pair
+        # compute off leaves the trajectory bitwise identical and makes this
+        # block essentially free; it is switched back on before the backward
+        # leg, which needs the real forces and energies again.
+        lmp.command("pair_modify       compute no")
         lmp.command("run               %d" % self.calc.n_equilibration_steps)
+        lmp.command("pair_modify       compute yes")
 
         # write out energy
         str1 = 'fix f4 all print 1 "${dU1} '

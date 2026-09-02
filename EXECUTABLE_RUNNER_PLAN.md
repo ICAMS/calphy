@@ -676,7 +676,7 @@ Complete vocabulary emitted by calphy (verified by grep over `calphy/*.py`). Unk
 | `boundary`, `box` | init | segment 0 only (stored in restart; `box` illegal after box exists) |
 | `timestep` | init/sticky | replay latest value after `read_restart` |
 | `pair_style` | sticky | starts a new pair_block (clears previous); replayed after `read_restart` |
-| `pair_coeff`, `mass` | sticky | appended to pair_block; replayed with it |
+| `pair_coeff`, `pair_modify`, `mass` | sticky | appended to pair_block; replayed with it (and cleared by the next `pair_style`) |
 | `group` | sticky | replayed (idempotent type-based groups) |
 | `compute` | sticky | tracked by id; removed by `uncompute` |
 | `variable` | sticky | tracked by name, redefinition keeps position; `$(`-immediate crossing a boundary → error |

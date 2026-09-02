@@ -212,6 +212,41 @@ def test_new_pair_style_clears_old_block(tmp_path):
     assert pair == ["pair_style meam", "pair_coeff * * lib SiC Si"]  # old eam/alloy gone
 
 
+def test_pair_modify_replays_with_its_pair_block(tmp_path):
+    """pair_modify settings belong to the Pair object: they replay after the
+    pair_style/pair_coeff/mass that own them and vanish with a new pair_style."""
+    run = make_runner(tmp_path)
+    feed(run, BOOT + ["pair_modify compute no"])
+    lines = _replay_after(run, tmp_path)
+    pair = [l for l in lines if l.startswith(("pair_style", "pair_coeff", "pair_modify", "mass"))]
+    assert pair == [
+        "pair_style eam/alloy", "pair_coeff * * pot Cu", "mass 1 63.5",
+        "pair_modify compute no",
+    ]
+
+
+def test_pair_modify_toggle_replays_in_order(tmp_path):
+    """Switching the pair compute off and on again is replayed in emission
+    order, so a restarted segment ends in the live (compute yes) state."""
+    run = make_runner(tmp_path)
+    feed(run, BOOT + ["pair_modify compute no", "run 10", "pair_modify compute yes"])
+    lines = _replay_after(run, tmp_path)
+    mods = [l for l in lines if l.startswith("pair_modify")]
+    assert mods == ["pair_modify compute no", "pair_modify compute yes"]
+
+
+def test_new_pair_style_clears_pair_modify(tmp_path):
+    """A new pair_style creates a fresh Pair object in LAMMPS (compute_flag
+    reset), so earlier pair_modify commands must not be replayed with it."""
+    run = make_runner(tmp_path)
+    feed(run, BOOT + ["pair_modify compute no", "pair_style meam",
+                      "pair_coeff * * lib SiC Si"])
+    lines = _replay_after(run, tmp_path)
+    assert not [l for l in lines if l.startswith("pair_modify")]
+    pair = [l for l in lines if l.startswith(("pair_style", "pair_coeff"))]
+    assert pair == ["pair_style meam", "pair_coeff * * lib SiC Si"]
+
+
 def test_overlay_pair_block_replays_completely(tmp_path):
     run = make_runner(tmp_path)
     feed(run, ["units metal", "atom_style atomic", "read_data conf.data",

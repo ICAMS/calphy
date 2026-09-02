@@ -17,8 +17,8 @@ import pytest
 # --- Appendix A: authoritative command vocabulary (first tokens) ------------- #
 INIT = {"units", "atom_style", "boundary", "box", "timestep"}
 STICKY = {
-    "pair_style", "pair_coeff", "mass", "group", "compute", "variable",
-    "fix", "fix_modify", "thermo", "thermo_style", "echo", "dump",
+    "pair_style", "pair_coeff", "pair_modify", "mass", "group", "compute",
+    "variable", "fix", "fix_modify", "thermo", "thermo_style", "echo", "dump",
 }
 ONE_SHOT = {
     "run", "velocity", "displace_atoms", "change_box",
