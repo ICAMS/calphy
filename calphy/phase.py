@@ -1314,6 +1314,37 @@ class Phase:
     # Internal helpers for temperature-window block sweeps
     # ------------------------------------------------------------------
 
+    # Length of the warm start that opens a reversible-scaling forward sweep,
+    # in barostat (NVT: thermostat) relaxation times.
+    RS_WARM_START_RELAXATION_TIMES = 10
+
+    def _rs_warm_start_steps(self) -> int:
+        """
+        Number of MD steps for the warm start of a reversible-scaling forward
+        sweep.
+
+        The sweep starts from ``conf.equilibration.data``, which the averaging
+        stage left equilibrated at (T0, P).  The only perturbation left to
+        relax is the ``remap_box`` to the mean box dimensions, and the
+        velocities are regenerated right after this run anyway, before the
+        COM-constrained equilibration of ``n_equilibration_steps``.  A few
+        barostat relaxation times are therefore sufficient; a full
+        ``n_equilibration_steps`` here was pure overhead.
+
+        Returns
+        -------
+        int
+            ``RS_WARM_START_RELAXATION_TIMES`` times the barostat (thermostat
+            for NVT) damping time in steps, never more than
+            ``n_equilibration_steps`` and never less than 1.
+        """
+        if self.calc.npt:
+            tau = self.calc.md.barostat_damping[1]
+        else:
+            tau = self.calc.md.thermostat_damping[1]
+        n_warm = int(round(self.RS_WARM_START_RELAXATION_TIMES * tau / self.calc.md.timestep))
+        return max(1, min(n_warm, int(self.calc.n_equilibration_steps)))
+
     def _run_sweep(
         self,
         lmp,
@@ -1354,7 +1385,7 @@ class Phase:
         """
         Perform the forward sweep of a reversible-scaling calculation.
 
-        1. Initial NPT equilibration at T0.
+        1. Short NPT warm start at T0 (see :meth:`_rs_warm_start_steps`).
         2. COM-constrained equilibration at T0.
         3. Forward sweep: λ 1 → T0/Tf.
         4. Write ``conf.ts.forward_{iteration}.data`` for the backward sweep.
@@ -1407,9 +1438,15 @@ class Phase:
                 % (t0, t0, self.calc.md.thermostat_damping[1])
             )
 
-        self.logger.info("forward sweep (iteration %d): initial equilibration start", iteration)
-        lmp.command("run               %d" % self.calc.n_equilibration_steps)
-        self.logger.info("forward sweep (iteration %d): initial equilibration done", iteration)
+        n_warm = self._rs_warm_start_steps()
+        self.logger.info(
+            "forward sweep (iteration %d): warm start of %d steps "
+            "(configuration already equilibrated; velocities are regenerated "
+            "for the COM-constrained equilibration that follows)",
+            iteration, n_warm,
+        )
+        lmp.command("run               %d" % n_warm)
+        self.logger.info("forward sweep (iteration %d): warm start done", iteration)
 
         lmp.command("unfix             f1")
 
@@ -1756,8 +1793,9 @@ class Phase:
         """
         Perform reversible scaling calculation in NPT.
 
-        Calls :meth:`_reversible_scaling_forward` (initial equilibration +
-        forward sweep, saves ``conf.ts.forward_{iteration}.data``) followed by
+        Calls :meth:`_reversible_scaling_forward` (short warm start,
+        COM-constrained equilibration and forward sweep, saves
+        ``conf.ts.forward_{iteration}.data``) followed by
         :meth:`_reversible_scaling_backward` (middle equilibration at Tf +
         backward sweep).
 

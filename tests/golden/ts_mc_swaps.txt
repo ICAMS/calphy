@@ -12,7 +12,7 @@ mass 1 63.546
 run 0
 change_box all x final 0.0 18.075000 y final 0.0 18.075000 z final 0.0 18.075000 remap units box
 fix f1 all npt temp 400.000000 400.000000 0.100000 iso 0.000000 0.000000 0.100000
-run 2500
+run 1000
 unfix f1
 variable xcm equal xcm(all,x)
 variable ycm equal xcm(all,y)
