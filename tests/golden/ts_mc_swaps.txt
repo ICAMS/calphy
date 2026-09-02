@@ -29,14 +29,10 @@ run 2500
 variable T0_rs equal 400.000000
 variable flambda equal ramp(${li},${lf})
 variable blambda equal ramp(${lf},${li})
-variable fscale equal v_flambda-1.0
-variable bscale equal v_blambda-1.0
-variable one equal 1.0
 variable ftemp equal v_T0_rs/v_flambda
 variable btemp equal v_T0_rs/v_blambda
-pair_style hybrid/scaled v_one eam/alloy v_fscale eam/alloy
-pair_coeff * * eam/alloy 1 tests/Cu01.eam.alloy Cu
-pair_coeff * * eam/alloy 2 tests/Cu01.eam.alloy Cu
+pair_style hybrid/scaled v_flambda eam/alloy
+pair_coeff * * eam/alloy tests/Cu01.eam.alloy Cu
 fix swap0 all atom/swap 100 5 861 ${ftemp} ke yes types 1 2
 fix f3 all print 1 "${dU} $(press) $(vol) ${flambda}" title "# dU[eV/atom] press[bar] vol[A^3] lambda" screen no file ts.forward_1.dat
 run 5000

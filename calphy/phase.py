@@ -1479,16 +1479,14 @@ class Phase:
         else:  # "linear" (default)
             lmp.command("variable         flambda equal ramp(${li},${lf})")
             lmp.command("variable         blambda equal ramp(${lf},${li})")
-        lmp.command("variable         fscale equal v_flambda-1.0")
-        lmp.command("variable         bscale equal v_blambda-1.0")
-        lmp.command("variable         one equal 1.0")
         lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
         lmp.command("variable         btemp equal v_T0_rs/v_blambda")
 
-        lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_fscale"]))
-        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
-            lmp.command(cmd)
-        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=1, total_repeats=2):
+        # Scaled Hamiltonian lambda*U from a single copy of the potential.
+        # The earlier two-copy form, 1*U + (lambda-1)*U, gives the identical
+        # energy and pressure but evaluates the potential twice per step.
+        lmp.command(ph.scaled_pair_style_command(self.calc, ["v_flambda"]))
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc):
             lmp.command(cmd)
 
         # ── Optional MC swaps ───────────────────────────────────────────────
@@ -1625,15 +1623,12 @@ class Phase:
         # state, and the first samples of the backward sweep would show a
         # large transient bump in dU as the system re-expanded under the
         # scaled potential.  Using a constant scaling variable (rather
-        # than the ramp) keeps λ frozen at lf during this run.
-        lmp.command("variable          one equal 1.0")
-        lmp.command("variable          bscale_eq equal %f" % (lf - 1.0))
-        lmp.command(
-            ph.scaled_pair_style_command(self.calc, ["v_one", "v_bscale_eq"])
-        )
-        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
-            lmp.command(cmd)
-        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=1, total_repeats=2):
+        # than the ramp) keeps λ frozen at lf during this run.  A single
+        # copy of the potential scaled by lambda is used throughout the
+        # reversible-scaling stage (see _reversible_scaling_forward).
+        lmp.command("variable          lambda_eq equal %f" % lf)
+        lmp.command(ph.scaled_pair_style_command(self.calc, ["v_lambda_eq"]))
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc):
             lmp.command(cmd)
 
         lmp.command("variable         xcm equal xcm(all,x)")
@@ -1677,11 +1672,9 @@ class Phase:
         else:
             self.check_if_solidfied(lmp, "traj.temp.dat")
 
-        # ── Switch from constant-λ scaled potential to ramping scaled
-        # potential for the backward sweep.  The scaled potential is
-        # already active (set during the constant-lambda middle equil),
-        # so no set_potential() call is needed.  We just re-define the
-        # lambda variables for the sweep.
+        # ── Switch from the constant-λ scaled potential to the ramping
+        # scaled potential for the backward sweep: define the lambda
+        # variables, then re-install hybrid/scaled driven by blambda.
         # T0_rs is needed by both schedules for ftemp/btemp.
         lmp.command("variable         T0_rs equal %f" % t0)
         if self.calc.lambda_schedule == "uniform_temperature":
@@ -1699,15 +1692,11 @@ class Phase:
         else:  # "linear"
             lmp.command("variable         flambda equal ramp(${li},${lf})")
             lmp.command("variable         blambda equal ramp(${lf},${li})")
-        lmp.command("variable         fscale equal v_flambda-1.0")
-        lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
         lmp.command("variable         btemp equal v_T0_rs/v_blambda")
 
-        lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_bscale"]))
-        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
-            lmp.command(cmd)
-        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=1, total_repeats=2):
+        lmp.command(ph.scaled_pair_style_command(self.calc, ["v_blambda"]))
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc):
             lmp.command(cmd)
 
         # ── Optional MC swaps ───────────────────────────────────────────────
