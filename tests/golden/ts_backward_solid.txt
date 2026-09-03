@@ -11,11 +11,9 @@ pair_coeff * * tests/Cu01.eam.alloy Cu
 mass 1 63.546
 run 0
 change_box all x final 0.0 18.075000 y final 0.0 18.075000 z final 0.0 18.075000 remap units box
-variable one equal 1.0
-variable bscale_eq equal -0.428571
-pair_style hybrid/scaled v_one eam/alloy v_bscale_eq eam/alloy
-pair_coeff * * eam/alloy 1 tests/Cu01.eam.alloy Cu
-pair_coeff * * eam/alloy 2 tests/Cu01.eam.alloy Cu
+variable lambda_eq equal 0.571429
+pair_style hybrid/scaled v_lambda_eq eam/alloy
+pair_coeff * * eam/alloy tests/Cu01.eam.alloy Cu
 variable xcm equal xcm(all,x)
 variable ycm equal xcm(all,y)
 variable zcm equal xcm(all,z)
@@ -33,13 +31,10 @@ undump 2
 variable T0_rs equal 400.000000
 variable flambda equal ramp(${li},${lf})
 variable blambda equal ramp(${lf},${li})
-variable fscale equal v_flambda-1.0
-variable bscale equal v_blambda-1.0
 variable ftemp equal v_T0_rs/v_flambda
 variable btemp equal v_T0_rs/v_blambda
-pair_style hybrid/scaled v_one eam/alloy v_bscale eam/alloy
-pair_coeff * * eam/alloy 1 tests/Cu01.eam.alloy Cu
-pair_coeff * * eam/alloy 2 tests/Cu01.eam.alloy Cu
+pair_style hybrid/scaled v_blambda eam/alloy
+pair_coeff * * eam/alloy tests/Cu01.eam.alloy Cu
 fix f3 all print 1 "${dU} $(press) $(vol) ${blambda}" title "# dU[eV/atom] press[bar] vol[A^3] lambda" screen no file ts.backward_1.dat
 run 5000
 unfix f3

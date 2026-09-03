@@ -661,6 +661,8 @@ n_equilibration_steps: 10000
 
 The number of time steps for equilibrating the system.
 
+The full length is used wherever the system has to reach a new state: the reversible-scaling equilibration at `T0` under the COM-constrained thermostat, the middle equilibration at the far end of a temperature sweep, and the equilibrations of the `tscale` and `pscale` modes. Blocks that only re-thermalise an already equilibrated configuration are run as short warm starts of ten thermostat (or barostat) relaxation times instead, capped at `n_equilibration_steps`: the start of the reversible-scaling forward sweep, the first block of each `fe` integration cycle, and, for the solid, the equilibration at the Einstein-crystal end of the cycle, which `fix ti/spring` requires to have the same length as the first block. With the default damping of 0.1 ps and a 1 fs timestep these blocks are 1000 steps. Successive `fe` iterations start from the configuration the previous backward leg ended in (`conf.fe.backward_<n>.data`), so they remain decorrelated without a long equilibration.
+
 ---
 
 (n_switching_steps)=

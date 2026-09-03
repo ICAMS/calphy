@@ -245,9 +245,10 @@ class Liquid(cph.Phase):
 
         lmp = ph.set_pair_style(lmp, self.calc)
 
-        # read in the conf file
-        # conf = os.path.join(self.simfolder, "conf.equilibration.dump")
-        conf = os.path.join(self.simfolder, "conf.equilibration.data")
+        # read in the conf file: the equilibrated configuration, or for later
+        # iterations the end of the previous backward leg (see
+        # _integration_start_configuration)
+        conf = self._integration_start_configuration(iteration)
         lmp = ph.read_data(lmp, conf)
 
         # set hybrid ufm and normal potential
@@ -268,7 +269,15 @@ class Liquid(cph.Phase):
                 np.random.randint(1, 10000),
             )
         )
-        lmp.command("run               %d" % self.calc.n_equilibration_steps)
+        # Warm start only: the configuration is already an equilibrium sample
+        # and the velocities are regenerated before the forward leg.
+        n_warm = self._warm_start_steps(npt=False)
+        self.logger.info(
+            "integration iteration %d: warm start of %d steps "
+            "(n_equilibration_steps = %d)",
+            iteration, n_warm, self.calc.n_equilibration_steps,
+        )
+        lmp.command("run               %d" % n_warm)
 
         lmp.command("unfix            f1")
         lmp.command("unfix            f2")
@@ -451,6 +460,10 @@ class Liquid(cph.Phase):
         for compute_id in compute_ids:
             lmp.command("uncompute        %s" % compute_id)
         lmp.command("uncompute        c2")
+
+        # Back on the real potential at T: starting point of the next
+        # iteration.  Written before leg 2, which ends in a UFM state.
+        lmp = ph.write_data(lmp, "conf.fe.backward_%d.data" % iteration)
 
         # ---------------------------------------------------------------
         # LEG 2 (two-leg path only): multi-component UFM -> single-component UFM

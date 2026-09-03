@@ -1314,6 +1314,91 @@ class Phase:
     # Internal helpers for temperature-window block sweeps
     # ------------------------------------------------------------------
 
+    # Length of a warm start, in barostat (NVT: thermostat) relaxation times.
+    WARM_START_RELAXATION_TIMES = 10
+
+    def _warm_start_steps(self, npt: bool) -> int:
+        """
+        Number of MD steps for a warm start: a short run that re-thermalises a
+        configuration which is already an equilibrium sample.
+
+        Used where a stage starts from an equilibrated configuration whose
+        velocities are regenerated anyway -- the reversible-scaling forward
+        sweep and the first block of an fe integration both read
+        ``conf.equilibration.data`` (or a chained predecessor) and recreate
+        velocities before the sampling that matters.  The only perturbations
+        left to relax are the ``remap_box`` to the mean box dimensions and the
+        thermostat change, so a few relaxation times of the slowest coupling
+        (the barostat under NPT, otherwise the thermostat) are sufficient; a
+        full ``n_equilibration_steps`` here was pure overhead.
+
+        Parameters
+        ----------
+        npt : bool
+            Whether the run is barostatted; selects which damping time sets
+            the scale.
+
+        Returns
+        -------
+        int
+            ``WARM_START_RELAXATION_TIMES`` times the damping time in steps,
+            never more than ``n_equilibration_steps`` and never less than 1.
+            With the quantum thermal bath the full ``n_equilibration_steps``
+            is kept: the shortened blocks have not been validated against a
+            QTB-enabled binary.
+        """
+        if self.calc._qtb:
+            return int(self.calc.n_equilibration_steps)
+        if npt:
+            tau = self.calc.md.barostat_damping[1]
+        else:
+            tau = self.calc.md.thermostat_damping[1]
+        n_warm = int(round(self.WARM_START_RELAXATION_TIMES * tau / self.calc.md.timestep))
+        return max(1, min(n_warm, int(self.calc.n_equilibration_steps)))
+
+    def _integration_start_configuration(self, iteration: int) -> str:
+        """
+        Configuration file an fe integration iteration starts from.
+
+        Iteration 1 starts from ``conf.equilibration.data``.  Later iterations
+        chain from ``conf.fe.backward_<iteration-1>.data``, the state the
+        previous backward leg ended in: the real system at T.  Successive
+        switching runs therefore sample points of one continuous trajectory,
+        a full switching cycle apart, instead of restarting from the same file
+        and relying on a long equilibration to forget it -- which is what lets
+        the first equilibration block be a short warm start without
+        correlating the iterations.  Falls back to the equilibration
+        configuration if the chained file is missing, e.g. when a single
+        iteration is re-run by hand.
+
+        Parameters
+        ----------
+        iteration : int
+            Integration iteration index (1-based).
+
+        Returns
+        -------
+        str
+            Absolute path of the configuration to read.
+        """
+        default = os.path.join(self.simfolder, "conf.equilibration.data")
+        if iteration <= 1:
+            return default
+        chained = os.path.join(
+            self.simfolder, "conf.fe.backward_%d.data" % (iteration - 1)
+        )
+        if os.path.exists(chained):
+            self.logger.info(
+                "integration iteration %d starts from %s (end of the previous "
+                "backward leg)", iteration, os.path.basename(chained),
+            )
+            return chained
+        self.logger.warning(
+            "integration iteration %d: %s not found, starting from "
+            "conf.equilibration.data instead", iteration, os.path.basename(chained),
+        )
+        return default
+
     def _run_sweep(
         self,
         lmp,
@@ -1354,7 +1439,7 @@ class Phase:
         """
         Perform the forward sweep of a reversible-scaling calculation.
 
-        1. Initial NPT equilibration at T0.
+        1. Short NPT warm start at T0 (see :meth:`_warm_start_steps`).
         2. COM-constrained equilibration at T0.
         3. Forward sweep: λ 1 → T0/Tf.
         4. Write ``conf.ts.forward_{iteration}.data`` for the backward sweep.
@@ -1407,9 +1492,15 @@ class Phase:
                 % (t0, t0, self.calc.md.thermostat_damping[1])
             )
 
-        self.logger.info("forward sweep (iteration %d): initial equilibration start", iteration)
-        lmp.command("run               %d" % self.calc.n_equilibration_steps)
-        self.logger.info("forward sweep (iteration %d): initial equilibration done", iteration)
+        n_warm = self._warm_start_steps(npt=self.calc.npt)
+        self.logger.info(
+            "forward sweep (iteration %d): warm start of %d steps "
+            "(configuration already equilibrated; velocities are regenerated "
+            "for the COM-constrained equilibration that follows)",
+            iteration, n_warm,
+        )
+        lmp.command("run               %d" % n_warm)
+        self.logger.info("forward sweep (iteration %d): warm start done", iteration)
 
         lmp.command("unfix             f1")
 
@@ -1479,16 +1570,14 @@ class Phase:
         else:  # "linear" (default)
             lmp.command("variable         flambda equal ramp(${li},${lf})")
             lmp.command("variable         blambda equal ramp(${lf},${li})")
-        lmp.command("variable         fscale equal v_flambda-1.0")
-        lmp.command("variable         bscale equal v_blambda-1.0")
-        lmp.command("variable         one equal 1.0")
         lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
         lmp.command("variable         btemp equal v_T0_rs/v_blambda")
 
-        lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_fscale"]))
-        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
-            lmp.command(cmd)
-        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=1, total_repeats=2):
+        # Scaled Hamiltonian lambda*U from a single copy of the potential.
+        # The earlier two-copy form, 1*U + (lambda-1)*U, gives the identical
+        # energy and pressure but evaluates the potential twice per step.
+        lmp.command(ph.scaled_pair_style_command(self.calc, ["v_flambda"]))
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc):
             lmp.command(cmd)
 
         # ── Optional MC swaps ───────────────────────────────────────────────
@@ -1625,15 +1714,12 @@ class Phase:
         # state, and the first samples of the backward sweep would show a
         # large transient bump in dU as the system re-expanded under the
         # scaled potential.  Using a constant scaling variable (rather
-        # than the ramp) keeps λ frozen at lf during this run.
-        lmp.command("variable          one equal 1.0")
-        lmp.command("variable          bscale_eq equal %f" % (lf - 1.0))
-        lmp.command(
-            ph.scaled_pair_style_command(self.calc, ["v_one", "v_bscale_eq"])
-        )
-        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
-            lmp.command(cmd)
-        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=1, total_repeats=2):
+        # than the ramp) keeps λ frozen at lf during this run.  A single
+        # copy of the potential scaled by lambda is used throughout the
+        # reversible-scaling stage (see _reversible_scaling_forward).
+        lmp.command("variable          lambda_eq equal %f" % lf)
+        lmp.command(ph.scaled_pair_style_command(self.calc, ["v_lambda_eq"]))
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc):
             lmp.command(cmd)
 
         lmp.command("variable         xcm equal xcm(all,x)")
@@ -1677,11 +1763,9 @@ class Phase:
         else:
             self.check_if_solidfied(lmp, "traj.temp.dat")
 
-        # ── Switch from constant-λ scaled potential to ramping scaled
-        # potential for the backward sweep.  The scaled potential is
-        # already active (set during the constant-lambda middle equil),
-        # so no set_potential() call is needed.  We just re-define the
-        # lambda variables for the sweep.
+        # ── Switch from the constant-λ scaled potential to the ramping
+        # scaled potential for the backward sweep: define the lambda
+        # variables, then re-install hybrid/scaled driven by blambda.
         # T0_rs is needed by both schedules for ftemp/btemp.
         lmp.command("variable         T0_rs equal %f" % t0)
         if self.calc.lambda_schedule == "uniform_temperature":
@@ -1699,15 +1783,11 @@ class Phase:
         else:  # "linear"
             lmp.command("variable         flambda equal ramp(${li},${lf})")
             lmp.command("variable         blambda equal ramp(${lf},${li})")
-        lmp.command("variable         fscale equal v_flambda-1.0")
-        lmp.command("variable         bscale equal v_blambda-1.0")
         lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
         lmp.command("variable         btemp equal v_T0_rs/v_blambda")
 
-        lmp.command(ph.scaled_pair_style_command(self.calc, ["v_one", "v_bscale"]))
-        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=0, total_repeats=2):
-            lmp.command(cmd)
-        for cmd in ph.hybrid_pair_coeff_commands(self.calc, repeat_index=1, total_repeats=2):
+        lmp.command(ph.scaled_pair_style_command(self.calc, ["v_blambda"]))
+        for cmd in ph.hybrid_pair_coeff_commands(self.calc):
             lmp.command(cmd)
 
         # ── Optional MC swaps ───────────────────────────────────────────────
@@ -1767,8 +1847,9 @@ class Phase:
         """
         Perform reversible scaling calculation in NPT.
 
-        Calls :meth:`_reversible_scaling_forward` (initial equilibration +
-        forward sweep, saves ``conf.ts.forward_{iteration}.data``) followed by
+        Calls :meth:`_reversible_scaling_forward` (short warm start,
+        COM-constrained equilibration and forward sweep, saves
+        ``conf.ts.forward_{iteration}.data``) followed by
         :meth:`_reversible_scaling_backward` (middle equilibration at Tf +
         backward sweep).
 

@@ -273,9 +273,10 @@ class Solid(cph.Phase):
         # set up potential
         lmp = ph.set_pair_style(lmp, self.calc)
 
-        # read in the conf file
-        # conf = os.path.join(self.simfolder, "conf.equilibration.dump")
-        conf = os.path.join(self.simfolder, "conf.equilibration.data")
+        # read in the conf file: the equilibrated configuration, or for later
+        # iterations the end of the previous backward leg (see
+        # _integration_start_configuration)
+        conf = self._integration_start_configuration(iteration)
         lmp = ph.read_data(lmp, conf)
 
         lmp = ph.set_pair_coeff(lmp, self.calc)
@@ -354,6 +355,21 @@ class Solid(cph.Phase):
             % (self.calc._temperature, np.random.randint(1, 10000))
         )
 
+        # Both equilibration blocks of the cycle are warm starts.  The first
+        # one re-thermalises an already equilibrated configuration whose
+        # velocities were just regenerated; the second holds the system at the
+        # Einstein-crystal end (lambda = 1), a set of damped harmonic
+        # oscillators that forgets its initial state within a few thermostat
+        # relaxation times.  fix ti/spring drives its lambda schedule off a
+        # single t_equil, so the two blocks must have the same length and it
+        # is passed to the fix here.
+        n_equil = self._warm_start_steps(npt=False)
+        self.logger.info(
+            "integration iteration %d: equilibration blocks of %d steps "
+            "(warm start; n_equilibration_steps = %d)",
+            iteration, n_equil, self.calc.n_equilibration_steps,
+        )
+
         # reapply
         for i in range(self.calc.n_elements):
             lmp.command(
@@ -363,12 +379,12 @@ class Solid(cph.Phase):
                     i + 1,
                     self.k[i],
                     self.calc._n_switching_steps,
-                    self.calc.n_equilibration_steps,
+                    n_equil,
                 )
             )
 
         # Equilibriate structure
-        lmp.command("run               %d" % self.calc.n_equilibration_steps)
+        lmp.command("run               %d" % n_equil)
 
         # write out energy
         str1 = 'fix f4 all print 1 "${dU1} '
@@ -419,8 +435,16 @@ class Solid(cph.Phase):
         #    lmp.command("unfix swap")
         #    lmp.command("unfix swap2")
 
-        # Equilibriate
-        lmp.command("run               %d" % self.calc.n_equilibration_steps)
+        # Equilibrate at the Einstein-crystal end.  fix ti/spring holds
+        # lambda at exactly 1 for this whole run, so the interatomic forces
+        # enter as (1 - lambda) * f = 0 and the pair style would be evaluated
+        # every step only to be multiplied by zero.  Switching the pair
+        # compute off leaves the trajectory bitwise identical and makes this
+        # block essentially free; it is switched back on before the backward
+        # leg, which needs the real forces and energies again.
+        lmp.command("pair_modify       compute no")
+        lmp.command("run               %d" % n_equil)
+        lmp.command("pair_modify       compute yes")
 
         # write out energy
         str1 = 'fix f4 all print 1 "${dU1} '
@@ -470,6 +494,9 @@ class Solid(cph.Phase):
         # if self.calc.monte_carlo.n_swaps > 0:
         #    lmp.command("unfix swap")
         #    lmp.command("unfix swap2")
+
+        # the real system at T again: starting point of the next iteration
+        lmp = ph.write_data(lmp, "conf.fe.backward_%d.data" % iteration)
 
         # close object
         self.lammps_close(lmp=lmp)

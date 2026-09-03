@@ -54,8 +54,8 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 INIT_TOKENS = frozenset({"units", "atom_style", "boundary", "box", "timestep"})
 STICKY_TOKENS = frozenset({
-    "pair_style", "pair_coeff", "mass", "group", "compute", "variable",
-    "fix", "fix_modify", "thermo", "thermo_style", "echo", "dump",
+    "pair_style", "pair_coeff", "pair_modify", "mass", "group", "compute",
+    "variable", "fix", "fix_modify", "thermo", "thermo_style", "echo", "dump",
     "dump_modify",
 })
 ONE_SHOT_TOKENS = frozenset({
@@ -197,7 +197,7 @@ class SessionState:
     def __init__(self):
         self._init = {}                 # token -> command (units/atom_style/boundary/box)
         self.timestep = None            # last value wins
-        self.pair_block = []            # contiguous pair_style/pair_coeff/mass
+        self.pair_block = []            # contiguous pair_style/pair_coeff/pair_modify/mass
         self.groups = {}                # name -> command (insertion-ordered)
         self.computes = {}              # id -> command
         self.variables = {}             # name -> command (position kept on redefine)
@@ -221,7 +221,10 @@ class SessionState:
             self.timestep = cmd
         elif t == "pair_style":
             self.pair_block = [cmd]         # a new style clears the old block
-        elif t in ("pair_coeff", "mass"):
+        elif t in ("pair_coeff", "pair_modify", "mass"):
+            # pair_modify settings live on the Pair object, so like
+            # pair_coeff they are replayed with -- and cleared by -- the
+            # pair_style that owns them.
             self.pair_block.append(cmd)
         elif t == "group":
             self.groups[tokens[1]] = cmd
