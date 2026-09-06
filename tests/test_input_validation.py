@@ -151,3 +151,58 @@ def test_repo_example_inputs_are_key_clean():
             if "unknown input key" in str(exc) or "removed in calphy" in str(exc):
                 bad.append((f, str(exc)))
     assert not bad, bad
+
+
+# --------------------------------------------------------------------------- #
+# overlay potentials: alchemy vs composition_scaling
+# --------------------------------------------------------------------------- #
+OVERLAY = dict(
+    pair_mode="overlay",
+    pair_style=["eam/alloy", "zero 5.0"],
+    pair_coeff=["* * eam/alloy Cu.eam.alloy Cu", "* * zero"],
+)
+
+
+def test_overlay_rejected_for_mode_alchemy():
+    msg = error_of(mode="alchemy", **OVERLAY)
+    assert "pair_mode overlay is not supported for mode alchemy" in msg
+    assert "composition_scaling" in msg
+
+
+def test_overlay_allowed_for_alchemy_coupling():
+    build(mode="alchemy", alchemy_coupling=True, **OVERLAY)
+
+
+ZRCU = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "examples", "example_10", "ZrCu.data")
+CSCALE = dict(
+    element=["Zr", "Cu"], mass=[91.224, 63.546], lattice=ZRCU, lattice_constant=0.0,
+    mode="composition_scaling",
+    composition_scaling={"output_chemical_composition": {"Cu": 532, "Zr": 492}},
+    temperature=800, pressure=0, reference_phase="solid",
+)
+
+
+def test_composition_scaling_accepts_overlay(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    calc = build(**CSCALE, pair_mode="overlay", pair_style=["eam/fs", "zero 5.0"],
+                 pair_coeff=["* * eam/fs ZrCu.eam.fs Zr Cu", "* * zero"])
+    assert calc._pair_style_names == ["eam/fs", "zero"]
+
+
+def test_composition_scaling_needs_wildcard_types(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    msg = error_of(**CSCALE, pair_style="eam/fs", pair_coeff="1 2 ZrCu.eam.fs Zr Cu")
+    assert "all atom types" in msg
+    # the wildcard rule covers every overlay component, not only the first
+    msg = error_of(**CSCALE, pair_mode="overlay", pair_style=["eam/fs", "zero 5.0"],
+                   pair_coeff=["* * eam/fs ZrCu.eam.fs Zr Cu", "1 1 zero"])
+    assert "1 1 zero" in msg
+
+
+def test_overlay_element_order_checked_on_every_component(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    # elements listed only on the second component, in the wrong order
+    msg = error_of(**CSCALE, pair_mode="overlay", pair_style=["zero 5.0", "eam/fs"],
+                   pair_coeff=["* * zero", "* * eam/fs ZrCu.eam.fs Cu Zr"])
+    assert "Element ordering mismatch" in msg

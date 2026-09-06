@@ -1,0 +1,33 @@
+# B13 — composition_scaling — B2 ZrCu (512/512), 800 K, 0 bar, scaled to Cu 532 / Zr 492
+#        with the ZrCu EAM given as an overlay of eam/fs and a zero pair style; exercises
+#        the component-wise alchemical switch (hybrid/overlay end states, hybrid/scaled path).
+calculations:
+- element: [Zr, Cu]
+  mass: [91.224, 63.546]
+  lattice: examples/example_10/ZrCu.data
+  lattice_constant: 0.0
+  mode: composition_scaling
+  composition_scaling:
+    output_chemical_composition:
+      Cu: 532
+      Zr: 492
+  reference_phase: solid
+  temperature: 800.0
+  pressure: 0.0
+  equilibration_control: berendsen
+  pair_mode: overlay
+  pair_style:
+  - eam/fs
+  - zero 5.0
+  pair_coeff:
+  - '* * eam/fs examples/potentials/ZrCu.eam.fs Zr Cu'
+  - '* * zero'
+  md:
+    timestep: 0.001
+    n_small_steps: 1000
+  n_equilibration_steps: 2500
+  n_switching_steps: 5000
+  n_iterations: 1
+  queue:
+    scheduler: local
+    cores: 4

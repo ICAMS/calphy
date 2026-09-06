@@ -284,3 +284,50 @@ def test_iterations_draw_fresh_seeds(make_calc, recorded_job, tmp_path, JobClass
     vel, therm = zip(*seen)
     assert len(set(vel)) == 3, "velocity seeds repeat across iterations: %s" % (vel,)
     assert len(set(therm)) == 3, "thermostat seeds repeat across iterations: %s" % (therm,)
+
+
+# --------------------------------------------------------------------------- #
+# composition_scaling: the potential is rewritten into an initial and a final
+# composition; with pair_mode overlay every component is carried along.
+# --------------------------------------------------------------------------- #
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ZRCU = os.path.join(REPO, "examples", "example_10", "ZrCu.data")
+
+
+def _composition_scaling_job(make_calc, recorded_job, fixtures=(), **overrides):
+    from calphy.composition_transformation import CompositionTransformation
+    from calphy.routines import set_composition_scaling_potential
+
+    # the transformation reads the real structure, so pin the sentinel afterwards
+    calc = make_calc("B13", lattice_sentinel=None, lattice=ZRCU, **LOOSE_TOL, **overrides)
+    comp = CompositionTransformation(calc)
+    set_composition_scaling_potential(calc, comp)
+    calc.element = comp.pair_list_old
+    calc.lattice = "structure.data"
+    return recorded_job(Alchemy, calc, fixtures=fixtures)
+
+
+def test_composition_scaling_overlay_averaging(make_calc, recorded_job):
+    job, rec = _composition_scaling_job(make_calc, recorded_job, fixtures=["avg.dat"])
+    job.run_averaging()
+    assert_golden(rec.commands, "composition_scaling_overlay_averaging")
+
+
+def test_composition_scaling_overlay_integration(make_calc, recorded_job):
+    job, rec = _composition_scaling_job(make_calc, recorded_job)
+    _set_state(job)
+    job.run_integration(iteration=1)
+    assert_golden(rec.commands, "composition_scaling_overlay_integration")
+
+
+def test_composition_scaling_integration(make_calc, recorded_job):
+    """Plain (single component) potential: the pre-overlay command stream."""
+    job, rec = _composition_scaling_job(
+        make_calc, recorded_job,
+        pair_mode=None,
+        pair_style="eam/fs",
+        pair_coeff="* * examples/potentials/ZrCu.eam.fs Zr Cu",
+    )
+    _set_state(job)
+    job.run_integration(iteration=1)
+    assert_golden(rec.commands, "composition_scaling_integration")
