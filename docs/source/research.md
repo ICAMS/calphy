@@ -9,6 +9,8 @@ The following research works employed `calphy`:
 | 2026  | Sn | phase transition temperature | ACE | [Šesták et. al.](https://arxiv.org/abs/2607.25978)       |
 | 2026  | Si | phase diagram | Tersoff (electron-temperature dependent) | [Klein et. al.](https://doi.org/10.1007/978-3-031-91312-9_10)       |
 | 2026  | Fe | free energies | EAM | [Azócar Guzmán et. al.](https://doi.org/10.1002/adem.70869)       |
+| 2026  | Ni, Al, NiAl, Ni$_3$Al | free energies, melting temperature | GRACE | [Vishwakarma et. al.](https://doi.org/10.1002/adem.71125)       |
+| 2026  | HfO$_2$ | free energies | DeePMD | [Hetti Kankanamalage et. al.](https://doi.org/10.1103/gkvf-t1vl)       |
 | 2025  | Sn | phase diagram | MEAM | [Truong et. al.](https://doi.org/10.1103/xrbw-xr49)       |
 | 2025  | SiC | phase diagram | tabGAP | [Wu et. al.](https://arxiv.org/abs/2510.01827)       |
 | 2025  | Cu, Si | melting temperature | EAM, Tersoff | [Kümmel et. al.](https://doi.org/10.1088/1361-6463/ae0b84)       |
