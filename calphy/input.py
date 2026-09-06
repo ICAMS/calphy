@@ -669,16 +669,38 @@ class Calculation(_StrictInput, title="Main input class"):
                     raise ValueError(
                         "pair_mode overlay expects component pair styles, not a hybrid pair_style"
                     )
+            if self.mode == "alchemy" and not self.alchemy_coupling:
+                raise ValueError(
+                    "pair_mode overlay is not supported for mode alchemy: the two "
+                    "pair_style/pair_coeff entries are the potential switched from "
+                    "and the potential switched to. To change the composition of an "
+                    "overlay potential use mode composition_scaling."
+                )
+
+        # the components that make up the physical potential: every entry for
+        # an overlay, otherwise only the first one is used
+        if self.pair_coeff is not None and self.pair_mode == "overlay":
+            potential_pair_coeffs = list(self.pair_coeff)
+        elif self.pair_coeff is not None and len(self.pair_coeff) > 0:
+            potential_pair_coeffs = [self.pair_coeff[0]]
+        else:
+            potential_pair_coeffs = []
+
+        if self.mode == "composition_scaling":
+            # composition scaling renumbers the atom types, so a pair_coeff
+            # tied to explicit type numbers would address the wrong atoms
+            for pc in potential_pair_coeffs:
+                if pc.split()[:2] != ["*", "*"]:
+                    raise ValueError(
+                        "mode composition_scaling needs every pair_coeff to apply to "
+                        f"all atom types ('* * ...'); got: {pc}"
+                    )
 
         # Validate element/mass/pair_coeff ordering consistency
         # This is critical for multi-element systems where LAMMPS type numbers
         # are assigned based on element order: element[0]=Type1, element[1]=Type2, etc.
-        if (
-            len(self.element) > 1
-            and self.pair_coeff is not None
-            and len(self.pair_coeff) > 0
-        ):
-            extracted_elements = _extract_elements_from_pair_coeff(self.pair_coeff[0])
+        for potential_pair_coeff in potential_pair_coeffs if len(self.element) > 1 else []:
+            extracted_elements = _extract_elements_from_pair_coeff(potential_pair_coeff)
 
             if extracted_elements is not None:
                 # pair_coeff specifies elements - check ordering

@@ -602,6 +602,48 @@ def routine_alchemy(job):
     return job
 
 
+def set_composition_scaling_potential(calc, comp):
+    """
+    Rewrite the pair lists of a composition_scaling calculation into the two
+    end states the alchemy driver switches between.
+
+    A plain potential contributes its single component; with
+    ``pair_mode: overlay`` every component of the overlay is carried along.
+    The pair_coeff of each component is mapped once onto the input types
+    (the element list before the transformation) and once onto the output
+    types, and the lists become ``[initial_1 .. initial_N, final_1 ..
+    final_N]`` with the pair styles repeated to match.
+
+    Parameters
+    ----------
+    calc : Calculation
+        the calculation, modified in place
+    comp : CompositionTransformation
+        the transformation providing ``update_pair_coeff``
+
+    Returns
+    -------
+    n_components : int
+        number of components in each end state
+    """
+    n_components = len(calc.pair_style) if ph.is_overlay_potential(calc) else 1
+    styles = list(calc.pair_style[:n_components])
+    styles_with_options = list(calc._pair_style_with_options[:n_components])
+    names = list(calc._pair_style_names[:n_components])
+
+    initial, final = [], []
+    for pair_coeff in calc.pair_coeff[:n_components]:
+        pc_initial, pc_final = comp.update_pair_coeff(pair_coeff)
+        initial.append(pc_initial)
+        final.append(pc_final)
+
+    calc.pair_style = styles + styles
+    calc._pair_style_with_options = styles_with_options + styles_with_options
+    calc._pair_style_names = names + names
+    calc.pair_coeff = initial + final
+    return n_components
+
+
 def routine_composition_scaling(job):
     """
     Perform a compositional scaling routine
@@ -617,19 +659,16 @@ def routine_composition_scaling(job):
     job.logger.info(f"Forward swap types: {forward_swap_types}")
     job.logger.info(f"Reverse swap types: {reverse_swap_types}")
 
-    # update pair styles
-    res = comp.update_pair_coeff(job.calc.pair_coeff[0])
-    job.calc.pair_style.append(job.calc.pair_style[0])
-    job.calc._pair_style_with_options.append(job.calc._pair_style_with_options[0])
-    job.calc.pair_coeff[0] = res[0]
-    job.calc.pair_coeff.append(res[1])
-    job.logger.info("Update pair coefficients")
-    job.logger.info(f"pair coeff 1: {job.calc.pair_coeff[0]}")
-    job.logger.info(f"pair coeff 2: {job.calc.pair_coeff[1]}")
-    job.calc._pair_style_names.append(job.calc._pair_style_names[0])
-    job.logger.info("Update pair styles")
-    job.logger.info(f"pair style 1: {job.calc._pair_style_names[0]}")
-    job.logger.info(f"pair style 2: {job.calc._pair_style_names[1]}")
+    # rewrite the potential into its initial and final composition
+    n_components = set_composition_scaling_potential(job.calc, comp)
+    job.logger.info("Update pair styles and coefficients")
+    for idx in range(2 * n_components):
+        end = "initial" if idx < n_components else "final"
+        job.logger.info(
+            f"{end} component {idx % n_components + 1}: "
+            f"pair_style {job.calc._pair_style_with_options[idx]} | "
+            f"pair_coeff {job.calc.pair_coeff[idx]}"
+        )
 
     backup_element = job.calc.element.copy()
     job.calc.element = comp.pair_list_old
