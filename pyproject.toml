@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "calphy"
-version = "2.1.1"
+version = "2.1.2"
 description = "free energy calculation for python"
 readme = "README.md"
 license = "LicenseRef-ASL-1.0"

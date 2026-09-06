@@ -58,6 +58,91 @@ class Alchemy(cph.Phase):
             calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen,
         )
 
+    def _end_states(self):
+        """
+        The initial and final potential of the alchemical switch.
+
+        The pair lists hold both end states back to back: the first half
+        describes the initial potential, the second half the final one. Each
+        half is one physical potential made of one component (a plain pair
+        style) or several (``pair_mode: overlay``, or the component-wise
+        rewrite done by composition scaling). A component is the tuple
+        (style with options, style name, pair_coeff).
+        """
+        styles = self.calc._pair_style_with_options
+        names = self.calc._pair_style_names
+        coeffs = self.calc.pair_coeff
+        if len(styles) % 2 or len(styles) != len(coeffs):
+            raise ValueError(
+                "alchemical switching needs pair_style and pair_coeff lists of "
+                "equal, even length (initial components followed by final "
+                "components); got %d pair styles and %d pair coeffs"
+                % (len(styles), len(coeffs))
+            )
+        half = len(styles) // 2
+        components = list(zip(styles, names, coeffs))
+        return components[:half], components[half:]
+
+    @staticmethod
+    def _pure_pair_style_command(components):
+        """``pair_style`` for one potential on its own: the plain style for a
+        single component, ``hybrid/overlay`` of the components otherwise."""
+        if len(components) == 1:
+            return "pair_style       %s" % components[0][0]
+        return "pair_style       hybrid/overlay %s" % " ".join(
+            style for style, _, _ in components
+        )
+
+    @staticmethod
+    def _pure_pair_coeff_commands(components):
+        """``pair_coeff`` lines matching :meth:`_pure_pair_style_command`."""
+        if len(components) == 1:
+            return ["pair_coeff       %s" % components[0][2]]
+        return ph.hybrid_pair_coeff_commands_for(
+            [name for _, name, _ in components], [coeff for _, _, coeff in components]
+        )
+
+    def _scaled_pair_commands(self, initial, final, initial_scale, final_scale):
+        """
+        Install ``hybrid/scaled`` with every initial component scaled by
+        ``initial_scale`` and every final component by ``final_scale``,
+        then define computes ``c1``/``c2`` (or ``c1_1, c1_2, ...`` for
+        multi-component ends) holding the two potential energies and the
+        per-atom variables ``dU1``/``dU2`` recorded during switching.
+
+        Returns the commands and the compute ids to release afterwards.
+        """
+        terms = ["%s %s" % (initial_scale, style) for style, _, _ in initial]
+        terms += ["%s %s" % (final_scale, style) for style, _, _ in final]
+        commands = ["pair_style       hybrid/scaled %s" % " ".join(terms)]
+
+        components = initial + final
+        names = [name for _, name, _ in components]
+        commands += ph.hybrid_pair_coeff_commands_for(
+            names, [coeff for _, _, coeff in components]
+        )
+
+        tags = ph.hybrid_component_tags(names)
+        compute_ids, energies = [], []
+        for label, part, part_tags in (
+            ("c1", initial, tags[: len(initial)]),
+            ("c2", final, tags[len(initial) :]),
+        ):
+            ids = (
+                [label]
+                if len(part) == 1
+                else ["%s_%d" % (label, i) for i in range(1, len(part) + 1)]
+            )
+            compute_commands, energy = ph.hybrid_pair_compute_commands(ids, part_tags)
+            commands += compute_commands
+            compute_ids += ids
+            energies.append(energy if len(ids) == 1 else "(%s)" % energy)
+
+        commands.append("variable        step equal step")
+        commands.append("variable        dU1 equal %s/atoms" % energies[0])
+        commands.append("variable        dU2 equal %s/atoms" % energies[1])
+        return commands, compute_ids
+
     def _coupling_pair(self, lmp, ramp="0.0", tag=None):
         """Coupling mode: base components (all but last) at constant scale
         1.0, the LAST component scaled by `ramp` (a constant or v_name).
@@ -180,13 +265,16 @@ class Alchemy(cph.Phase):
             lmp = ph.create_structure(lmp, self.calc)
             self._coupling_pair(lmp, ramp="0.0")
         else:
-            lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
+            # equilibrate with the initial potential on its own
+            initial, _ = self._end_states()
+            lmp.command(self._pure_pair_style_command(initial))
 
             # set up structure
             lmp = ph.create_structure(lmp, self.calc)
 
             # set up potential
-            lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+            for command in self._pure_pair_coeff_commands(initial):
+                lmp.command(command)
         lmp = ph.set_mass(lmp, self.calc)
 
         # add some computes
@@ -254,6 +342,8 @@ class Alchemy(cph.Phase):
         if self.calc.alchemy_coupling:
             return self._run_integration_coupling(iteration=iteration)
 
+        initial, final = self._end_states()
+
         # create lammps object
         lmp = ph.create_object(self.calc, self.simfolder)
 
@@ -261,22 +351,16 @@ class Alchemy(cph.Phase):
         lmp.command("variable        li       equal   1.0")
         lmp.command("variable        lf       equal   0.0")
 
-        lmp.command(f"pair_style {self.calc._pair_style_with_options[0]}")
-
-        # read dump file
-        # conf = os.path.join(self.simfolder, "conf.equilibration.dump")
+        # the equilibrated configuration is read in with the initial potential
+        lmp.command(self._pure_pair_style_command(initial))
         conf = os.path.join(self.simfolder, "conf.equilibration.data")
         lmp = ph.read_data(lmp, conf)
-
-        # set up hybrid potential
-        # here we only need to set one potential
-        lmp.command(f"pair_coeff {self.calc.pair_coeff[0]}")
+        for command in self._pure_pair_coeff_commands(initial):
+            lmp.command(command)
         lmp = ph.set_mass(lmp, self.calc)
 
-        # NEW ADDED
         lmp.command("group g1 type 1")
         lmp.command("group g2 type 2")
-        # lmp = ph.set_double_hybrid_potential(lmp, self.options, self.calc._pressureair_style, self.calc._pressureair_coeff)
 
         # remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -316,143 +400,20 @@ class Alchemy(cph.Phase):
         # equilibration run is over
 
         # ---------------------------------------------------------------
-        # FWD cycle
+        # FWD cycle: initial potential scaled 1 -> 0, final potential 0 -> 1
         # ---------------------------------------------------------------
         lmp.command("variable         flambda equal ramp(${li},${lf})")
         lmp.command("variable         blambda equal ramp(${lf},${li})")
 
-        # lmp.command("pair_style       hybrid/scaled v_flambda %s v_blambda ufm 7.5"%self.options["md"]["pair_style"])
-
-        # Compute pair definitions
-        if self.calc.pair_style[0] == self.calc.pair_style[1]:
-            pc = self.calc.pair_coeff[0]
-            pcraw = pc.split()
-            pc1 = " ".join(
-                [
-                    *pcraw[:2],
-                    *[
-                        self.calc._pair_style_names[0],
-                    ],
-                    "1",
-                    *pcraw[2:],
-                ]
-            )
-            pc = self.calc.pair_coeff[1]
-            pcraw = pc.split()
-            pc2 = " ".join(
-                [
-                    *pcraw[:2],
-                    *[
-                        self.calc._pair_style_names[1],
-                    ],
-                    "2",
-                    *pcraw[2:],
-                ]
-            )
-        else:
-            pc = self.calc.pair_coeff[0]
-            pcraw = pc.split()
-            pc1 = " ".join(
-                [
-                    *pcraw[:2],
-                    *[
-                        self.calc._pair_style_names[0],
-                    ],
-                    *pcraw[2:],
-                ]
-            )
-            pc = self.calc.pair_coeff[1]
-            pcraw = pc.split()
-            pc2 = " ".join(
-                [
-                    *pcraw[:2],
-                    *[
-                        self.calc._pair_style_names[1],
-                    ],
-                    *pcraw[2:],
-                ]
-            )
-
-        lmp.command(
-            "pair_style       hybrid/scaled v_flambda %s v_blambda %s"
-            % (
-                self.calc._pair_style_with_options[0],
-                self.calc._pair_style_with_options[1],
-            )
+        commands, compute_ids = self._scaled_pair_commands(
+            initial, final, "v_flambda", "v_blambda"
         )
-        lmp.command("pair_coeff       %s" % pc1)
-        lmp.command("pair_coeff       %s" % pc2)
+        for command in commands:
+            lmp.command(command)
 
-        # apply pair force commands
-        if self.calc._pair_style_names[0] == self.calc._pair_style_names[1]:
-            lmp.command(
-                "compute         c1 all pair %s 1" % self.calc._pair_style_names[0]
-            )
-            lmp.command(
-                "compute         c2 all pair %s 2" % self.calc._pair_style_names[1]
-            )
-        else:
-            lmp.command(
-                "compute         c1 all pair %s" % self.calc._pair_style_names[0]
-            )
-            lmp.command(
-                "compute         c2 all pair %s" % self.calc._pair_style_names[1]
-            )
-
-        # Output variables.
-        lmp.command("variable        step equal step")
-        lmp.command(
-            "variable        dU1 equal c_c1/atoms"
-        )  # Driving-force obtained from NEHI procedure.
-        lmp.command("variable        dU2 equal c_c2/atoms")
-
-        # add swaps if n_swap is > 0 - forward pass
-        if (
-            self.calc.monte_carlo.n_swaps > 0
-            and len(self.calc.monte_carlo.forward_swap_types) >= 2
-        ):
-            swap_types = self.calc.monte_carlo.forward_swap_types
-            swap_combos = list(itertools.combinations(swap_types, 2))
-            self.logger.info(
-                f"Forward pass: {self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
-            )
-            for combo in swap_combos:
-                self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
-
-            for idx, (type1, type2) in enumerate(swap_combos):
-                swap_str = f"{type1} {type2}"
-                if self.calc.monte_carlo.use_custom_lammps:
-                    lmp.command(
-                        "fix  swap%d all atom/swap %d %d %d %f ke no types %s noforce yes localE yes"
-                        % (
-                            idx,
-                            self.calc.monte_carlo.n_steps,
-                            self.calc.monte_carlo.n_swaps,
-                            np.random.randint(1, 10000),
-                            self.calc._temperature,
-                            swap_str,
-                        )
-                    )
-                else:
-                    lmp.command(
-                        "fix  swap%d all atom/swap %d %d %d %f ke no types %s"
-                        % (
-                            idx,
-                            self.calc.monte_carlo.n_steps,
-                            self.calc.monte_carlo.n_swaps,
-                            np.random.randint(1, 10000),
-                            self.calc._temperature,
-                            swap_str,
-                        )
-                    )
-
-            # Use the first swap fix for output tracking
-            # lmp.command("variable a equal f_swap0[1]")
-            # lmp.command("variable b equal f_swap0[2]")
-            # lmp.command(
-            #    'fix             swap_print all print 1 "${a} ${b} ${flambda}" screen no file swap.forward_%d.dat'
-            #    % iteration
-            # )
+        swap_fixes = self._add_swap_fixes(
+            lmp, self.calc.monte_carlo.forward_swap_types, "Forward"
+        )
 
         # Thermo output.
         lmp.command("thermo_style    custom step v_dU1 v_dU2")
@@ -467,21 +428,16 @@ class Alchemy(cph.Phase):
         )
         lmp.command("run             %d" % self.calc._n_switching_steps)
 
-        # now equilibrate at the second potential
         lmp.command("unfix           f2")
-        lmp.command("uncompute       c1")
-        lmp.command("uncompute       c2")
+        for compute_id in compute_ids:
+            lmp.command("uncompute       %s" % compute_id)
+        for swap_fix in swap_fixes:
+            lmp.command("unfix %s" % swap_fix)
 
-        # NEW SWAP
-        if self.calc.monte_carlo.n_swaps > 0:
-            swap_types = self.calc.monte_carlo.forward_swap_types
-            swap_combos = list(itertools.combinations(swap_types, 2))
-            for idx in range(len(swap_combos)):
-                lmp.command(f"unfix swap{idx}")
-            # lmp.command("unfix swap_print")
-
-        lmp.command("pair_style      %s" % self.calc._pair_style_with_options[1])
-        lmp.command("pair_coeff      %s" % self.calc.pair_coeff[1])
+        # now equilibrate with the final potential on its own
+        lmp.command(self._pure_pair_style_command(final))
+        for command in self._pure_pair_coeff_commands(final):
+            lmp.command(command)
 
         # Thermo output.
         lmp.command("thermo_style    custom step pe")
@@ -490,90 +446,21 @@ class Alchemy(cph.Phase):
         # run eqbrm run
         lmp.command("run             %d" % self.calc.n_equilibration_steps)
 
-        # reverse switching
+        # ---------------------------------------------------------------
+        # BKD cycle: initial potential scaled 0 -> 1, final potential 1 -> 0
+        # ---------------------------------------------------------------
         lmp.command("variable         flambda equal ramp(${lf},${li})")
         lmp.command("variable         blambda equal ramp(${li},${lf})")
 
-        lmp.command(
-            "pair_style       hybrid/scaled v_flambda %s v_blambda %s"
-            % (
-                self.calc._pair_style_with_options[0],
-                self.calc._pair_style_with_options[1],
-            )
+        commands, compute_ids = self._scaled_pair_commands(
+            initial, final, "v_flambda", "v_blambda"
         )
-        lmp.command("pair_coeff       %s" % pc1)
-        lmp.command("pair_coeff       %s" % pc2)
+        for command in commands:
+            lmp.command(command)
 
-        # apply pair force commands
-        if self.calc._pair_style_names[0] == self.calc._pair_style_names[1]:
-            lmp.command(
-                "compute         c1 all pair %s 1" % self.calc._pair_style_names[0]
-            )
-            lmp.command(
-                "compute         c2 all pair %s 2" % self.calc._pair_style_names[1]
-            )
-        else:
-            lmp.command(
-                "compute         c1 all pair %s" % self.calc._pair_style_names[0]
-            )
-            lmp.command(
-                "compute         c2 all pair %s" % self.calc._pair_style_names[1]
-            )
-
-        # Output variables.
-        lmp.command("variable        step equal step")
-        lmp.command(
-            "variable        dU1 equal c_c1/atoms"
-        )  # Driving-force obtained from NEHI procedure.
-        lmp.command("variable        dU2 equal c_c2/atoms")
-
-        # add swaps if n_swap is > 0 - reverse pass
-        if (
-            self.calc.monte_carlo.n_swaps > 0
-            and len(self.calc.monte_carlo.reverse_swap_types) >= 2
-        ):
-            swap_types = self.calc.monte_carlo.reverse_swap_types
-            swap_combos = list(itertools.combinations(swap_types, 2))
-            self.logger.info(
-                f"Reverse pass: {self.calc.monte_carlo.n_swaps} swap moves per combo, {len(swap_combos)} combinations every {self.calc.monte_carlo.n_steps}"
-            )
-            for combo in swap_combos:
-                self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
-
-            for idx, (type1, type2) in enumerate(swap_combos):
-                swap_str = f"{type1} {type2}"
-                if self.calc.monte_carlo.use_custom_lammps:
-                    lmp.command(
-                        "fix  swap%d all atom/swap %d %d %d %f ke no types %s noforce yes localE yes"
-                        % (
-                            idx,
-                            self.calc.monte_carlo.n_steps,
-                            self.calc.monte_carlo.n_swaps,
-                            np.random.randint(1, 10000),
-                            self.calc._temperature,
-                            swap_str,
-                        )
-                    )
-                else:
-                    lmp.command(
-                        "fix  swap%d all atom/swap %d %d %d %f ke no types %s"
-                        % (
-                            idx,
-                            self.calc.monte_carlo.n_steps,
-                            self.calc.monte_carlo.n_swaps,
-                            np.random.randint(1, 10000),
-                            self.calc._temperature,
-                            swap_str,
-                        )
-                    )
-
-            # Use the first swap fix for output tracking
-            # lmp.command("variable a equal f_swap0[1]")
-            # lmp.command("variable b equal f_swap0[2]")
-            # lmp.command(
-            #'fix             swap_print all print 1 "${a} ${b} ${blambda}" screen no file swap.backward_%d.dat'
-            #    % iteration
-            # )
+        swap_fixes = self._add_swap_fixes(
+            lmp, self.calc.monte_carlo.reverse_swap_types, "Reverse"
+        )
 
         # Thermo output.
         lmp.command("thermo_style    custom step v_dU1 v_dU2")
@@ -588,20 +475,51 @@ class Alchemy(cph.Phase):
         )
         lmp.command("run             %d" % self.calc._n_switching_steps)
 
-        # now equilibrate at the second potential
         lmp.command("unfix           f2")
-        lmp.command("uncompute       c1")
-        lmp.command("uncompute       c2")
-
-        if self.calc.monte_carlo.n_swaps > 0:
-            swap_types = self.calc.monte_carlo.reverse_swap_types
-            swap_combos = list(itertools.combinations(swap_types, 2))
-            for idx in range(len(swap_combos)):
-                lmp.command(f"unfix swap{idx}")
-            # lmp.command("unfix swap_print")
+        for compute_id in compute_ids:
+            lmp.command("uncompute       %s" % compute_id)
+        for swap_fix in swap_fixes:
+            lmp.command("unfix %s" % swap_fix)
 
         self.lammps_close(lmp=lmp)
         lmp.rotate_logs("integration")
+
+    def _add_swap_fixes(self, lmp, swap_types, pass_name):
+        """
+        Add ``fix atom/swap`` moves between every pair of ``swap_types`` when
+        Monte Carlo swaps are requested; returns the fix ids that were added.
+        """
+        mc = self.calc.monte_carlo
+        if not (mc.n_swaps > 0 and len(swap_types) >= 2):
+            return []
+
+        swap_combos = list(itertools.combinations(swap_types, 2))
+        self.logger.info(
+            f"{pass_name} pass: {mc.n_swaps} swap moves per combo, "
+            f"{len(swap_combos)} combinations every {mc.n_steps}"
+        )
+        for combo in swap_combos:
+            self.logger.info(f"  Swapping types: {combo[0]} <-> {combo[1]}")
+
+        fix_ids = []
+        for idx, (type1, type2) in enumerate(swap_combos):
+            fix_id = "swap%d" % idx
+            extra = " noforce yes localE yes" if mc.use_custom_lammps else ""
+            lmp.command(
+                "fix  %s all atom/swap %d %d %d %f ke no types %s %s%s"
+                % (
+                    fix_id,
+                    mc.n_steps,
+                    mc.n_swaps,
+                    np.random.randint(1, 10000),
+                    self.calc._temperature,
+                    type1,
+                    type2,
+                    extra,
+                )
+            )
+            fix_ids.append(fix_id)
+        return fix_ids
 
     def thermodynamic_integration(self):
         """

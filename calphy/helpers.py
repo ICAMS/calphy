@@ -208,26 +208,78 @@ def _component_pair_coeffs(options):
     return components
 
 
+def hybrid_component_tags(style_names):
+    """
+    Sub-style tags of the components of a hybrid pair_style.
+
+    LAMMPS addresses a sub-style of a hybrid pair_style by its name, followed
+    by a 1-based occurrence index when the same style appears more than once
+    (``pair_coeff * * eam/alloy 2 ...``, ``compute c all pair eam/alloy 2``).
+
+    Parameters
+    ----------
+    style_names : list of str
+        Style names in the order they appear in the hybrid pair_style.
+
+    Returns
+    -------
+    list of (str, int or None)
+        One (name, index) tag per component; the index is None for a style
+        that occurs once.
+    """
+    counts = Counter(style_names)
+    seen = defaultdict(int)
+    tags = []
+    for name in style_names:
+        seen[name] += 1
+        tags.append((name, seen[name] if counts[name] > 1 else None))
+    return tags
+
+
+def hybrid_pair_coeff_commands_for(style_names, pair_coeffs):
+    """
+    ``pair_coeff`` commands for the components of a hybrid pair_style.
+
+    Parameters
+    ----------
+    style_names : list of str
+        Style names in hybrid order, one per pair_coeff.
+    pair_coeffs : list of str
+        The pair_coeff arguments, with or without the style name already
+        included after the type pair.
+    """
+    return [
+        "pair_coeff       %s" % _with_hybrid_pair_coeff_style(pair_coeff, name, index)
+        for (name, index), pair_coeff in zip(hybrid_component_tags(style_names), pair_coeffs)
+    ]
+
+
+def hybrid_pair_compute_commands(compute_ids, tags):
+    """
+    ``compute pair`` commands, one per hybrid sub-style tag.
+
+    Returns the commands and the LAMMPS expression summing the computes.
+    """
+    commands = []
+    for compute_id, (name, index) in zip(compute_ids, tags):
+        if index is None:
+            commands.append("compute          %s all pair %s" % (compute_id, name))
+        else:
+            commands.append(
+                "compute          %s all pair %s %d" % (compute_id, name, index)
+            )
+    return commands, "+".join("c_%s" % compute_id for compute_id in compute_ids)
+
+
 def hybrid_pair_coeff_commands(options, repeat_index=0, total_repeats=1):
     components = _component_pair_coeffs(options)
-    active_style_names = []
-    for _ in range(total_repeats):
-        active_style_names.extend([style_name for style_name, _ in components])
-    total_counts = Counter(active_style_names)
-    seen = defaultdict(int)
-    for _ in range(repeat_index):
-        for style_name, _ in components:
-            seen[style_name] += 1
-
-    commands = []
-    for style_name, pair_coeff in components:
-        seen[style_name] += 1
-        style_index = seen[style_name] if total_counts[style_name] > 1 else None
-        commands.append(
-            "pair_coeff       %s"
-            % _with_hybrid_pair_coeff_style(pair_coeff, style_name, style_index)
-        )
-    return commands
+    n = len(components)
+    style_names = [style_name for style_name, _ in components] * total_repeats
+    tags = hybrid_component_tags(style_names)[repeat_index * n : (repeat_index + 1) * n]
+    return [
+        "pair_coeff       %s" % _with_hybrid_pair_coeff_style(pair_coeff, name, index)
+        for (name, index), (_, pair_coeff) in zip(tags, components)
+    ]
 
 
 def set_pair_coeff(lmp, options):
@@ -253,35 +305,12 @@ def real_pair_compute_commands(
     options, prefix="c_real", total_repeats=1, repeat_index=0
 ):
     components = _component_pair_coeffs(options)
-    active_style_names = []
-    for _ in range(total_repeats):
-        active_style_names.extend([style_name for style_name, _ in components])
-    total_counts = Counter(active_style_names)
-    seen = defaultdict(int)
-    for _ in range(repeat_index):
-        for style_name, _ in components:
-            seen[style_name] += 1
-
-    commands = []
-    terms = []
-    for idx, (style_name, _) in enumerate(components, start=1):
-        seen[style_name] += 1
-        compute_id = "%s%d" % (prefix, idx)
-        if total_counts[style_name] > 1:
-            commands.append(
-                "compute          %s all pair %s %d"
-                % (compute_id, style_name, seen[style_name])
-            )
-        else:
-            commands.append(
-                "compute          %s all pair %s" % (compute_id, style_name)
-            )
-        terms.append("c_%s" % compute_id)
-    return (
-        commands,
-        "+".join(terms),
-        ["%s%d" % (prefix, idx) for idx in range(1, len(components) + 1)],
-    )
+    n = len(components)
+    style_names = [style_name for style_name, _ in components] * total_repeats
+    tags = hybrid_component_tags(style_names)[repeat_index * n : (repeat_index + 1) * n]
+    compute_ids = ["%s%d" % (prefix, idx) for idx in range(1, n + 1)]
+    commands, energy = hybrid_pair_compute_commands(compute_ids, tags)
+    return commands, energy, compute_ids
 
 
 def set_potential(lmp, options):

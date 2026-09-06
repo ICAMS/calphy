@@ -599,7 +599,7 @@ pair_coeff:
   - "* * eam/alloy /path/to/myfile elt1 elt2"
 ```
 
-Set `pair_mode: overlay` to combine multiple component pair styles as a single physical potential using LAMMPS `hybrid/overlay`. The `pair_style` values should be the component styles, not the full `hybrid/overlay` command. The `pair_coeff` values may either include the component style name, as in native LAMMPS hybrid syntax, or omit it when the list order matches `pair_style`. In liquid free-energy integration and reversible scaling, calphy flattens this overlay into `hybrid/scaled` so all real-potential components are scaled together.
+Set `pair_mode: overlay` to combine multiple component pair styles as a single physical potential using LAMMPS `hybrid/overlay`. The `pair_style` values should be the component styles, not the full `hybrid/overlay` command. The `pair_coeff` values may either include the component style name, as in native LAMMPS hybrid syntax, or omit it when the list order matches `pair_style`. In liquid free-energy integration and reversible scaling, calphy flattens this overlay into `hybrid/scaled` so all real-potential components are scaled together. In mode `composition_scaling` the `pair_coeff` of every component is rewritten to the input and to the output composition, and all components are switched together. `pair_mode: overlay` cannot be combined with mode `alchemy`, where the two `pair_style` entries are the two ends of the transformation.
 
 ---
 
@@ -1458,7 +1458,7 @@ The number of maximum attempts to try find the melting temperature in a automate
 
 ## `composition_scaling` block
 
-This block contains keywords that are used only for the mode `composition_scaling`.
+This block contains keywords that are used only for the mode `composition_scaling`. The interatomic potential can be a single pair style or an overlay of several ([`pair_mode: overlay`](pair_mode)). Composition scaling renumbers the atom types, so every `pair_coeff` must apply to all types (`* * ...`).
 
 ```
 composition_scaling:
