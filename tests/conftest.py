@@ -187,7 +187,7 @@ def recorded_job(tmp_path, monkeypatch):
         def close(self):
             pass
 
-    def fake_create_object(calc, directory):
+    def fake_create_object(calc, directory, lmp=None):
         if holder.get("mode") == "library":
             from calphy.library_runner import LibraryRunner
 

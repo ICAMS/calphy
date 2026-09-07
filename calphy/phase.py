@@ -50,8 +50,8 @@ class Phase:
 
     """
 
-    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
-
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False, lmp=None):
+        self.lmp = lmp
         self.calc = copy.deepcopy(calculation)
 
         # Master seed for every stochastic choice this job makes (LAMMPS
@@ -1463,7 +1463,7 @@ class Phase:
             iteration, t0, tf, li, lf, pi, pf,
         )
 
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = ph.create_object(self.calc, self.simfolder, lmp=self.lmp)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f" % li)
@@ -1686,7 +1686,7 @@ class Phase:
             iteration, tf, t0, lf, li, pf, pi,
         )
 
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = ph.create_object(self.calc, self.simfolder, lmp=self.lmp)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f" % li)
@@ -1974,7 +1974,7 @@ class Phase:
         )
 
         # ── Build the LAMMPS object and load the equilibrated configuration ──
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = ph.create_object(self.calc, self.simfolder, lmp=self.lmp)
 
         lmp.command("echo              log")
         lmp = ph.set_pair_style(lmp, self.calc)
@@ -2159,7 +2159,7 @@ class Phase:
         pf = lf * p0
 
         # create lammps object
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = ph.create_object(self.calc, self.simfolder, lmp=self.lmp)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f" % li)
@@ -2308,7 +2308,7 @@ class Phase:
         pf = self.calc._pressure_stop
 
         # create lammps object
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = ph.create_object(self.calc, self.simfolder, lmp=self.lmp)
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f" % li)

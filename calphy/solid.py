@@ -51,15 +51,18 @@ class Solid(cph.Phase):
     simfolder : string
         base folder for running calculations
 
+    lmp : LAMMPS object
+        The LAMMPS object to use for the calculation
     """
 
-    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False, lmp=None):
 
         # call base class
         super().__init__(
             calculation=calculation,
             simfolder=simfolder,
             log_to_screen=log_to_screen,
+            lmp=lmp,
         )
 
     def run_spring_constant_convergence(self, lmp):
@@ -192,7 +195,7 @@ class Solid(cph.Phase):
         At the end of the run, the averaged box dimensions are calculated.
         """
 
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = ph.create_object(self.calc, self.simfolder, lmp=self.lmp)
 
         # set up potential
         lmp = ph.set_pair_style(lmp, self.calc)
@@ -268,7 +271,7 @@ class Solid(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = ph.create_object(self.calc, self.simfolder, lmp=self.lmp)
 
         # set up potential
         lmp = ph.set_pair_style(lmp, self.calc)
