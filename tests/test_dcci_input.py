@@ -51,6 +51,7 @@ def test_dcci_block_defaults(build):
     assert d.stop_at_target_pressure is True
     assert d.n_check_blocks == 0
     assert d.hysteresis_tolerance == 5.0
+    assert d.parallel_cells is False
 
 
 def test_dcci_block_overrides_and_hints(build):
@@ -59,6 +60,22 @@ def test_dcci_block_overrides_and_hints(build):
     assert "integrator" in error_of(build, dcci={"integrator": "rk4"})
     assert "did you mean 'n_block_steps'" in error_of(build, dcci={"n_block_step": 5})
     assert "n_block_steps" in error_of(build, dcci={"n_block_steps": 0})
+
+
+def test_dcci_parallel_cells_needs_two_cores(build):
+    from calphy.dcci import DynamicCCI
+
+    calc = build(dcci={"parallel_cells": True}, queue={"cores": 4})
+    job = DynamicCCI(calculation=calc, simfolder=calc.create_folders())
+    assert job.parallel and job.cell_cores == 2
+
+    calc = build(dcci={"parallel_cells": True}, queue={"cores": 1}, folder_prefix="one")
+    job = DynamicCCI(calculation=calc, simfolder=calc.create_folders())
+    assert not job.parallel and job.cell_cores == 1
+
+    calc = build(queue={"cores": 4}, folder_prefix="seq")
+    job = DynamicCCI(calculation=calc, simfolder=calc.create_folders())
+    assert not job.parallel and job.cell_cores == 4
 
 
 def test_dcci_needs_pressure_range(build):

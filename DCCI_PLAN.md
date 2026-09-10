@@ -104,6 +104,7 @@ mode has no per-block cost and can use `n_block_steps` of 10-100.
   | `stop_at_target_pressure` | `true` | End the sweep at the first block whose *real* pressure reaches `pressure[1]`. With `dT/dP > 0` (lambda < 1) the real pressure runs ahead of `P_RS`, so the ramp target `P_RS,f = pressure[1]` is conservative; with a negative slope the sweep ends at `P_RS = pressure[1]` and the reached real range is logged. |
   | `n_check_blocks` | 0 | Run the solid-fraction melt/freeze checks every this many blocks (0 = only at the end of each sweep). |
   | `hysteresis_tolerance` | 5.0 | K. Warn (and flag in `report.yaml`) when the backward sweep misses `T0` at `P_i` by more than this. |
+  | `parallel_cells` | `false` | Run the two cells concurrently (two threads, each cell's LAMMPS with `queue.cores/2`) instead of one after the other with all cores. Same results, half the sweep wall time; falls back to sequential with one core. |
 
 * `mode: dcci` validation: `pressure` must be a 2-list (`_pressure` = P_i, `_pressure_stop` = P_f;
   already parsed), `temperature` a scalar > 0 (`_temperature` is `T0 = T_m`),
@@ -139,8 +140,10 @@ coupled-sweep files and `report.yaml` at the top level.
      both, read the last `ave/time` row of each, `cce_step(...)`, append a row to
      `dcci.<dir>_<i>.dat`, log `T_k, P_k, dP/dT`, apply the stop rule and the periodic checks;
    * end: snapshot + melt/freeze check, `write_data`, `close`, `rotate_logs`.
-   The two runners are stepped sequentially in the same Python process (no MPI coupling, no
-   threads); with `queue.cores > 1` each cell's `lmp` gets the full core count in turn.
+   By default the two runners are stepped one after the other in the same Python process, each
+   cell's `lmp` getting the full core count in turn; `dcci.parallel_cells` runs the two per-block
+   sequences (ramp, run, sync) in two threads with half the cores each. There is no MPI coupling:
+   the cells exchange information only through the driver, once per block.
 4. `integrate(iteration)`: pure numpy (`integrators.integrate_dcci`), see 3.4.
 5. `submit_report()` / `clean_up()`: `report.yaml` at the top level with
    `results: {t0, p_start, p_stop_requested, p_stop_reached, t_stop, n_blocks_used,

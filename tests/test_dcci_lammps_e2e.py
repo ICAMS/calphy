@@ -57,9 +57,17 @@ INPUT = {
 }
 
 
-def test_dcci_cu_out_and_back(tmp_path):
+@pytest.mark.parametrize("parallel", [False, True], ids=["sequential", "parallel_cells"])
+def test_dcci_cu_out_and_back(tmp_path, parallel):
+    import copy
+
+    inp = copy.deepcopy(INPUT)
+    if parallel:
+        # two cells at once, one core each: exercises the threaded block loop
+        inp["calculations"][0]["dcci"]["parallel_cells"] = True
+        inp["calculations"][0]["queue"]["cores"] = 2
     with open(tmp_path / "input.yaml", "w") as fh:
-        yaml.safe_dump(INPUT, fh, sort_keys=False)
+        yaml.safe_dump(inp, fh, sort_keys=False)
     env = dict(os.environ, PYTHONPATH=REPO)
     proc = subprocess.run(
         [sys.executable, "-c",

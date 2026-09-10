@@ -186,6 +186,8 @@ points at where it belongs.
 ```
 ```{grid-item} [](hysteresis_tolerance)
 ```
+```{grid-item} [](parallel_cells)
+```
 ````
 
 ### `composition_scaling` 
@@ -1959,6 +1961,7 @@ dcci:
   stop_at_target_pressure: True
   n_check_blocks: 0
   hysteresis_tolerance: 5.0
+  parallel_cells: False
 ```
 
 The mode builds a solid and a liquid cell from the input structure (the liquid
@@ -1969,8 +1972,10 @@ reversible scaling. The scaled pressure `P_RS` of both cells is ramped linearly
 from `pressure[0]` to `pressure[1]` over `n_switching_steps` steps, and after
 every block of `n_block_steps` steps the scaling factor is updated from the
 block averages of the potential energy and volume of the two cells through the
-Clausius-Clapeyron condition `dλ/dP_RS = -(v_s - v_l)/(u_s - u_l)`. Each block
-is a point `T = T0/λ`, `P = P_RS/λ` on the coexistence line. A backward sweep
+Clausius-Clapeyron condition `dλ/dP_RS = -(v_s - v_l)/(u_s - u_l)`. The two
+cells exchange information only at these block boundaries, and only through
+calphy; within a block each follows its pre-set pressure and λ ramps on its own.
+Each block is a point `T = T0/λ`, `P = P_RS/λ` on the coexistence line. A backward sweep
 returns to `pressure[0]`; the line is the mean of both directions and the
 mismatch of the round trip is the hysteresis. Use `n_iterations` for
 independent repetitions. The mode needs `npt: True`, does not support
@@ -2071,3 +2076,23 @@ the difference is the hysteresis of the integration and is reported in
 warning is logged: the sweep is too fast for a reversible integration and
 `n_switching_steps` should be increased. The hysteresis shrinks quickly with the
 sweep length (de Koning et al., Fig. 5).
+
+---
+
+(parallel_cells)=
+#### `parallel_cells`
+
+_type_: bool \
+_default_: False \
+_example_:
+```
+parallel_cells: True
+```
+
+By default the solid and the liquid cell are advanced one after the other, each
+LAMMPS run using all of `queue.cores`, so the wall time of a block is the sum of
+the two cells. With `parallel_cells: True` the two cells run at the same time
+with `queue.cores / 2` cores each, which halves the wall time of the sweeps at
+the same total core count. Needs `queue.cores >= 2`; with a single core the
+cells run sequentially and a warning is logged. The results do not depend on
+this setting.

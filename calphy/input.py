@@ -524,6 +524,18 @@ class DynamicClausiusClapeyron(
             ),
         ),
     ]
+    parallel_cells: Annotated[
+        bool,
+        Field(
+            default=False,
+            description=(
+                "Run the solid and the liquid cell at the same time, each with "
+                "half of queue.cores, instead of one after the other with all of "
+                "them.  Halves the wall time of the sweeps; needs queue.cores >= 2 "
+                "(with a single core the cells run sequentially)."
+            ),
+        ),
+    ]
 
 
 class MaterialsProject(_StrictInput, title="Input options for materials project"):

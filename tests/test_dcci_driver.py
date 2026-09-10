@@ -75,9 +75,10 @@ class FakeRunner:
 
 
 @pytest.fixture
-def driver(tmp_path, monkeypatch):
+def driver(tmp_path, monkeypatch, request):
     monkeypatch.chdir(tmp_path)
     runners = {}
+    overrides = getattr(request, "param", {})
 
     def fake_create_object(calc, directory):
         r = FakeRunner(directory)
@@ -98,7 +99,10 @@ def driver(tmp_path, monkeypatch):
     monkeypatch.setattr(Liquid, "run_averaging", fake_averaging)
     monkeypatch.setattr(ph, "find_solid_fraction", fake_solid_fraction)
 
-    calc = Calculation(**BASE)
+    data = {**BASE, **overrides}
+    if "dcci" in overrides:
+        data["dcci"] = {**BASE["dcci"], **overrides["dcci"]}
+    calc = Calculation(**data)
     simfolder = calc.create_folders()
     job = DynamicCCI(calculation=calc, simfolder=simfolder)
     job.runners = runners
@@ -267,3 +271,38 @@ def test_integrate_dcci_hysteresis_and_error(tmp_path):
     stderr = np.array([np.std([s / 2 - 1.0, s / 2 + 1.0], ddof=1) / np.sqrt(2) if s else 0.0 for s in shift])
     assert err == pytest.approx(np.sqrt((shift / 2) ** 2 + stderr**2))
     assert os.path.exists(tmp_path / "coexistence_line.dat")
+
+
+@pytest.mark.parametrize(
+    "driver", [{"dcci": {"parallel_cells": True}, "queue": {"cores": 4}}], indirect=True
+)
+def test_parallel_cells_give_the_same_line(driver):
+    """The cells only talk at block boundaries, so running them concurrently
+    must reproduce the sequential result exactly, with half the cores each."""
+    job = driver
+    assert job.parallel and job.cell_cores == 2
+    job.calculate_coexistence_line()
+    for phase in ("solid", "liquid"):
+        assert job.jobs[phase].calc.queue.cores == 2
+        # both sweeps happened in each cell, run as one block per exchange
+        fwd_run, bwd_run = job.runners[phase]
+        assert len([c for c in fwd_run.commands if c.startswith("run ") and "start 0" in c]) == N_SWEEP // N_BLOCK
+
+    n_blocks = N_SWEEP // N_BLOCK
+    fwd = np.loadtxt(os.path.join(job.simfolder, "dcci.forward_1.dat"))
+    f = cce_slope(U_S, U_L, V_S, V_L)
+    h = (P1 - P0) / n_blocks / EV_A3_TO_BAR
+    assert fwd[:, 2] == pytest.approx(1.0 + f * h * np.arange(1, n_blocks + 1))
+    assert job.hysteresis == pytest.approx(0.0, abs=1e-6)
+
+
+@pytest.mark.parametrize(
+    "driver", [{"dcci": {"parallel_cells": True}, "queue": {"cores": 1}}], indirect=True
+)
+def test_parallel_cells_falls_back_to_sequential_on_one_core(driver):
+    job = driver
+    assert not job.parallel and job.cell_cores == 1
+    job.prepare_cells()
+    assert all(job.jobs[p].calc.queue.cores == 1 for p in ("solid", "liquid"))
+    with open(os.path.join(job.simfolder, "calphy.log")) as fh:
+        assert "parallel_cells needs queue.cores >= 2" in fh.read()
