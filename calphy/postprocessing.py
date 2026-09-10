@@ -662,3 +662,58 @@ def find_transition_temperature(folder1, folder2, fit_order=4, plot=True):
         plt.xlabel("Temperature (K)")
         plt.legend(frameon=False)
     return transition_temp
+
+
+def read_coexistence_line(folder):
+    """
+    Read the coexistence line written by a ``mode: dcci`` calculation.
+
+    Parameters
+    ----------
+    folder : str
+        The ``dcci-*`` calculation folder.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``pressure`` (bar), ``temperature`` (K), ``error`` (K),
+        ``temperature_forward`` and ``temperature_backward`` (K).
+    """
+    data = np.atleast_2d(np.loadtxt(os.path.join(folder, "coexistence_line.dat")))
+    return pd.DataFrame(
+        data,
+        columns=["pressure", "temperature", "error", "temperature_forward", "temperature_backward"],
+    )
+
+
+def plot_coexistence_line(folder, ax=None, show_directions=True, **kwargs):
+    """
+    Plot the coexistence line of a ``mode: dcci`` calculation, T against P.
+
+    Parameters
+    ----------
+    folder : str
+        The ``dcci-*`` calculation folder.
+    ax : matplotlib axis, optional
+        Axis to draw on; a new figure is created otherwise.
+    show_directions : bool
+        Also draw the forward and backward sweeps as thin lines.
+    kwargs
+        Passed to ``ax.errorbar`` for the mean line.
+
+    Returns
+    -------
+    matplotlib axis
+    """
+    df = read_coexistence_line(folder)
+    if ax is None:
+        _, ax = plt.subplots()
+    if show_directions:
+        ax.plot(df.pressure, df.temperature_forward, lw=0.8, alpha=0.6, label="forward")
+        ax.plot(df.pressure, df.temperature_backward, lw=0.8, alpha=0.6, label="backward")
+    kwargs.setdefault("label", "coexistence line")
+    ax.errorbar(df.pressure, df.temperature, yerr=df.error, **kwargs)
+    ax.set_xlabel("pressure (bar)")
+    ax.set_ylabel("temperature (K)")
+    ax.legend()
+    return ax

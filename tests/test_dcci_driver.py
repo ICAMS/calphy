@@ -192,3 +192,78 @@ def test_cells_are_built_at_the_starting_point(driver):
         assert os.path.isdir(os.path.join(job.simfolder, phase))
     with open(os.path.join(job.simfolder, "input_file.yaml")) as fh:
         assert yaml.safe_load(fh)["calculations"][0]["mode"] == "dcci"
+
+
+def test_full_cycle_closes_and_reports(driver):
+    job = driver
+    job.calculate_coexistence_line()
+
+    n_blocks = N_SWEEP // N_BLOCK
+    fwd = np.loadtxt(os.path.join(job.simfolder, "dcci.forward_1.dat"))
+    bwd = np.loadtxt(os.path.join(job.simfolder, "dcci.backward_1.dat"))
+    assert fwd.shape == bwd.shape == (n_blocks, 11)
+    # constant du, dv: the backward sweep retraces the forward one exactly
+    assert bwd[-1, 2] == pytest.approx(1.0)
+    assert bwd[-1, 4] == pytest.approx(P0) and bwd[-1, 5] == pytest.approx(P0)
+    assert bwd[:, 4][::-1] == pytest.approx(np.concatenate(([P0], fwd[:-1, 4])))
+
+    line = np.loadtxt(os.path.join(job.simfolder, "coexistence_line.dat"))
+    assert line.shape == (n_blocks + 1, 5)
+    assert line[0, :2] == pytest.approx([P0, T0])
+    assert line[:, 1] == pytest.approx(np.concatenate(([T0], fwd[:, 3])))
+    assert np.all(line[:, 2] < 1e-6)
+    assert job.hysteresis == pytest.approx(0.0, abs=1e-6) and not job.hysteresis_high
+
+    with open(os.path.join(job.simfolder, "report.yaml")) as fh:
+        report = yaml.safe_load(fh)
+    assert report["results"]["hysteresis_high"] is False
+    assert report["results"]["pressure_reached"] == pytest.approx(line[-1, 0])
+    assert report["results"]["temperature_at_pressure_reached"] == pytest.approx(line[-1, 1])
+    assert report["results"]["n_blocks_used"] == n_blocks
+    assert report["input"]["pressure_stop"] == P1
+    assert os.path.exists(os.path.join(job.simfolder, "metadata.yaml"))
+    assert os.path.exists(os.path.join(job.simfolder, "input_configuration.data"))
+
+    # backward sessions start from the forward end configuration at its lambda
+    for phase in ("solid", "liquid"):
+        fwd_run, bwd_run = job.runners[phase]
+        assert any("conf.dcci.forward_1.data" in c and c.startswith("read_data") for c in bwd_run.commands)
+        first_lam = [c for c in bwd_run.commands if c.startswith("variable lam equal")][0]
+        assert float(first_lam.split()[3]) == pytest.approx(fwd[-1, 2])
+        npt = [c for c in bwd_run.commands if " npt " in c]
+        assert npt[1].split()[-3:-1] == ["%f" % P1, "%f" % P0]
+        assert not any("remap" in c for c in bwd_run.commands)
+        assert any("velocity" in c for c in fwd_run.commands)
+        assert not any("velocity" in c for c in bwd_run.commands)
+
+
+def test_integrate_dcci_hysteresis_and_error(tmp_path):
+    from calphy.dcci import integrate_dcci
+
+    t0, p0 = 1000.0, 0.0
+    cols = 11
+    p_f = np.array([10000.0, 20000.0, 30000.0])
+    t_f = np.array([1010.0, 1020.0, 1030.0])
+    offset = 4.0
+    for i in (1, 2):
+        fwd = np.zeros((3, cols)); fwd[:, 3] = t_f; fwd[:, 5] = p_f
+        # the backward sweep runs 2 K (iteration 1) / 6 K (iteration 2) hot
+        d = offset - 2.0 if i == 1 else offset + 2.0
+        # backward rows at 20, 10, 0 kbar: the forward line there, shifted by d
+        bwd = np.zeros((3, cols)); bwd[:, 5] = p_f[::-1] - 10000.0
+        bwd[:, 3] = np.interp(bwd[:, 5], [p0, *p_f], [t0, *t_f]) + d
+        np.savetxt(tmp_path / ("dcci.forward_%d.dat" % i), fwd)
+        np.savetxt(tmp_path / ("dcci.backward_%d.dat" % i), bwd)
+
+    hyst, (p, t, err, tf, tb) = integrate_dcci(str(tmp_path), t0, p0, nsims=2, return_values=True)
+    assert hyst == pytest.approx(offset)
+    assert p == pytest.approx([p0, *p_f])
+    assert tf == pytest.approx([t0, *t_f])
+    # the backward sweep starts exactly where the forward one ended
+    shift = np.array([offset, offset, offset, 0.0])
+    assert tb == pytest.approx(tf + shift)
+    assert t == pytest.approx(tf + shift / 2)
+    # half the hysteresis, plus the spread of the two iterations' means
+    stderr = np.array([np.std([s / 2 - 1.0, s / 2 + 1.0], ddof=1) / np.sqrt(2) if s else 0.0 for s in shift])
+    assert err == pytest.approx(np.sqrt((shift / 2) ** 2 + stderr**2))
+    assert os.path.exists(tmp_path / "coexistence_line.dat")

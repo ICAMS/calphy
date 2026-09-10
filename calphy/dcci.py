@@ -40,12 +40,14 @@ system through T = T0/lambda and P = P_RS/lambda.  See DCCI_PLAN.md.
 import copy
 import os
 import math
+import shutil
+import time
 
 import numpy as np
 import yaml
 
 import calphy.helpers as ph
-from calphy.input import Calculation
+from calphy.input import Calculation, generate_metadata
 from calphy.integrators import EV_A3_TO_BAR
 from calphy.liquid import Liquid
 from calphy.solid import Solid
@@ -111,6 +113,75 @@ def lambda_ramp_command(name, lam_start, lam_end, step_start, n_steps):
 def plan_blocks(n_sweep, n_block):
     """Number of whole blocks covering ``n_sweep`` steps (rounded up)."""
     return max(1, int(math.ceil(n_sweep / float(n_block))))
+
+
+def integrate_dcci(simfolder, t0, p_start, nsims=1, return_values=False):
+    """
+    Combine the forward and backward sweeps into one coexistence line.
+
+    The forward sweep of every iteration provides the pressure grid (with the
+    starting point prepended); the backward sweep of the same iteration is
+    interpolated onto it.  The line is the mean of both directions, its error
+    half the local hysteresis combined with the standard error over the
+    iterations, as ``integrate_rs`` does for the temperature sweep.
+
+    Parameters
+    ----------
+    simfolder : str
+        Folder holding ``dcci.forward_<i>.dat`` and ``dcci.backward_<i>.dat``.
+    t0, p_start : float
+        The starting coexistence point (K, bar).
+    nsims : int
+        Number of iterations.
+    return_values : bool
+        Also return the arrays.
+
+    Returns
+    -------
+    hysteresis : float
+        Mean over iterations of T_backward(P_start) - T0, in K: how far the
+        round trip misses the starting temperature.
+    (pressure, temperature, error, t_forward, t_backward) : arrays
+        Only if ``return_values``; on the grid of the first iteration.
+    """
+    grid = None
+    forwards, backwards, hyst = [], [], []
+    for i in range(1, nsims + 1):
+        fwd = np.atleast_2d(np.loadtxt(os.path.join(simfolder, "dcci.forward_%d.dat" % i)))
+        bwd = np.atleast_2d(np.loadtxt(os.path.join(simfolder, "dcci.backward_%d.dat" % i)))
+        # real pressure and temperature, starting point included
+        p_f = np.concatenate(([p_start], fwd[:, 5]))
+        t_f = np.concatenate(([t0], fwd[:, 3]))
+        # the backward sweep starts where the forward one ended
+        p_b = np.concatenate(([fwd[-1, 5]], bwd[:, 5]))
+        t_b = np.concatenate(([fwd[-1, 3]], bwd[:, 3]))
+        order = np.argsort(p_b)
+        if grid is None:
+            grid = p_f
+        t_f_grid = np.interp(grid, p_f, t_f) if p_f[-1] >= p_f[0] else np.interp(grid[::-1], p_f[::-1], t_f[::-1])[::-1]
+        t_b_grid = np.interp(grid, p_b[order], t_b[order])
+        forwards.append(t_f_grid)
+        backwards.append(t_b_grid)
+        hyst.append(float(np.interp(p_start, p_b[order], t_b[order]) - t0))
+
+    forwards = np.array(forwards)
+    backwards = np.array(backwards)
+    means = 0.5 * (forwards + backwards)
+    temperature = means.mean(axis=0)
+    half_hyst = 0.5 * np.abs(forwards - backwards).mean(axis=0)
+    stderr = means.std(axis=0, ddof=1) / np.sqrt(nsims) if nsims > 1 else np.zeros_like(temperature)
+    error = np.sqrt(half_hyst**2 + stderr**2)
+    hysteresis = float(np.mean(hyst))
+
+    np.savetxt(
+        os.path.join(simfolder, "coexistence_line.dat"),
+        np.column_stack((grid, temperature, error, forwards.mean(axis=0), backwards.mean(axis=0))),
+        header="dynamic Clausius-Clapeyron coexistence line\n"
+        "pressure[bar]  temperature[K]  error[K]  T_forward[K]  T_backward[K]",
+    )
+    if return_values:
+        return hysteresis, (grid, temperature, error, forwards.mean(axis=0), backwards.mean(axis=0))
+    return hysteresis
 
 
 class SweepState:
@@ -492,11 +563,93 @@ class DynamicCCI:
             "v_solid[A^3/atom] v_liquid[A^3/atom] dPdT[bar/K]" % (direction, iteration, self.t0),
         )
 
+    # ---------------------------------------------------------- integration
+    def integrate(self):
+        """Combine all sweeps into ``coexistence_line.dat`` and judge the hysteresis."""
+        self.hysteresis, values = integrate_dcci(
+            self.simfolder, self.t0, self.p_start,
+            nsims=self.calc.n_iterations, return_values=True,
+        )
+        pressure, temperature, error = values[0], values[1], values[2]
+        self.hysteresis_high = abs(self.hysteresis) > self.calc.dcci.hysteresis_tolerance
+        self.line = (pressure, temperature, error)
+        self.logger.info(
+            "Coexistence line from %.1f to %.1f bar written to coexistence_line.dat "
+            "(%d points)" % (pressure[0], pressure[-1], len(pressure))
+        )
+        self.logger.info(
+            "Round trip misses the starting temperature by %.2f K (tolerance %.2f K)"
+            % (self.hysteresis, self.calc.dcci.hysteresis_tolerance)
+        )
+        if self.hysteresis_high:
+            self.logger.warning(
+                "The forward and backward sweeps do not close: the integration is "
+                "not reversible at this sweep length. Increase n_switching_steps "
+                "(or the cell size) before trusting the line."
+            )
+            self.logger.warning("STATE: coexistence line unreliable, hysteresis too high")
+        self.logger.info(
+            "STATE: T_coex = %.2f K at %.1f bar (from %.2f K at %.1f bar)"
+            % (temperature[-1], pressure[-1], self.t0, self.p_start)
+        )
+
+    def submit_report(self):
+        """Write ``report.yaml`` at the top level."""
+        pressure, temperature, error = self.line
+        last = self.states[(self.calc.n_iterations, "forward")]
+        report = {
+            "input": {
+                "temperature": float(self.t0),
+                "pressure": float(self.p_start),
+                "pressure_stop": float(self.p_stop),
+                "lattice": str(self.calc._original_lattice),
+                "element": " ".join(np.array(self.calc.element).astype(str)),
+                "n_block_steps": int(self.n_block),
+                "n_iterations": int(self.calc.n_iterations),
+            },
+            "average": {
+                "vol_atom_solid": float(self.jobs["solid"].volatom),
+                "vol_atom_liquid": float(self.jobs["liquid"].volatom),
+            },
+            "results": {
+                "coexistence_line": "coexistence_line.dat",
+                "pressure_reached": float(pressure[-1]),
+                "temperature_at_pressure_reached": float(temperature[-1]),
+                "error_at_pressure_reached": float(error[-1]),
+                "n_blocks_used": int(last.n_blocks),
+                "hysteresis": float(self.hysteresis),
+                "hysteresis_high": bool(self.hysteresis_high),
+                "unit": "K, bar",
+            },
+        }
+        self.report = report
+        with open(os.path.join(self.simfolder, "report.yaml"), "w") as fout:
+            yaml.dump(report, fout)
+        self.logger.info("Report written in %s" % os.path.join(self.simfolder, "report.yaml"))
+        self.logger.info("Please cite the following publications:")
+        for doi in self.publications:
+            self.logger.info("- %s" % doi)
+
+    def clean_up(self):
+        """Serialise the input configuration and the run metadata."""
+        shutil.copy(
+            self.calc.lattice, os.path.join(self.simfolder, "input_configuration.data")
+        )
+        metadata = generate_metadata()
+        metadata["publications"] = self.publications
+        with open(os.path.join(self.simfolder, "metadata.yaml"), "w") as fout:
+            yaml.safe_dump(metadata, fout)
+
     # ------------------------------------------------------------- top level
     def calculate_coexistence_line(self):
-        """Run the whole mode: equilibrate both cells, sweep, integrate, report."""
+        """Run the whole mode: equilibrate both cells, sweep out and back, integrate, report."""
         self.prepare_cells()
         self.equilibrate_cells()
         for i in range(1, self.calc.n_iterations + 1):
+            ts = time.time()
             self.run_sweep("forward", iteration=i)
-        raise NotImplementedError("mode dcci: backward sweep and integration follow in part 3")
+            self.run_sweep("backward", iteration=i)
+            self.logger.info("dcci cycle %d finished in %f s" % (i, time.time() - ts))
+        self.integrate()
+        self.submit_report()
+        self.clean_up()
