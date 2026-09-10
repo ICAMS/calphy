@@ -26,6 +26,9 @@ thermo_style custom step pe c_tcm press vol
 thermo 10000
 velocity all create 400.000000 7271 mom yes rot yes dist gaussian
 run 2500
+unfix f1
+fix f1 all npt temp 400.000000 400.000000 0.100000 iso 0.000000 0.000000 0.100000 fixedpoint ${xcm} ${ycm} ${zcm}
+fix_modify f1 temp tcm
 variable T0_rs equal 400.000000
 variable flambda equal ramp(${li},${lf})
 variable blambda equal ramp(${lf},${li})
