@@ -1202,7 +1202,10 @@ class Calculation(_StrictInput, title="Main input class"):
             )
         if not self.npt:
             raise ValueError("mode dcci integrates in the pressure-temperature plane and needs npt: True")
-        self.reference_phase = "solid"
+        # the mode builds its own solid and liquid cells (each a sub-calculation
+        # carrying its phase here); on the parent the value only names the folder
+        if self.reference_phase not in ("solid", "liquid"):
+            self.reference_phase = "solid"
 
     def fix_paths(self, potlist):
         """

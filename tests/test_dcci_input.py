@@ -93,5 +93,8 @@ def test_dcci_dispatch(build, tmp_path):
     assert os.path.isdir(job.simfolder) and job.simfolder.startswith(str(tmp_path))
     assert os.path.exists(os.path.join(job.simfolder, "input_file.yaml"))
     assert (job.t0, job.p_start, job.p_stop) == (1350.0, 0.0, 100000.0)
-    with pytest.raises(NotImplementedError):
-        run_calculation(job)
+
+    called = []
+    job.calculate_coexistence_line = lambda: called.append(True)
+    run_calculation(job)
+    assert called == [True]
