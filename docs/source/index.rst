@@ -23,6 +23,9 @@ calphy can perform are:
    approach.
 -  Calculation of solid-solid or solid-liquid phase transition
    temperatures.
+-  Calculation of solid-liquid coexistence lines :math:`P_{coex}(T)` over a
+   wide pressure range from a single known coexistence point using `dynamic
+   Clausius-Clapeyron integration <https://doi.org/10.1063/1.1420486>`__.
 -  Calculation of specific heat :math:`c_P(T)` as a function of
    temperature.
 -  Calculation of :math:`F(x, T)` and :math:`G(x, T)` for multicomponent
