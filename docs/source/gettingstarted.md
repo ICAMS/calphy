@@ -115,7 +115,7 @@ calphy needs an `lmp` executable that includes the LAMMPS packages its methods r
 |---|---|---|
 | EAM / MEAM / most `pair_style`s | `MANYBODY` (and the relevant potential package) | your interatomic potential |
 | solid free energy, `ts`, `tscale` | `EXTRA-FIX` | `fix ti/spring` (Frenkel–Ladd spring) |
-| liquid free energy, `melting_temperature` | `EXTRA-PAIR` | `pair_style ufm`, `pair_style hybrid/scaled` |
+| liquid free energy, `melting_temperature`, `dcci` | `EXTRA-PAIR` | `pair_style ufm`, `pair_style hybrid/scaled` |
 | Monte-Carlo swaps (`monte_carlo.n_swaps > 0`) | `MC` | `fix atom/swap` |
 | `mode: fe-qtb` (quantum thermal bath) | `QTB` | `fix qtb` |
 

@@ -172,6 +172,22 @@ points at where it belongs.
 ```
 ````
 
+### `dcci` 
+
+````{grid} 1 2 3 4
+:outline:
+```{grid-item} [](n_block_steps)
+```
+```{grid-item} [](integrator)
+```
+```{grid-item} [](stop_at_target_pressure)
+```
+```{grid-item} [](n_check_blocks)
+```
+```{grid-item} [](hysteresis_tolerance)
+```
+````
+
 ### `composition_scaling` 
 
 ````{grid} 1 2 3 4
@@ -325,7 +341,7 @@ Mass of the element(s) in the simulation. It should follow the same order as tha
 (mode)=
 #### `mode`  
 
-_type_: string, `fe` or `fe-qtb` or `ts` or `alchemy` or `melting_temperature` or `tscale` or `pscale` or `composition_scaling` \
+_type_: string, `fe` or `fe-qtb` or `ts` or `alchemy` or `melting_temperature` or `dcci` or `tscale` or `pscale` or `composition_scaling` \
 _default_: None \
 _example_:
 ```
@@ -340,6 +356,7 @@ Calculation mode. A small description of the different modes are given below.
 - `ts` performs a direct free energy calculation followed by reversible scaling to find temperature dependence.
 - `alchemy` is used for switching between two different interatomic potentials, or for integration over concentration. 
 - `melting_temperature` can be used for automated calculation of melting temperature. 
+- `dcci` traces a solid-liquid coexistence line in the pressure-temperature plane from one known coexistence point by dynamic Clausius-Clapeyron integration (de Koning, Antonelli and Yip, J. Chem. Phys. 115, 11025 (2001)). See the [`dcci`](dcci_block) block.
 - `tscale` is used for similar purpose as `ts`, but scales the temperature directly.
 - `pscale` calculates the free energy as a function of the pressure.
 - `composition_scaling` performs integration over composition.
@@ -360,6 +377,7 @@ temperature: [1200, 1300]
 Temperatures for the simulation in Kelvin. The way temperature is used in `calphy` depends on the selected mode of calculation. 
 - mode `ts` or `tscale`, a temperature sweep is carried out. In that case, only two values of temperature should be specified.
 - mode `melting_temperature`, if provided it is used as an initial guess temperature. If not, the experimental melting temperature is used as a guess value.
+- mode `dcci`, the coexistence temperature at `pressure[0]` in Kelvin, e.g. the result of a `melting_temperature` calculation at that pressure. It must be given explicitly.
 - all other modes, a calculation is launched for each temperature on the list.
 
 ---
@@ -386,10 +404,12 @@ Pressure for the simulation in bars. Depending on the pressure input, other opti
 | `None` | `pressure: None` | True | True | `fe`, `alchemy` | None |
 | scalar | `pressure: 100` | True | False | all except `pscale` | None |
 | `(1,)` | `pressure: [100]` | True | False | all except `pscale` | None |
-| `(2,)` | `pressure: [100, 200]` | True | False | `pscale` | None |
+| `(2,)` | `pressure: [100, 200]` | True | False | `pscale`, `dcci` | None |
 | `(3,)` | `pressure: [100, 100, 100]` | False | False | all except `pscale` | px=py=pz |
 | `(1,3)` | `pressure: [[100, 100, 100]]` | False | False | all except `pscale` | px=py=pz |
 | `(2,3)` | `pressure: [[100, 100, 100], [200, 200, 200]]` | False | False | `pscale` | px=py=pz |
+
+For mode `dcci`, `pressure[0]` is the pressure of the known coexistence point and `pressure[1]` the pressure the coexistence line is integrated to.
 
 ---
 
@@ -1918,3 +1938,136 @@ target_natoms: 1500
 The structure parsed from Materials Project is replicated isotropically until it contains approximately this many atoms (ignored if `repeat` is set to anything other than `[1, 1, 1]`).
 
 ---
+
+---
+---
+
+(dcci_block)=
+## `dcci` block
+
+This block contains keywords that are used only for the mode `dcci`, the dynamic
+Clausius-Clapeyron integration of a solid-liquid coexistence line.
+
+```
+mode: dcci
+temperature: 1340        # coexistence temperature at pressure[0]
+pressure: [0, 100000]    # from the known point to the target pressure, in bar
+n_switching_steps: 50000 # length of one sweep
+dcci:
+  n_block_steps: 1000
+  integrator: euler
+  stop_at_target_pressure: True
+  n_check_blocks: 0
+  hysteresis_tolerance: 5.0
+```
+
+The mode builds a solid and a liquid cell from the input structure (the liquid
+through the usual melting cycle), equilibrates both at (`temperature`,
+`pressure[0]`) and then drives them side by side at the fixed kinetic
+temperature `T0 = temperature` with the scaled Hamiltonian `K + λU` of
+reversible scaling. The scaled pressure `P_RS` of both cells is ramped linearly
+from `pressure[0]` to `pressure[1]` over `n_switching_steps` steps, and after
+every block of `n_block_steps` steps the scaling factor is updated from the
+block averages of the potential energy and volume of the two cells through the
+Clausius-Clapeyron condition `dλ/dP_RS = -(v_s - v_l)/(u_s - u_l)`. Each block
+is a point `T = T0/λ`, `P = P_RS/λ` on the coexistence line. A backward sweep
+returns to `pressure[0]`; the line is the mean of both directions and the
+mismatch of the round trip is the hysteresis. Use `n_iterations` for
+independent repetitions. The mode needs `npt: True`, does not support
+`monte_carlo` swaps, and assumes the same composition in both cells.
+
+Both cells have the melt and solidification checks switched on
+(`tolerance.solid_fraction: 0.7`, `tolerance.liquid_fraction: 0.05` unless set
+explicitly): a solid that melts or a liquid that freezes along the line stops
+the calculation with `MeltedError` / `SolidifiedError`.
+
+---
+
+(n_block_steps)=
+#### `n_block_steps`
+
+_type_: int \
+_default_: 1000 \
+_example_:
+```
+n_block_steps: 500
+```
+
+MD steps per integration block, i.e. the pressure step of the Clausius-Clapeyron
+integration. Smaller blocks follow the line more finely but average over fewer
+steps. With the default `execution_mode: executable` every block is one launch of
+the LAMMPS binary per cell, so a 1e5-step sweep with 1000-step blocks means 100
+launches per cell and direction; the library backend has no such cost and can use
+blocks of 10-100 steps.
+
+---
+
+(integrator)=
+#### `integrator`
+
+_type_: string, `euler` or `trapezoid` \
+_default_: `euler` \
+_example_:
+```
+integrator: trapezoid
+```
+
+Corrector applied after each block. `euler` advances λ with the slope of the
+finished block; `trapezoid` uses the mean of the slopes of the last two blocks.
+Within a block λ is always ramped linearly along the last measured slope, so the
+Hamiltonian stays continuous in time.
+
+---
+
+(stop_at_target_pressure)=
+#### `stop_at_target_pressure`
+
+_type_: bool \
+_default_: True \
+_example_:
+```
+stop_at_target_pressure: False
+```
+
+The ramp is applied to the scaled pressure `P_RS`; the real pressure `P_RS/λ`
+runs ahead of it when the coexistence line has a positive slope (λ < 1). With
+this option the forward sweep ends at the first block whose real pressure
+reaches `pressure[1]`, and the backward sweep starts there. Set it to `False`
+to always run the full `n_switching_steps`. For a line with negative slope the
+real pressure lags the ramp and the sweep ends at `P_RS = pressure[1]`; the
+pressure actually reached is reported in `report.yaml`.
+
+---
+
+(n_check_blocks)=
+#### `n_check_blocks`
+
+_type_: int \
+_default_: 0 \
+_example_:
+```
+n_check_blocks: 10
+```
+
+Run the solid-fraction melt and solidification checks on both cells every this
+many blocks during the sweeps. With 0 the checks run only at the end of each
+sweep.
+
+---
+
+(hysteresis_tolerance)=
+#### `hysteresis_tolerance`
+
+_type_: float \
+_default_: 5.0 \
+_example_:
+```
+hysteresis_tolerance: 2.0
+```
+
+In Kelvin. The backward sweep should return to `temperature` at `pressure[0]`;
+the difference is the hysteresis of the integration and is reported in
+`report.yaml`. When it exceeds this tolerance, `hysteresis_high` is set and a
+warning is logged: the sweep is too fast for a reversible integration and
+`n_switching_steps` should be increased. The hysteresis shrinks quickly with the
+sweep length (de Koning et al., Fig. 5).

@@ -227,7 +227,7 @@ Physics validation (manual, results go into the example notebook, not CI):
 | 1 | `input.py` block + validation, dispatch, `required_styles`, `reset_timestep` token, `.gitignore`. | `test_dcci_input.py`, vocabulary test, full suite green. |
 | 2 | `dcci.py`: cells, equilibration, forward sweep, `cce_step`, raw and driver `.dat` files. | Integrator unit tests; golden stream; Cu smoke test forward-only. |
 | 3 | Backward sweep, `integrate_dcci`, `coexistence_line.dat`, `report.yaml`, hysteresis flag, `n_iterations`, postprocessing reader/plot. | Full smoke test; unit tests for regridding. |
-| 4 | Docs, example_13 with validation notebook, version bump. | Docs build; validation item 1 done and plotted. |
+| 4 | Docs, example_13 with validation notebook. | Done 2026-09-10: Cu01 lines to 5, 10 and 158 GPa (53/155/29 blocks) agree with each other to ~10 K, close to <0.01-2.4 K, track the published Simon fits within a few percent, and match direct fe crossings of both phases at 5 and 10 GPa to 2 K once the 13 K offset of the starting `melting_temperature` (1340 K vs 1353 K direct) is accounted for. Version bump left to the owner. |
 
 ---
 
@@ -248,6 +248,25 @@ Physics validation (manual, results go into the example notebook, not CI):
 ---
 
 ## 7. Risks, assumptions, and one pre-existing finding
+
+* **Accuracy is set by the starting point.** The integration itself reproduces the pressure
+  dependence to a few kelvin; an error `dT0` in the starting coexistence temperature propagates
+  as roughly `dT0 * T/T0`. At 0 bar `melting_temperature` (30000-step sweeps, one iteration)
+  gave 1340 K where direct fe crossings of both phases give 1353 K, and the d-CCI line carries
+  that 1 % offset unchanged. Spend the effort on the starting point (n_iterations, longer
+  sweeps, or a direct fe crossing) rather than on the sweep.
+* **Hysteresis is not a discretisation check.** Forward and backward Euler errors mirror each
+  other, so a round trip can close while each direction is biased; averaging the two directions
+  cancels the leading error. Convergence in `n_block_steps` / `n_switching_steps` has to be
+  checked by rerunning (Cu01: 1000-step blocks to 158 GPa are 11 K below 500-step blocks at
+  10 GPa; 53 and 155 blocks of 500 steps agree at 5 GPa).
+* **A runner fragility the mode exposes.** Two of the validation runs (a `melting_temperature`
+  at 200 kbar and the 155-block d-CCI) died with `LammpsExecutionError: exited with return code
+  1` on a segment whose LAMMPS log ends cleanly (`Total wall time`, no `ERROR`), both under
+  several concurrent `mpirun -np 4` jobs; the d-CCI lost only its report, the sweep files were
+  complete and `integrate_dcci` recovered the line. A mode that launches hundreds of segments
+  needs the ExecutableRunner to treat a clean log with a nonzero `mpirun` exit as a warning, or
+  to retry the segment from its restart; worth a follow-up in `runner.py`.
 
 * **Noise in the slope.** Small cells give `dV/atom` comparable to its fluctuation; the error
   integrates as a random walk that shrinks with N and is exposed by the hysteresis. Default
