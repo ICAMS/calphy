@@ -1435,13 +1435,47 @@ class Phase:
         lmp.command("run               %d" % n_sweep)
         lmp.command("unfix             f3")
 
+    def _install_sweep_barostat(self, lmp, p_start, p_stop):
+        """
+        Replace the COM-constrained NPT fix ``f1`` by one whose pressure target
+        ramps ``p_start`` → ``p_stop`` over the run that follows.
+
+        The scaled system at (T0, λ) samples the real system at (T0/λ, P) only
+        if the barostat imposes the *scaled* pressure P_RS = λ·P (de Koning,
+        Antonelli and Yip, J. Chem. Phys. 115, 11025 (2001), Eq. 11), and
+        ``integrate_rs`` relies on exactly that when it integrates U + P·V at
+        the constant real pressure P.  ``fix npt`` can only ramp its target
+        linearly over a single run, so the constant-pressure equilibration fix
+        has to be swapped for a ramping one right before the sweep; the
+        ``fix_modify`` binding the COM-corrected temperature has to be reissued
+        for the new fix.  At ``pressure: 0`` the ramp is flat and the only
+        effect is a restart of the Nose-Hoover chain, as in ``pressure_scaling``.
+
+        Parameters
+        ----------
+        lmp : BaseRunner
+            Active LAMMPS runner with fix ``f1`` and compute ``tcm`` defined.
+        p_start, p_stop : float
+            Scaled pressure at the start and at the end of the sweep, in bar.
+        """
+        t0 = self.calc._temperature
+        lmp.command("unfix             f1")
+        lmp.command(
+            "fix               f1 all npt temp %f %f %f %s %f %f %f "
+            "fixedpoint ${xcm} ${ycm} ${zcm}"
+            % (t0, t0, self.calc.md.thermostat_damping[1],
+               self.iso, p_start, p_stop, self.calc.md.barostat_damping[1])
+        )
+        lmp.command("fix_modify        f1 temp tcm")
+
     def _reversible_scaling_forward(self, iteration: int = 1) -> None:
         """
         Perform the forward sweep of a reversible-scaling calculation.
 
         1. Short NPT warm start at T0 (see :meth:`_warm_start_steps`).
         2. COM-constrained equilibration at T0.
-        3. Forward sweep: λ 1 → T0/Tf.
+        3. Forward sweep: λ 1 → T0/Tf under the scaled pressure P_RS = λ·P,
+           i.e. the barostat ramps P → (T0/Tf)·P.
         4. Write ``conf.ts.forward_{iteration}.data`` for the backward sweep.
 
         Parameters
@@ -1541,6 +1575,10 @@ class Phase:
         self.logger.info(
             "forward sweep (iteration %d): COM-constrained equilibration done", iteration
         )
+
+        # ── Sweep barostat: P_RS ramps pi → pf = lf·pi ─────────────────────
+        if self.calc.npt:
+            self._install_sweep_barostat(lmp, pi, pf)
 
         # ----------------------------------------------------------------
         # Lambda schedule for the forward sweep.
@@ -1664,8 +1702,9 @@ class Phase:
 
         1. Load ``conf.ts.forward_{iteration}.data`` written by the forward
            sweep.
-        2. Middle equilibration at Tf.
-        3. Backward sweep: λ T0/Tf → 1.
+        2. Middle equilibration at Tf, i.e. at λ = T0/Tf and the scaled
+           pressure (T0/Tf)·P.
+        3. Backward sweep: λ T0/Tf → 1, the scaled pressure ramping back to P.
 
         Parameters
         ----------
@@ -1716,7 +1755,9 @@ class Phase:
         # scaled potential.  Using a constant scaling variable (rather
         # than the ramp) keeps λ frozen at lf during this run.  A single
         # copy of the potential scaled by lambda is used throughout the
-        # reversible-scaling stage (see _reversible_scaling_forward).
+        # reversible-scaling stage (see _reversible_scaling_forward).  The
+        # barostat likewise holds the scaled pressure pf = lf·pi that the
+        # forward sweep ended at, see _install_sweep_barostat.
         lmp.command("variable          lambda_eq equal %f" % lf)
         lmp.command(ph.scaled_pair_style_command(self.calc, ["v_lambda_eq"]))
         for cmd in ph.hybrid_pair_coeff_commands(self.calc):
@@ -1731,7 +1772,7 @@ class Phase:
                 "fix               f1 all npt temp %f %f %f %s %f %f %f "
                 "fixedpoint ${xcm} ${ycm} ${zcm}"
                 % (t0, t0, self.calc.md.thermostat_damping[1],
-                   self.iso, pi, pi, self.calc.md.barostat_damping[1])
+                   self.iso, pf, pf, self.calc.md.barostat_damping[1])
             )
         else:
             lmp.command(
@@ -1762,6 +1803,10 @@ class Phase:
             self.check_if_melted(lmp, "traj.temp.dat")
         else:
             self.check_if_solidfied(lmp, "traj.temp.dat")
+
+        # ── Sweep barostat: P_RS ramps pf = lf·pi → pi ─────────────────────
+        if self.calc.npt:
+            self._install_sweep_barostat(lmp, pf, pi)
 
         # ── Switch from the constant-λ scaled potential to the ramping
         # scaled potential for the backward sweep: define the lambda
