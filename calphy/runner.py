@@ -59,7 +59,7 @@ STICKY_TOKENS = frozenset({
     "dump_modify",
 })
 ONE_SHOT_TOKENS = frozenset({
-    "run", "velocity", "displace_atoms", "change_box",
+    "run", "velocity", "displace_atoms", "change_box", "reset_timestep",
     "read_data", "read_restart", "write_data", "write_restart", "print",
 })
 REMOVAL_TOKENS = frozenset({"undump", "unfix", "uncompute"})
@@ -619,7 +619,7 @@ def required_styles(calc):
     if phase == "liquid" or mode == "melting_temperature":
         pair.add("ufm")
         pair.add("hybrid/scaled")
-    if mode in ("ts", "tscale") or getattr(calc, "pair_mode", None) == "overlay":
+    if mode in ("ts", "tscale", "dcci") or getattr(calc, "pair_mode", None) == "overlay":
         pair.add("hybrid/scaled")
     if getattr(getattr(calc, "monte_carlo", None), "n_swaps", 0) > 0:
         fix.add("atom/swap")

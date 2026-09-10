@@ -21,7 +21,7 @@ STICKY = {
     "variable", "fix", "fix_modify", "thermo", "thermo_style", "echo", "dump",
 }
 ONE_SHOT = {
-    "run", "velocity", "displace_atoms", "change_box",
+    "run", "velocity", "displace_atoms", "change_box", "reset_timestep",
     "read_data", "read_restart", "write_data", "write_restart", "print",
 }
 REMOVAL = {"undump", "unfix", "uncompute"}

@@ -458,6 +458,74 @@ class MeltingTemperature(_StrictInput, title="Input options for melting temperat
     attempts: Annotated[int, Field(default=5, ge=1)]
 
 
+class DynamicClausiusClapeyron(
+    _StrictInput, title="Input options for dynamic Clausius-Clapeyron integration"
+):
+    """Settings of ``mode: dcci`` (de Koning, Antonelli, Yip, J. Chem. Phys. 115,
+    11025 (2001)).  The coexistence line is traced from the known point
+    (``temperature``, ``pressure[0]``) to ``pressure[1]`` in blocks of
+    ``n_block_steps`` MD steps, during which the scaled pressure of both cells
+    is ramped and lambda = T0/T is updated from the block averages of U and V."""
+
+    n_block_steps: Annotated[
+        int,
+        Field(
+            default=1000,
+            ge=1,
+            description=(
+                "MD steps per integration block: the pressure step of the "
+                "Clausius-Clapeyron integration, and in execution_mode "
+                "executable one lmp launch per block per cell.  Smaller blocks "
+                "follow the line more finely; the block averages get noisier."
+            ),
+        ),
+    ]
+    integrator: Annotated[
+        Literal["euler", "trapezoid"],
+        Field(
+            default="euler",
+            description=(
+                "Corrector applied after each block: 'euler' uses the slope of "
+                "the finished block, 'trapezoid' the mean of the last two."
+            ),
+        ),
+    ]
+    stop_at_target_pressure: Annotated[
+        bool,
+        Field(
+            default=True,
+            description=(
+                "End the sweep at the first block whose real pressure reaches "
+                "pressure[1] (the ramp is applied to the scaled pressure, which "
+                "the real pressure runs ahead of when the line has a positive "
+                "slope).  If False the sweep runs its full length."
+            ),
+        ),
+    ]
+    n_check_blocks: Annotated[
+        int,
+        Field(
+            default=0,
+            ge=0,
+            description=(
+                "Run the solid-fraction melt/freeze checks on both cells every "
+                "this many blocks; 0 checks only at the end of each sweep."
+            ),
+        ),
+    ]
+    hysteresis_tolerance: Annotated[
+        float,
+        Field(
+            default=5.0,
+            ge=0,
+            description=(
+                "K.  Flag the result when the backward sweep misses the starting "
+                "temperature at pressure[0] by more than this."
+            ),
+        ),
+    ]
+
+
 class MaterialsProject(_StrictInput, title="Input options for materials project"):
     api_key: Annotated[str, Field(default="", exclude=True)]
     conventional: Annotated[bool, Field(default=True)]
@@ -494,6 +562,7 @@ class Calculation(_StrictInput, title="Main input class"):
     phase_transition_detection: Optional[PhaseTransitionDetection] = PhaseTransitionDetection()
     uhlenbeck_ford_model: Optional[UFMP] = UFMP()
     melting_temperature: Optional[MeltingTemperature] = MeltingTemperature()
+    dcci: Optional[DynamicClausiusClapeyron] = DynamicClausiusClapeyron()
     materials_project: Optional[MaterialsProject] = MaterialsProject()
 
     element: Annotated[List[str], BeforeValidator(to_list), Field(default=[])]
@@ -854,6 +923,9 @@ class Calculation(_StrictInput, title="Main input class"):
             self._n_sweep_steps = self.n_switching_steps[1]
             self._n_switching_steps = self.n_switching_steps[0]
 
+        if self.mode == "dcci":
+            self._validate_dcci()
+
         # here we also prepare lattice dict
         for count, element in enumerate(self.element):
             self._element_dict[element] = {}
@@ -1098,6 +1170,39 @@ class Calculation(_StrictInput, title="Main input class"):
                     f"Input and output number of atoms are not conserved! Input {self.composition_scaling._input_chemical_composition}, output {self.composition_scaling.output_chemical_composition}, total atoms in structure {len(structure)}"
                 )
         return self
+
+    def _validate_dcci(self):
+        """
+        Constraints of ``mode: dcci``: a known coexistence point and a pressure
+        range, one composition in both cells, no swaps.
+
+        ``temperature`` is the coexistence temperature at ``pressure[0]`` and
+        must be given explicitly (the mendeleev melting-point guess is not a
+        coexistence point of the potential).  ``reference_phase`` is forced to
+        ``solid``: the mode always builds one solid and one liquid cell, and the
+        value only enters the folder name.
+        """
+        if np.shape(self.pressure) != (2,):
+            raise ValueError(
+                "mode dcci needs pressure: [P_start, P_stop] in bar, the pressure "
+                "of the known coexistence point and the pressure to integrate "
+                "the coexistence line to; got %r" % (self._pressure_input,)
+            )
+        t_in = np.atleast_1d(self._temperature_input)
+        if np.shape(t_in) != (1,) or not t_in[0] > 0:
+            raise ValueError(
+                "mode dcci needs temperature: <T_coex>, the coexistence "
+                "temperature at pressure[0] in K (e.g. from a melting_temperature "
+                "calculation); got %r" % (self._temperature_input,)
+            )
+        if self.monte_carlo.n_swaps > 0:
+            raise ValueError(
+                "mode dcci does not support monte_carlo swaps: both cells must "
+                "keep the composition of the input structure"
+            )
+        if not self.npt:
+            raise ValueError("mode dcci integrates in the pressure-temperature plane and needs npt: True")
+        self.reference_phase = "solid"
 
     def fix_paths(self, potlist):
         """
