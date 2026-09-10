@@ -2041,12 +2041,14 @@ class Phase:
         lmp.command("unfix             1")
 
         # ── Real-thermostat ramp T0 -> Tf, recording every step ─────────────
-        pf = (t0 / tf) * p0
+        # The real system is heated, so the barostat holds the real pressure
+        # p0 throughout; the scaled-pressure ramp belongs to the λ-scaled
+        # sweep of _reversible_scaling_forward only.
         lmp.command("variable          dU      equal pe/atoms")
         lmp.command(
             "fix               f2 all npt temp %f %f %f %s %f %f %f"
             % (t0, tf, self.calc.md.thermostat_damping[1],
-               self.iso, p0, pf, self.calc.md.barostat_damping[1])
+               self.iso, p0, p0, self.calc.md.barostat_damping[1])
         )
         scan_file = "prescan.forward.dat"
         lmp.command(
@@ -2200,8 +2202,11 @@ class Phase:
         tf = self.calc._temperature_stop
         li = 1
         lf = t0 / tf
+        # The real temperature is ramped by the thermostat and λ = T0/T is only
+        # the recorded label, so the real pressure p0 is held fixed throughout;
+        # a scaled-pressure ramp would sample the wrong isobar (it belongs to
+        # the λ-scaled Hamiltonian of reversible_scaling, not here).
         p0 = self.calc._pressure
-        pf = lf * p0
 
         # create lammps object
         lmp = ph.create_object(self.calc, self.simfolder)
@@ -2253,7 +2258,7 @@ class Phase:
                 self.calc.md.thermostat_damping[1],
                 self.iso,
                 p0,
-                pf,
+                p0,
                 self.calc.md.barostat_damping[1],
             )
         )
@@ -2279,8 +2284,8 @@ class Phase:
                 tf,
                 self.calc.md.thermostat_damping[1],
                 self.iso,
-                pf,
-                pf,
+                p0,
+                p0,
                 self.calc.md.barostat_damping[1],
             )
         )
@@ -2300,18 +2305,19 @@ class Phase:
         else:
             self.check_if_solidfied(lmp, "traj.temp.dat")
 
-        # start reverse loop
+        # start reverse loop: the thermostat ramps Tf -> T0, mirroring the
+        # forward sweep
         lmp.command("variable          lambda equal ramp(${lf},${li})")
 
         lmp.command(
             "fix               f2 all npt temp %f %f %f %s %f %f %f"
             % (
-                t0,
+                tf,
                 t0,
                 self.calc.md.thermostat_damping[1],
                 self.iso,
                 p0,
-                pf,
+                p0,
                 self.calc.md.barostat_damping[1],
             )
         )

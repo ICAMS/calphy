@@ -32,7 +32,7 @@ dump 2 all custom 1 traj.temp.dat id type mass x y z vx vy vz
 run 0
 undump 2
 variable lambda equal ramp(${lf},${li})
-fix f2 all npt temp 400.000000 400.000000 0.100000 iso 0.000000 0.000000 0.100000
+fix f2 all npt temp 700.000000 400.000000 0.100000 iso 0.000000 0.000000 0.100000
 fix f3 all print 1 "${dU} $(press) $(vol) ${lambda}" title "# dU[eV/atom] press[bar] vol[A^3] lambda" screen no file ts.backward_1.dat
 run 5000
 unfix f3
