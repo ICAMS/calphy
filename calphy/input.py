@@ -53,7 +53,7 @@ from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
-__version__ = "2.1.2"
+__version__ = "2.1.3"
 
 
 def _check_equal(val):
