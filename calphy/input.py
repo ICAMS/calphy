@@ -565,6 +565,8 @@ class Calculation(_StrictInput, title="Main input class"):
 
     reference_phase: Annotated[str, Field(default="")]
     lattice_constant: Annotated[float, Field(default=0)]
+    # c/a of the built-in hcp lattice; None gives the ideal sqrt(8/3)
+    c_over_a: Annotated[Union[float, None], Field(default=None, gt=0)]
     repeat: Annotated[
         conlist(int, min_length=3, max_length=3), Field(default=[1, 1, 1])
     ]
@@ -894,11 +896,16 @@ class Calculation(_StrictInput, title="Main input class"):
                     raise ValueError("Please provide lattice_constant!")
                 self.lattice_constant = default[1]
 
+            if self.c_over_a is not None and canonical_lattice(self.lattice) != "hcp":
+                raise ValueError(
+                    f"c_over_a only applies to the hcp lattice, not {self.lattice}"
+                )
             structure = make_lattice(
                 self.lattice,
                 self.element[0],
                 self.lattice_constant,
                 self.repeat,
+                c_over_a=self.c_over_a,
             )
 
             # extract composition
@@ -915,6 +922,9 @@ class Calculation(_StrictInput, title="Main input class"):
             self._natoms = len(structure)
             self._original_lattice = canonical_lattice(self.lattice)
             write_structure_file = True
+
+        elif self.c_over_a is not None:
+            raise ValueError("c_over_a only applies to the built-in hcp lattice")
 
         elif self.lattice.split("-")[0] == "mp":
             # confirm here that API key exists

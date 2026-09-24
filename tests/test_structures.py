@@ -129,3 +129,47 @@ def test_input_unknown_lattice(tmp_path, monkeypatch, lattice):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError, match="neither a built-in lattice"):
         _calc(element="Cu", lattice=lattice, lattice_constant=3.0)
+
+
+def test_input_c_over_a(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    calc = _calc(element="Zn", lattice="hcp", lattice_constant=2.66,
+                 c_over_a=1.856, repeat=[2, 2, 2])
+    atoms = read(calc.lattice, format="lammps-data", atom_style="atomic")
+    assert np.isclose(atoms.cell[2, 2], 2 * 2.66 * 1.856)
+
+
+def test_input_c_over_a_with_default_lattice(tmp_path, monkeypatch):
+    # Mg defaults to hcp, so c_over_a applies
+    monkeypatch.chdir(tmp_path)
+    calc = _calc(element="Mg", c_over_a=1.624, repeat=[1, 1, 1])
+    atoms = read(calc.lattice, format="lammps-data", atom_style="atomic")
+    assert np.isclose(atoms.cell[2, 2] / atoms.cell[0, 0], 1.624)
+
+
+def test_input_default_hcp_is_ideal(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    calc = _calc(element="Mg", lattice="hcp", lattice_constant=3.2, repeat=[1, 1, 1])
+    atoms = read(calc.lattice, format="lammps-data", atom_style="atomic")
+    assert np.isclose(atoms.cell[2, 2], 3.2 * IDEAL_C_OVER_A)
+
+
+@pytest.mark.parametrize("kw", [dict(element="Cu", lattice="fcc", lattice_constant=3.6),
+                                dict(element="Cu")])
+def test_input_c_over_a_rejected_for_non_hcp(tmp_path, monkeypatch, kw):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValueError, match="c_over_a only applies"):
+        _calc(c_over_a=1.6, **kw)
+
+
+def test_input_c_over_a_rejected_for_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    make_lattice("hcp", "Mg", 3.2, [2, 2, 2]).write("mg.data", format="lammps-data")
+    with pytest.raises(ValueError, match="built-in hcp"):
+        _calc(element="Mg", lattice="mg.data", c_over_a=1.6)
+
+
+def test_input_c_over_a_positive(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValueError, match="greater than 0"):
+        _calc(element="Mg", lattice="hcp", lattice_constant=3.2, c_over_a=0)
