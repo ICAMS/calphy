@@ -14,7 +14,7 @@ from calphy.structures import (
 
 @pytest.mark.parametrize(
     "name, atoms_per_cell",
-    [("simple_cubic", 1), ("bcc", 2), ("fcc", 4), ("diamond", 8)],
+    [("simple_cubic", 1), ("bcc", 2), ("fcc", 4), ("diamond", 8), ("a15", 8)],
 )
 def test_cubic_lattices(name, atoms_per_cell):
     atoms = make_lattice(name, "Cu", 3.6, [2, 3, 4])
@@ -48,6 +48,16 @@ def test_hcp_c_over_a():
     assert np.isclose(atoms.cell[2, 2], 2.66 * 1.856)
 
 
+def test_a15_neighbors():
+    # beta-W: 2a sites have 12 neighbours at a*sqrt(5)/4, 6c sites form
+    # chains with 2 neighbours at a/2
+    atoms = make_lattice("a15", "W", 5.05, [2, 2, 2])
+    d = np.sort(atoms.get_all_distances(mic=True), axis=1)[:, 1]
+    assert np.isclose(d.min(), 5.05 / 2)
+    assert np.isclose(d.max(), 5.05 * np.sqrt(5) / 4)
+    assert np.sum(np.isclose(d, 5.05 / 2)) == 6 * 8
+
+
 def test_c_over_a_rejected_for_cubic():
     with pytest.raises(ValueError, match="hcp"):
         make_lattice("fcc", "Cu", 3.6, [1, 1, 1], c_over_a=1.6)
@@ -57,7 +67,7 @@ def test_names():
     assert canonical_lattice("FCC") == "fcc"
     assert canonical_lattice("sc") == "simple_cubic"
     assert canonical_lattice("dhcp") is None
-    assert set(BUILTIN_LATTICES) == {"fcc", "bcc", "hcp", "diamond", "simple_cubic"}
+    assert set(BUILTIN_LATTICES) == {"fcc", "bcc", "hcp", "diamond", "simple_cubic", "a15"}
     with pytest.raises(ValueError, match="Unknown lattice"):
         make_lattice("b2", "Cu", 3.0, [1, 1, 1])
 
@@ -75,3 +85,47 @@ def test_default_lattice(element, lattice, a):
 def test_default_lattice_unknown(element):
     # He: no crystal reference state; Ga: orthorhombic; Xx: not an element
     assert default_lattice(element) is None
+
+
+# --- through the input layer -------------------------------------------------
+
+from ase.io import read
+
+from calphy.input import Calculation
+
+
+def _calc(**kw):
+    base = dict(mass=1.0, mode="fe", temperature=1000, pressure=0,
+                reference_phase="solid", pair_style="eam", pair_coeff="* * x")
+    return Calculation(**{**base, **kw})
+
+
+def test_input_default_lattice(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    calc = _calc(element="W")
+    assert calc._original_lattice == "bcc"
+    assert calc.lattice_constant == 3.16
+    assert calc.repeat == [5, 5, 5]
+    assert calc._natoms == 250
+    assert len(read(calc.lattice, format="lammps-data", atom_style="atomic")) == 250
+
+
+def test_input_sc_alias(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    calc = _calc(element="Cu", lattice="SC", lattice_constant=2.5, repeat=[2, 2, 2])
+    assert calc._original_lattice == "simple_cubic"
+    assert calc._natoms == 8
+
+
+def test_input_lattice_constant_from_element(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    calc = _calc(element="Fe", lattice="bcc", repeat=[4, 4, 4])
+    assert calc.lattice_constant == 2.87
+    assert calc._natoms == 128
+
+
+@pytest.mark.parametrize("lattice", ["dhcp", "b2", "no_such_file.data"])
+def test_input_unknown_lattice(tmp_path, monkeypatch, lattice):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValueError, match="neither a built-in lattice"):
+        _calc(element="Cu", lattice=lattice, lattice_constant=3.0)

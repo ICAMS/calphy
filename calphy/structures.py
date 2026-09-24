@@ -27,6 +27,7 @@ Built-in single-element crystal lattices, built with ASE.
 
 import numpy as np
 from ase.build import bulk
+from ase.spacegroup import crystal
 from ase.data import atomic_numbers, reference_states
 
 IDEAL_C_OVER_A = np.sqrt(8.0 / 3.0)
@@ -39,6 +40,7 @@ _ALIASES = {
     "diamond": "diamond",
     "simple_cubic": "simple_cubic",
     "sc": "simple_cubic",
+    "a15": "a15",
 }
 
 # canonical name -> ase.build.bulk crystalstructure
@@ -50,7 +52,7 @@ _ASE_NAMES = {
     "simple_cubic": "sc",
 }
 
-BUILTIN_LATTICES = tuple(_ASE_NAMES)
+BUILTIN_LATTICES = tuple(_ASE_NAMES) + ("a15",)
 
 
 def canonical_lattice(name):
@@ -94,7 +96,8 @@ def make_lattice(name, element, lattice_constant, repeat, c_over_a=None):
     ----------
     name : str
         Built-in lattice name, see ``BUILTIN_LATTICES`` (``sc`` is accepted
-        for ``simple_cubic``).
+        for ``simple_cubic``). ``a15`` is the single-element A15 (beta-W)
+        structure.
     element : str
         Chemical symbol.
     lattice_constant : float
@@ -128,5 +131,16 @@ def make_lattice(name, element, lattice_constant, repeat, c_over_a=None):
     else:
         if c_over_a is not None:
             raise ValueError("c_over_a can only be used with the hcp lattice")
-        atoms = bulk(element, _ASE_NAMES[canonical], a=lattice_constant, cubic=True)
+        if canonical == "a15":
+            # Pm-3n, Wyckoff sites 2a and 6d, 8 atoms per cubic cell
+            atoms = crystal(
+                [element, element],
+                basis=[(0, 0, 0), (0.25, 0.5, 0)],
+                spacegroup=223,
+                cellpar=[lattice_constant] * 3 + [90] * 3,
+            )
+        else:
+            atoms = bulk(
+                element, _ASE_NAMES[canonical], a=lattice_constant, cubic=True
+            )
     return atoms.repeat(tuple(repeat))
