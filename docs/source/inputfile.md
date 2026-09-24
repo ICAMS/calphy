@@ -50,6 +50,8 @@ points at where it belongs.
 ```
 ```{grid-item} [](lattice_constant)
 ```
+```{grid-item} [](c_over_a)
+```
 ```{grid-item} [](repeat)
 ```
 ```{grid-item} [](n_iterations)
@@ -432,9 +434,11 @@ lattice: [FCC, conf.data]
    
 Lattice to be used for the calculations. The `lattice` option supports three forms:
 
-- A built-in unit cell name: one of `bcc`, `fcc`, `hcp`, `diamond`, or `sc`. calphy will build the cell with [pyscal3](https://pyscal.org/) using `lattice_constant` and `repeat`. **Single-species only.**
+- A built-in unit cell name: one of `fcc`, `bcc`, `hcp`, `diamond`, `simple_cubic` (or `sc`) and `a15` (the single-element A15, β-W, structure); case does not matter. calphy builds the cell with [ASE](https://wiki.fysik.dtu.dk/ase/) using `lattice_constant` and `repeat`, in an orthogonal box: the conventional cubic cell, or for `hcp` the 4-atom orthorhombic cell with edges a, √3 a and c (see [](c_over_a)). **Single-species only.**
 - A path to a LAMMPS data file (`file_format: lammps-data`). This is the preferred form for multi-element systems and for triclinic cells.
 - A [Materials Project](https://materialsproject.org/) ID, e.g. `mp-30`. The structure is fetched via `mp_api` and replicated to roughly `materials_project.target_natoms`. Requires the [`materials_project`](mp_api_key) block to be configured.
+
+If `lattice` is left out for a single-element calculation, calphy uses the element's ground-state lattice and lattice constant from ASE's reference data (`ase.data.reference_states`, e.g. fcc 3.61 Å for Cu, bcc 3.16 Å for W), with `repeat` defaulting to `[5, 5, 5]`. This only works for elements whose reference state is one of the built-in lattices.
 
 ---
 
@@ -465,6 +469,20 @@ lattice_constant: [3.68, 5.43]
 ```
 
 Lattice constant for input structures. Lattice constant values to be used for initial structure creation. Only required if the structure lattice is specified. If not specified, experimental lattice constant is used.
+
+---
+
+(c_over_a)=
+#### `c_over_a`
+
+_type_: float \
+_default_: None (ideal c/a, √(8/3) ≈ 1.633) \
+_example_:
+```
+c_over_a: 1.856
+```
+
+c/a ratio of the built-in `hcp` lattice, used both for `lattice: hcp` and when `lattice` is left out for an element whose ground state is hcp. Setting it for any other lattice, a structure file or a Materials Project ID is an error.
 
 ---
 
