@@ -32,8 +32,8 @@ from collections import Counter, defaultdict
 
 from ase.io import read, write
 
-import pyscal3.core as pc
-from pyscal3.trajectory import Trajectory
+import pyscal3
+from pyscal3 import Trajectory
 
 from calphy.runner import (
     ExecutableRunner,
@@ -343,10 +343,8 @@ def read_data(lmp, file):
 def get_structures(file, species, index=None):
     traj = Trajectory(file)
     if index is None:
-        aseobjs = traj[:].to_ase(species=species)
-    else:
-        aseobjs = traj[index].to_ase(species=species)
-    return aseobjs
+        return traj[:].to_atoms(species=species)
+    return traj[index].to_atoms(species=species)
 
 
 def remap_box(lmp, x, y, z):
@@ -394,14 +392,13 @@ PYSCAL helper routines
 
 
 def find_solid_fraction(file):
-    sys = pc.System(file)
+    atoms = Trajectory(file)[0].to_atoms()[0]
     try:
-        sys.find.neighbors(method="cutoff", cutoff=0)
+        pyscal3.find_neighbors(atoms, method="cutoff", cutoff=0)
     except RuntimeError:
-        sys.find.neighbors(method="cutoff", cutoff=5.0)
-    sys.find.solids(cluster=False)
-    solids = np.sum(sys.atoms.solid)
-    return solids
+        pyscal3.find_neighbors(atoms, method="cutoff", cutoff=5.0)
+    pyscal3.find_solids(atoms, cluster=False)
+    return np.sum(atoms.arrays["pyscal_solid"])
 
 
 def write_data(lmp, file):

@@ -33,7 +33,7 @@ dependencies = [
     "tqdm",
     "scipy",
     "pydantic>=2.3.0",
-    "pyscal3",
+    "pyscal3>=4.0.0",
 ]
 
 [project.optional-dependencies]

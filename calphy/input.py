@@ -48,8 +48,9 @@ import datetime
 import itertools
 import os
 import warnings
-from pyscal3 import System
-from pyscal3.core import structure_dict, element_dict, _make_crystal
+from pyscal3.structures import make_crystal, available_structures
+# pyscal's table of ground-state structures and lattice constants per element
+from pyscal3.structures.creator import _elements as element_dict
 from ase.io import read, write
 import shutil
 
@@ -887,13 +888,12 @@ class Calculation(_StrictInput, title="Main input class"):
             if self.repeat == [1, 1, 1]:
                 self.repeat = [5, 5, 5]
 
-            structure = _make_crystal(
+            structure = make_crystal(
                 self.lattice.lower(),
                 lattice_constant=self.lattice_constant,
                 repetitions=self.repeat,
                 element=self.element,
             )
-            structure = structure.write.ase()
 
             # extract composition
             types, typecounts = np.unique(
@@ -910,7 +910,7 @@ class Calculation(_StrictInput, title="Main input class"):
             self._original_lattice = self.lattice.lower()
             write_structure_file = True
 
-        elif self.lattice.lower() in structure_dict.keys():
+        elif self.lattice.lower() in available_structures():
             if len(self.element) > 1:
                 raise ValueError(
                     "Cannot create lattice for more than one element, provide a lammps-data file explicitly"
@@ -926,13 +926,12 @@ class Calculation(_StrictInput, title="Main input class"):
                 else:
                     raise ValueError("Please provide lattice_constant!")
             # now create lattice
-            structure = _make_crystal(
+            structure = make_crystal(
                 self.lattice.lower(),
                 lattice_constant=self.lattice_constant,
                 repetitions=self.repeat,
                 element=self.element,
             )
-            structure = structure.write.ase()
 
             # extract composition
             types, typecounts = np.unique(
