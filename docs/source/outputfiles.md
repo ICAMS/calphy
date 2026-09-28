@@ -82,9 +82,8 @@ Free energy as a function of temperature from a reversible-scaling sweep.
 | 2 | `free_energy` [eV/atom] |
 | 3 | `error` [eV/atom] — standard error of the mean across iterations |
 
-The spacing of the temperature points is controlled by [](lambda_schedule)
-(`linear` clusters samples at the low-temperature end; `uniform_temperature`
-spaces them evenly in temperature).
+λ = T₀/T ramps linearly in MD steps, so the temperature points are densest
+at the low-temperature end of the sweep.
 
 ### `pressure_sweep.dat` — [](mode) `pscale`
 

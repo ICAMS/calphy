@@ -61,6 +61,11 @@ def test_removed_key_migration_message():
     assert "job-state pickling was removed in calphy v2" in msg
 
 
+def test_removed_lambda_schedule_message():
+    msg = error_of(lambda_schedule="uniform_temperature")
+    assert "input key 'lambda_schedule': was removed after calphy 2.1.2" in msg
+
+
 def test_unknown_key_without_any_hint():
     msg = error_of(totally_bogus=1)
     assert "unknown input key 'totally_bogus' in the calculation block" in msg

@@ -97,7 +97,7 @@ def test_liquid_fe_integration(make_calc, recorded_job):
 
 
 # --------------------------------------------------------------------------- #
-# ts (reversible scaling): forward / backward / uniform-temperature schedule
+# ts (reversible scaling): forward / backward
 # --------------------------------------------------------------------------- #
 def test_ts_forward_solid(make_calc, recorded_job):
     calc = make_calc("B6", **LOOSE_TOL)
@@ -113,14 +113,6 @@ def test_ts_backward_solid(make_calc, recorded_job):
     _set_state(job)
     job._reversible_scaling_backward(iteration=1)
     assert_golden(rec.commands, "ts_backward_solid")
-
-
-def test_ts_uniform_temperature(make_calc, recorded_job):
-    calc = make_calc("B6", lambda_schedule="uniform_temperature", **LOOSE_TOL)
-    job, rec = recorded_job(Solid, calc)
-    _set_state(job)
-    job._reversible_scaling_forward(iteration=1)
-    assert_golden(rec.commands, "ts_uniform_temperature")
 
 
 # --------------------------------------------------------------------------- #

@@ -151,6 +151,11 @@ _REMOVED_KEYS = {
     "load_job": "job-state pickling was removed in calphy v2; rerun from the input file",
     "seed": "use md.seed -- one master seed now controls every stochastic step "
             "(the old quantum_thermal_bath seed was never actually applied)",
+    "lambda_schedule": "was removed after calphy 2.1.2; reversible scaling always "
+                       "ramps lambda linearly, as in de Koning et al., since only "
+                       "then does the barostat follow the scaled pressure lambda*P "
+                       "exactly (uniform_temperature only changed the sampling "
+                       "density, not the free energy)",
 }
 
 #: lazily built: ({field name -> [locations]}, {model class -> location label})
@@ -581,7 +586,6 @@ class Calculation(_StrictInput, title="Main input class"):
     n_print_steps_equilibration: Annotated[int, Field(default=0)]
     alchemy_coupling: Annotated[bool, Field(default=False)]
     n_iterations: Annotated[int, Field(default=1)]
-    lambda_schedule: Annotated[str, Field(default="linear")]
     equilibration_control: Annotated[Union[str, None], Field(default=None)]
     folder_prefix: Annotated[Union[str, None], Field(default=None)]
 
@@ -650,12 +654,6 @@ class Calculation(_StrictInput, title="Main input class"):
             self.pair_mode = self.pair_mode.lower()
             if self.pair_mode not in ["overlay"]:
                 raise ValueError("pair_mode should be one of: overlay")
-
-        self.lambda_schedule = self.lambda_schedule.lower()
-        if self.lambda_schedule not in ["linear", "uniform_temperature"]:
-            raise ValueError(
-                "lambda_schedule must be one of: 'linear', 'uniform_temperature'"
-            )
 
         if self.pair_mode == "overlay":
             if self.pair_style is None or self.pair_coeff is None:
