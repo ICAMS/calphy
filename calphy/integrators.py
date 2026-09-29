@@ -42,7 +42,6 @@ from scipy.integrate import cumulative_trapezoid as cumtrapz
 from numpy import trapezoid as trapz
 
 from tqdm import tqdm
-import pyscal3.core as pc
 from ase.io import read
 
 # Constants
