@@ -374,7 +374,19 @@ def gather_results(
     if not extract_phase_prefix:
         del datadict["phase_name"]
 
-    df = pd.DataFrame(data=datadict)
+    # pandas >= 3 stores text columns with a string dtype that turns None into
+    # NaN; keep them as object so a missing value (error_code of a successful
+    # run, say) stays None
+    df = pd.DataFrame(
+        data={
+            key: (
+                pd.Series(val, dtype=object)
+                if any(isinstance(v, str) for v in val)
+                else val
+            )
+            for key, val in datadict.items()
+        }
+    )
     return df
 
 
