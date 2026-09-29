@@ -58,7 +58,7 @@ from calphy.structures import (
     make_lattice,
 )
 
-__version__ = "2.1.2"
+__version__ = "2.2.0"
 
 
 def _check_equal(val):
