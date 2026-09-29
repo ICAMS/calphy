@@ -61,7 +61,7 @@ The machine-readable summary of the calculation. It has three blocks:
 | `com_correction` | Fixed-centre-of-mass finite-size correction (solid) |
 | `work` | Reversible switching work between reference and system of interest |
 | `dissipation` | Mean switching dissipation, `0.5·(W_forward + W_backward)`. A measure of the irreversibility of the switching — ideally close to `0`; large values indicate the switching was too fast or a structural change occurred |
-| `ts_dissipation` | *(ts / tscale only)* maximum energy dissipation along the reversible-scaling temperature sweep. Clean sweeps give ~1e-4 eV/atom; much larger values flag a hidden phase transition and a contaminated `temperature_sweep.dat` |
+| `ts_dissipation` | *(ts / tscale only)* maximum energy dissipation along the reversible-scaling temperature sweep, taken over all iterations. Clean sweeps give ~1e-4 eV/atom; much larger values flag a hidden phase transition and a contaminated `temperature_sweep.dat` |
 | `pv` | Pressure–volume contribution |
 | `unit` | Units of the above (`eV/atom`) |
 
