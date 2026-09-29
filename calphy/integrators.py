@@ -292,7 +292,9 @@ def integrate_rs(
         ws.append(w)
         es.append(e)
 
-    e_diss = np.min(es)
+    # worst iteration: one sweep that crossed a transition must not be hidden
+    # behind a clean one
+    e_diss = np.max(es)
     wmean = np.mean(ws, axis=0)
     # standard error of the mean across the nsims independent sweeps (see find_w)
     werr = np.std(ws, axis=0, ddof=1) / np.sqrt(len(ws)) if len(ws) > 1 else np.zeros_like(wmean)

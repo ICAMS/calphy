@@ -31,6 +31,26 @@ import numpy as np
 from collections import Counter, defaultdict
 
 from ase.io import read, write
+from importlib.metadata import version as _dist_version
+
+#: pyscal 4 (still published as ``pyscal3``) is the minimum, as in
+#: pyproject.toml; conda environments and --no-deps installs bypass that pin.
+PYSCAL_MIN_MAJOR = 4
+
+
+def check_pyscal_version(installed=None):
+    """Raise ImportError unless the installed pyscal3 is at least version 4."""
+    if installed is None:
+        installed = _dist_version("pyscal3")
+    if int(installed.split(".")[0]) < PYSCAL_MIN_MAJOR:
+        raise ImportError(
+            "calphy needs pyscal3 >= %d.0.0 (the pyscal 4 API), found %s; "
+            "upgrade with: pip install 'pyscal3>=%d.0.0'"
+            % (PYSCAL_MIN_MAJOR, installed, PYSCAL_MIN_MAJOR)
+        )
+
+
+check_pyscal_version()
 
 import pyscal3
 from pyscal3 import Trajectory
