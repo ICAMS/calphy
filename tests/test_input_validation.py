@@ -63,7 +63,7 @@ def test_removed_key_migration_message():
 
 def test_removed_lambda_schedule_message():
     msg = error_of(lambda_schedule="uniform_temperature")
-    assert "input key 'lambda_schedule': was removed after calphy 2.1.2" in msg
+    assert "input key 'lambda_schedule': was removed in calphy 2.2.0" in msg
 
 
 def test_unknown_key_without_any_hint():

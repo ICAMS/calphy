@@ -53,7 +53,7 @@ from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
-__version__ = "2.1.2"
+__version__ = "2.2.0"
 
 
 def _check_equal(val):
@@ -151,7 +151,7 @@ _REMOVED_KEYS = {
     "load_job": "job-state pickling was removed in calphy v2; rerun from the input file",
     "seed": "use md.seed -- one master seed now controls every stochastic step "
             "(the old quantum_thermal_bath seed was never actually applied)",
-    "lambda_schedule": "was removed after calphy 2.1.2; reversible scaling always "
+    "lambda_schedule": "was removed in calphy 2.2.0; reversible scaling always "
                        "ramps lambda linearly, as in de Koning et al., since only "
                        "then does the barostat follow the scaled pressure lambda*P "
                        "exactly (uniform_temperature only changed the sampling "
