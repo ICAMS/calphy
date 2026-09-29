@@ -97,7 +97,8 @@ calphy requires Python ≥ 3.10 and the following packages (all installed automa
 - `tqdm`
 - `pydantic >= 2`
 - `mendeleev`
-- [`pyscal3`](https://pyscal.org/)
+- [`ase`](https://wiki.fysik.dtu.dk/ase/) (structure creation and I/O)
+- [`pyscal3`](https://pyscal.org/) `>= 4.0` (solid/liquid detection)
 
 #### Optional
 

@@ -48,12 +48,17 @@ import datetime
 import itertools
 import os
 import warnings
-from pyscal3 import System
-from pyscal3.core import structure_dict, element_dict, _make_crystal
 from ase.io import read, write
 import shutil
 
-__version__ = "2.1.2"
+from calphy.structures import (
+    BUILTIN_LATTICES,
+    canonical_lattice,
+    default_lattice,
+    make_lattice,
+)
+
+__version__ = "2.2.0"
 
 
 def _check_equal(val):
@@ -560,6 +565,8 @@ class Calculation(_StrictInput, title="Main input class"):
 
     reference_phase: Annotated[str, Field(default="")]
     lattice_constant: Annotated[float, Field(default=0)]
+    # c/a of the built-in hcp lattice; None gives the ideal sqrt(8/3)
+    c_over_a: Annotated[Union[float, None], Field(default=None, gt=0)]
     repeat: Annotated[
         conlist(int, min_length=3, max_length=3), Field(default=[1, 1, 1])
     ]
@@ -868,71 +875,38 @@ class Calculation(_StrictInput, title="Main input class"):
         write_structure_file = False
         rename_structure_file = False
 
-        if self.lattice == "":
-            # fetch from dict
+        if self.lattice == "" or canonical_lattice(self.lattice) is not None:
             if len(self.element) > 1:
                 raise ValueError(
                     "Cannot create lattice for more than one element, provide a lammps-data file explicitly"
                 )
-            if self.element[0] in element_dict.keys():
-                self.lattice = element_dict[self.element[0]]["structure"]
-                self.lattice_constant = element_dict[self.element[0]][
-                    "lattice_constant"
-                ]
-            else:
-                raise ValueError(
-                    "Could not find structure, please provide lattice and lattice_constant explicitely"
-                )
+            default = default_lattice(self.element[0])
 
-            if self.repeat == [1, 1, 1]:
-                self.repeat = [5, 5, 5]
-
-            structure = _make_crystal(
-                self.lattice.lower(),
-                lattice_constant=self.lattice_constant,
-                repetitions=self.repeat,
-                element=self.element,
-            )
-            structure = structure.write.ase()
-
-            # extract composition
-            types, typecounts = np.unique(
-                structure.get_chemical_symbols(), return_counts=True
-            )
-
-            for c, t in enumerate(types):
-                self._element_dict[t]["count"] = typecounts[c]
-                self._element_dict[t]["composition"] = typecounts[c] / np.sum(
-                    typecounts
-                )
-
-            self._natoms = len(structure)
-            self._original_lattice = self.lattice.lower()
-            write_structure_file = True
-
-        elif self.lattice.lower() in structure_dict.keys():
-            if len(self.element) > 1:
-                raise ValueError(
-                    "Cannot create lattice for more than one element, provide a lammps-data file explicitly"
-                )
-
-            # this is a valid structure
-            if self.lattice_constant == 0:
-                # we try try to get lattice_constant
-                if self.element[0] in element_dict.keys():
-                    self.lattice_constant = element_dict[self.element[0]][
-                        "lattice_constant"
-                    ]
-                else:
+            if self.lattice == "":
+                # ground-state lattice of the element
+                if default is None:
+                    raise ValueError(
+                        "Could not find structure, please provide lattice and lattice_constant explicitely"
+                    )
+                self.lattice, self.lattice_constant = default
+                if self.repeat == [1, 1, 1]:
+                    self.repeat = [5, 5, 5]
+            elif self.lattice_constant == 0:
+                if default is None:
                     raise ValueError("Please provide lattice_constant!")
-            # now create lattice
-            structure = _make_crystal(
-                self.lattice.lower(),
-                lattice_constant=self.lattice_constant,
-                repetitions=self.repeat,
-                element=self.element,
+                self.lattice_constant = default[1]
+
+            if self.c_over_a is not None and canonical_lattice(self.lattice) != "hcp":
+                raise ValueError(
+                    f"c_over_a only applies to the hcp lattice, not {self.lattice}"
+                )
+            structure = make_lattice(
+                self.lattice,
+                self.element[0],
+                self.lattice_constant,
+                self.repeat,
+                c_over_a=self.c_over_a,
             )
-            structure = structure.write.ase()
 
             # extract composition
             types, typecounts = np.unique(
@@ -945,13 +919,12 @@ class Calculation(_StrictInput, title="Main input class"):
                     typecounts
                 )
 
-            # concdict_counts = {str(t): typecounts[c] for c, t in enumerate(types)}
-            # concdict_frac = {str(t): typecounts[c]/np.sum(typecounts) for c, t in enumerate(types)}
-            # self._composition = concdict_frac
-            # self._composition_counts = concdict_counts
             self._natoms = len(structure)
-            self._original_lattice = self.lattice.lower()
+            self._original_lattice = canonical_lattice(self.lattice)
             write_structure_file = True
+
+        elif self.c_over_a is not None:
+            raise ValueError("c_over_a only applies to the built-in hcp lattice")
 
         elif self.lattice.split("-")[0] == "mp":
             # confirm here that API key exists
@@ -1012,7 +985,11 @@ class Calculation(_StrictInput, title="Main input class"):
         else:
             # this is a file
             if not os.path.exists(self.lattice):
-                raise ValueError(f"File {self.lattice} could not be found")
+                raise ValueError(
+                    f"lattice '{self.lattice}' is neither a built-in lattice "
+                    f"({', '.join(BUILTIN_LATTICES)}), a materials project id "
+                    "nor an existing lammps-data file"
+                )
             if self.file_format == "lammps-data":
                 # create atomic numbers for proper reading
                 Z_of_type = dict(

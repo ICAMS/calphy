@@ -20,4 +20,9 @@ dependencies:
   - matplotlib
   - tqdm
   - pydantic >=2.3.0
-  - pyscal3
+  - ase
+  - pip
+  # pyscal3 4.x (the pyscal 4 API) is on PyPI but not yet on conda-forge;
+  # move it back to the conda list once the feedstock has 4.0.0.
+  - pip:
+    - pyscal3>=4.0.0

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "calphy"
-version = "2.1.2"
+version = "2.2.0"
 description = "free energy calculation for python"
 readme = "README.md"
 license = "LicenseRef-ASL-1.0"
@@ -33,7 +33,8 @@ dependencies = [
     "tqdm",
     "scipy",
     "pydantic>=2.3.0",
-    "pyscal3",
+    "ase",
+    "pyscal3>=4.0.0",
 ]
 
 [project.optional-dependencies]
