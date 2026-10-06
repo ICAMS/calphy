@@ -138,3 +138,20 @@ def test_hybrid_pair_coeff_commands_repeat_index_matches_full_hybrid():
         "compute c_real2 all pair eam/alloy 4",
     ]
     assert energy == "c_c_real1+c_c_real2" and ids == ["c_real1", "c_real2"]
+
+
+def test_pyscal_below_4_is_rejected():
+    with pytest.raises(ImportError, match=r"pyscal3 >= 4\.0\.0.*found 3\.3\.2"):
+        ch.check_pyscal_version("3.3.2")
+    ch.check_pyscal_version("4.0.0")
+    ch.check_pyscal_version("4.1.0")
+
+
+def test_pyscal_floor_is_pinned_in_every_dependency_file():
+    # the runtime check and the declared dependencies must agree on pyscal >= 4
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    pin = "pyscal3>=%d.0.0" % ch.PYSCAL_MIN_MAJOR
+    for name in ["pyproject.toml", "environment.yml", "environment-nolammps.yml",
+                 "environment-docs.yml"]:
+        with open(os.path.join(root, name)) as fh:
+            assert pin in fh.read(), "%s does not pin %s" % (name, pin)

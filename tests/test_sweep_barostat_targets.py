@@ -125,3 +125,18 @@ def test_prescan_holds_real_pressure(make_calc, recorded_job):
         assert f[4] == f[5] == P0
     ramp = [f for f in fixes if f[1] == "f2"]
     assert len(ramp) == 1 and (ramp[0][2], ramp[0][3]) == (T0, TF)
+
+
+@pytest.mark.parametrize("sweep", ["_reversible_scaling_forward", "_reversible_scaling_backward"])
+def test_ts_swaps_run_at_the_thermostat_temperature(make_calc, recorded_job, sweep):
+    # atom/swap accepts on the scaled energy lambda*dU, and the scaled system is
+    # canonical at T0, so both sweeps swap at T0 -- not at T0/lambda, and not at
+    # the ramp value frozen when the fix command is parsed (Tf for the backward
+    # sweep).
+    mc = {"n_swaps": 5, "n_steps": 100, "forward_swap_types": [1, 2],
+          "reverse_swap_types": [1, 2]}
+    job, rec = _job(make_calc, recorded_job, "B6", monte_carlo=mc)
+    getattr(job, sweep)(iteration=1)
+    swaps = [c.split() for c in rec.commands if " atom/swap " in c]
+    assert len(swaps) == 1
+    assert float(swaps[0][7]) == T0

@@ -1580,36 +1580,11 @@ class Phase:
         if self.calc.npt:
             self._install_sweep_barostat(lmp, pi, pf)
 
-        # ----------------------------------------------------------------
-        # Lambda schedule for the forward sweep.
-        #
-        # "linear" (default): lambda = ramp(li, lf) — simple linear
-        #   interpolation; LAMMPS ramp() resets automatically each run.
-        #
-        # "uniform_temperature": T_eq(s) = T0/lambda is linear in step
-        #   so every Kelvin bin gets the same number of MD samples.
-        #   Requires explicit step0 capture before each sweep.
-        # ----------------------------------------------------------------
-        lmp.command("variable         T0_rs equal %f" % t0)
-        if self.calc.lambda_schedule == "uniform_temperature":
-            lmp.command("variable         Nsweep equal %d" % self.calc._n_sweep_steps)
-            lmp.command("variable         Tf_rs equal %f" % tf)
-            # Capture the step at the START of the sweep so the formula is
-            # independent of any prior MD steps (no reset_timestep needed).
-            lmp.command("variable         step0 equal $(step)")
-            lmp.command(
-                "variable         flambda equal "
-                "v_T0_rs/(v_T0_rs+(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
-            )
-            lmp.command(
-                "variable         blambda equal "
-                "v_T0_rs/(v_Tf_rs-(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
-            )
-        else:  # "linear" (default)
-            lmp.command("variable         flambda equal ramp(${li},${lf})")
-            lmp.command("variable         blambda equal ramp(${lf},${li})")
-        lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
-        lmp.command("variable         btemp equal v_T0_rs/v_blambda")
+        # λ ramps linearly in the step, like the target of the sweep
+        # barostat, so the barostat follows P_RS = λ·P exactly.  LAMMPS
+        # ramp() resets automatically each run.
+        lmp.command("variable         flambda equal ramp(${li},${lf})")
+        lmp.command("variable         blambda equal ramp(${lf},${li})")
 
         # Scaled Hamiltonian lambda*U from a single copy of the potential.
         # The earlier two-copy form, 1*U + (lambda-1)*U, gives the identical
@@ -1633,12 +1608,17 @@ class Phase:
             )
             for combo in swap_combos:
                 self.logger.info("  swapping types %s ↔ %s", combo[0], combo[1])
+            # atom/swap accepts on the energy of the scaled potential, λ·ΔU,
+            # and the scaled system is canonical at the thermostat temperature
+            # T0: exp(-λ·ΔU / kT0) is the Boltzmann factor of the real system
+            # at T0/λ.  So the swap temperature is T0 throughout the sweep, not
+            # T0/λ, which would sample exp(-λ²·ΔU / kT0).
             for idx, (type1, type2) in enumerate(swap_combos):
                 lmp.command(
-                    "fix  swap%d all atom/swap %d %d %d ${ftemp} ke yes types %s %s"
+                    "fix  swap%d all atom/swap %d %d %d %f ke yes types %s %s"
                     % (idx, self.calc.monte_carlo.n_steps,
                        self.calc.monte_carlo.n_swaps,
-                       np.random.randint(1, 10000), type1, type2)
+                       np.random.randint(1, 10000), t0, type1, type2)
                 )
 
         if self.calc.n_print_steps > 0:
@@ -1811,25 +1791,8 @@ class Phase:
         # ── Switch from the constant-λ scaled potential to the ramping
         # scaled potential for the backward sweep: define the lambda
         # variables, then re-install hybrid/scaled driven by blambda.
-        # T0_rs is needed by both schedules for ftemp/btemp.
-        lmp.command("variable         T0_rs equal %f" % t0)
-        if self.calc.lambda_schedule == "uniform_temperature":
-            lmp.command("variable         Nsweep equal %d" % self.calc._n_sweep_steps)
-            lmp.command("variable         Tf_rs equal %f" % tf)
-            lmp.command("variable         step0 equal $(step)")
-            lmp.command(
-                "variable         flambda equal "
-                "v_T0_rs/(v_T0_rs+(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
-            )
-            lmp.command(
-                "variable         blambda equal "
-                "v_T0_rs/(v_Tf_rs-(v_Tf_rs-v_T0_rs)*(step-v_step0)/v_Nsweep)"
-            )
-        else:  # "linear"
-            lmp.command("variable         flambda equal ramp(${li},${lf})")
-            lmp.command("variable         blambda equal ramp(${lf},${li})")
-        lmp.command("variable         ftemp equal v_T0_rs/v_flambda")
-        lmp.command("variable         btemp equal v_T0_rs/v_blambda")
+        lmp.command("variable         flambda equal ramp(${li},${lf})")
+        lmp.command("variable         blambda equal ramp(${lf},${li})")
 
         lmp.command(ph.scaled_pair_style_command(self.calc, ["v_blambda"]))
         for cmd in ph.hybrid_pair_coeff_commands(self.calc):
@@ -1850,12 +1813,13 @@ class Phase:
             )
             for combo in swap_combos:
                 self.logger.info("  swapping types %s ↔ %s", combo[0], combo[1])
+            # Swap temperature T0, as in the forward sweep.
             for idx, (type1, type2) in enumerate(swap_combos):
                 lmp.command(
-                    "fix  swap%d all atom/swap %d %d %d ${btemp} ke yes types %s %s"
+                    "fix  swap%d all atom/swap %d %d %d %f ke yes types %s %s"
                     % (idx, self.calc.monte_carlo.n_steps,
                        self.calc.monte_carlo.n_swaps,
-                       np.random.randint(1, 10000), type1, type2)
+                       np.random.randint(1, 10000), t0, type1, type2)
                 )
 
         if self.calc.n_print_steps > 0:
