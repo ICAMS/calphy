@@ -21,7 +21,6 @@ calculations:
   folder_prefix: null
   inputfile: input.yaml
   kernel: 0
-  lambda_schedule: linear
   lammps_executable: null
   lattice: /private/tmp/claude-501/-Users-smenon-Documents-Projects-projects-calphy-stable-calphy/b601b9bf-90db-47a1-aacf-55cdd80197ea/scratchpad/validation/dcci/dcci-fcc-solid-1340-0.0.data
   lattice_constant: 3.615
