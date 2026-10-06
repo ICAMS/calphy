@@ -39,6 +39,12 @@ The gallery of examples below cover different ways in which calphy can be used t
 :link-type: doc
 ```
 
+```{grid-item-card} Melting line of Cu by dynamic Clausius-Clapeyron integration
+:img-top: example13.png
+:link: examples/example_13/analysis
+:link-type: doc
+```
+
 ```{grid-item-card} Running calphy from jupyter notebooks
 :img-top: example06.jpg
 :link: examples/example_06/analysis

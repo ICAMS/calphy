@@ -1,0 +1,118 @@
+calculations:
+- alchemy_coupling: false
+  berendsen:
+    barostat_damping: 100.0
+    thermostat_damping: 100.0
+  composition_scaling:
+    output_chemical_composition: {}
+    restrictions: []
+  dcci:
+    hysteresis_tolerance: 5.0
+    integrator: euler
+    n_block_steps: 1000
+    n_check_blocks: 0
+    stop_at_target_pressure: true
+  element:
+  - Cu
+  equilibration_control: null
+  execution_mode: executable
+  file_format: lammps-data
+  fix_potential_path: true
+  folder_prefix: null
+  inputfile: input.yaml
+  kernel: 0
+  lammps_executable: null
+  lattice: /private/tmp/claude-501/-Users-smenon-Documents-Projects-projects-calphy-stable-calphy/b601b9bf-90db-47a1-aacf-55cdd80197ea/scratchpad/validation/dcci_high/dcci-fcc-solid-1340-0.0.data
+  lattice_constant: 3.615
+  mass:
+  - 63.546
+  materials_project:
+    conventional: true
+    target_natoms: 1500
+  md:
+    barostat_damping: 0.1
+    cmdargs: ''
+    init_commands: []
+    n_cycles: 100
+    n_every_steps: 10
+    n_repeat_steps: 10
+    n_small_steps: 10000
+    seed: 36717953
+    thermostat_damping: 0.1
+    timestep: 0.001
+  melting_cycle: true
+  melting_temperature:
+    attempts: 5
+    guess: null
+    step: 200
+  mode: dcci
+  monte_carlo:
+    allow_all_swaps: true
+    forward_swap_types: []
+    n_steps: 1
+    n_swaps: 0
+    reverse_swap_types: []
+    use_custom_lammps: false
+  mpi_executable: null
+  n_elements: 1
+  n_equilibration_steps: 10000
+  n_iterations: 1
+  n_print_steps: 0
+  n_print_steps_equilibration: 0
+  n_switching_steps: 100000
+  nose_hoover:
+    barostat_damping: 0.1
+    thermostat_damping: 0.1
+  npt: true
+  pair_coeff:
+  - '* * /Users/smenon/Documents/Projects/projects-calphy-stable/calphy/tests/Cu01.eam.alloy
+    Cu'
+  pair_mode: null
+  pair_style:
+  - eam/alloy
+  phase_name: ''
+  phase_transition_detection:
+    mode: none
+    onset_fraction: 0.85
+    prescan_steps: 20000
+  potential_file: null
+  pressure:
+  - 0.0
+  - 1500000.0
+  pressure_coupling: null
+  quantum_thermal_bath:
+    barostat_damping: 0.1
+    f_max: 200.0
+    n_f: 100
+    thermostat_damping: 0.1
+  queue:
+    commands: []
+    cores: 4
+    jobname: calphy
+    memory: 3GB
+    options: {}
+    queuename: ''
+    scheduler: local
+    walltime: '23:59:00'
+  reference_composition: 0.0
+  reference_phase: solid
+  repeat:
+  - 5
+  - 5
+  - 5
+  script_mode: false
+  spring_constants: null
+  temperature: 1340.0
+  temperature_high: 0.0
+  tolerance:
+    dissipation: 0.001
+    lattice_constant: 0.0002
+    liquid_fraction: 1.0
+    pressure: 10.0
+    solid_fraction: 0.0
+    spring_constant: 0.1
+  uhlenbeck_ford_model:
+    p: 50.0
+    sigma: 1.5
+    single_p: null
+    single_sigma: null

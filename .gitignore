@@ -21,6 +21,7 @@ alchemy-*
 *.data
 *.dump
 melting_temperature-*
+dcci-*
 composition_scaling-*
 
 # transition-detection + melting-temperature artefacts

@@ -1,0 +1,25 @@
+# Dynamic Clausius-Clapeyron integration: the melting line of Cu (Mishin Cu01)
+# from a known melting point at 0 bar to 100 kbar with 200 blocks of 500 steps (the converged line of the notebook).
+#
+# The starting temperature is the result of a melting_temperature calculation
+# at 0 bar (example 04); see the notebook for the comparison with independent
+# melting_temperature runs at the end points.
+calculations:
+- mode: dcci
+  element: Cu
+  mass: 63.546
+  lattice: FCC
+  lattice_constant: 3.615
+  repeat: [5, 5, 5]
+  temperature: 1340.0
+  pressure: [0.0, 100000.0]
+  pair_style: eam/alloy
+  pair_coeff: '* * ../potentials/Cu01.eam.alloy Cu'
+  n_equilibration_steps: 10000
+  n_switching_steps: 100000
+  n_iterations: 1
+  dcci:
+    n_block_steps: 500
+  queue:
+    scheduler: local
+    cores: 4

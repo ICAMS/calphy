@@ -41,6 +41,48 @@ from calphy.solid import Solid
 from calphy.composition_transformation import CompositionTransformation
 
 
+def enable_phase_detection(calc, logger, mode, solid_fraction=0.7, liquid_fraction=0.05):
+    """
+    Switch the structural melt/solidify checks on in a raw calculation dict
+    unless the user set them explicitly.
+
+    The shipped defaults (``tolerance.solid_fraction = 0``,
+    ``tolerance.liquid_fraction = 1``) make both checks unreachable.  Modes
+    that build a solid and a liquid cell and depend on each staying in its
+    phase (``melting_temperature``, ``dcci``) turn them on for their
+    sub-calculations only.
+
+    Parameters
+    ----------
+    calc : dict
+        Raw sub-calculation dict, mutated in place before it is parsed.
+    logger : logging.Logger
+        Where the warning about the changed default goes.
+    mode : str
+        Name of the calling mode, for the log message.
+    solid_fraction, liquid_fraction : float
+        Thresholds to install when the user gave none.
+    """
+    tolerance = calc.setdefault("tolerance", {})
+    if not isinstance(tolerance, dict):
+        return
+    if tolerance.get("solid_fraction") is None:
+        tolerance["solid_fraction"] = solid_fraction
+        logger.warning(
+            "mode %s: enabling melt detection with tolerance.solid_fraction = %g "
+            "(the default of 0 makes the check unreachable). Set "
+            "tolerance.solid_fraction explicitly to override." % (mode, solid_fraction)
+        )
+    if tolerance.get("liquid_fraction") is None:
+        tolerance["liquid_fraction"] = liquid_fraction
+        logger.warning(
+            "mode %s: enabling solidification detection with "
+            "tolerance.liquid_fraction = %g (the default of 1 makes the check "
+            "unreachable). Set tolerance.liquid_fraction explicitly to override."
+            % (mode, liquid_fraction)
+        )
+
+
 class MeltingTemp:
     """
     Class for automated melting temperature calculation.
@@ -99,27 +141,13 @@ class MeltingTemp:
         calc : dict
             Raw sub-calculation dict, mutated in place before it is parsed.
         """
-        tolerance = calc.setdefault("tolerance", {})
-        if not isinstance(tolerance, dict):
-            return
-        if tolerance.get("solid_fraction") is None:
-            tolerance["solid_fraction"] = self.DETECTION_SOLID_FRACTION
-            self.logger.warning(
-                "mode melting_temperature: enabling melt detection with "
-                "tolerance.solid_fraction = %g (the default of 0 makes the "
-                "check unreachable, and the temperature bracket is advanced "
-                "only when it fires). Set tolerance.solid_fraction "
-                "explicitly to override." % self.DETECTION_SOLID_FRACTION
-            )
-        if tolerance.get("liquid_fraction") is None:
-            tolerance["liquid_fraction"] = self.DETECTION_LIQUID_FRACTION
-            self.logger.warning(
-                "mode melting_temperature: enabling solidification detection "
-                "with tolerance.liquid_fraction = %g (the default of 1 makes "
-                "the check unreachable, and the temperature bracket is "
-                "advanced only when it fires). Set tolerance.liquid_fraction "
-                "explicitly to override." % self.DETECTION_LIQUID_FRACTION
-            )
+        enable_phase_detection(
+            calc,
+            self.logger,
+            "melting_temperature",
+            self.DETECTION_SOLID_FRACTION,
+            self.DETECTION_LIQUID_FRACTION,
+        )
 
     def prepare_calcs(self):
         """

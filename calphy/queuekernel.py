@@ -36,6 +36,7 @@ from calphy.input import read_inputfile
 from calphy.liquid import Liquid
 from calphy.solid import Solid
 from calphy.alchemy import Alchemy
+from calphy.dcci import DynamicCCI
 from calphy.routines import (
     MeltingTemp,
     routine_fe,
@@ -68,6 +69,9 @@ def setup_calculation(calc):
     if calc.mode == "melting_temperature":
         simfolder = None
         job = MeltingTemp(calculation=calc, simfolder=simfolder)
+    elif calc.mode == "dcci":
+        simfolder = calc.create_folders()
+        job = DynamicCCI(calculation=calc, simfolder=simfolder)
     elif calc.mode == "alchemy" or calc.mode == "composition_scaling":
         simfolder = calc.create_folders()
         job = Alchemy(calculation=calc, simfolder=simfolder)
@@ -101,6 +105,8 @@ def run_calculation(job):
         job = routine_alchemy(job)
     elif job.calc.mode == "melting_temperature":
         job.calculate_tm()
+    elif job.calc.mode == "dcci":
+        job.calculate_coexistence_line()
     elif job.calc.mode == "tscale":
         job = routine_tscale(job)
     elif job.calc.mode == "pscale":
@@ -109,7 +115,7 @@ def run_calculation(job):
         job = routine_composition_scaling(job)
     else:
         raise ValueError(
-            "Mode should be either fe/ts/alchemy/melting_temperature/tscale/pscale/composition_scaling"
+            "Mode should be either fe/ts/alchemy/melting_temperature/dcci/tscale/pscale/composition_scaling"
         )
     return job
 
@@ -187,6 +193,11 @@ def main():
         job = MeltingTemp(
             calculation=calc, simfolder=simfolder, log_to_screen=log_to_screen
         )
+    elif calc.mode == "dcci":
+        job = DynamicCCI(
+            calculation=calc, simfolder=simfolder, log_to_screen=log_to_screen
+        )
+        os.chdir(simfolder)
     elif calc.mode == "alchemy" or calc.mode == "composition_scaling":
         job = Alchemy(
             calculation=calc, simfolder=simfolder, log_to_screen=log_to_screen
@@ -211,6 +222,8 @@ def main():
         _ = routine_alchemy(job)
     elif job.calc.mode == "melting_temperature":
         job.calculate_tm()
+    elif job.calc.mode == "dcci":
+        job.calculate_coexistence_line()
     elif job.calc.mode == "tscale":
         _ = routine_tscale(job)
     elif job.calc.mode == "pscale":
@@ -219,5 +232,5 @@ def main():
         _ = routine_composition_scaling(job)
     else:
         raise ValueError(
-            "Mode should be either fe/ts/alchemy/melting_temperature/tscale/pscale/composition_scaling"
+            "Mode should be either fe/ts/alchemy/melting_temperature/dcci/tscale/pscale/composition_scaling"
         )

@@ -166,6 +166,64 @@ Same four columns as `ts.*`, but `lambda` maps to pressure.
 
 ---
 
+## Coexistence line — [](mode) `dcci`
+
+A `dcci-*` folder holds the coupled-sweep results at the top level and the two
+cells in `solid/` and `liquid/`, each a complete calculation folder of its own
+(equilibration data, `conf.equilibration.data`, `dcci_<direction>_<i>.log.lammps`,
+`conf.dcci.<direction>_<i>.data` and the raw block averages
+`dcci.blocks.<direction>_<i>.dat`).
+
+### `report.yaml`
+
+| Key | Meaning |
+|---|---|
+| `input.temperature`, `input.pressure` | The starting coexistence point [K, bar] |
+| `input.pressure_stop` | The requested target pressure [bar] |
+| `average.vol_atom_solid`, `average.vol_atom_liquid` | Equilibrium volumes per atom at the starting point [Å³] |
+| `results.coexistence_line` | Name of the line file below |
+| `results.pressure_reached` | Real pressure at the end of the line [bar]; larger than `pressure_stop` when the sweep stopped on reaching it |
+| `results.temperature_at_pressure_reached`, `results.error_at_pressure_reached` | Coexistence temperature there and its error [K] |
+| `results.n_blocks_used` | Blocks of the forward sweep |
+| `results.hysteresis` | `T_backward(pressure[0]) - temperature` [K], how far the round trip misses the start |
+| `results.hysteresis_high` | Whether that exceeds [](hysteresis_tolerance) |
+
+### `coexistence_line.dat`
+
+The coexistence line, the mean of the forward and backward sweeps of all
+iterations on the pressure grid of the forward sweep (starting point included).
+Read it with `calphy.postprocessing.read_coexistence_line` or plot it with
+`plot_coexistence_line`.
+
+| Column | Meaning |
+|---|---|
+| 1 | `pressure` [bar] |
+| 2 | `temperature` — coexistence temperature [K] |
+| 3 | `error` [K] — half the local forward/backward hysteresis, combined with the standard error over [](n_iterations) |
+| 4 | `T_forward` [K] |
+| 5 | `T_backward` [K] |
+
+The last point is where the backward sweep started, so its error is zero by
+construction; the first point carries the round-trip hysteresis.
+
+### `dcci.forward_<i>.dat` / `dcci.backward_<i>.dat`
+
+One row per integration block of iteration `i`.
+
+| Column | Meaning |
+|---|---|
+| 1 | `block` index |
+| 2 | `step` at the end of the block |
+| 3 | `lambda` — scaling factor `T0/T` |
+| 4 | `T` [K] |
+| 5 | `P_RS` — scaled pressure imposed by the barostat [bar] |
+| 6 | `P` — real pressure `P_RS/lambda` [bar] |
+| 7, 8 | `u_solid`, `u_liquid` — block-averaged potential energy of the cells [eV/atom] |
+| 9, 10 | `v_solid`, `v_liquid` — block-averaged volume of the cells [Å³/atom] |
+| 11 | `dPdT` — Clausius-Clapeyron slope `ΔH/(TΔV)` from the block averages [bar/K] |
+
+---
+
 ## Averaging data
 
 Time series written during the NPT/NVT equilibration and volume-convergence

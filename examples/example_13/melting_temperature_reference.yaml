@@ -1,0 +1,36 @@
+# Independent melting points of Cu (Mishin Cu01, 500-atom cells) used to check
+# the dynamic Clausius-Clapeyron line.  Two kinds:
+#   method: melting_temperature  -- mode melting_temperature (fe + reversible
+#       scaling of both phases, 10000 equilibration / 30000 switching steps,
+#       one iteration; the mode reports no error bar for a single iteration)
+#   method: fe_crossing -- direct fe of both phases at two temperatures
+#       bracketing the melting point (two iterations each), crossing of
+#       G_liquid - G_solid; error from the fe error bars.
+- pressure: 0.0
+  tm: 1340.6
+  tm_error: 0.0
+  method: melting_temperature
+- pressure: 50000.0
+  tm: 1564.9
+  tm_error: 0.0
+  method: melting_temperature
+- pressure: 100000.0
+  tm: 1776.3
+  tm_error: 0.0
+  method: melting_temperature
+- pressure: 500000.0
+  tm: 2912.9
+  tm_error: 0.0
+  method: melting_temperature
+- pressure: 0.0
+  tm: 1353.3
+  tm_error: 1.9
+  method: fe_crossing
+- pressure: 50000.0
+  tm: 1559.9
+  tm_error: 1.6
+  method: fe_crossing
+- pressure: 100000.0
+  tm: 1749.2
+  tm_error: 3.4
+  method: fe_crossing
