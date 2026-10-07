@@ -49,9 +49,11 @@ class Liquid(cph.Phase):
     simfolder : string
         base folder for running calculations
 
+    lmp : LAMMPS object
+        The LAMMPS object to use for the calculation
     """
 
-    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False, lmp=None):
         """
         Set up class
         """
@@ -60,6 +62,7 @@ class Liquid(cph.Phase):
             calculation=calculation,
             simfolder=simfolder,
             log_to_screen=log_to_screen,
+            lmp=lmp,
         )
 
     def rattle_structure(self, lmp):
@@ -162,7 +165,7 @@ class Liquid(cph.Phase):
         At the end of the run, the averaged box dimensions are calculated.
         """
         # create lammps object
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = ph.create_object(self.calc, self.simfolder, lmp=self.lmp)
 
         lmp = ph.set_pair_style(lmp, self.calc)
 
@@ -237,7 +240,7 @@ class Liquid(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = ph.create_object(self.calc, self.simfolder, lmp=self.lmp)
 
         # Adiabatic switching parameters.
         lmp.command("variable        li       equal   1.0")

@@ -51,7 +51,7 @@ class LibraryRunner(BaseRunner):
     accessors (direct thermo/structure reads) can build on it.
     """
 
-    def __init__(self, *, cores, cmdargs, directory):
+    def __init__(self, *, cores, cmdargs, directory, lmp=None):
         super().__init__(directory)
         try:
             from pylammpsmpi import LammpsLibrary
@@ -78,10 +78,13 @@ class LibraryRunner(BaseRunner):
             cmdargs.extend(["-log", self._log_name(0)])
         self.cmdargs = cmdargs
 
-        self.lmp = LammpsLibrary(
-            cores=cores, working_directory=directory, cmdargs=cmdargs
-        )
-        self._activate_mliap()
+        if lmp is not None:
+            self.lmp = lmp
+        else:
+            self.lmp = LammpsLibrary(
+                cores=cores, working_directory=directory, cmdargs=cmdargs
+            )
+            self._activate_mliap()
 
     def _activate_mliap(self):
         """Register the mliappy coupling in the live session when available.

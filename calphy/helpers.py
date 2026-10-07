@@ -63,7 +63,7 @@ from calphy.runner import (
 )
 
 
-def create_object(calc, directory):
+def create_object(calc, directory, lmp=None):
     """
     Create the LAMMPS runner backend selected by ``calc.execution_mode``.
 
@@ -95,6 +95,7 @@ def create_object(calc, directory):
             cores=calc.queue.cores,
             cmdargs=calc.md.cmdargs,
             directory=directory,
+            lmp=lmp,
         )
         return emit_init_commands(lmp, calc)
 

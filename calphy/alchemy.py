@@ -49,13 +49,15 @@ class Alchemy(cph.Phase):
     simfolder : string
         base folder for running calculations
 
+    lmp : LAMMPS object
+        The LAMMPS object to use for the calculation
     """
 
-    def __init__(self, calculation=None, simfolder=None, log_to_screen=False):
+    def __init__(self, calculation=None, simfolder=None, log_to_screen=False, lmp=None):
 
         # call base class
         super().__init__(
-            calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen,
+            calculation=calculation, simfolder=simfolder, log_to_screen=log_to_screen, lmp=lmp,
         )
 
     def _end_states(self):
@@ -175,7 +177,7 @@ class Alchemy(cph.Phase):
         """Coupling-mode integration: ramp ONLY the last component 0->1
         (forward) and 1->0 (backward) over the fixed base.
         W = int <U_last>_lam dlam;  dF = (W_f + W_b)/2 per iteration."""
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = ph.create_object(self.calc, self.simfolder, lmp=self.lmp)
         conf = os.path.join(self.simfolder, "conf.equilibration.data")
         # style only before read_data (pair_coeff needs the box)
         ns = self.calc._pair_style_with_options
@@ -253,7 +255,7 @@ class Alchemy(cph.Phase):
         Fix lattice option is not implemented at present.
         At the end of the run, the averaged box dimensions are calculated.
         """
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = ph.create_object(self.calc, self.simfolder, lmp=self.lmp)
 
         if self.calc.alchemy_coupling:
             # equilibrate on the BASE system (lam = 0): full base, ramped
@@ -345,7 +347,7 @@ class Alchemy(cph.Phase):
         initial, final = self._end_states()
 
         # create lammps object
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = ph.create_object(self.calc, self.simfolder, lmp=self.lmp)
 
         # Adiabatic switching parameters.
         lmp.command("variable        li       equal   1.0")
