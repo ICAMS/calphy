@@ -24,6 +24,7 @@ sarath.menon@ruhr-uni-bochum.de
 """
 
 import os
+import sys
 import shutil
 import warnings
 import logging
@@ -96,7 +97,7 @@ def create_object(calc, directory):
             cmdargs=calc.md.cmdargs,
             directory=directory,
         )
-        return emit_init_commands(lmp, calc)
+        return _emit_init_commands_or_close(lmp, calc)
 
     binary = resolve_lammps_executable(calc.lammps_executable)
     mpi_command = (
@@ -113,7 +114,20 @@ def create_object(calc, directory):
         directory=directory,
         dry_run=False,
     )
-    return emit_init_commands(lmp, calc)
+    return _emit_init_commands_or_close(lmp, calc)
+
+
+def _emit_init_commands_or_close(lmp, calc):
+    """Run :func:`emit_init_commands`, closing ``lmp`` if it raises.
+
+    The caller only gets hold of the runner once :func:`create_object`
+    returns, so a failure here would otherwise leave the session (in library
+    mode, the executor behind it) open."""
+    try:
+        return emit_init_commands(lmp, calc)
+    except BaseException:
+        lmp.__exit__(*sys.exc_info())
+        raise
 
 
 def emit_init_commands(lmp, calc):
