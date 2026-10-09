@@ -271,7 +271,8 @@ class MeltingTemp:
         self.logger.info("Starting solid reversible scaling run")
         for i in range(self.soljob.calc.n_iterations):
             try:
-                self.soljob.reversible_scaling(iteration=(i + 1))
+                with self.soljob:
+                    self.soljob.reversible_scaling(iteration=(i + 1))
             except MeltedError:
                 self.logger.info("Solid system melted during reversible scaling run")
                 return 2
@@ -290,7 +291,8 @@ class MeltingTemp:
         self.logger.info("Starting liquid reversible scaling calculation")
         for i in range(self.lqdjob.calc.n_iterations):
             try:
-                self.lqdjob.reversible_scaling(iteration=(i + 1))
+                with self.lqdjob:
+                    self.lqdjob.reversible_scaling(iteration=(i + 1))
             except SolidifiedError:
                 self.logger.info("Liquid froze during reversible scaling calculation")
                 return 3
@@ -527,14 +529,16 @@ def routine_fe(job):
     Perform an FE calculation routine
     """
     ts = time.time()
-    job.run_averaging()
+    with job:
+        job.run_averaging()
     te = time.time() - ts
     job.logger.info("Averaging routine finished in %f s" % te)
 
     # now run integration loops
     for i in range(job.calc.n_iterations):
         ts = time.time()
-        job.run_integration(iteration=(i + 1))
+        with job:
+            job.run_integration(iteration=(i + 1))
         te = time.time() - ts
         job.logger.info("Integration cycle %d finished in %f s" % (i + 1, te))
 
@@ -556,14 +560,16 @@ def routine_ts(job):
     # in the single-phase region.  Disabled by default (mode='none').
     if job.calc.phase_transition_detection.mode != "none":
         ts = time.time()
-        job.scan_temperature_range()
+        with job:
+            job.scan_temperature_range()
         te = time.time() - ts
         job.logger.info("Pre-flight temperature-range scan finished in %f s" % te)
 
     # now do rev scale steps
     for i in range(job.calc.n_iterations):
         ts = time.time()
-        job.reversible_scaling(iteration=(i + 1))
+        with job:
+            job.reversible_scaling(iteration=(i + 1))
         te = time.time() - ts
         job.logger.info("TS integration cycle %d finished in %f s" % (i + 1, te))
 
@@ -581,7 +587,8 @@ def routine_tscale(job):
     # now do rev scale steps
     for i in range(job.calc.n_iterations):
         ts = time.time()
-        job.temperature_scaling(iteration=(i + 1))
+        with job:
+            job.temperature_scaling(iteration=(i + 1))
         te = time.time() - ts
         job.logger.info("Temperature scaling cycle %d finished in %f s" % (i + 1, te))
 
@@ -599,7 +606,8 @@ def routine_pscale(job):
     # now do rev scale steps
     for i in range(job.calc.n_iterations):
         ts = time.time()
-        job.pressure_scaling(iteration=(i + 1))
+        with job:
+            job.pressure_scaling(iteration=(i + 1))
         te = time.time() - ts
         job.logger.info("Pressure scaling cycle %d finished in %f s" % (i + 1, te))
 
@@ -613,14 +621,16 @@ def routine_alchemy(job):
     Perform an FE calculation routine
     """
     ts = time.time()
-    job.run_averaging()
+    with job:
+        job.run_averaging()
     te = time.time() - ts
     job.logger.info("Averaging routine finished in %f s" % te)
 
     # now run integration loops
     for i in range(job.calc.n_iterations):
         ts = time.time()
-        job.run_integration(iteration=(i + 1))
+        with job:
+            job.run_integration(iteration=(i + 1))
         te = time.time() - ts
         job.logger.info("Alchemy integration cycle %d finished in %f s" % (i + 1, te))
 
@@ -742,14 +752,16 @@ def routine_composition_scaling(job):
 
     # now start cycle
     ts = time.time()
-    job.run_averaging()
+    with job:
+        job.run_averaging()
     te = time.time() - ts
     job.logger.info("Averaging routine finished in %f s" % te)
 
     # now run integration loops
     for i in range(job.calc.n_iterations):
         ts = time.time()
-        job.run_integration(iteration=(i + 1))
+        with job:
+            job.run_integration(iteration=(i + 1))
         te = time.time() - ts
         job.logger.info("Alchemy integration cycle %d finished in %f s" % (i + 1, te))
 

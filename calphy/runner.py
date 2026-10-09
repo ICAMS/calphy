@@ -366,6 +366,34 @@ class BaseRunner:
         """End the session and release backend resources."""
         raise NotImplementedError
 
+    def __enter__(self):
+        """Enter a runner scope; the runner itself is the ``as`` target."""
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        """Close the session on the way out, exception or not.
+
+        This is what makes a stage's LAMMPS session -- and, in library mode,
+        the executorlib executor behind it -- go away deterministically even
+        when an exception escapes the driver.  The driver's exception is never
+        suppressed.
+
+        If :meth:`close` itself fails *while an exception is propagating*, the
+        close error is logged and swallowed rather than replacing the original
+        one: the interesting failure is the physics error that got us here, not
+        the fallout of shutting a half-dead session down.
+        """
+        try:
+            self.close()
+        except Exception:
+            if exc_type is None:
+                raise
+            logger.exception(
+                "closing the LAMMPS session failed while handling %s; the "
+                "original exception is propagating", exc_type.__name__,
+            )
+        return False
+
     def rotate_logs(self, stage_name):
         """Collect the LAMMPS log output produced since the last rotation into
         ``<stage_name>.log.lammps`` in the sim folder."""

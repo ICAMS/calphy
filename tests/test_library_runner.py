@@ -254,6 +254,47 @@ def test_create_object_library_mode(tmp_path, fake_pylammpsmpi, make_calc):
     assert len(lmp.logical_commands) == 4
 
 
+@pytest.fixture
+def recorded_libraries(fake_pylammpsmpi, monkeypatch):
+    """Every FakeLammpsLibrary created, so a test can check it got closed."""
+    created = []
+
+    class Recording(FakeLammpsLibrary):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            created.append(self)
+
+    monkeypatch.setattr(fake_pylammpsmpi, "LammpsLibrary", Recording)
+    return created
+
+
+def test_failed_mliap_activation_closes_the_session(
+    tmp_path, recorded_libraries, fake_lammps_mliap, monkeypatch
+):
+    def boom(self):
+        raise RuntimeError("activation failed")
+
+    monkeypatch.setattr(_FakeConcurrent, "activate_mliappy", boom)
+    with pytest.raises(RuntimeError, match="activation failed"):
+        make_runner(tmp_path)
+    assert [lib.closed for lib in recorded_libraries] == [True]
+
+
+def test_create_object_closes_the_session_if_init_commands_fail(
+    tmp_path, recorded_libraries, make_calc, monkeypatch
+):
+    import calphy.helpers as ph
+
+    def boom(lmp, calc):
+        raise ValueError("bad init command")
+
+    monkeypatch.setattr(ph, "emit_init_commands", boom)
+    calc = make_calc("B1", execution_mode="library")
+    with pytest.raises(ValueError, match="bad init command"):
+        ph.create_object(calc, str(tmp_path))
+    assert [lib.closed for lib in recorded_libraries] == [True]
+
+
 def test_execution_mode_validation(make_calc):
     with pytest.raises(Exception, match="execution_mode"):
         make_calc("B1", execution_mode="banana")

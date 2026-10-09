@@ -192,7 +192,7 @@ class Solid(cph.Phase):
         At the end of the run, the averaged box dimensions are calculated.
         """
 
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = self._open_lammps()
 
         # set up potential
         lmp = ph.set_pair_style(lmp, self.calc)
@@ -268,7 +268,7 @@ class Solid(cph.Phase):
         Run the integration routine where the initial and final systems are connected using
         the lambda parameter. See algorithm 4 in publication.
         """
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = self._open_lammps()
 
         # set up potential
         lmp = ph.set_pair_style(lmp, self.calc)

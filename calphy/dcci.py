@@ -345,7 +345,8 @@ class DynamicCCI:
         """
         def equilibrate(phase):
             self.logger.info("Equilibrating the %s cell at %.2f K, %.2f bar" % (phase, self.t0, self.p_start))
-            self.jobs[phase].run_averaging()
+            with self.jobs[phase]:
+                self.jobs[phase].run_averaging()
             self.logger.info("%s cell: %.4f A^3/atom" % (phase, self.jobs[phase].volatom))
 
         self._for_cells(equilibrate)

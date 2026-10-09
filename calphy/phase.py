@@ -1497,7 +1497,7 @@ class Phase:
             iteration, t0, tf, li, lf, pi, pf,
         )
 
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = self._open_lammps()
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f" % li)
@@ -1705,7 +1705,7 @@ class Phase:
             iteration, tf, t0, lf, li, pf, pi,
         )
 
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = self._open_lammps()
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f" % li)
@@ -1983,7 +1983,7 @@ class Phase:
         )
 
         # ── Build the LAMMPS object and load the equilibrated configuration ──
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = self._open_lammps()
 
         lmp.command("echo              log")
         lmp = ph.set_pair_style(lmp, self.calc)
@@ -2173,7 +2173,7 @@ class Phase:
         p0 = self.calc._pressure
 
         # create lammps object
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = self._open_lammps()
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f" % li)
@@ -2323,7 +2323,7 @@ class Phase:
         pf = self.calc._pressure_stop
 
         # create lammps object
-        lmp = ph.create_object(self.calc, self.simfolder)
+        lmp = self._open_lammps()
 
         lmp.command("echo              log")
         lmp.command("variable          li equal %f" % li)
@@ -2481,6 +2481,26 @@ class Phase:
 
         with open(os.path.join(self.simfolder, "metadata.yaml"), "w") as fout:
             yaml.safe_dump(metadata, fout)
+
+    def _open_lammps(self):
+        """Create a stage's LAMMPS session and remember it, so that a
+        surrounding ``with job:`` can close it if the stage raises."""
+        self._lmp = ph.create_object(self.calc, self.simfolder)
+        return self._lmp
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        """Close the session opened by the last stage, exception or not.
+
+        On success the stage has already closed it itself; closing again is a
+        no-op.  The exception is never suppressed.
+        """
+        lmp, self._lmp = getattr(self, "_lmp", None), None
+        if lmp is not None:
+            lmp.__exit__(exc_type, exc, tb)
+        return False
 
     def lammps_close(self, lmp):
         lmp.close()

@@ -37,6 +37,7 @@ imported lazily inside :class:`LibraryRunner` -- importing this module (or any
 other part of calphy) never requires it.
 """
 import os
+import sys
 import logging
 
 from calphy.runner import BaseRunner, _normalize_cmdargs
@@ -81,7 +82,13 @@ class LibraryRunner(BaseRunner):
         self.lmp = LammpsLibrary(
             cores=cores, working_directory=directory, cmdargs=cmdargs
         )
-        self._activate_mliap()
+        # the executor is live from here on; nobody else holds a reference to
+        # this runner yet, so close it ourselves if the rest of setup fails
+        try:
+            self._activate_mliap()
+        except BaseException:
+            self.__exit__(*sys.exc_info())
+            raise
 
     def _activate_mliap(self):
         """Register the mliappy coupling in the live session when available.
