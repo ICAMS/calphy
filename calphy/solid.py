@@ -23,6 +23,7 @@ For more information contact:
 sarath.menon@ruhr-uni-bochum.de
 """
 
+import itertools
 import numpy as np
 import yaml
 import copy
@@ -151,6 +152,125 @@ class Solid(cph.Phase):
             k_std.append(std_quant)
         return k_mean, k_std
 
+    def _add_fe_swap_fixes(self, lmp, temperature, ke, prefix):
+        """
+        Add ``fix atom/swap`` between every pair of species.
+
+        Parameters
+        ----------
+        lmp : LAMMPS runner
+        temperature : str
+            swap temperature argument, a number or an equal-style variable
+            reference such as ``v_tswap`` (thermoatoms LAMMPS fork)
+        ke : str
+            ``yes`` or ``no``, whether velocities are rescaled on a swap
+        prefix : str
+            fix ids are ``<prefix><index>``
+
+        Returns
+        -------
+        list of str
+            the fix ids that were added
+        """
+        mc = self.calc.monte_carlo
+        pairs = list(itertools.combinations(range(1, self.calc.n_elements + 1), 2))
+        self.logger.info(
+            "%s: %d swap moves between each of %d species pairs every %d steps",
+            prefix, mc.n_swaps, len(pairs), mc.n_steps,
+        )
+        extra = " noforce yes localE yes" if mc.use_custom_lammps else ""
+        fix_ids = []
+        for idx, (type1, type2) in enumerate(pairs):
+            fix_id = "%s%d" % (prefix, idx)
+            lmp.command(
+                "fix               %s all atom/swap %d %d %d %s ke %s types %d %d%s"
+                % (
+                    fix_id,
+                    mc.n_steps,
+                    mc.n_swaps,
+                    np.random.randint(1, 10000),
+                    temperature,
+                    ke,
+                    type1,
+                    type2,
+                    extra,
+                )
+            )
+            fix_ids.append(fix_id)
+        # cumulative attempted and accepted swaps summed over the pairs
+        lmp.command(
+            "variable          swapatt equal %s"
+            % "+".join("f_%s[1]" % fix_id for fix_id in fix_ids)
+        )
+        lmp.command(
+            "variable          swapacc equal %s"
+            % "+".join("f_%s[2]" % fix_id for fix_id in fix_ids)
+        )
+        return fix_ids
+
+    def run_configurational_equilibration(self, lmp):
+        """
+        Equilibrate the arrangement of the species on the lattice sites.
+
+        Runs NVT at the target temperature with the full potential and Monte
+        Carlo swaps between all species pairs, in blocks of
+        ``md.n_small_steps``, until the block-averaged potential energy per
+        atom changes by less than ``tolerance.swap_energy`` between
+        successive blocks (at most ``md.n_cycles`` blocks).  This is the
+        slow step of a switching run with swaps: the acceptance rate here is
+        that of the real alloy at T.  The block averages and the cumulative
+        swap counters are written to ``swap.equilibration.dat``.
+        """
+        temp = self.calc._temperature
+        lmp.command(
+            "fix               3 all nvt temp %f %f %f"
+            % (temp, temp, self.calc.md.thermostat_damping[1])
+        )
+        swap_fixes = self._add_fe_swap_fixes(lmp, "%f" % temp, "yes", "ceq")
+
+        n_every = int(self.calc.md.n_every_steps)
+        n_repeat = int(self.calc.md.n_repeat_steps)
+        lmp.command("variable          peatom equal pe/atoms")
+        lmp.command(
+            "fix               5 all ave/time %d %d %d v_peatom v_swapatt v_swapacc "
+            'title2 "# TimeStep pe[eV/atom] swaps_attempted swaps_accepted" '
+            "file swap.equilibration.dat"
+            % (n_every, n_repeat, n_every * n_repeat)
+        )
+
+        ncount = int(self.calc.md.n_small_steps) // (n_every * n_repeat)
+        tol = self.calc.tolerance.swap_energy
+        last_pe = None
+        converged = False
+        for i in range(self.calc.md.n_cycles):
+            lmp.command("run               %d" % int(self.calc.md.n_small_steps))
+            lmp.sync()  # flush before reading swap.equilibration.dat
+            data = np.atleast_2d(lmp.read_timeseries("swap.equilibration.dat"))
+            pe = float(np.mean(data[-ncount:, 1]))
+            attempted = float(data[-1, 2])
+            accepted = float(data[-1, 3])
+            rate = accepted / attempted if attempted > 0 else 0.0
+            self.logger.info(
+                "configurational equilibration block %d: pe %.6f eV/atom, "
+                "swaps accepted %.0f of %.0f (%.3f)",
+                i + 1, pe, accepted, attempted, rate,
+            )
+            if last_pe is not None and abs(pe - last_pe) < tol:
+                converged = True
+                break
+            last_pe = pe
+        if not converged:
+            self.logger.warning(
+                "configurational equilibration did not converge to %.1e eV/atom "
+                "in %d blocks; raise md.n_cycles or md.n_small_steps, or "
+                "monte_carlo.n_swaps", tol, self.calc.md.n_cycles,
+            )
+
+        lmp.command("unfix             5")
+        for fix_id in swap_fixes:
+            lmp.command("unfix             %s" % fix_id)
+        lmp.command("unfix             3")
+
     def assign_spring_constants(self, k):
         """
         Here the spring constants are finalised, add added to the class
@@ -240,6 +360,11 @@ class Solid(cph.Phase):
         # start MSD calculation routine
         # there two possibilities here - if spring constants are provided, use it. If not, calculate it
         self.run_spring_constant_convergence(lmp)
+
+        # with Monte Carlo swaps, equilibrate the arrangement of the species
+        # on the lattice sites at T before the switching starts
+        if self.calc._fe_swaps:
+            self.run_configurational_equilibration(lmp)
 
         # check for melting
         self.stop_equilibration_dump(lmp)
