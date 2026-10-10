@@ -705,10 +705,15 @@ class Solid(cph.Phase):
                 "Using quantum harmonic-oscillator Einstein-crystal reference "
                 "(required for self-consistency with QTB sampling)."
             )
+        # With swaps the switching run gave every atom the mass
+        # helpers.mean_mass; the CM correction is evaluated with it, the
+        # Einstein term with the real masses (see get_einstein_crystal_fe).
+        cm_mass = ph.mean_mass(self.calc) if self.calc._fe_swaps else None
         fe, fcm = get_einstein_crystal_fe(
             self.calc, self.vol, self.k,
             return_contributions=True,
             quantum=use_quantum_reference,
+            cm_mass=cm_mass,
         )
 
         w, q, qerr = find_w(self.simfolder, self.calc, full=True, solid=True)
@@ -716,6 +721,19 @@ class Solid(cph.Phase):
         self.fref = fe + fcm
         self.feinstein = fe
         self.fcm = fcm
+
+        # Swaps make every arrangement of the species degenerate at the
+        # Einstein end, so the reference is the Einstein crystal of one
+        # arrangement plus the free energy of ideal mixing, k_B T sum x ln x;
+        # the switching work carries the rest of the configurational free
+        # energy (short range order).  Without swaps the result is the free
+        # energy of the one arrangement in the input structure.
+        if self.calc._fe_swaps:
+            self.fmix = get_ideal_mixing_fe(self.calc)
+            self.logger.info(
+                "ideal mixing free energy k_B T sum x ln x = %.6f eV/atom "
+                "added to the reference", self.fmix,
+            )
         self.w = w
         self.qdiss = q
         self.ferr = qerr
@@ -729,4 +747,4 @@ class Solid(cph.Phase):
             self.pv = 0
 
         # calculate final free energy
-        self.fe = self.fref + self.w + self.pv
+        self.fe = self.fref + self.fmix + self.w + self.pv

@@ -263,6 +263,9 @@ class Phase:
         self.feinstein = 0
         self.fcm = 0
         self.fideal = 0
+        #: Free energy of ideal mixing k_B T sum x ln x [eV/atom], part of the
+        #: reference of a solid fe integration with Monte Carlo swaps; 0 else.
+        self.fmix = 0
 
         self.w = 0
         self.pv = 0
@@ -1240,6 +1243,7 @@ class Phase:
         report["results"]["reference_system"] = float(self.fref)
         report["results"]["einstein_crystal"] = float(self.feinstein)
         report["results"]["com_correction"] = float(self.fcm)
+        report["results"]["ideal_mixing"] = float(self.fmix)
         report["results"]["work"] = float(self.w)
         report["results"]["dissipation"] = float(self.qdiss)
         report["results"]["pv"] = float(self.pv)
