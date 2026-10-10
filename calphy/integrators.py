@@ -381,6 +381,37 @@ def integrate_ps(simfolder, f0, natoms, pi, pf, nsims=1, return_values=False):
         return (press, f, werr)
 
 
+def get_ideal_mixing_fe(calc):
+    """
+    Free energy of ideal mixing, k_B T sum_i x_i ln x_i, in eV/atom (zero or
+    negative).
+
+    This is -T S_ideal with S_ideal = -k_B sum_i x_i ln x_i the entropy of
+    the N! / prod_i N_i! distinguishable arrangements of the species on the
+    lattice sites.  In a solid fe integration with Monte Carlo swaps every
+    arrangement has the same energy at the Einstein end (the springs belong
+    to the sites, not to the species), so the reference free energy is the
+    Einstein crystal of one arrangement plus this term; the switching work
+    then carries the difference between the real configurational free energy
+    and the ideal one.
+
+    Parameters
+    ----------
+    calc : Calculation object
+        contains all input parameters
+
+    Returns
+    -------
+    f_ideal : float
+        k_B T sum_i x_i ln x_i in eV/atom
+    """
+    conc = np.array(
+        [calc._element_dict[x]["composition"] for x in calc.element], dtype=float
+    )
+    conc = conc[conc > 0]
+    return float(kb * calc._temperature * np.sum(conc * np.log(conc)))
+
+
 def integrate_mass(ref_mass, target_masses, target_counts, temperature, natoms):
     mcorsum = 0
 
@@ -401,7 +432,13 @@ def integrate_mass(ref_mass, target_masses, target_counts, temperature, natoms):
 
 
 def get_einstein_crystal_fe(
-    calc, vol, k, cm_correction=True, return_contributions=False, quantum=False
+    calc,
+    vol,
+    k,
+    cm_correction=True,
+    return_contributions=False,
+    quantum=False,
+    cm_mass=None,
 ):
     """
     Get the free energy of einstein crystal
@@ -430,6 +467,18 @@ def get_einstein_crystal_fe(
         samples a quantum-statistical distribution rather than the
         classical Boltzmann one. In the high-temperature limit
         (k_B T >> hbar omega) this reduces to the classical expression.
+
+    cm_mass : float, optional, default - None
+        Mass (g/mol) every atom carried in the switching simulation, when
+        that differs from the real masses.  Only the centre of mass
+        correction depends on it: the correction accounts for the constraint
+        on the mass weighted centre of mass that the simulation imposes, so
+        it has to be evaluated with the masses the simulation used.  The
+        Einstein crystal term keeps the real masses: the switching work is a
+        configurational quantity independent of the masses, and the kinetic
+        part of the free energy of the real system is that of the real
+        masses.  Used by the solid fe integration with Monte Carlo swaps,
+        which gives all species one common mass.
 
     Returns
     -------
@@ -504,6 +553,8 @@ def get_einstein_crystal_fe(
 
     # now get the cm correction
     if cm_correction:
+        if cm_mass is not None:
+            mass = np.full(natoms, (cm_mass / Na) * 1e-3)
         mass_sum = np.sum(mass)
         mu = mass / mass_sum
         mu2_over_k = mu**2 / k
