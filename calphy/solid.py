@@ -208,6 +208,18 @@ class Solid(cph.Phase):
         )
         return fix_ids
 
+    def _fe_swap_statistics_file(self, lmp, filename):
+        """
+        ``fix print`` of step, lambda and the cumulative attempted and
+        accepted swap counts every ``monte_carlo.n_steps`` steps, the
+        acceptance diagnostic of a switching leg.
+        """
+        lmp.command(
+            'fix               f5 all print %d "${step} ${lambda} ${swapatt} ${swapacc}" '
+            'title "# step lambda swaps_attempted swaps_accepted" screen no file %s'
+            % (self.calc.monte_carlo.n_steps, filename)
+        )
+
     def run_configurational_equilibration(self, lmp):
         """
         Equilibrate the arrangement of the species on the lattice sites.
@@ -406,6 +418,15 @@ class Solid(cph.Phase):
 
         lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
+        if self.calc._fe_swaps:
+            # One common mass for every species.  The switching work is a
+            # configurational integral and does not depend on the masses;
+            # with equal masses a swap leaves the kinetic energy and the
+            # mass weighted centre of mass unchanged, and every arrangement
+            # of the species is exactly degenerate at the Einstein end.
+            # thermodynamic_integration evaluates the reference with the
+            # real masses (Einstein term) and this mass (CM correction).
+            lmp = ph.set_uniform_mass(lmp, self.calc)
 
         # remap the box to get the correct pressure
         lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
@@ -508,6 +529,24 @@ class Solid(cph.Phase):
                 )
             )
 
+        # Monte Carlo swaps of species between lattice sites, active through
+        # both equilibration blocks and both switching legs.  The springs
+        # belong to the sites (the ti/spring groups are static), so a swap
+        # changes only the pair energy, which enters H(lambda) as
+        # (1 - lambda) U.  fix atom/swap tests exp(-dU / k T_swap) on the
+        # bare pair energy, so T_swap = T / (1 - lambda) gives the Metropolis
+        # test of the switched Hamiltonian; the offset keeps the variable
+        # finite at lambda = 1, where every swap is accepted and the
+        # arrangement is randomised.  Needs the thermoatoms fork, which
+        # takes an equal-style variable as swap temperature.
+        swap_fixes = []
+        if self.calc._fe_swaps:
+            lmp.command(
+                "variable          tswap   equal %f/(1.0-v_lambda+1.0e-12)"
+                % self.calc._temperature
+            )
+            swap_fixes = self._add_fe_swap_fixes(lmp, "v_tswap", "no", "swap")
+
         # Equilibriate structure
         lmp.command("run               %d" % n_equil)
 
@@ -549,9 +588,14 @@ class Solid(cph.Phase):
         #    lmp.command("variable b equal f_swap[2]")
         #    lmp.command("fix             swap2 all print 1 \"${a} ${b}\" screen no file swap.fe.forward_%d.dat"%iteration)
 
+        if swap_fixes:
+            self._fe_swap_statistics_file(lmp, "swap.fe.forward_%d.dat" % iteration)
+
         # Forward switching over ts steps
         lmp.command("run               %d" % self.calc._n_switching_steps)
         lmp.command("unfix             f4")
+        if swap_fixes:
+            lmp.command("unfix             f5")
 
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
@@ -567,9 +611,13 @@ class Solid(cph.Phase):
         # compute off leaves the trajectory bitwise identical and makes this
         # block essentially free; it is switched back on before the backward
         # leg, which needs the real forces and energies again.
-        lmp.command("pair_modify       compute no")
+        # With swaps the pair energies are still needed for the Metropolis
+        # test, so the pair compute stays on.
+        if not swap_fixes:
+            lmp.command("pair_modify       compute no")
         lmp.command("run               %d" % n_equil)
-        lmp.command("pair_modify       compute yes")
+        if not swap_fixes:
+            lmp.command("pair_modify       compute yes")
 
         # write out energy
         str1 = 'fix f4 all print 1 "${dU1} '
@@ -609,9 +657,16 @@ class Solid(cph.Phase):
         #    lmp.command("variable b equal f_swap[2]")
         #    lmp.command("fix             swap2 all print 1 \"${a} ${b}\" screen no file swap.fe.backward_%d.dat"%iteration)
 
+        if swap_fixes:
+            self._fe_swap_statistics_file(lmp, "swap.fe.backward_%d.dat" % iteration)
+
         # Reverse switching over ts steps
         lmp.command("run               %d" % self.calc._n_switching_steps)
         lmp.command("unfix             f4")
+        if swap_fixes:
+            lmp.command("unfix             f5")
+            for fix_id in swap_fixes:
+                lmp.command("unfix             %s" % fix_id)
 
         if self.calc.n_print_steps > 0:
             lmp.command("undump           d1")
