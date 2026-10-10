@@ -384,6 +384,11 @@ class Tolerance(_StrictInput, title="Tolerance settings for convergence"):
     # (the forward and backward integrals then cannot match) sits well above.
     dissipation: Annotated[float, Field(default=0.001, ge=0)]
     pressure: Annotated[float, Field(default=10.0, ge=0)]
+    # Convergence of the configurational equilibration that precedes a solid
+    # fe integration with monte_carlo swaps: the block-averaged potential
+    # energy per atom (blocks of md.n_small_steps) must change by less than
+    # this between successive blocks, in eV/atom.
+    swap_energy: Annotated[float, Field(default=0.001, gt=0)]
 
 
 class PhaseTransitionDetection(_StrictInput, title="Settings for the pre-flight temperature-range scan"):
@@ -695,6 +700,11 @@ class Calculation(_StrictInput, title="Main input class"):
     # to the quantum harmonic-oscillator form.
     _qtb: bool = PrivateAttr(default=False)
 
+    # internal flag: solid fe integration samples the configurational
+    # (species-on-site) degrees of freedom with Monte Carlo swaps, see
+    # _validate_fe_swaps.
+    _fe_swaps: bool = PrivateAttr(default=False)
+
     @model_validator(mode="after")
     def _validate_all(self) -> "Input":
         if self.script_mode:
@@ -943,6 +953,9 @@ class Calculation(_StrictInput, title="Main input class"):
         if self.mode == "dcci":
             self._validate_dcci()
 
+        if self.mode == "fe" and self.monte_carlo.n_swaps > 0:
+            self._validate_fe_swaps()
+
         # here we also prepare lattice dict
         for count, element in enumerate(self.element):
             self._element_dict[element] = {}
@@ -1157,6 +1170,43 @@ class Calculation(_StrictInput, title="Main input class"):
                     f"Input and output number of atoms are not conserved! Input {self.composition_scaling._input_chemical_composition}, output {self.composition_scaling.output_chemical_composition}, total atoms in structure {len(structure)}"
                 )
         return self
+
+    def _validate_fe_swaps(self):
+        """
+        Constraints of ``mode: fe`` with ``monte_carlo.n_swaps > 0``: the
+        Frenkel-Ladd path samples the arrangement of species on the lattice
+        with Monte Carlo swaps between all pairs of elements.
+
+        The swaps need the thermoatoms LAMMPS fork: the acceptance test must
+        use the switched Hamiltonian, (1 - lambda) dU, and the fork's
+        ``fix atom/swap`` takes the swap temperature as an equal-style
+        variable (T / (1 - lambda)) for that.  Stock LAMMPS only accepts a
+        number there.
+        """
+        if self.reference_phase is not None and self.reference_phase.lower() == "liquid":
+            raise ValueError(
+                "monte_carlo swaps in mode fe are only defined for "
+                "reference_phase solid (Frenkel-Ladd path); the liquid "
+                "reference has no configurational degeneracy to resolve"
+            )
+        if len(self.element) < 2:
+            raise ValueError(
+                "monte_carlo swaps in mode fe need at least two elements; "
+                "got %r" % (self.element,)
+            )
+        if not self.monte_carlo.use_custom_lammps:
+            raise ValueError(
+                "monte_carlo swaps in mode fe need the thermoatoms LAMMPS fork "
+                "(fix atom/swap with an equal-style variable as swap "
+                "temperature); set monte_carlo.use_custom_lammps: True and "
+                "point lammps_executable at that build"
+            )
+        if self._qtb:
+            raise ValueError(
+                "monte_carlo swaps in mode fe are not supported together with "
+                "the quantum thermal bath (fe-qtb)"
+            )
+        self._fe_swaps = True
 
     def _validate_dcci(self):
         """

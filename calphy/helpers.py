@@ -195,6 +195,29 @@ def set_mass(lmp, options):
     return lmp
 
 
+def mean_mass(options):
+    """
+    Composition weighted mean atomic mass, sum_i x_i m_i, in the units of the
+    input (g/mol).  Used as the single fictitious mass of every species in a
+    solid fe integration with Monte Carlo swaps: the configurational
+    integral the switching samples does not depend on the masses, and one
+    common mass makes every arrangement of species exactly degenerate at the
+    Einstein end, swaps leave the kinetic energy unchanged, and the
+    mass-weighted centre of mass is the centroid of the lattice sites.
+    """
+    return float(
+        sum(
+            options._element_dict[x]["composition"] * options._element_dict[x]["mass"]
+            for x in options.element
+        )
+    )
+
+
+def set_uniform_mass(lmp, options):
+    lmp.command(f"mass * {mean_mass(options)}")
+    return lmp
+
+
 def is_overlay_potential(options):
     return getattr(options, "pair_mode", None) == "overlay"
 
