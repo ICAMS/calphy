@@ -1,0 +1,33 @@
+# T2: ordered B2 CuZr (Mendelev EAM), 800 K, with swaps.  The arrangement should
+# stay ordered (alpha_CuZr near -1 at lambda = 0 in the dumps) and the ordering
+# work should cancel the ideal mixing term: F(swaps) close to F(noswaps).
+calculations:
+- element: [Zr, Cu]
+  mass: [91.224, 63.546]
+  lattice: ../../../../examples/example_10/ZrCu.data
+  lattice_constant: 0.0
+  mode: fe
+  reference_phase: solid
+  temperature: 800.0
+  pressure: 0.0
+  equilibration_control: berendsen
+  pair_style: eam/fs
+  pair_coeff: '* * ../../../../examples/potentials/ZrCu.eam.fs Zr Cu'
+  lammps_executable: /path/to/thermoatoms/lammps/build/lmp
+  monte_carlo:
+    n_steps: 10
+    n_swaps: 10
+    use_custom_lammps: true
+  n_print_steps: 1000
+  md:
+    timestep: 0.001
+    n_small_steps: 2000
+    n_cycles: 200
+  tolerance:
+    swap_energy: 0.0005
+  n_equilibration_steps: 25000
+  n_switching_steps: 100000
+  n_iterations: 3
+  queue:
+    scheduler: local
+    cores: 8
