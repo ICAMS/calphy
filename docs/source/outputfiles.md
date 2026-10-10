@@ -59,6 +59,7 @@ The machine-readable summary of the calculation. It has three blocks:
 | `reference_system` | Free energy of the analytic reference (Einstein crystal or Uhlenbeck–Ford model) |
 | `einstein_crystal` | Einstein-crystal contribution (solid) |
 | `com_correction` | Fixed-centre-of-mass finite-size correction (solid) |
+| `ideal_mixing` | *(solid `fe` with `monte_carlo` swaps only)* free energy of ideal mixing, `k_B T Σ x_i ln x_i`, part of the reference when the switching samples the arrangement of the species; `0` otherwise |
 | `work` | Reversible switching work between reference and system of interest |
 | `dissipation` | Mean switching dissipation, `0.5·(W_forward + W_backward)`. A measure of the irreversibility of the switching — ideally close to `0`; large values indicate the switching was too fast or a structural change occurred |
 | `ts_dissipation` | *(ts / tscale only)* maximum energy dissipation along the reversible-scaling temperature sweep, taken over all iterations. Clean sweeps give ~1e-4 eV/atom; much larger values flag a hidden phase transition and a contaminated `temperature_sweep.dat` |
@@ -140,6 +141,19 @@ analytic reference for iteration `i`.
 
 For the two-leg liquid path the files are split as `forward_leg1_<i>.dat`,
 `forward_leg2_<i>.dat` (and the `backward_` equivalents).
+
+### `swap.fe.forward_<i>.dat` / `swap.fe.backward_<i>.dat` — [](mode) `fe` with `monte_carlo` swaps
+
+Written every [](mc_n_steps) steps along each switching leg of a solid `fe` run with swaps ([](mc_fe_swaps)).
+
+| column | content |
+|---|---|
+| `step` | MD step |
+| `lambda` | switching parameter |
+| `swaps_attempted` | attempted swaps, cumulative over the integration run and all element pairs |
+| `swaps_accepted` | accepted swaps, cumulative |
+
+Differences between successive rows give the acceptance against `lambda`. It is 1 at the Einstein end, where every arrangement is degenerate, and falls to the acceptance of the real alloy at `lambda = 0`; where it is low the arrangement cannot follow the switching, which shows up as a forward/backward mismatch.
 
 ### `forward_<i>.dat` / `backward_<i>.dat` — [](mode) `alchemy`
 
@@ -250,6 +264,17 @@ stage.
 The MSD is used to fit the Einstein spring constant for the solid reference.
 
 ---
+
+### `swap.equilibration.dat`
+
+Configurational equilibration of a solid `fe` run with `monte_carlo` swaps ([](mc_fe_swaps)). Block averages over [](n_every_steps) × [](n_repeat_steps) steps of the potential energy per atom, and the cumulative attempted and accepted swaps. The loop stops when the block mean of the energy over one [](n_small_steps) block changes by less than [](tol_swap_energy) from the previous block.
+
+| column | content |
+|---|---|
+| `TimeStep` | MD step at the end of the averaging window |
+| `pe[eV/atom]` | potential energy per atom |
+| `swaps_attempted` | attempted swaps, cumulative |
+| `swaps_accepted` | accepted swaps, cumulative |
 
 ## Trajectories and configurations
 

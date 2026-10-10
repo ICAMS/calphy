@@ -158,6 +158,8 @@ points at where it belongs.
 ```
 ```{grid-item} [](tol_pressure)
 ```
+```{grid-item} [](tol_swap_energy)
+```
 ````
 
 ### `melting_temperature` 
@@ -1277,6 +1279,20 @@ pressure: 10.0
 Tolerance (in bars) for the convergence of the average pressure during the equilibration / volume-averaging stage.
 
 ---
+
+(tol_swap_energy)=
+#### `swap_energy`
+
+_type_: float \
+_default_: 0.001 \
+_example_:
+```
+swap_energy: 0.001
+```
+
+Convergence criterion (eV/atom) of the configurational equilibration that precedes a solid `fe` integration with [](mc_n_swaps) `> 0`: the block-averaged potential energy per atom (blocks of [](n_small_steps)) must change by less than this between successive blocks. At most [](n_cycles) blocks are run. See [](mc_fe_swaps).
+
+---
 ---
 
 (phase_transition_detection)=
@@ -1682,7 +1698,7 @@ Number of frequency bins discretising the QTB power spectrum from 0 to `f_max`. 
 
 ## `monte_carlo` block
 
-This block configures Monte Carlo particle-swap moves that can be interleaved with the molecular-dynamics integration during alchemical / composition-scaling calculations. By default no swaps are performed (`n_swaps: 0`).
+This block configures Monte Carlo particle-swap moves that can be interleaved with the molecular-dynamics integration during alchemical / composition-scaling calculations, reversible scaling, and, for solids, direct free energy calculations (`mode: fe`, see [](mc_fe_swaps)). By default no swaps are performed (`n_swaps: 0`).
 
 ```
 monte_carlo:
@@ -1776,7 +1792,28 @@ _example_:
 use_custom_lammps: True
 ```
 
-Use the custom LAMMPS build that ships with the modified `fix atom/swap` patch required for some swap topologies. Leave at the default unless you have built that LAMMPS variant.
+Use the custom LAMMPS build that ships with the modified `fix atom/swap` patch required for some swap topologies. Leave at the default unless you have built that LAMMPS variant. Required for swaps in `mode: fe`.
+
+---
+
+(mc_fe_swaps)=
+### Swaps in `mode: fe`: configurational entropy of a solid solution
+
+A solid `fe` calculation without swaps gives the free energy of the one arrangement of species on the lattice that the input structure has. With `n_swaps > 0` and at least two elements, the Frenkel-Ladd switching also samples the arrangement of the species with `fix atom/swap` moves between every pair of elements, and the result is the free energy of the solid solution including its configurational entropy, short range order included.
+
+The reference stays analytic because the springs belong to the lattice sites, not to the species: at the Einstein end every arrangement has the same energy, so the reference is the Einstein crystal plus the free energy of ideal mixing, $k_B T \sum_i x_i \ln x_i$. The switching work then carries the difference between the real configurational free energy and the ideal one. A swap changes only the interatomic energy, which enters the switched Hamiltonian as $(1-\lambda)\,U$, so the Metropolis test is made at the temperature $T/(1-\lambda)$. All species carry one common mass during the switching, the composition weighted mean; the switching work is a configurational quantity and does not depend on it, and with equal masses a swap leaves the kinetic energy and the centre of mass unchanged.
+
+The run has one extra stage. After the spring constants are measured, the arrangement of the species is equilibrated with swaps at $T$ and the full potential, in blocks of [](n_small_steps), until the block averaged potential energy changes by less than [](tol_swap_energy). This stage is as slow as the swap acceptance of the real alloy at $T$, and it is where the short range order is established. The switching cycles then start from, and chain through, configurations that carry it.
+
+Requirements and settings:
+
+- the thermoatoms LAMMPS fork with [](mc_use_custom_lammps) `: True`: its `fix atom/swap` takes an equal-style variable as swap temperature;
+- `reference_phase: solid`, at least two elements, not with `mode: fe-qtb`;
+- [](mc_n_swaps) swap attempts per element pair every [](mc_n_steps) MD steps; [](mc_forward_swap_types) and [](mc_reverse_swap_types) are not used, all element pairs swap.
+
+Output: `swap.equilibration.dat` (block averages of the potential energy and the cumulative attempted and accepted swaps of the configurational equilibration), `swap.fe.forward_<n>.dat` and `swap.fe.backward_<n>.dat` (step, $\lambda$, cumulative attempted and accepted swaps along each leg; the acceptance against $\lambda$ shows where the arrangement can and cannot follow the switching). `report.yaml` lists the ideal mixing term as `results.ideal_mixing`; `free_energy` includes it.
+
+A low acceptance near $\lambda = 0$ means the arrangement lags behind the switching there; compare forward and backward work and lengthen [](n_switching_steps) or raise [](mc_n_swaps) until the free energy stops changing.
 
 ---
 ---
