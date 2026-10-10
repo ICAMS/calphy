@@ -67,6 +67,34 @@ def test_solid_fe_integration(make_calc, recorded_job):
 
 
 # --------------------------------------------------------------------------- #
+# Solid fe with Monte Carlo swaps (B14, binary ZrCu): configurational
+# equilibration in the averaging stage, swaps at T/(1-lambda) along both legs
+# --------------------------------------------------------------------------- #
+def _b14_calc(make_calc):
+    calc = make_calc("B14", lattice_sentinel=None, lattice=ZRCU, **LOOSE_TOL)
+    calc.lattice = "structure.data"
+    return calc
+
+
+def test_solid_fe_swaps_averaging(make_calc, recorded_job):
+    calc = _b14_calc(make_calc)
+    job, rec = recorded_job(
+        Solid, calc,
+        fixtures=["avg.dat", ("msd2.dat", "msd.dat"), "swap.equilibration.dat"],
+    )
+    job.run_averaging()
+    assert_golden(rec.commands, "solid_fe_swaps_averaging")
+
+
+def test_solid_fe_swaps_integration(make_calc, recorded_job):
+    calc = _b14_calc(make_calc)
+    job, rec = recorded_job(Solid, calc)
+    _set_state(job, k=[2.0, 3.0])
+    job.run_integration(iteration=1)
+    assert_golden(rec.commands, "solid_fe_swaps_integration")
+
+
+# --------------------------------------------------------------------------- #
 # Liquid fe: averaging (melt cycle / rattle) + integration
 # --------------------------------------------------------------------------- #
 def test_liquid_fe_averaging_meltcycle(make_calc, recorded_job):

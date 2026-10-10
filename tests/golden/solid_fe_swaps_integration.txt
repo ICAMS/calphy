@@ -1,0 +1,51 @@
+units metal
+boundary p p p
+atom_style atomic
+timestep 0.001
+pair_style eam/fs
+read_data conf.equilibration.data
+pair_coeff * * examples/potentials/ZrCu.eam.fs Zr Cu
+mass 1 91.224
+mass 2 63.546
+mass * 77.385
+run 0
+change_box all x final 0.0 18.075000 y final 0.0 18.075000 z final 0.0 18.075000 remap units box
+group g1 type 1
+group g2 type 2
+variable count1 equal count(g1)
+variable count2 equal count(g2)
+run 0
+fix f1 all nve
+fix ff1 g1 ti/spring 10.0 100 100 function 2
+fix ff2 g2 ti/spring 10.0 100 100 function 2
+fix f3 all langevin 800.000000 800.000000 0.100000 7271 zero yes
+compute Tcm all temp/com
+fix_modify f3 temp Tcm
+variable step equal step
+variable dU1 equal pe/atoms
+variable dU2 equal f_ff1
+variable dU3 equal f_ff2
+variable lambda equal f_ff1[1]
+thermo_style custom step pe c_Tcm
+thermo 10000
+velocity all create 800.000000 861 mom yes rot yes dist gaussian
+fix ff1 g1 ti/spring 2.000000 5000 1000 function 2
+fix ff2 g2 ti/spring 3.000000 5000 1000 function 2
+variable tswap equal 800.000000/(1.0-v_lambda+1.0e-12)
+fix swap0 all atom/swap 10 5 5391 v_tswap ke no types 1 2 noforce yes localE yes
+variable swapatt equal f_swap0[1]
+variable swapacc equal f_swap0[2]
+run 1000
+fix f4 all print 1 "${dU1} ${dU2} ${dU3} ${lambda}" title "# dU_sys[eV/atom] dU_ref1[eV/atom] dU_ref2[eV/atom] lambda" screen no file forward_1.dat
+fix f5 all print 10 "${step} ${lambda} ${swapatt} ${swapacc}" title "# step lambda swaps_attempted swaps_accepted" screen no file swap.fe.forward_1.dat
+run 5000
+unfix f4
+unfix f5
+run 1000
+fix f4 all print 1 "${dU1} ${dU2} ${dU3} ${lambda}" title "# dU_sys[eV/atom] dU_ref1[eV/atom] dU_ref2[eV/atom] lambda" screen no file backward_1.dat
+fix f5 all print 10 "${step} ${lambda} ${swapatt} ${swapacc}" title "# step lambda swaps_attempted swaps_accepted" screen no file swap.fe.backward_1.dat
+run 5000
+unfix f4
+unfix f5
+unfix swap0
+write_data conf.fe.backward_1.data

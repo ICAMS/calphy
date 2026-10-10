@@ -230,7 +230,10 @@ def recorded_job(tmp_path, monkeypatch):
         calc.md.seed = 42
         simfolder = str(tmp_path)
         for fx in fixtures:
-            shutil.copy(os.path.join(FIXTURE_DIR, fx), os.path.join(simfolder, fx))
+            # a (source, destination) pair stages a fixture under the name
+            # the code reads, e.g. a two-species msd file as msd.dat
+            src, dst = fx if isinstance(fx, tuple) else (fx, fx)
+            shutil.copy(os.path.join(FIXTURE_DIR, src), os.path.join(simfolder, dst))
         state["seq"] = list(solid_fraction_seq) if solid_fraction_seq else None
         state["default"] = (
             default_solid_fraction
