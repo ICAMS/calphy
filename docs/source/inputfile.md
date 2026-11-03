@@ -992,6 +992,8 @@ n_cycles: 100
 
 Number of cycles to try converging the pressure of the system. If the pressure is not converged after `n_cycles`, an error will be raised. In each `n_cycle`, `n_small_steps` MD steps will be run.
 
+The same limit applies to the spring constant estimate for solids. If the spring constants are not converged after `n_cycles`, the last estimate is used and a warning is logged.
+
 
 ---
 
@@ -1218,7 +1220,7 @@ _example_:
 spring_constant: 0.1
 ```
 
-tolerance for the convergence of spring constant calculation.
+Tolerance for the convergence of the spring constant calculation, as the relative change of the spring constants between two cycles. The default of 0.1 stops once the spring constants change by less than 10 %. The spring constants only need to be approximate, since the free energy does not depend on their exact value. If the mean squared displacement cannot be measured, for example because it is zero, the run stops with an error and the spring constants have to be set with [](spring_constants).
 
 ---
 
