@@ -296,11 +296,11 @@ def _check_free_energy(scenario, rundir):
         "%s free energy delta %.2e eV/atom exceeds tol %.2e "
         "(new=%.6f base=%.6f)" % (scenario, delta, tol, fe_new, fe_base)
     )
-    # Spring constant is informational only: calphy rounds the mean MSD to 2
-    # decimals and does not pin the RNG seed, so k = 3 kB T / MSD is bistable
-    # run-to-run (e.g. B1 flips between ~1.85 and ~2.15) in the OLD code too.
-    # The free energy is insensitive to the exact k (Frenkel-Ladd), so we assert
-    # on fe only and just report the spring delta.
+    # Spring constant is informational only: the baselines were made when calphy
+    # rounded the mean MSD to 2 decimals, which made k = 3 kB T / MSD bistable
+    # run-to-run (e.g. B1 flipped between ~1.85 and ~2.15), and the RNG seed is
+    # not pinned. The free energy is insensitive to the exact k (Frenkel-Ladd),
+    # so we assert on fe only and just report the spring delta.
     k_new = new.get("average", {}).get("spring_constant")
     k_base = base.get("average", {}).get("spring_constant")
     kinfo = ""

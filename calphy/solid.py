@@ -91,20 +91,32 @@ class Solid(cph.Phase):
         lmp = ph.compute_msd(lmp, self.calc)
 
         if ph.check_if_any_is_none(self.calc.spring_constants):
-            # similar averaging routine
-            laststd = 0.00
+            # k only has to be close: the Frenkel-Ladd free energy does not depend
+            # on its exact value. Stop once k changes by less than
+            # tolerance.spring_constant (relative) between cycles, and fall back
+            # to the last estimate rather than iterating without end.
+            k_last = np.zeros(self.calc.n_elements)
             for i in range(self.calc.md.n_cycles):
                 lmp.command("run              %d" % int(self.calc.md.n_small_steps))
                 lmp.sync()  # flush before analyse_spring_constants reads msd.dat
                 k_mean, k_std = self.analyse_spring_constants(lmp)
                 self.logger.info(
-                    "At count %d mean k is %f std is %f" % (i + 1, k_mean[0], k_std[0])
+                    "At count %d mean k is %s" % (i + 1, " ".join("%f" % k for k in k_mean))
                 )
-                if np.abs(laststd - k_std[0]) < self.calc.tolerance.spring_constant:
-                    # now reevaluate spring constants
-                    self.assign_spring_constants(k_mean)
+                k_now = np.array(k_mean)
+                # nan for elements without a usable MSD; those are left out here
+                change = np.abs(k_now - k_last) / k_now
+                k_last = k_now
+                finite = np.isfinite(change)
+                if not np.any(finite) or np.max(change[finite]) < self.calc.tolerance.spring_constant:
                     break
-                laststd = k_std[0]
+            else:
+                self.logger.warning(
+                    "Spring constants not converged to a relative change of %f "
+                    "after %d cycles; using the last estimate"
+                    % (self.calc.tolerance.spring_constant, self.calc.md.n_cycles)
+                )
+            self.assign_spring_constants(k_mean)
 
         else:
             if not (len(self.calc.spring_constants) == self.calc.n_elements):
@@ -137,17 +149,21 @@ class Solid(cph.Phase):
         k_std = []
         for i in range(self.calc.n_elements):
             quant = msd[:, i + 1][-ncount + 1 :]
-            mean_quant = np.round(np.mean(quant), decimals=2)
-            std_quant = np.round(np.std(quant), decimals=2)
-            if mean_quant == 0:
+            mean_quant = np.mean(quant)
+            std_quant = np.std(quant)
+            if not (np.isfinite(mean_quant) and mean_quant > 0):
+                # e.g. an element with no atoms. nan is replaced by another
+                # element's k in validate_spring_constants, which raises if no
+                # element has a usable value. Never substitute a fixed MSD: it
+                # gives a k that is wrong by orders of magnitude at low T.
                 self.logger.warning(
-                    "MSD for element index %d averaged to ~0; spring-constant "
-                    "estimation is unreliable. Consider increasing equilibration "
-                    "time or providing spring_constants explicitly." % i
+                    "MSD for element index %d is %s; cannot estimate its spring "
+                    "constant. Provide spring_constants explicitly if this "
+                    "element has atoms." % (i, mean_quant)
                 )
-                mean_quant = 1.00
-            mean_quant = 3 * kb * self.calc._temperature / mean_quant
-            k_mean.append(mean_quant)
+                k_mean.append(np.nan)
+            else:
+                k_mean.append(3 * kb * self.calc._temperature / mean_quant)
             k_std.append(std_quant)
         return k_mean, k_std
 
