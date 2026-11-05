@@ -554,6 +554,11 @@ class Phase:
         aborted with a MeltedError.  Detection can be turned off by setting
         ``tolerance.solid_fraction: 0``.
         """
+        # Disabled (solid_fraction <= 0): the comparison below can never fire, so do not run the
+        # structure analysis at all. It is not free, and pyscal3 can segfault in find.neighbors on
+        # some LAMMPS triclinic dumps, killing a run over a check that could not have stopped it.
+        if self.calc.tolerance.solid_fraction <= 0:
+            return
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if solids / self.natoms < self.calc.tolerance.solid_fraction:
             self.lammps_close(lmp=lmp)
@@ -569,7 +574,11 @@ class Phase:
 
         If the solid fraction in ``filename`` exceeds
         ``tolerance.liquid_fraction`` the run is aborted with a SolidifiedError.
+        Disabled (``liquid_fraction >= 1``), the analysis is skipped, as in
+        ``check_if_melted``.
         """
+        if self.calc.tolerance.liquid_fraction >= 1:
+            return
         solids = ph.find_solid_fraction(os.path.join(self.simfolder, filename))
         if solids / self.natoms > self.calc.tolerance.liquid_fraction:
             self.lammps_close(lmp=lmp)
