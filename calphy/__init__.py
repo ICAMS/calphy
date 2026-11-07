@@ -28,7 +28,7 @@ from calphy.solid import Solid
 from calphy.alchemy import Alchemy
 from calphy.routines import MeltingTemp
 
-__version__ = "2.3.0"
+__version__ = "2.3.1"
 
 def addtest(a,b):
     return a+b
