@@ -1758,8 +1758,6 @@ class Phase:
         lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
-
         # ── Re-install scaled potential at constant λ = lf BEFORE the
         # middle equilibration.  The forward sweep ended with the scaled
         # pair style active at λ = lf, so the snapshot stored in

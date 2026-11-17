@@ -101,20 +101,32 @@ def test_averaging_stores_zero_tilts_for_an_orthogonal_cell(make_calc, recorded_
     assert (job.xy, job.xz, job.yz) == (0.0, 0.0, 0.0)
 
 
-def test_averaging_stores_tilts_and_backward_leg_restores_them(make_calc, recorded_job):
+def test_averaging_stores_tilts_and_forward_leg_restores_them(make_calc, recorded_job):
     calc = make_calc("B6", **LOOSE_TOL)
     job, rec = recorded_job(Solid, calc, fixtures=["avg.dat", "msd.dat"])
     _triclinic_avg_dat(os.path.join(job.simfolder, "avg.dat"))
     job.run_averaging()
     assert (job.xy, job.xz, job.yz) == (-9.0, 0.5, -0.25)
 
-    # the backward leg opens a runner of its own, which the recorder now follows
-    job._reversible_scaling_backward(iteration=1)
+    # the forward leg opens a runner of its own, which the recorder now follows
+    job._reversible_scaling_forward(iteration=1)
     remaps = [c for c in rec.commands if c.startswith("change_box")]
     assert len(remaps) == 1
     assert remaps[0].endswith(
         "xy final -9.000000 xz final 0.500000 yz final -0.250000 remap units box"
     )
+
+
+def test_backward_leg_continues_from_the_forward_end_state(make_calc, recorded_job):
+    """The backward sweep starts from conf.ts.forward_<i>.data as written: no
+    reset of the cell to the T0 reference box at the turning point."""
+    calc = make_calc("B6", **LOOSE_TOL)
+    job, rec = recorded_job(Solid, calc)
+    job.lx = job.ly = job.lz = 18.075
+    job.xy, job.xz, job.yz = -9.0, 0.5, -0.25
+    job._reversible_scaling_backward(iteration=1)
+    assert any(c.startswith("read_data") and "conf.ts.forward_1.data" in c for c in rec.commands)
+    assert not [c for c in rec.commands if c.startswith("change_box")]
 
 
 # --------------------------------------------------------------------------- #
