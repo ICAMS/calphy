@@ -250,7 +250,7 @@ class Liquid(cph.Phase):
         lmp = ph.set_mass(lmp, self.calc)
 
         # remap the box to get the correct pressure
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         lmp.command("fix              f1 all nve")
         lmp.command(

@@ -184,7 +184,7 @@ class Alchemy(cph.Phase):
         lmp = ph.read_data(lmp, conf)
         self._coupling_pair(lmp, ramp="0.0")
         lmp = ph.set_mass(lmp, self.calc)
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
         lmp.command(
             "velocity          all create %f %d mom yes rot yes dist gaussian"
             % (self.calc._temperature, np.random.randint(1, 10000)))
@@ -356,7 +356,7 @@ class Alchemy(cph.Phase):
         lmp.command("group g2 type 2")
 
         # remap the box to get the correct pressure
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         lmp.command(
             "velocity          all create %f %d mom yes rot yes dist gaussian"

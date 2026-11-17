@@ -373,7 +373,7 @@ class DynamicCCI:
         if direction == "forward":
             # conf.equilibration.data is an equilibrium sample at (T0, P_start)
             # with fluctuating box: pin it to the averaged box as every sweep does
-            lmp = ph.remap_box(lmp, job.lx, job.ly, job.lz)
+            lmp = ph.remap_box(lmp, job.lx, job.ly, job.lz, job.xy, job.xz, job.yz)
             lmp.command(
                 "velocity          all create %f %d mom yes rot yes dist gaussian"
                 % (self.t0, seed)

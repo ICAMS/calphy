@@ -280,10 +280,14 @@ class Phase:
         #: Written to report.yaml as results.ts_dissipation_high.
         self.ediss_high = False
 
-        # box dimensions that need to be stored
+        # box dimensions that need to be stored: the reference cell of the
+        # averaging stage, restored by every later stage (helpers.remap_box)
         self.lx = None
         self.ly = None
         self.lz = None
+        self.xy = None
+        self.xz = None
+        self.yz = None
 
         # now manually tune pair styles
         if self.calc.pair_style is not None:
@@ -927,8 +931,8 @@ class Phase:
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
             lmp.sync()  # flush before reading avg.dat this cycle
 
-            lx, ly, lz, ipress = lmp.read_timeseries(
-                "avg.dat", usecols=(1, 2, 3, 4)
+            lx, ly, lz, ipress, xy, xz, yz = lmp.read_timeseries(
+                "avg.dat", usecols=self._AVG_CELL_COLUMNS
             ).T
             n_samples_total = len(ipress)
             # keep only what was sampled at the box we are currently in
@@ -936,6 +940,9 @@ class Phase:
             ly = ly[reset_index:]
             lz = lz[reset_index:]
             ipress = ipress[reset_index:]
+            xy = xy[reset_index:]
+            xz = xz[reset_index:]
+            yz = yz[reset_index:]
 
             if just_rescaled:
                 just_rescaled = False
@@ -953,11 +960,13 @@ class Phase:
                 lx_avg = lx
                 ly_avg = ly
                 lz_avg = lz
+                tilts_avg = (xy, xz, yz)
             else:
                 lxpc = ipress[skip_samples:]
                 lx_avg = lx[skip_samples:]
                 ly_avg = ly[skip_samples:]
                 lz_avg = lz[skip_samples:]
+                tilts_avg = (xy[skip_samples:], xz[skip_samples:], yz[skip_samples:])
             mean = np.mean(lxpc)
             std = np.std(lxpc)
             volatom = np.mean((lx_avg * ly_avg * lz_avg) / self.natoms)
@@ -973,6 +982,7 @@ class Phase:
                 self.lx = np.round(np.mean(lx_avg), decimals=3)
                 self.ly = np.round(np.mean(ly_avg), decimals=3)
                 self.lz = np.round(np.mean(lz_avg), decimals=3)
+                self._store_tilts(*tilts_avg)
                 self.volatom = volatom
                 self.vol = self.lx * self.ly * self.lz
                 self.rho = self.natoms / (self.lx * self.ly * self.lz)
@@ -984,6 +994,7 @@ class Phase:
                     "Avg box dimensions x: %f, y: %f, z:%f"
                     % (self.lx, self.ly, self.lz)
                 )
+                self._log_tilts()
                 converged = True
                 break
             else:
@@ -1002,8 +1013,9 @@ class Phase:
                             "%.6f (from vol/atom %.4f)" % (scale, current_volatom)
                         )
                         lmp.command(
-                            "change_box       all x scale %f y scale %f z scale %f remap"
-                            % (scale, scale, scale)
+                            ph.scale_box_command(
+                                scale, triclinic=bool(np.any(xy) or np.any(xz) or np.any(yz))
+                            )
                         )
                         # everything sampled so far belongs to the old box
                         reset_index = n_samples_total
@@ -1025,6 +1037,24 @@ class Phase:
             self.unfix_berendsen(lmp)
 
         lmp.command("unfix            2")
+
+    #: avg.dat columns read for the reference cell: lx ly lz press xy xz yz
+    _AVG_CELL_COLUMNS = tuple(
+        ph.AVG_COLUMNS[name]
+        for name in ("mlx", "mly", "mlz", "mpress", "mxy", "mxz", "myz")
+    )
+
+    def _store_tilts(self, xy, xz, yz):
+        """Store the mean tilt factors of the reference cell (0 for an orthogonal box)."""
+        self.xy = np.round(np.mean(xy), decimals=3)
+        self.xz = np.round(np.mean(xz), decimals=3)
+        self.yz = np.round(np.mean(yz), decimals=3)
+
+    def _log_tilts(self):
+        if any(t != 0 for t in (self.xy, self.xz, self.yz)):
+            self.logger.info(
+                "Avg box tilts xy: %f, xz: %f, yz: %f" % (self.xy, self.xz, self.yz)
+            )
 
     @staticmethod
     def _fit_volume_scale(pv_history, target_pressure, current_volume=None):
@@ -1174,7 +1204,9 @@ class Phase:
             self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
         )
 
-        lx, ly, lz, lxpc = lmp.read_timeseries("avg.dat", usecols=(1, 2, 3, 4)).T
+        lx, ly, lz, lxpc, xy, xz, yz = lmp.read_timeseries(
+            "avg.dat", usecols=self._AVG_CELL_COLUMNS
+        ).T
         lx = lx[-ncount + 1 :]
         ly = ly[-ncount + 1 :]
         lz = lz[-ncount + 1 :]
@@ -1188,6 +1220,9 @@ class Phase:
         self.lx = np.round(np.mean(lx), decimals=3)
         self.ly = np.round(np.mean(ly), decimals=3)
         self.lz = np.round(np.mean(lz), decimals=3)
+        self._store_tilts(
+            xy[-ncount + 1 :], xz[-ncount + 1 :], yz[-ncount + 1 :]
+        )
         self.volatom = volatom
         self.vol = self.lx * self.ly * self.lz
         self.rho = self.natoms / (self.lx * self.ly * self.lz)
@@ -1195,6 +1230,7 @@ class Phase:
         self.logger.info(
             "Avg box dimensions x: %f, y: %f, z:%f" % (self.lx, self.ly, self.lz)
         )
+        self._log_tilts()
 
     def submit_report(self, extra_dict=None):
         """
@@ -1512,7 +1548,7 @@ class Phase:
         lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         # ── Initial equilibration ──────────────────────────────────────────
         if self.calc.npt:
@@ -1722,7 +1758,7 @@ class Phase:
         lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         # ── Re-install scaled potential at constant λ = lf BEFORE the
         # middle equilibration.  The forward sweep ended with the scaled
@@ -1994,7 +2030,7 @@ class Phase:
 
         lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         # ── Short equilibration at T0 ───────────────────────────────────────
         lmp.command(
@@ -2192,7 +2228,7 @@ class Phase:
         lmp = ph.set_mass(lmp, self.calc)
 
         # remap the box to get the correct pressure
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         # equilibrate first
         lmp.command(
@@ -2344,7 +2380,7 @@ class Phase:
         lmp = ph.set_mass(lmp, self.calc)
 
         # remap the box to get the correct pressure
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         # equilibrate first
         lmp.command(
