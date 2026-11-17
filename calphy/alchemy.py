@@ -278,14 +278,7 @@ class Alchemy(cph.Phase):
         lmp = ph.set_mass(lmp, self.calc)
 
         # add some computes
-        lmp.command("variable         mvol equal vol")
-        lmp.command("variable         mlx equal lx")
-        lmp.command("variable         mly equal ly")
-        lmp.command("variable         mlz equal lz")
-        lmp.command("variable         mpress equal press")
-        lmp.command("variable         mpe equal pe/atoms")
-        lmp.command("variable         metotal equal etotal/atoms")
-        lmp.command("variable         mtemp equal temp")
+        lmp = ph.define_average_variables(lmp)
 
         # add some computes
         if not self.calc._fix_lattice:

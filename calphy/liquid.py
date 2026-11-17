@@ -180,14 +180,7 @@ class Liquid(cph.Phase):
         )
 
         # add some computes
-        lmp.command("variable         mvol equal vol")
-        lmp.command("variable         mlx equal lx")
-        lmp.command("variable         mly equal ly")
-        lmp.command("variable         mlz equal lz")
-        lmp.command("variable         mpress equal press")
-        lmp.command("variable         mpe equal pe/atoms")
-        lmp.command("variable         metotal equal etotal/atoms")
-        lmp.command("variable         mtemp equal temp")
+        lmp = ph.define_average_variables(lmp)
 
         # Disorder the structure before equilibration
         if self.calc.melting_cycle:

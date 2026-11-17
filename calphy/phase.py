@@ -773,7 +773,7 @@ class Phase:
         else:
             self.fix_berendsen(lmp)
         # start thermo logging
-        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
+        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
         lmp.command("thermo           10")
 
         # run MD
@@ -816,7 +816,7 @@ class Phase:
         if self.calc._qtb:
             # QTB cannot ramp T; do three cycles at staircase T to mimic the warm-up
             self.fix_qtb(lmp, temp_start_factor=0.5, temp_end_factor=0.5, ensemble="npt")
-            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
             lmp.command("thermo           10")
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
             self.unfix_qtb(lmp)
@@ -832,7 +832,7 @@ class Phase:
         elif self.calc.equilibration_control == "nose-hoover":
             # Cycle 1: 0.25-0.5 temperature, full pressure
             self.fix_nose_hoover(lmp, temp_start_factor=0.25, temp_end_factor=0.5)
-            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
             lmp.command("thermo           10")
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
             self.unfix_nose_hoover(lmp)
@@ -850,7 +850,7 @@ class Phase:
         else:
             # Cycle 1: 0.25-0.5 temperature, full pressure
             self.fix_berendsen(lmp, temp_start_factor=0.25, temp_end_factor=0.5)
-            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
             lmp.command("thermo           10")
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
             self.unfix_berendsen(lmp)
@@ -901,12 +901,7 @@ class Phase:
         ave_repeat = int(self.calc.md.n_repeat_steps)
         ave_freq = ave_every * ave_repeat
 
-        lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp "
-            'title2 "# TimeStep lx[A] ly[A] lz[A] press[bar] pe[eV/atom] etotal[eV/atom] temp[K]" '
-            "file avg.dat"
-            % (ave_every, ave_repeat, ave_freq)
-        )
+        lmp.command(ph.average_fix_command(ave_every, ave_repeat, ave_freq))
 
         ncount = int(self.calc.md.n_small_steps) // ave_freq
         target_pressure = self.calc._pressure
@@ -1114,15 +1109,12 @@ class Phase:
                     self.calc.md.thermostat_damping[1],
                 )
             )
-        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
+        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
         lmp.command("thermo           10")
 
         # this is when the averaging routine starts
         lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp "
-            'title2 "# TimeStep lx[A] ly[A] lz[A] press[bar] pe[eV/atom] etotal[eV/atom] temp[K]" '
-            "file avg.dat"
-            % (
+            ph.average_fix_command(
                 int(self.calc.md.n_every_steps),
                 int(self.calc.md.n_repeat_steps),
                 int(self.calc.md.n_every_steps * self.calc.md.n_repeat_steps),
@@ -1570,7 +1562,7 @@ class Phase:
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU      equal c_thermo_pe/atoms")
-        lmp.command("thermo_style      custom step pe c_tcm press vol")
+        lmp.command("thermo_style      custom step pe c_tcm press vol lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
         lmp.command("thermo            10000")
 
         lmp.command(
@@ -1774,7 +1766,7 @@ class Phase:
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU      equal c_thermo_pe/atoms")
-        lmp.command("thermo_style      custom step pe c_tcm press vol")
+        lmp.command("thermo_style      custom step pe c_tcm press vol lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
         lmp.command("thermo            10000")
 
         # ── Middle equilibration at effective Tf (scaled potential, λ=lf) ──

@@ -381,6 +381,56 @@ def get_structures(file, species, index=None):
     return traj[index].to_atoms(species=species)
 
 
+#: Cell-shape and stress-tensor columns appended to every equilibration and sweep
+#: ``thermo_style``.  Under ``pressure_coupling: iso`` or ``aniso`` the tilt
+#: factors are not barostatted and the shear stress is otherwise invisible.
+CELL_THERMO_KEYWORDS = "xy xz yz pxx pyy pzz pxy pxz pyz"
+
+#: Equal-style variables sampled into ``avg.dat``, in column order.  The first
+#: seven are the historical columns (``usecols=(1, 2, 3, 4)`` = lx ly lz press is
+#: read by the pressure convergence); the cell tilts and the stress tensor are
+#: appended after them so that existing readers keep working.
+AVERAGE_VARIABLES = (
+    ("mlx", "lx", "lx[A]"),
+    ("mly", "ly", "ly[A]"),
+    ("mlz", "lz", "lz[A]"),
+    ("mpress", "press", "press[bar]"),
+    ("mpe", "pe/atoms", "pe[eV/atom]"),
+    ("metotal", "etotal/atoms", "etotal[eV/atom]"),
+    ("mtemp", "temp", "temp[K]"),
+    ("mxy", "xy", "xy[A]"),
+    ("mxz", "xz", "xz[A]"),
+    ("myz", "yz", "yz[A]"),
+    ("mpxx", "pxx", "pxx[bar]"),
+    ("mpyy", "pyy", "pyy[bar]"),
+    ("mpzz", "pzz", "pzz[bar]"),
+    ("mpxy", "pxy", "pxy[bar]"),
+    ("mpxz", "pxz", "pxz[bar]"),
+    ("mpyz", "pyz", "pyz[bar]"),
+)
+
+#: ``avg.dat`` column indices (column 0 is the time step).
+AVG_COLUMNS = {name: i + 1 for i, (name, _, _) in enumerate(AVERAGE_VARIABLES)}
+
+
+def define_average_variables(lmp):
+    """Define the equal-style variables that ``average_fix_command`` samples."""
+    lmp.command("variable         mvol equal vol")
+    for name, expression, _ in AVERAGE_VARIABLES:
+        lmp.command("variable         %s equal %s" % (name, expression))
+    return lmp
+
+
+def average_fix_command(n_every, n_repeat, n_freq):
+    """The ``fix 2 ... ave/time ... file avg.dat`` command of the averaging stage."""
+    values = " ".join("v_%s" % name for name, _, _ in AVERAGE_VARIABLES)
+    title = " ".join(label for _, _, label in AVERAGE_VARIABLES)
+    return (
+        'fix              2 all ave/time %d %d %d %s title2 "# TimeStep %s" file avg.dat'
+        % (n_every, n_repeat, n_freq, values, title)
+    )
+
+
 def remap_box(lmp, x, y, z):
     lmp.command("run 0")
     lmp.command(

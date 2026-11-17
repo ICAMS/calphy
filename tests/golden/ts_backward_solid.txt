@@ -22,7 +22,7 @@ compute tcm all temp/com
 fix_modify f1 temp tcm
 variable step equal step
 variable dU equal c_thermo_pe/atoms
-thermo_style custom step pe c_tcm press vol
+thermo_style custom step pe c_tcm press vol lx ly lz xy xz yz pxx pyy pzz pxy pxz pyz
 thermo 10000
 run 2500
 dump 2 all custom 1 traj.temp.dat id type mass x y z vx vy vz
