@@ -381,12 +381,108 @@ def get_structures(file, species, index=None):
     return traj[index].to_atoms(species=species)
 
 
-def remap_box(lmp, x, y, z):
-    lmp.command("run 0")
-    lmp.command(
-        "change_box     all x final 0.0 %f y final 0.0 %f z final 0.0 %f remap units box"
-        % (x, y, z)
+#: Cell-shape and stress-tensor columns appended to every equilibration and sweep
+#: ``thermo_style``.  Under ``pressure_coupling: iso`` or ``aniso`` the tilt
+#: factors are not barostatted and the shear stress is otherwise invisible.
+CELL_THERMO_KEYWORDS = "xy xz yz pxx pyy pzz pxy pxz pyz"
+
+#: Equal-style variables sampled into ``avg.dat``, in column order.  The first
+#: seven are the historical columns (``usecols=(1, 2, 3, 4)`` = lx ly lz press is
+#: read by the pressure convergence); the cell tilts and the stress tensor are
+#: appended after them so that existing readers keep working.
+AVERAGE_VARIABLES = (
+    ("mlx", "lx", "lx[A]"),
+    ("mly", "ly", "ly[A]"),
+    ("mlz", "lz", "lz[A]"),
+    ("mpress", "press", "press[bar]"),
+    ("mpe", "pe/atoms", "pe[eV/atom]"),
+    ("metotal", "etotal/atoms", "etotal[eV/atom]"),
+    ("mtemp", "temp", "temp[K]"),
+    ("mxy", "xy", "xy[A]"),
+    ("mxz", "xz", "xz[A]"),
+    ("myz", "yz", "yz[A]"),
+    ("mpxx", "pxx", "pxx[bar]"),
+    ("mpyy", "pyy", "pyy[bar]"),
+    ("mpzz", "pzz", "pzz[bar]"),
+    ("mpxy", "pxy", "pxy[bar]"),
+    ("mpxz", "pxz", "pxz[bar]"),
+    ("mpyz", "pyz", "pyz[bar]"),
+)
+
+#: ``avg.dat`` column indices (column 0 is the time step).
+AVG_COLUMNS = {name: i + 1 for i, (name, _, _) in enumerate(AVERAGE_VARIABLES)}
+
+
+def define_average_variables(lmp):
+    """Define the equal-style variables that ``average_fix_command`` samples."""
+    lmp.command("variable         mvol equal vol")
+    for name, expression, _ in AVERAGE_VARIABLES:
+        lmp.command("variable         %s equal %s" % (name, expression))
+    return lmp
+
+
+def average_fix_command(n_every, n_repeat, n_freq):
+    """The ``fix 2 ... ave/time ... file avg.dat`` command of the averaging stage."""
+    values = " ".join("v_%s" % name for name, _, _ in AVERAGE_VARIABLES)
+    title = " ".join(label for _, _, label in AVERAGE_VARIABLES)
+    return (
+        'fix              2 all ave/time %d %d %d %s title2 "# TimeStep %s" file avg.dat'
+        % (n_every, n_repeat, n_freq, values, title)
     )
+
+
+def scale_box_command(scale, triclinic=False):
+    """
+    ``change_box`` command that scales the whole cell isotropically by ``scale``.
+
+    ``change_box ... x scale`` changes the lengths only and leaves the tilt
+    factors as they are, which shears a triclinic cell.  For one, the tilts are
+    scaled too, with ``$(...)`` evaluated before the command changes the box.
+    """
+    command = "change_box       all x scale %f y scale %f z scale %f" % (
+        scale,
+        scale,
+        scale,
+    )
+    if triclinic:
+        command += " xy final $(xy*%f) xz final $(xz*%f) yz final $(yz*%f)" % (
+            scale,
+            scale,
+            scale,
+        )
+    return command + " remap"
+
+
+def remap_box(lmp, x, y, z, xy=None, xz=None, yz=None):
+    """
+    Reset the simulation cell to a stored reference cell, remapping the atoms.
+
+    Parameters
+    ----------
+    lmp : BaseRunner
+    x, y, z : float
+        Box lengths lx, ly, lz [A].
+    xy, xz, yz : float, optional
+        Tilt factors [A].  If any is non-zero they are set as well, so the
+        reference cell is restored completely.  ``change_box ... y final`` on
+        its own leaves the tilts as they were read, and a configuration read
+        from a hot state (the end of a forward reversible-scaling sweep) then
+        carries the hot tilts onto the reference lengths -- a shear that
+        ``fix npt iso/aniso`` keeps for the whole of the following run, since
+        it does not barostat the tilts but rescales them with the lengths.
+        Leave them unset (or zero) for an orthogonal box, which has no tilt
+        factors to set.
+    """
+    lmp.command("run 0")
+    command = "change_box     all x final 0.0 %f y final 0.0 %f z final 0.0 %f" % (
+        x,
+        y,
+        z,
+    )
+    tilts = [0.0 if t is None else float(t) for t in (xy, xz, yz)]
+    if any(t != 0.0 for t in tilts):
+        command += " xy final %f xz final %f yz final %f" % tuple(tilts)
+    lmp.command(command + " remap units box")
     return lmp
 
 

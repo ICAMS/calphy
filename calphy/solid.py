@@ -220,14 +220,7 @@ class Solid(cph.Phase):
         lmp = ph.set_mass(lmp, self.calc)
 
         # add some computes
-        lmp.command("variable         mvol equal vol")
-        lmp.command("variable         mlx equal lx")
-        lmp.command("variable         mly equal ly")
-        lmp.command("variable         mlz equal lz")
-        lmp.command("variable         mpress equal press")
-        lmp.command("variable         mpe equal pe/atoms")
-        lmp.command("variable         metotal equal etotal/atoms")
-        lmp.command("variable         mtemp equal temp")
+        lmp = ph.define_average_variables(lmp)
 
         # Run if a constrained lattice is not needed
         if not self.calc._fix_lattice:
@@ -299,7 +292,7 @@ class Solid(cph.Phase):
         lmp = ph.set_mass(lmp, self.calc)
 
         # remap the box to get the correct pressure
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         # create groups - each species belong to one group
         for i in range(self.calc.n_elements):

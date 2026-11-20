@@ -280,10 +280,14 @@ class Phase:
         #: Written to report.yaml as results.ts_dissipation_high.
         self.ediss_high = False
 
-        # box dimensions that need to be stored
+        # box dimensions that need to be stored: the reference cell of the
+        # averaging stage, restored by every later stage (helpers.remap_box)
         self.lx = None
         self.ly = None
         self.lz = None
+        self.xy = None
+        self.xz = None
+        self.yz = None
 
         # now manually tune pair styles
         if self.calc.pair_style is not None:
@@ -773,7 +777,7 @@ class Phase:
         else:
             self.fix_berendsen(lmp)
         # start thermo logging
-        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
+        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
         lmp.command("thermo           10")
 
         # run MD
@@ -816,7 +820,7 @@ class Phase:
         if self.calc._qtb:
             # QTB cannot ramp T; do three cycles at staircase T to mimic the warm-up
             self.fix_qtb(lmp, temp_start_factor=0.5, temp_end_factor=0.5, ensemble="npt")
-            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
             lmp.command("thermo           10")
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
             self.unfix_qtb(lmp)
@@ -832,7 +836,7 @@ class Phase:
         elif self.calc.equilibration_control == "nose-hoover":
             # Cycle 1: 0.25-0.5 temperature, full pressure
             self.fix_nose_hoover(lmp, temp_start_factor=0.25, temp_end_factor=0.5)
-            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
             lmp.command("thermo           10")
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
             self.unfix_nose_hoover(lmp)
@@ -850,7 +854,7 @@ class Phase:
         else:
             # Cycle 1: 0.25-0.5 temperature, full pressure
             self.fix_berendsen(lmp, temp_start_factor=0.25, temp_end_factor=0.5)
-            lmp.command("thermo_style     custom step pe press vol etotal temp")
+            lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
             lmp.command("thermo           10")
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
             self.unfix_berendsen(lmp)
@@ -901,12 +905,7 @@ class Phase:
         ave_repeat = int(self.calc.md.n_repeat_steps)
         ave_freq = ave_every * ave_repeat
 
-        lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp "
-            'title2 "# TimeStep lx[A] ly[A] lz[A] press[bar] pe[eV/atom] etotal[eV/atom] temp[K]" '
-            "file avg.dat"
-            % (ave_every, ave_repeat, ave_freq)
-        )
+        lmp.command(ph.average_fix_command(ave_every, ave_repeat, ave_freq))
 
         ncount = int(self.calc.md.n_small_steps) // ave_freq
         target_pressure = self.calc._pressure
@@ -932,8 +931,8 @@ class Phase:
             lmp.command("run              %d" % int(self.calc.md.n_small_steps))
             lmp.sync()  # flush before reading avg.dat this cycle
 
-            lx, ly, lz, ipress = lmp.read_timeseries(
-                "avg.dat", usecols=(1, 2, 3, 4)
+            lx, ly, lz, ipress, xy, xz, yz = lmp.read_timeseries(
+                "avg.dat", usecols=self._AVG_CELL_COLUMNS
             ).T
             n_samples_total = len(ipress)
             # keep only what was sampled at the box we are currently in
@@ -941,6 +940,9 @@ class Phase:
             ly = ly[reset_index:]
             lz = lz[reset_index:]
             ipress = ipress[reset_index:]
+            xy = xy[reset_index:]
+            xz = xz[reset_index:]
+            yz = yz[reset_index:]
 
             if just_rescaled:
                 just_rescaled = False
@@ -958,11 +960,13 @@ class Phase:
                 lx_avg = lx
                 ly_avg = ly
                 lz_avg = lz
+                tilts_avg = (xy, xz, yz)
             else:
                 lxpc = ipress[skip_samples:]
                 lx_avg = lx[skip_samples:]
                 ly_avg = ly[skip_samples:]
                 lz_avg = lz[skip_samples:]
+                tilts_avg = (xy[skip_samples:], xz[skip_samples:], yz[skip_samples:])
             mean = np.mean(lxpc)
             std = np.std(lxpc)
             volatom = np.mean((lx_avg * ly_avg * lz_avg) / self.natoms)
@@ -978,6 +982,7 @@ class Phase:
                 self.lx = np.round(np.mean(lx_avg), decimals=3)
                 self.ly = np.round(np.mean(ly_avg), decimals=3)
                 self.lz = np.round(np.mean(lz_avg), decimals=3)
+                self._store_tilts(*tilts_avg)
                 self.volatom = volatom
                 self.vol = self.lx * self.ly * self.lz
                 self.rho = self.natoms / (self.lx * self.ly * self.lz)
@@ -989,6 +994,7 @@ class Phase:
                     "Avg box dimensions x: %f, y: %f, z:%f"
                     % (self.lx, self.ly, self.lz)
                 )
+                self._log_tilts()
                 converged = True
                 break
             else:
@@ -1007,8 +1013,9 @@ class Phase:
                             "%.6f (from vol/atom %.4f)" % (scale, current_volatom)
                         )
                         lmp.command(
-                            "change_box       all x scale %f y scale %f z scale %f remap"
-                            % (scale, scale, scale)
+                            ph.scale_box_command(
+                                scale, triclinic=bool(np.any(xy) or np.any(xz) or np.any(yz))
+                            )
                         )
                         # everything sampled so far belongs to the old box
                         reset_index = n_samples_total
@@ -1030,6 +1037,24 @@ class Phase:
             self.unfix_berendsen(lmp)
 
         lmp.command("unfix            2")
+
+    #: avg.dat columns read for the reference cell: lx ly lz press xy xz yz
+    _AVG_CELL_COLUMNS = tuple(
+        ph.AVG_COLUMNS[name]
+        for name in ("mlx", "mly", "mlz", "mpress", "mxy", "mxz", "myz")
+    )
+
+    def _store_tilts(self, xy, xz, yz):
+        """Store the mean tilt factors of the reference cell (0 for an orthogonal box)."""
+        self.xy = np.round(np.mean(xy), decimals=3)
+        self.xz = np.round(np.mean(xz), decimals=3)
+        self.yz = np.round(np.mean(yz), decimals=3)
+
+    def _log_tilts(self):
+        if any(t != 0 for t in (self.xy, self.xz, self.yz)):
+            self.logger.info(
+                "Avg box tilts xy: %f, xz: %f, yz: %f" % (self.xy, self.xz, self.yz)
+            )
 
     @staticmethod
     def _fit_volume_scale(pv_history, target_pressure, current_volume=None):
@@ -1114,15 +1139,12 @@ class Phase:
                     self.calc.md.thermostat_damping[1],
                 )
             )
-        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz")
+        lmp.command("thermo_style     custom step pe press vol etotal temp lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
         lmp.command("thermo           10")
 
         # this is when the averaging routine starts
         lmp.command(
-            "fix              2 all ave/time %d %d %d v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp "
-            'title2 "# TimeStep lx[A] ly[A] lz[A] press[bar] pe[eV/atom] etotal[eV/atom] temp[K]" '
-            "file avg.dat"
-            % (
+            ph.average_fix_command(
                 int(self.calc.md.n_every_steps),
                 int(self.calc.md.n_repeat_steps),
                 int(self.calc.md.n_every_steps * self.calc.md.n_repeat_steps),
@@ -1182,7 +1204,9 @@ class Phase:
             self.calc.md.n_every_steps * self.calc.md.n_repeat_steps
         )
 
-        lx, ly, lz, lxpc = lmp.read_timeseries("avg.dat", usecols=(1, 2, 3, 4)).T
+        lx, ly, lz, lxpc, xy, xz, yz = lmp.read_timeseries(
+            "avg.dat", usecols=self._AVG_CELL_COLUMNS
+        ).T
         lx = lx[-ncount + 1 :]
         ly = ly[-ncount + 1 :]
         lz = lz[-ncount + 1 :]
@@ -1196,6 +1220,9 @@ class Phase:
         self.lx = np.round(np.mean(lx), decimals=3)
         self.ly = np.round(np.mean(ly), decimals=3)
         self.lz = np.round(np.mean(lz), decimals=3)
+        self._store_tilts(
+            xy[-ncount + 1 :], xz[-ncount + 1 :], yz[-ncount + 1 :]
+        )
         self.volatom = volatom
         self.vol = self.lx * self.ly * self.lz
         self.rho = self.natoms / (self.lx * self.ly * self.lz)
@@ -1203,6 +1230,7 @@ class Phase:
         self.logger.info(
             "Avg box dimensions x: %f, y: %f, z:%f" % (self.lx, self.ly, self.lz)
         )
+        self._log_tilts()
 
     def submit_report(self, extra_dict=None):
         """
@@ -1520,7 +1548,7 @@ class Phase:
         lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         # ── Initial equilibration ──────────────────────────────────────────
         if self.calc.npt:
@@ -1570,7 +1598,7 @@ class Phase:
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU      equal c_thermo_pe/atoms")
-        lmp.command("thermo_style      custom step pe c_tcm press vol")
+        lmp.command("thermo_style      custom step pe c_tcm press vol lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
         lmp.command("thermo            10000")
 
         lmp.command(
@@ -1730,8 +1758,6 @@ class Phase:
         lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
 
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
-
         # ── Re-install scaled potential at constant λ = lf BEFORE the
         # middle equilibration.  The forward sweep ended with the scaled
         # pair style active at λ = lf, so the snapshot stored in
@@ -1774,7 +1800,7 @@ class Phase:
         lmp.command("fix_modify        f1 temp tcm")
         lmp.command("variable          step    equal step")
         lmp.command("variable          dU      equal c_thermo_pe/atoms")
-        lmp.command("thermo_style      custom step pe c_tcm press vol")
+        lmp.command("thermo_style      custom step pe c_tcm press vol lx ly lz %s" % ph.CELL_THERMO_KEYWORDS)
         lmp.command("thermo            10000")
 
         # ── Middle equilibration at effective Tf (scaled potential, λ=lf) ──
@@ -2002,7 +2028,7 @@ class Phase:
 
         lmp = ph.set_pair_coeff(lmp, self.calc)
         lmp = ph.set_mass(lmp, self.calc)
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         # ── Short equilibration at T0 ───────────────────────────────────────
         lmp.command(
@@ -2200,7 +2226,7 @@ class Phase:
         lmp = ph.set_mass(lmp, self.calc)
 
         # remap the box to get the correct pressure
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         # equilibrate first
         lmp.command(
@@ -2352,7 +2378,7 @@ class Phase:
         lmp = ph.set_mass(lmp, self.calc)
 
         # remap the box to get the correct pressure
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         # equilibrate first
         lmp.command(

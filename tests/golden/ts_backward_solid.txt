@@ -9,8 +9,6 @@ pair_style eam/alloy
 read_data conf.ts.forward_1.data
 pair_coeff * * tests/Cu01.eam.alloy Cu
 mass 1 63.546
-run 0
-change_box all x final 0.0 18.075000 y final 0.0 18.075000 z final 0.0 18.075000 remap units box
 variable lambda_eq equal 0.571429
 pair_style hybrid/scaled v_lambda_eq eam/alloy
 pair_coeff * * eam/alloy tests/Cu01.eam.alloy Cu
@@ -22,7 +20,7 @@ compute tcm all temp/com
 fix_modify f1 temp tcm
 variable step equal step
 variable dU equal c_thermo_pe/atoms
-thermo_style custom step pe c_tcm press vol
+thermo_style custom step pe c_tcm press vol lx ly lz xy xz yz pxx pyy pzz pxy pxz pyz
 thermo 10000
 run 2500
 dump 2 all custom 1 traj.temp.dat id type mass x y z vx vy vz

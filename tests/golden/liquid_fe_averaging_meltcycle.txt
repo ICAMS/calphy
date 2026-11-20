@@ -15,6 +15,15 @@ variable mpress equal press
 variable mpe equal pe/atoms
 variable metotal equal etotal/atoms
 variable mtemp equal temp
+variable mxy equal xy
+variable mxz equal xz
+variable myz equal yz
+variable mpxx equal pxx
+variable mpyy equal pyy
+variable mpzz equal pzz
+variable mpxy equal pxy
+variable mpxz equal pxz
+variable mpyz equal pyz
 velocity all create 2800.000000 861
 fix nh1 all npt temp 2800.000000 2800.000000 0.100000 iso 0.000000 0.000000 0.100000
 run 1000
@@ -38,12 +47,12 @@ run 0
 undump 2
 velocity all create 1400.000000 5735
 fix nh1 all npt temp 1400.000000 1400.000000 0.100000 iso 0.000000 0.000000 0.100000
-thermo_style custom step pe press vol etotal temp lx ly lz
+thermo_style custom step pe press vol etotal temp lx ly lz xy xz yz pxx pyy pzz pxy pxz pyz
 thermo 10
 run 1000
 unfix nh1
 fix nh1 all npt temp 1400.000000 1400.000000 0.100000 iso 0.000000 0.000000 0.100000
-fix 2 all ave/time 10 10 100 v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp title2 "# TimeStep lx[A] ly[A] lz[A] press[bar] pe[eV/atom] etotal[eV/atom] temp[K]" file avg.dat
+fix 2 all ave/time 10 10 100 v_mlx v_mly v_mlz v_mpress v_mpe v_metotal v_mtemp v_mxy v_mxz v_myz v_mpxx v_mpyy v_mpzz v_mpxy v_mpxz v_mpyz title2 "# TimeStep lx[A] ly[A] lz[A] press[bar] pe[eV/atom] etotal[eV/atom] temp[K] xy[A] xz[A] yz[A] pxx[bar] pyy[bar] pzz[bar] pxy[bar] pxz[bar] pyz[bar]" file avg.dat
 run 1000
 unfix nh1
 unfix 2
