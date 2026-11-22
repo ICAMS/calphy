@@ -22,7 +22,7 @@ compute tcm all temp/com
 fix_modify f1 temp tcm
 variable step equal step
 variable dU equal c_thermo_pe/atoms
-thermo_style custom step pe c_tcm press vol
+thermo_style custom step pe c_tcm press vol lx ly lz xy xz yz pxx pyy pzz pxy pxz pyz
 thermo 10000
 velocity all create 400.000000 7271 mom yes rot yes dist gaussian
 run 2500

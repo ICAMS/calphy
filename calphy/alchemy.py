@@ -184,7 +184,7 @@ class Alchemy(cph.Phase):
         lmp = ph.read_data(lmp, conf)
         self._coupling_pair(lmp, ramp="0.0")
         lmp = ph.set_mass(lmp, self.calc)
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
         lmp.command(
             "velocity          all create %f %d mom yes rot yes dist gaussian"
             % (self.calc._temperature, np.random.randint(1, 10000)))
@@ -278,14 +278,7 @@ class Alchemy(cph.Phase):
         lmp = ph.set_mass(lmp, self.calc)
 
         # add some computes
-        lmp.command("variable         mvol equal vol")
-        lmp.command("variable         mlx equal lx")
-        lmp.command("variable         mly equal ly")
-        lmp.command("variable         mlz equal lz")
-        lmp.command("variable         mpress equal press")
-        lmp.command("variable         mpe equal pe/atoms")
-        lmp.command("variable         metotal equal etotal/atoms")
-        lmp.command("variable         mtemp equal temp")
+        lmp = ph.define_average_variables(lmp)
 
         # add some computes
         if not self.calc._fix_lattice:
@@ -363,7 +356,7 @@ class Alchemy(cph.Phase):
         lmp.command("group g2 type 2")
 
         # remap the box to get the correct pressure
-        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz)
+        lmp = ph.remap_box(lmp, self.lx, self.ly, self.lz, self.xy, self.xz, self.yz)
 
         lmp.command(
             "velocity          all create %f %d mom yes rot yes dist gaussian"

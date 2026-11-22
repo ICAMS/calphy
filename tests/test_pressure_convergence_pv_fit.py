@@ -71,8 +71,12 @@ class _PVStub:
                 # barostat nudges the box toward equilibrium each sample
                 self.volatom += self.relax * (self.v0 - self.volatom)
                 length = (self.volatom * self.natoms) ** (1.0 / 3.0)
-                self.rows.append([len(self.rows), length, length, length,
-                                  self._pressure()])
+                p = self._pressure()
+                # avg.dat layout: step lx ly lz press pe etotal temp
+                # xy xz yz pxx pyy pzz pxy pxz pyz (orthogonal, isotropic)
+                self.rows.append([len(self.rows), length, length, length, p,
+                                  0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                  p, p, p, 0.0, 0.0, 0.0])
         elif tokens[0] == "change_box":
             scale = float(tokens[tokens.index("scale") + 1])
             self.volatom *= scale ** 3
